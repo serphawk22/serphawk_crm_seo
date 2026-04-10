@@ -93,9 +93,16 @@ app = FastAPI(title="SerpHawk CRM", version="2.0.0")
 def on_startup():
     create_db_and_tables()
 
+allowed_origins = [
+    "https://serphawk-crm-seo.vercel.app",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://web-production-80e20.up.railway.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
