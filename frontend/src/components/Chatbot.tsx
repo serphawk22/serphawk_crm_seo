@@ -1,8 +1,58 @@
 "use client";
 
 import { useState } from 'react';
-import { MessageSquare, X, Users, UserPlus, Mail, ChevronRight, Send } from 'lucide-react';
+import { MessageSquare, X, Users, UserPlus, Mail, ChevronRight, Send, ShoppingBag, MessageCircle, Settings } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useRole } from '@/context/RoleContext';
+
+interface QuickAction {
+  label: string;
+  icon: React.ReactNode;
+  response: string;
+  route: string;
+}
+
+const ADMIN_ACTIONS: QuickAction[] = [
+  {
+    label: 'View Customer',
+    icon: <Users className="w-4 h-4 text-blue-500" />,
+    response: 'Taking you to the clients list. You can select a customer to view their details.',
+    route: '/clients',
+  },
+  {
+    label: 'Add Customer',
+    icon: <UserPlus className="w-4 h-4 text-green-500" />,
+    response: 'Navigating to the clients page where you can add a new customer.',
+    route: '/clients?action=add',
+  },
+  {
+    label: 'Send Email',
+    icon: <Mail className="w-4 h-4 text-purple-500" />,
+    response: 'Opening the Email Agent to generate and send a new email.',
+    route: '/email-agent',
+  },
+];
+
+const CLIENT_ACTIONS: QuickAction[] = [
+  {
+    label: 'View Services',
+    icon: <ShoppingBag className="w-4 h-4 text-amber-500" />,
+    response: 'Taking you to the services store where you can browse available services.',
+    route: '/store',
+  },
+  {
+    label: 'My Messages',
+    icon: <MessageCircle className="w-4 h-4 text-blue-500" />,
+    response: 'Opening your messages inbox.',
+    route: '/messages',
+  },
+  {
+    label: 'Settings',
+    icon: <Settings className="w-4 h-4 text-gray-500" />,
+    response: 'Navigating to your account settings.',
+    route: '/setup',
+  },
+];
 
 export function Chatbot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -11,25 +61,21 @@ export function Chatbot() {
   ]);
   const [input, setInput] = useState('');
   const router = useRouter();
+  const { role } = useRole();
 
-  const handleCommand = (command: string) => {
-    setMessages(prev => [...prev, { role: 'user', text: command }]);
-    
+  const isClient = role === 'Client';
+  const quickActions = isClient ? CLIENT_ACTIONS : ADMIN_ACTIONS;
+
+  const handleCommand = (label: string) => {
+    setMessages(prev => [...prev, { role: 'user', text: label }]);
+
     setTimeout(() => {
-      let botResponse = '';
-      if (command === 'View Customer') {
-        botResponse = 'Taking you to the clients list. You can select a customer to view their details.';
-        router.push('/clients');
-      } else if (command === 'Add Customer') {
-        botResponse = 'Navigating to the clients page where you can add a new customer.';
-        router.push('/clients?action=add');
-      } else if (command === 'Send Email') {
-        botResponse = 'Opening the Email Agent to generate and send a new email.';
-        router.push('/email-agent');
-      } else {
-        botResponse = 'I can help you with specific tasks. Try clicking one of the quick actions below!';
-      }
-      
+      const action = quickActions.find(a => a.label === label);
+      const botResponse = action
+        ? action.response
+        : 'I can help you with specific tasks. Try clicking one of the quick actions below!';
+
+      if (action) router.push(action.route);
       setMessages(prev => [...prev, { role: 'bot', text: botResponse }]);
     }, 500);
   };
@@ -37,7 +83,6 @@ export function Chatbot() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
-    
     handleCommand(input);
     setInput('');
   };
@@ -46,9 +91,9 @@ export function Chatbot() {
     <div className="fixed bottom-6 right-6 z-50">
       {/* Chat Window */}
       {isOpen && (
-        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-80 lg:w-96 mb-4 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5">
+        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-80 lg:w-96 mb-4 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5" style={{ height: '520px' }}>
           {/* Header */}
-          <div className="bg-blue-600 text-white p-4 flex justify-between items-center">
+          <div className="bg-blue-600 text-white p-4 flex justify-between items-center shrink-0">
             <div className="flex items-center gap-2">
               <MessageSquare className="w-5 h-5" />
               <span className="font-bold">SERP Hawk Assistant</span>
@@ -62,7 +107,7 @@ export function Chatbot() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 p-4 h-80 overflow-y-auto bg-slate-50 flex flex-col gap-3">
+          <div className="flex-1 min-h-0 p-4 overflow-y-auto bg-slate-50 flex flex-col gap-3">
             {messages.map((msg, idx) => (
               <div 
                 key={idx} 
@@ -82,33 +127,30 @@ export function Chatbot() {
           </div>
 
           {/* Quick Actions */}
-          <div className="p-3 border-t border-gray-100 bg-white space-y-2">
+          <div className="p-3 border-t border-gray-100 bg-white space-y-2 shrink-0">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">Quick Actions</p>
-            <button 
-              onClick={() => handleCommand('View Customer')}
-              className="w-full flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg text-sm text-gray-700 transition-colors border border-transparent hover:border-slate-200"
-            >
-              <span className="flex items-center gap-2"><Users className="w-4 h-4 text-blue-500" /> View Customer</span>
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            </button>
-            <button 
-              onClick={() => handleCommand('Add Customer')}
-              className="w-full flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg text-sm text-gray-700 transition-colors border border-transparent hover:border-slate-200"
-            >
-              <span className="flex items-center gap-2"><UserPlus className="w-4 h-4 text-green-500" /> Add Customer</span>
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            </button>
-            <button 
-              onClick={() => handleCommand('Send Email')}
-              className="w-full flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg text-sm text-gray-700 transition-colors border border-transparent hover:border-slate-200"
-            >
-              <span className="flex items-center gap-2"><Mail className="w-4 h-4 text-purple-500" /> Send Email</span>
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            </button>
+            {quickActions.map((action) => (
+              <button
+                key={action.label}
+                onClick={() => handleCommand(action.label)}
+                className="w-full flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg text-sm text-gray-700 transition-colors border border-transparent hover:border-slate-200"
+              >
+                <span className="flex items-center gap-2">{action.icon} {action.label}</span>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </button>
+            ))}
           </div>
 
           {/* Input Area */}
-          <form onSubmit={handleSubmit} className="p-3 bg-white border-t border-gray-100 flex gap-2">
+          <form onSubmit={handleSubmit} className="p-3 bg-white border-t border-gray-100 flex gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="bg-gray-100 text-gray-500 p-2 rounded-lg hover:bg-red-100 hover:text-red-500 transition-colors"
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
             <input 
               type="text"
               value={input}

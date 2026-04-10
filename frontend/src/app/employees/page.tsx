@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Users, UserPlus, Search, MoreVertical, Mail, Trash2, ShieldCheck, Briefcase, X, Check, Loader2, Key, Star } from "lucide-react";
 import { API_BASE_URL } from '@/config';
 import { cn } from "@/lib/utils";
+import PageGuide from '@/components/PageGuide';
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState([]);
@@ -84,6 +85,18 @@ export default function EmployeesPage() {
           <UserPlus className="w-4 h-4" /> Add Team Member
         </button>
       </div>
+
+      <PageGuide
+        pageKey="employees"
+        title="How the Core Team page works"
+        description="This is where you manage all administrators and project managers who operate the CRM."
+        steps={[
+          { icon: '👤', text: 'Click \"Add Team Member\" to create a new admin or project manager account with login credentials.' },
+          { icon: '🔑', text: 'Each team member gets a role (Admin or PM) that controls what they can access in the system.' },
+          { icon: '✏️', text: 'Use the action menu on each row to reset passwords, change roles, or remove a member.' },
+          { icon: '📧', text: 'Team members will use their email and password to log into the CRM dashboard.' },
+        ]}
+      />
 
       <div className="bg-white rounded-[3rem] border shadow-sm overflow-hidden text-gray-800">
         <div className="p-8 border-b border-gray-100 flex flex-col md:flex-row justify-between items-center bg-gray-50/50 gap-4">

@@ -35,63 +35,81 @@ Write a professional inquiry email expressing interest in {company_name}'s servi
 
 Salutation: {salutation}
 
-The email MUST have exactly TWO paragraphs:
-- Paragraph 1: In ENGLISH. Open with genuine interest in their work. Mention a specific aspect of their business that makes them a great potential partner or client. Ask about their current challenges in a thoughtful way. Close with a clear call to action (e.g., schedule a discovery call).
-- Paragraph 2: The EXACT SAME message translated to SPANISH.
+STRUCTURE (English version):
+1. Opening line — show genuine interest in their business or a recent achievement.
+2. Short paragraph — mention a specific aspect of their work that caught your eye and why it makes them a great potential partner.
+3. Value bridge — briefly explain how SERP Hawk helps similar companies grow (mention 1-2 relevant services from: {service_list}).
+4. Soft CTA — suggest a quick 15-minute discovery call to explore synergies.
+5. Sign-off: "Warm regards,\nTeam DaPros from Mexico | SERP Hawk Digital Agency"
 
-End the email with:
-"Warm regards,
-Team DaPros from Mexico | SERP Hawk Digital Agency"
+Keep it under 150 words. Be warm, specific, and human — not salesy.
 
-Return ONLY a JSON object with these fields:
+Then provide the FULL Spanish translation with identical structure, signed off as "Equipo DaPros".
+
+Return ONLY a JSON object:
 {{
-    "subject": "Subject line in English",
-    "english_body": "Full paragraph 1 in English WITH the signature (plain text, no HTML tags)",
-    "spanish_body": "Full paragraph 2 in Spanish WITH the Spanish signature (plain text, no HTML tags)"
+    "subject": "Short, curiosity-driven subject line in English",
+    "english_body": "Full English email (multiple short paragraphs separated by \\n\\n, plain text, no HTML)",
+    "spanish_body": "Full Spanish translation (same structure, plain text, no HTML)"
 }}
 """
         else:
             service_details = "\n".join([
-                f"- {svc.get('service_name', '')}: {svc.get('why_relevant', '')} (Expected: {svc.get('expected_impact', '')})"
+                f"- {svc.get('service_name', '')}: {svc.get('why_relevant', '')} → {svc.get('expected_impact', '')}"
                 for svc in services
-            ]) if services else "- Organic SEO: Improve search rankings and qualified traffic\n- Local SEO: Capture local market dominance"
+            ]) if services else "- Organic SEO: Boost search rankings → more qualified leads\n- Local SEO: Dominate local search → increased foot traffic & calls"
 
             prompt = f"""
-You are an expert B2B sales email writer for SERP Hawk, a full-service digital marketing agency, represented by Team DaPros from Mexico.
+You are a world-class B2B outreach copywriter for SERP Hawk, a results-driven digital marketing agency, represented by Team DaPros from Mexico.
 
-Write a highly detailed, personalized, and persuasive cold outreach email to {company_name} in the {industry} industry.
+Write a compelling, service-focused cold outreach email to {company_name} in the {industry} industry.
 
 Salutation: {salutation}
 
-About SERP Hawk:
-SERP Hawk is a digital growth agency specializing in helping businesses rank higher on search engines, acquire more customers, and grow their online revenue. Our core services include Organic SEO, Local SEO, Google Ads Management, Content Marketing, and Conversion Rate Optimization.
+ABOUT SERP HAWK:
+We help businesses grow revenue through data-driven digital marketing. Our full service catalog:
+• Organic SEO — rank higher on Google, drive qualified organic traffic
+• Local SEO — dominate Google Maps & local search results
+• Google Ads — targeted PPC campaigns with measurable ROI
+• Meta Ads — Facebook & Instagram ad campaigns that convert
+• Social Media Management — build brand presence & engagement
+• Content Marketing — SEO blogs, landing pages & conversion copy
+• Web Development — fast, modern, conversion-optimized websites
+• App Development — custom mobile & web applications
+• Automation & Consulting — streamline operations with smart workflows
 
-Recommended services for {company_name}:
+RECOMMENDED FOR {company_name.upper()}:
 {service_details}
 
-The email MUST follow this structure with exactly TWO paragraphs:
-- Paragraph 1 (ENGLISH): 
-  * Open with a compelling observation about {company_name}'s specific situation in the {industry} space.
-  * Clearly explain what SERP Hawk does and WHY it matters for their goals (drive traffic, conversions, revenue).
-  * Describe the specific recommended services ({service_list}) and the measurable impact they can expect.
-  * Include a clear, low-friction call to action (e.g., "I'd love to set up a free 15-minute discovery call this week — would that work for you?").
-  * Close with: "Warm regards, Team DaPros from Mexico | SERP Hawk Digital Agency"
-- Paragraph 2: The EXACT SAME message translated to SPANISH.
+EMAIL STRUCTURE (English version — follow this exactly):
+1. Hook (1-2 sentences) — Open with a specific, researched observation about {company_name}'s online presence, industry trend, or growth opportunity. Make them feel seen, not targeted.
+2. Problem/Opportunity (2-3 sentences) — Identify a concrete challenge or untapped opportunity they likely face in {industry}. Be specific, not vague.
+3. Service Spotlight (3-5 sentences) — For EACH recommended service ({service_list}), write one punchy sentence explaining WHAT it does for them and the RESULT they can expect. Use action verbs and concrete outcomes (e.g., "rank on page 1", "cut cost-per-lead by 40%", "3x your local visibility").
+4. Social proof hint (1 sentence) — Mention that you've helped similar businesses in their space achieve measurable growth.
+5. CTA (1 sentence) — Low-friction ask: a free 15-minute strategy call or audit. Make it easy to say yes.
+6. Sign-off: "Warm regards,\nTeam DaPros from Mexico | SERP Hawk Digital Agency"
 
-Be conversational, confident, and specific — not generic.
+STYLE RULES:
+- Keep total length 120-180 words. Short paragraphs (2-3 sentences max each).
+- Separate paragraphs with blank lines for readability.
+- Conversational and confident — like a knowledgeable friend, not a pushy salesperson.
+- Every sentence must earn its place. No filler, no fluff, no generic platitudes.
+- Services must be the STAR of the email — the reader should finish knowing exactly what you can do for them.
 
-Return ONLY a JSON object with these fields:
+Then provide the FULL Spanish translation with identical structure, signed off as "Equipo DaPros de México | SERP Hawk Digital Agency".
+
+Return ONLY a JSON object:
 {{
-    "subject": "Compelling subject line in English (make it specific and benefit-focused)",
-    "english_body": "Full detailed paragraph in English WITH the signature (plain text, no HTML tags)",
-    "spanish_body": "Full detailed paragraph in Spanish WITH the Spanish signature (plain text, no HTML tags)"
+    "subject": "Short, benefit-focused subject line (under 8 words, mention their company or industry)",
+    "english_body": "Full English email (multiple short paragraphs separated by \\n\\n, plain text, no HTML)",
+    "spanish_body": "Full Spanish translation (same structure, plain text, no HTML)"
 }}
 """
 
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a professional bilingual email copywriter for SERP Hawk. Return only valid JSON with the exact fields specified."},
+                {"role": "system", "content": "You are an elite bilingual B2B email copywriter for SERP Hawk. You write emails that are short, punchy, service-focused, and impossible to ignore. Every email must clearly spotlight the recommended services and the tangible results they deliver. Return only valid JSON with the exact fields specified."},
                 {"role": "user", "content": prompt}
             ],
             response_format={"type": "json_object"}

@@ -26,4 +26,5 @@ python-multipart==0.0.6
 
 # Additional utilities
 httpx==0.26.0
+reportlab>=4.0
 # Duplicates removed

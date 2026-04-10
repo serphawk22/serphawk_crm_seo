@@ -16,11 +16,13 @@ import {
   Briefcase,
   Globe,
   MoreVertical,
-  Activity
+  Activity,
+  Mail
 } from 'lucide-react';
 import Link from 'next/link';
 import { API_BASE_URL } from '@/config';
 import { cn } from '@/lib/utils';
+import PageGuide from '@/components/PageGuide';
 
 // Framer Motion Variants
 const containerVariants = {
@@ -63,6 +65,10 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(12);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loadTime, setLoadTime] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const router = useRouter();
   const [hoveredId, setHoveredId] = useState<number | null>(null);
@@ -124,7 +130,15 @@ export default function ClientsPage() {
 
   useEffect(() => {
     fetchClients();
-  }, [filter]);
+  }, [filter, page]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1);
+      fetchClients();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const fetchStatuses = async () => {
     try {
@@ -138,24 +152,34 @@ export default function ClientsPage() {
 
   const fetchClients = async () => {
     setLoading(true);
+    const start = performance.now();
     try {
-      const url = filter === 'All' 
-        ? `${API_BASE_URL}/clients`
-        : `${API_BASE_URL}/clients?status=${filter}`;
-      
-      const res = await fetch(url);
+      const url = new URL(`${API_BASE_URL}/clients`);
+      if (filter !== 'All') url.searchParams.append('status', filter);
+      if (search.trim()) url.searchParams.append('query', search.trim());
+      url.searchParams.append('page', String(page));
+      url.searchParams.append('per_page', String(perPage));
+
+      const res = await fetch(url.toString());
       const data = await res.json();
       setClients(data.clients || []);
+      setTotalCount(data.total || 0);
+      setLoadTime(Math.round(performance.now() - start));
     } catch (error) {
       console.error("Error fetching clients:", error);
       setClients([]);
+      setTotalCount(0);
+      setLoadTime(null);
     } finally {
       setLoading(false);
     }
   };
 
+  const [addLoading, setAddLoading] = useState(false);
   const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (addLoading) return;
+    setAddLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/clients`, {
         method: 'POST',
@@ -183,13 +207,25 @@ export default function ClientsPage() {
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setAddLoading(false);
     }
   };
 
-  const filteredClients = clients.filter(c => 
-    c.projectName?.toLowerCase().includes(search.toLowerCase()) ||
-    c.email?.toLowerCase().includes(search.toLowerCase())
-  );
+  // Delete client handler
+  const handleDeleteClient = async (clientId: number) => {
+    if (!window.confirm('Are you sure you want to delete this client?')) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${clientId}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchClients();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const filteredClients = clients;
 
   const StatusBadge = ({ statusName }: { statusName: string }) => {
     const statusObj = statuses.find(s => s.name === statusName);
@@ -243,12 +279,27 @@ export default function ClientsPage() {
         </div>
       </motion.div>
 
+      <PageGuide
+        pageKey="clients"
+        title="How the Client Hub works"
+        description="Your central command for managing all client accounts, contacts, and intelligence."
+        steps={[
+          { icon: '➕', text: 'Click \"Add Client\" to create a new account with company name, website, email, and keywords.' },
+          { icon: '📷', text: 'Use \"OCR Scan\" to extract client details from a business card photo automatically.' },
+          { icon: '🔍', text: 'Search by name or company and use filters to quickly find any client.' },
+          { icon: '👁️', text: 'Click any client card to view their full profile, services, audit, and communication history.' },
+        ]}
+      />
+
       {/* KPI Cards */}
       <motion.div variants={itemVariants} className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
         <div className="bg-white/40 backdrop-blur-xl p-6 rounded-[2rem] border border-white/60 shadow-sm relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Users className="w-16 h-16 text-indigo-600" /></div>
           <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-2">Total Accounts</p>
-          <p className="text-4xl font-black text-slate-800">{clients.length}</p>
+          <p className="text-4xl font-black text-slate-800">{totalCount}</p>
+          {loadTime !== null && (
+            <p className="text-[10px] text-slate-400 mt-2">Loaded in {loadTime}ms</p>
+          )}
         </div>
         {statuses.slice(0, 3).map((status) => (
           <div key={status.id} className="bg-white/40 backdrop-blur-xl p-6 rounded-[2rem] border border-white/60 shadow-sm relative overflow-hidden group">
@@ -275,7 +326,7 @@ export default function ClientsPage() {
           
           <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
             <button 
-              onClick={() => setFilter('All')}
+              onClick={() => { setFilter('All'); setPage(1); }}
               className={cn(
                 "px-5 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-colors",
                 filter === 'All' ? "bg-indigo-600 text-white shadow-md" : "bg-white/60 text-slate-600 hover:bg-white"
@@ -286,7 +337,7 @@ export default function ClientsPage() {
             {statuses.map(stat => (
               <button 
                 key={stat.id}
-                onClick={() => setFilter(stat.name)}
+                onClick={() => { setFilter(stat.name); setPage(1); }}
                 className={cn(
                   "px-5 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-colors",
                   filter === stat.name ? "bg-indigo-600 text-white shadow-md" : "bg-white/60 text-slate-600 hover:bg-white"
@@ -322,29 +373,52 @@ export default function ClientsPage() {
                     <div className="flex justify-between items-start mb-6 relative z-10">
                       <div>
                         <h3 className="font-black text-xl text-slate-800 group-hover:text-indigo-600 transition-colors tracking-tight line-clamp-1">
-                          {client.projectName || 'Unnamed Project'}
+                          {client.companyName || client.projectName || client.email || 'Unnamed Client'}
                         </h3>
-                        {client.companyName && (
+                        {client.email && (
                           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-1 flex items-center gap-1 line-clamp-1">
-                            <Briefcase className="w-3 h-3" /> {client.companyName}
+                            <Mail className="w-3 h-3" /> {client.email}
                           </p>
                         )}
                       </div>
-                      <StatusBadge statusName={client.status} />
+                      <div className="flex items-center gap-2">
+                        <StatusBadge statusName={client.status} />
+                        <button onClick={e => { e.preventDefault(); e.stopPropagation(); handleDeleteClient(client.id); }} title="Delete client" className="ml-2 p-1.5 rounded-full bg-red-100 hover:bg-red-200 text-red-600 transition-colors">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="space-y-4 relative z-10">
+                                <div className="space-y-4 relative z-10">
                       <div className="flex items-center gap-3 text-sm text-slate-600 bg-white/50 p-3 rounded-2xl border border-white/40">
                         <div className="p-1.5 bg-indigo-50 text-indigo-500 rounded-lg"><Globe className="w-4 h-4" /></div>
-                        <span className="truncate font-medium">{client.website || 'No website'}</span>
+                        <span className="truncate font-medium">{client.websiteUrl || 'No website'}</span>
                       </div>
 
-                      <div className="flex items-center gap-3 text-sm text-slate-600 bg-white/50 p-3 rounded-2xl border border-white/40">
-                        <div className="p-1.5 bg-cyan-50 text-cyan-500 rounded-lg"><Activity className="w-4 h-4" /></div>
-                        <div className="flex flex-col">
-                           <span className="font-bold text-[10px] uppercase tracking-wider text-slate-400">Last Activity</span>
-                           <span className="truncate font-medium">{client.lastActivity || 'No activities yet'}</span>
+                      <div className="grid grid-cols-1 gap-3">
+                        <div className="flex items-center gap-3 text-sm text-slate-600 bg-white/50 p-3 rounded-2xl border border-white/40">
+                          <div className="p-1.5 bg-cyan-50 text-cyan-500 rounded-lg"><Activity className="w-4 h-4" /></div>
+                          <div className="flex flex-col">
+                            <span className="font-bold text-[10px] uppercase tracking-wider text-slate-400">Last Activity</span>
+                            <span className="truncate font-medium">{client.lastActivity || 'No activities yet'}</span>
+                          </div>
                         </div>
+                        {(client.services_requested || client.services_offered) && (
+                          <div className="flex flex-col gap-2 text-sm text-slate-600 bg-white/50 p-3 rounded-2xl border border-white/40">
+                            {client.services_requested && (
+                              <div className="flex items-center gap-2">
+                                <span className="px-2 py-1 bg-sky-100 text-sky-700 rounded-full text-[11px] font-bold">Requested</span>
+                                <span className="truncate font-medium">{client.services_requested}</span>
+                              </div>
+                            )}
+                            {client.services_offered && (
+                              <div className="flex items-center gap-2">
+                                <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[11px] font-bold">Offered</span>
+                                <span className="truncate font-medium">{client.services_offered}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -413,6 +487,31 @@ export default function ClientsPage() {
           </div>
         </div>
       </motion.div>
+
+      {(totalCount > 0 || clients.length > 0) && (
+        <div className="flex flex-col gap-2 md:flex-row items-center justify-between px-4 py-3 rounded-3xl bg-white/80 border border-white/70 shadow-sm">
+          <p className="text-sm text-slate-500">
+            Showing {(page - 1) * perPage + 1} - {Math.min(page * perPage, totalCount || clients.length)} of {totalCount || clients.length} clients
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-4 py-2 rounded-2xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-50 transition-all"
+            >
+              Previous
+            </button>
+            <span className="text-sm font-bold text-slate-700">Page {page} of {Math.max(1, Math.ceil((totalCount || clients.length) / perPage))}</span>
+            <button
+              onClick={() => setPage(p => Math.min(Math.ceil((totalCount || clients.length) / perPage), p + 1))}
+              disabled={page >= Math.ceil((totalCount || clients.length) / perPage)}
+              className="px-4 py-2 rounded-2xl border border-slate-200 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-50 transition-all"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modals remain structurally similar, but updated with glassmorphism */}
       <AnimatePresence>

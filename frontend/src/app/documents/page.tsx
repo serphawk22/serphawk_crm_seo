@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Upload, FileText, Loader2, Check, User, Building, Phone, Mail, Globe, Save, Camera, X, CheckCircle2 } from 'lucide-react';
 import { API_BASE_URL } from '@/config';
+import PageGuide from '@/components/PageGuide';
 
 export default function DocumentsPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -208,6 +209,18 @@ export default function DocumentsPage() {
           <FileText className="w-6 h-6 text-blue-600" /> Document OCR
         </h1>
         <p className="text-gray-500 mb-8">Upload an ID card or business card to automatically extract details.</p>
+
+        <PageGuide
+          pageKey="documents"
+          title="How Document OCR works"
+          description="Scan business cards, ID cards, or documents to automatically extract contact information."
+          steps={[
+            { icon: '📷', text: 'Upload an image or use your camera to capture a business card or ID document.' },
+            { icon: '🤖', text: 'Our AI will analyze the image and extract details like name, company, phone, email, and website.' },
+            { icon: '✏️', text: 'Review and edit the extracted data before saving it to your contacts.' },
+            { icon: '💾', text: 'Click \"Save as Client\" to add the extracted contact directly to your client database.' },
+          ]}
+        />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Upload Section */}

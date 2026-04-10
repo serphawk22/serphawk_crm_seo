@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL } from '@/config';
 import { cn } from "@/lib/utils";
+import PageGuide from '@/components/PageGuide';
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useRole } from "@/context/RoleContext";
@@ -195,6 +196,18 @@ export default function ProjectDetailPage() {
            ))}
         </div>
       </div>
+
+      <PageGuide
+        pageKey="project-detail"
+        title="How the Project Detail page works"
+        description="Everything about this project in one place — team, progress, comments, and activity."
+        steps={[
+          { icon: '📍', text: 'The header shows the project name, status badge, and creation date.' },
+          { icon: '👥', text: 'Assign team members (employees and interns) from the dropdowns to manage who works on this.' },
+          { icon: '💬', text: 'Add comments to discuss progress, share updates, or leave notes for the team.' },
+          { icon: '📊', text: 'Update project status (Planning, Active, Completed) using the buttons and track progress percentage.' },
+        ]}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column: Progress & Description */}

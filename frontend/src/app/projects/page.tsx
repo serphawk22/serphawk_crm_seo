@@ -6,6 +6,7 @@ import { API_BASE_URL } from '@/config';
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useRole } from "@/context/RoleContext";
+import PageGuide from '@/components/PageGuide';
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState([]);
@@ -74,6 +75,18 @@ export default function ProjectsPage() {
           <Plus className="w-4 h-4" /> New Project
         </button>
       </div>
+
+      <PageGuide
+        pageKey="projects"
+        title="How the Project Dashboard works"
+        description="Create, organize, and track team initiatives from start to finish."
+        steps={[
+          { icon: '📁', text: 'Click \"New Project\" to create an initiative with a name, description, and status.' },
+          { icon: '👥', text: 'Click any project card to assign team members, set progress, and manage details.' },
+          { icon: '📊', text: 'Each project card shows its current status (Planning, Active, Completed) and progress.' },
+          { icon: '💬', text: 'Inside each project you can add comments, track activity, and monitor timelines.' },
+        ]}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (

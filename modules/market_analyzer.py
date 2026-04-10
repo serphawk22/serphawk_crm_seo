@@ -44,16 +44,23 @@ def match_services(market_analysis, company_info):
     """
     try:
         client = get_openai_client()
-        serp_hawk_services = "1. Local SEO, 2. Organic SEO, 3. Social Media, 4. Meta Ads, 5. Google Ads, 6. Consulting, 7. Web Dev, 8. App Dev, 9. Automation"
+        serp_hawk_services = "1. Organic SEO (higher Google rankings & organic traffic), 2. Local SEO (Google Maps & local dominance), 3. Google Ads (targeted PPC with measurable ROI), 4. Meta Ads (Facebook & Instagram campaigns), 5. Social Media Management (brand presence & engagement), 6. Content Marketing (SEO blogs, landing pages, conversion copy), 7. Web Development (fast, conversion-optimized sites), 8. App Development (custom mobile & web apps), 9. Automation & Consulting (smart workflows & strategy)"
 
-        prompt = f"""Recommend services for {company_info.get('company_name')} based on their market analysis and return a JSON object.
-Available SERP Hawk services: {serp_hawk_services}
-Market analysis: {json.dumps(market_analysis)[:3000]}
+        prompt = f"""You are a digital marketing strategist for SERP Hawk. Recommend the best services for {company_info.get('company_name')} based on their market analysis.
 
-Return JSON with fields:
-- recommended_services: list of objects with service_name, why_relevant, expected_impact
-- email_hook: a compelling hook sentence
-- package_suggestion: a package name (Starter/Growth/Enterprise)
+Available SERP Hawk services:
+{serp_hawk_services}
+
+Market analysis:
+{json.dumps(market_analysis)[:3000]}
+
+Return a JSON object with:
+- recommended_services: list of 2-4 objects, each with:
+  - service_name: exact service name from the list above
+  - why_relevant: 1 sentence explaining why THIS company needs it (be specific to their industry/situation)
+  - expected_impact: concrete measurable outcome (e.g., "rank on page 1 for local keywords within 90 days", "reduce cost-per-lead by 30-40%", "2x organic traffic in 6 months")
+- email_hook: a compelling 1-sentence hook referencing a specific opportunity or gap you spotted for this company
+- package_suggestion: Starter, Growth, or Enterprise based on their size and needs
 """
         response = client.chat.completions.create(
             model="gpt-4o-mini",

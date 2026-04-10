@@ -1,613 +1,704 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Mail, Globe, User, CheckCircle, AlertCircle, Loader2, Send, FileEdit, Clock, Hand, ChevronRight, Trash2 } from 'lucide-react';
-import { API_BASE_URL } from '@/config';
-import Link from 'next/link';
-import { cn } from '@/lib/utils';
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import {
+  Bot, Send, Sparkles, Mail, Clock, User, Globe, ChevronDown, ChevronUp,
+  CheckCircle, Building2, Briefcase, Target, AtSign, FileText, Copy, Check,
+  TrendingUp, Zap, Package, UserPlus
+} from "lucide-react";
+import { API_BASE_URL } from "@/config";
+import { useRole } from "@/context/RoleContext";
+import PageGuide from "@/components/PageGuide";
 
-// Framer Motion Variants
-const containerVariants = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.1, delayChildren: 0.1 } }
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 30 },
-  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100 } }
-};
-
-interface Draft {
-  company_name: string;
-  website_url: string;
-  primary_email: string;
-  recommended_services?: string;
-  outreach: { subject: string; body: string; english_body?: string; spanish_body?: string };
-  inbound: { subject: string; body: string; english_body?: string; spanish_body?: string };
-}
-
-interface Activity {
+interface SentEmail {
   id: number;
-  company_name: string;
-  email: string;
-  sent_at: string;
-  status: string;
-  recommended_services?: string;
-  subject?: string;
-  content?: string;
+  client_id: number | null;
+  to_email: string;
+  subject: string;
+  english_body: string | null;
+  spanish_body: string | null;
+  recommended_services: string | null;
+  manual: boolean;
+  draft_json: string | null;
+  sent_at: string | null;
 }
 
-const DraftSkeleton = () => (
-  <motion.div 
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm p-8 animate-pulse relative overflow-hidden"
-  >
-    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 blur-[80px] rounded-full"></div>
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 relative z-10">
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-2xl bg-indigo-100/50"></div>
-        <div className="space-y-2">
-           <div className="h-6 w-32 bg-slate-300/50 rounded-full"></div>
-           <div className="h-3 w-48 bg-slate-300/50 rounded-full"></div>
-        </div>
-      </div>
-      <div className="flex gap-2 w-full md:w-auto">
-        <div className="h-10 w-full md:w-32 bg-slate-200/50 rounded-xl"></div>
-        <div className="h-10 w-full md:w-32 bg-slate-200/50 rounded-xl"></div>
-      </div>
+function ShimmerBlock({ className }: { className?: string }) {
+  return (
+    <div className={`relative overflow-hidden rounded-xl bg-slate-100 ${className || ""}`}>
+      <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/60 to-transparent" />
     </div>
-    
-    <div className="bg-white/40 border border-white/60 p-8 rounded-[2rem] space-y-6 relative z-10">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="space-y-3">
-          <div className="h-3 w-16 bg-slate-300/50 rounded-full"></div>
-          <div className="h-5 w-full bg-slate-300/50 rounded-full"></div>
-        </div>
-        <div className="space-y-3">
-          <div className="h-3 w-32 bg-slate-300/50 rounded-full"></div>
-          <div className="h-5 w-full bg-slate-300/50 rounded-full"></div>
-        </div>
-        <div className="space-y-3">
-          <div className="h-3 w-12 bg-slate-300/50 rounded-full"></div>
-          <div className="h-5 w-24 bg-slate-300/50 rounded-full"></div>
+  );
+}
+
+function ShimmerCard() {
+  return (
+    <div className="glass-card p-6 space-y-5">
+      <div className="flex items-center gap-3">
+        <ShimmerBlock className="w-10 h-10 rounded-xl" />
+        <div className="space-y-2 flex-1">
+          <ShimmerBlock className="h-4 w-48" />
+          <ShimmerBlock className="h-3 w-32" />
         </div>
       </div>
-      <div className="space-y-3 pt-4 border-t border-white/50">
-        <div className="h-3 w-20 bg-slate-300/50 rounded-full"></div>
-        <div className="h-10 w-full bg-slate-300/50 rounded-xl"></div>
+      <ShimmerBlock className="h-3 w-full" />
+      <ShimmerBlock className="h-3 w-3/4" />
+      <div className="flex gap-2">
+        <ShimmerBlock className="h-8 w-24 rounded-lg" />
+        <ShimmerBlock className="h-8 w-24 rounded-lg" />
+        <ShimmerBlock className="h-8 w-24 rounded-lg" />
       </div>
-      <div className="space-y-3 pt-2">
-        <div className="h-3 w-16 bg-slate-300/50 rounded-full"></div>
-        <div className="h-48 w-full bg-slate-300/50 rounded-[1.5rem]"></div>
-      </div>
+      <ShimmerBlock className="h-24 w-full rounded-xl" />
+      <ShimmerBlock className="h-3 w-2/3" />
     </div>
-  </motion.div>
-);
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+      className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all"
+      title="Copy"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
+}
 
 export default function EmailAgentPage() {
+  const { role } = useRole();
+  const [companyName, setCompanyName] = useState("");
+  const [companyUrl, setCompanyUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState("");
+  const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
+  const [emailsLoading, setEmailsLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<"english" | "spanish">("english");
   const [sending, setSending] = useState(false);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [draftType, setDraftType] = useState<'outreach' | 'inbound'>('outreach');
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
-
-  const [formData, setFormData] = useState({
-    company_name: '',
-    website_url: '',
-    primary_email: ''
-  });
+  const [sendSuccess, setSendSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchActivities();
+    fetch(`${API_BASE_URL}/sent-emails?limit=30`)
+      .then((r) => r.json())
+      .then((data) => setSentEmails(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setEmailsLoading(false));
   }, []);
 
-  const fetchActivities = async () => {
-    try {
-      const res = await axios.get(`${API_BASE_URL}/activities`);
-      setActivities(res.data.activities || []);
-    } catch (err) {
-      console.error("Failed to fetch activities", err);
-    }
-  };
-
-  const handleDraft = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleResearch = async () => {
+    if (!companyName.trim()) return;
     setLoading(true);
-    setError(null);
-    setSuccess(null);
-    setDraft(null);
-
+    setError("");
+    setResult(null);
     try {
-      const res = await axios.post(`${API_BASE_URL}/generate`, {
-        urls: [formData.website_url]
+      const res = await fetch(`${API_BASE_URL}/smart-research`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: companyName.trim(),
+          company_url: companyUrl.trim() || null,
+        }),
       });
-
-      console.log('[generate] API response:', res.data);
-
-      const dataArray = res.data;
-      if (!Array.isArray(dataArray) || dataArray.length === 0) {
-        setError("No response from server. Please try again.");
-        return;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Research failed");
       }
-
-      const result = dataArray[0];
-      console.log('[generate] result[0]:', result);
-
-      if (!result) {
-        setError("Empty response from server.");
-        return;
-      }
-
-      if (result.error && (!result.emails || result.emails.length === 0)) {
-        setError(`Scraping failed: ${result.error}`);
-        return;
-      }
-
-      const emails: any[] = result.emails || [];
-      console.log('[generate] emails:', emails);
-
-      // Use first email or create a fallback from analysis data
-      const emailData = emails[0] || {
-        to_email: formData.primary_email || 'Manual@Entry',
-        outreach: { 
-          subject: 'Growth Partnership Opportunity', 
-          body: 'Drafting failed. The website might be blocking exploration. Please try again or check the URL.', 
-          english_body: 'Drafting failed. The website might be blocking exploration.', 
-          spanish_body: 'La generación falló. El sitio web puede estar bloqueando la exploración.' 
-        },
-        inbound: { 
-          subject: 'Inquiry from SERP Hawk', 
-          body: 'Drafting failed. Please try again.', 
-          english_body: 'Drafting failed.', 
-          spanish_body: 'La generación falló.' 
-        },
-      };
-
-      const analysis = result.analysis || {};
-      const companyName = analysis.company_name || formData.company_name || 'Unknown';
-
-      const outreach = emailData.outreach || {};
-      const inbound = emailData.inbound || {};
-
-      if (!outreach.subject && !outreach.english_body && !outreach.body) {
-        setError("Draft was generated but appears empty. The website may have blocked scraping. Try a different URL.");
-        return;
-      }
-
-      setDraft({
-        company_name: companyName,
-        website_url: result.url || formData.website_url,
-        primary_email: emailData.to_email || formData.primary_email || '',
-        recommended_services: result.recommended_services || '',
-        outreach: {
-          subject: outreach.subject || '',
-          body: outreach.body || outreach.english_body || '',
-          english_body: outreach.english_body || outreach.body || '',
-          spanish_body: outreach.spanish_body || '',
-        },
-        inbound: {
-          subject: inbound.subject || '',
-          body: inbound.body || inbound.english_body || '',
-          english_body: inbound.english_body || inbound.body || '',
-          spanish_body: inbound.spanish_body || '',
-        }
-      });
-      setDraftType('outreach');
-
-    } catch (err: any) {
-      console.error('[generate] error:', err);
-      const msg = err.response?.data?.detail || err.message || "Failed to process lead. Please try again.";
-      setError(msg);
+      const data = await res.json();
+      setResult(data);
+    } catch (e: any) {
+      setError(e.message || "Something went wrong");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSend = async (isManual = false) => {
-    if (!draft) return;
+  const handleSendManually = async () => {
+    if (!result?.contact?.email || !result?.draft) return;
     setSending(true);
-    setError(null);
-
-    const currentDraftData = draft[draftType];
-
+    setSendSuccess(null);
     try {
-      const res = await axios.post(`${API_BASE_URL}/send-lead`, {
-        ...draft,
-        english_body: currentDraftData.english_body || currentDraftData.body,
-        spanish_body: currentDraftData.spanish_body || '',
-        recommended_services: draft.recommended_services || '',
-        manual: isManual
+      const serviceNames = (result.recommended_services || []).map((s: any) => s.service_name || s).join(", ");
+      const res = await fetch(`${API_BASE_URL}/send-manual`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to_email: result.contact.email,
+          company_name: result.company_info?.company_name || companyName,
+          subject: result.draft.subject || "",
+          english_body: result.draft.english_body || result.draft.body || "",
+          spanish_body: result.draft.spanish_body || "",
+          recommended_services: serviceNames,
+          contact_name: result.contact.name || null,
+          contact_role: result.contact.role || null,
+          website_url: result.company_url || result.company_info?.website || companyUrl || null,
+        }),
       });
-
-      if (res.data.success) {
-        setSuccess(isManual ?
-          `Lead recorded! ${res.data.outbound_sent ? 'Outbound' : ''} ${res.data.inbound_sent ? 'Inbound' : ''}` :
-          `Emails sent successfully to ${draft.company_name}!`
-        );
-        setDraft(null);
-        setFormData({ company_name: '', website_url: '', primary_email: '' });
-        fetchActivities();
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Failed to send");
       }
-
-    } catch (err: any) {
-      console.error(err);
-      setError(err.response?.data?.detail || "Failed to process lead. Please try again.");
+      const data = await res.json();
+      setSendSuccess(`Client #${data.client_id} created & email recorded for ${result.contact.email}`);
+      // Refresh sent emails list
+      fetch(`${API_BASE_URL}/sent-emails?limit=30`)
+        .then((r) => r.json())
+        .then((d) => setSentEmails(Array.isArray(d) ? d : []))
+        .catch(() => {});
+    } catch (e: any) {
+      setError(e.message || "Send failed");
     } finally {
       setSending(false);
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-  };
+  const totalSent = sentEmails.length;
+  const manualCount = sentEmails.filter((e) => e.manual).length;
+  const autoCount = totalSent - manualCount;
 
   return (
-    <motion.div initial="hidden" animate="show" variants={containerVariants} className="space-y-8 max-w-[1600px] mx-auto z-10 relative">
-      <motion.div variants={itemVariants} className="bg-white/40 backdrop-blur-2xl rounded-[2.5rem] p-8 border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.05)] flex items-start gap-6 relative overflow-hidden">
-        <div className="absolute -right-20 -top-20 w-64 h-64 bg-indigo-500/10 blur-[80px] rounded-full z-0 pointer-events-none"></div>
-        <div className="p-4 bg-indigo-50 rounded-2xl shadow-sm text-indigo-600 relative z-10">
-          <Bot className="w-8 h-8" />
-        </div>
-        <div className="relative z-10">
-          <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-900 tracking-tight">AI Outreach Agent</h1>
-          <p className="text-slate-500 mt-2 font-medium">Neural engine automated lead generation & strategy delivery.</p>
+    <div className="space-y-6">
+      {/* Shimmer animation keyframes */}
+      <style jsx global>{`
+        @keyframes shimmer {
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
+
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card p-8 relative overflow-hidden"
+      >
+        <div className="absolute -top-10 -right-10 w-40 h-40 bg-violet-100 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg">
+              <Bot className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-black text-slate-800">Email Agent</h1>
+              <p className="text-slate-400 text-xs font-medium">AI-powered company research, service matching & outreach drafts</p>
+            </div>
+          </div>
+          <div className="flex gap-4">
+            {[
+              { label: "Total Sent", value: totalSent, color: "text-violet-600 bg-violet-50 border-violet-200" },
+              { label: "Auto", value: autoCount, color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+              { label: "Manual", value: manualCount, color: "text-amber-600 bg-amber-50 border-amber-200" },
+            ].map((s) => (
+              <div key={s.label} className={`px-4 py-2 rounded-xl border ${s.color}`}>
+                <p className="text-[9px] font-black uppercase tracking-widest opacity-70">{s.label}</p>
+                <p className="text-xl font-black">{s.value}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 relative z-10">
-        {/* Input Form */}
-        <div className="lg:col-span-4">
-          <motion.div variants={itemVariants} className="bg-white/50 backdrop-blur-2xl rounded-[2.5rem] border border-white shadow-[0_8px_32px_rgba(0,0,0,0.05)] p-8 sticky top-24 relative overflow-hidden">
-             <div className="absolute left-0 top-0 h-1 bg-gradient-to-r w-full from-indigo-500 to-cyan-500"></div>
-            <h2 className="font-black text-xl mb-8 text-slate-800 tracking-tight flex items-center gap-3">
-              Target Parameters
-            </h2>
+      <PageGuide
+        pageKey="email-agent"
+        title="How the Email Agent works"
+        description="Our AI researches companies, matches them to your services, and drafts personalized outreach emails."
+        steps={[
+          { icon: '🏢', text: 'Enter a company name and URL — the AI will analyze their website and identify opportunities.' },
+          { icon: '🧠', text: 'The agent matches the company\'s needs to your service catalog and crafts a tailored pitch.' },
+          { icon: '📧', text: 'Review the generated email in English and Spanish, then send it directly or copy the text.' },
+          { icon: '📊', text: 'Track all sent emails above — see counts for auto-sent vs. manually-sent outreach.' },
+        ]}
+      />
 
-            <form onSubmit={handleDraft} className="space-y-6 relative z-10">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">Target Identity</label>
-                <div className="relative group">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 group-focus-within:text-indigo-500 transition-colors" />
-                  <input
-                    type="text"
-                    required
-                    value={formData.company_name}
-                    onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-                    className="w-full pl-12 pr-4 py-4 bg-white/70 border border-white/80 rounded-2xl focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none transition-all shadow-sm font-bold text-slate-700 placeholder:text-slate-400"
-                    placeholder="e.g. Acme Corp"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1">Primary Domain</label>
-                <div className="relative group">
-                  <Globe className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 group-focus-within:text-indigo-500 transition-colors" />
-                  <input
-                    type="text"
-                    required
-                    value={formData.website_url}
-                    onChange={(e) => setFormData({ ...formData, website_url: e.target.value })}
-                    className="w-full pl-12 pr-4 py-4 bg-white/70 border border-white/80 rounded-2xl focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none transition-all shadow-sm font-bold text-slate-700 placeholder:text-slate-400"
-                    placeholder="https://example.com"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 pl-1 flex items-center justify-between">
-                  Direct Contact <span className="text-cyan-500 opacity-60 normal-case tracking-normal">Optional</span>
-                </label>
-                <div className="relative group">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 group-focus-within:text-indigo-500 transition-colors" />
-                  <input
-                    type="email"
-                    value={formData.primary_email}
-                    onChange={(e) => setFormData({ ...formData, primary_email: e.target.value })}
-                    className="w-full pl-12 pr-4 py-4 bg-white/70 border border-white/80 rounded-2xl focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none transition-all shadow-sm font-bold text-slate-700 placeholder:text-slate-400"
-                    placeholder="Will auto-extract if blank"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || !formData.website_url || !formData.company_name}
-                className={cn(
-                  "w-full text-white py-4 rounded-2xl font-black flex items-center justify-center gap-3 transition-all mt-4",
-                  loading 
-                    ? "bg-slate-800 shadow-md animate-pulse cursor-not-allowed" 
-                    : "bg-gradient-to-r from-indigo-600 to-cyan-600 shadow-[0_8px_20px_rgba(79,70,229,0.3)] hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                )}
-              >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin text-indigo-400" /> : <FileEdit className="w-5 h-5" />}
-                {loading ? 'Initializing Analysis...' : 'Generate Intelligent Draft'}
-              </button>
-            </form>
-
-            <AnimatePresence>
-              {success && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mt-6 p-4 bg-emerald-50/50 backdrop-blur-md border border-emerald-200 text-emerald-800 text-sm rounded-2xl flex items-start gap-3 shadow-sm font-bold">
-                  <CheckCircle className="w-5 h-5 mt-0.5 shrink-0 text-emerald-500" />
-                  <span>{success}</span>
-                </motion.div>
+      {/* Research Input */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="glass-card p-6"
+      >
+        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Research a Company</p>
+        <div className="space-y-3">
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+              <input
+                type="text"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="Company name (e.g. Flipkart, Zomato, Tesla)..."
+                className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-300 transition-all"
+                onKeyDown={(e) => e.key === "Enter" && handleResearch()}
+              />
+            </div>
+            <button
+              onClick={handleResearch}
+              disabled={loading || !companyName.trim()}
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-bold text-sm flex items-center gap-2 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            >
+              {loading ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
               )}
-
-              {error && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mt-6 p-4 bg-red-50/50 backdrop-blur-md border border-red-200 text-red-800 text-sm rounded-2xl flex items-start gap-3 shadow-sm font-bold">
-                  <AlertCircle className="w-5 h-5 mt-0.5 shrink-0 text-red-500" />
-                  <span>{error}</span>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
+              {loading ? "Researching..." : "Research & Draft"}
+            </button>
+          </div>
+          <div className="relative">
+            <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+            <input
+              type="url"
+              value={companyUrl}
+              onChange={(e) => setCompanyUrl(e.target.value)}
+              placeholder="Website URL (optional \u2014 improves accuracy)"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-100 bg-slate-50 text-sm font-medium text-slate-600 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-200 focus:bg-white transition-all"
+              onKeyDown={(e) => e.key === "Enter" && handleResearch()}
+            />
+          </div>
         </div>
+      </motion.div>
 
-        {/* Right Side: Draft Preview OR Activities List */}
-        <div className="lg:col-span-8 space-y-8">
+      {/* Shimmer Loading State */}
+      {loading && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="space-y-4"
+        >
+          <div className="glass-card p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-violet-500 animate-pulse" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-700">Researching <span className="text-violet-600">{companyName}</span>...</p>
+                <p className="text-[10px] text-slate-400 font-medium">Analyzing business, finding contacts, matching services & drafting email</p>
+              </div>
+            </div>
+            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-gradient-to-r from-violet-500 via-purple-500 to-violet-500 rounded-full"
+                initial={{ width: "0%" }}
+                animate={{ width: "90%" }}
+                transition={{ duration: 12, ease: "easeOut" }}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ShimmerCard />
+            <ShimmerCard />
+          </div>
+          <ShimmerCard />
+        </motion.div>
+      )}
 
-          {/* Draft Preview Section */}
-          <AnimatePresence mode="wait">
-            {loading ? (
-              <DraftSkeleton key="skeleton" />
-            ) : draft ? (
-              <motion.div 
-                key="draft" 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ type: "spring", stiffness: 100, damping: 20 }}
-                className="bg-white rounded-[2.5rem] border border-slate-200 shadow-[0_16px_40px_rgba(0,0,0,0.1)] p-8 relative overflow-hidden group z-10"
-              >
-                {/* Glowing aesthetic border effects */}
-                <div className="absolute top-0 right-[-10%] w-[50%] h-[50%] bg-indigo-500/10 blur-[60px] rounded-full z-0 pointer-events-none group-hover:bg-cyan-500/10 transition-colors duration-1000"></div>
-                
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6 relative z-10 border-b border-white/50 pb-6">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-gradient-to-br from-indigo-500 to-cyan-500 text-white rounded-xl shadow-md">
-                       <FileEdit className="w-6 h-6" />
+      {/* Error */}
+      {error && !loading && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card p-6 border-rose-200 bg-rose-50">
+          <p className="text-rose-600 font-bold text-sm">{error}</p>
+        </motion.div>
+      )}
+
+      {/* Results */}
+      {result && !loading && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-4"
+        >
+          {/* Top row: Company Info + Contact */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Company Info */}
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="glass-card p-6 lg:col-span-2 relative overflow-hidden"
+            >
+              <div className="absolute -top-8 -right-8 w-32 h-32 bg-violet-50 rounded-full blur-3xl pointer-events-none" />
+              <div className="relative z-10">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-black text-lg">
+                      {(result.company_info?.company_name || companyName).charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <h2 className="font-black text-2xl text-slate-800 tracking-tight">Draft Output</h2>
-                      <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-1">Review & Dispatch</p>
+                      <h2 className="text-xl font-black text-slate-800">{result.company_info?.company_name || companyName}</h2>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        {result.company_info?.likely_industry || result.company_info?.industry || "Business"}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-3 bg-white/40 p-1.5 rounded-xl border border-white/80 shadow-sm w-full md:w-auto">
-                    <button
-                      onClick={() => setDraftType('outreach')}
-                      className={cn(
-                        "flex-1 md:flex-none px-5 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap",
-                        draftType === 'outreach' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                      )}
-                    >
-                      Offer Strategy
-                    </button>
-                    <button
-                      onClick={() => setDraftType('inbound')}
-                      className={cn(
-                        "flex-1 md:flex-none px-5 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap",
-                        draftType === 'inbound' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                      )}
-                    >
-                      Inbound Hook
-                    </button>
-                    <div className="w-px h-6 bg-slate-200 mx-1 hidden md:block"></div>
-                    <button
-                      onClick={() => setDraft(null)}
-                      className="px-3 py-2 text-slate-400 hover:text-red-500 transition-colors hidden md:block"
-                      title="Discard Draft"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  {result.package_suggestion && (
+                    <span className="px-3 py-1 rounded-full bg-violet-50 border border-violet-200 text-violet-600 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
+                      <Package className="w-3 h-3" /> {result.package_suggestion}
+                    </span>
+                  )}
                 </div>
 
-                <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-inner space-y-6 relative z-20">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    <div className="p-4 bg-white/50 rounded-2xl border border-white/60">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Target Identity</span>
-                      <p className="text-slate-800 font-bold truncate">{draft.primary_email}</p>
+                <p className="text-slate-600 text-sm leading-relaxed mb-5">
+                  {result.company_info?.summary || result.company_info?.what_they_do || "Company information loading..."}
+                </p>
+
+                {/* Quick facts */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    { label: "Model", value: result.company_info?.business_model, icon: Briefcase },
+                    { label: "Size", value: result.company_info?.estimated_size, icon: Building2 },
+                    { label: "Market", value: result.company_info?.target_market, icon: Target },
+                    { label: "Reach", value: result.company_info?.geographic_presence, icon: Globe },
+                  ].filter(f => f.value).map(({ label, value, icon: Icon }) => (
+                    <div key={label} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Icon className="w-3 h-3 text-slate-400" />
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
+                      </div>
+                      <p className="text-sm font-bold text-slate-700 truncate">{value}</p>
                     </div>
-                    <div className="p-4 bg-white/50 rounded-2xl border border-white/60">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Service Match</span>
-                      <p className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-cyan-500 font-black truncate">{draft.recommended_services || 'General Growth'}</p>
-                    </div>
-                    <div className="p-4 bg-white/50 rounded-2xl border border-white/60">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Vector Type</span>
-                      <p className="text-slate-800 font-bold capitalize">{draftType}</p>
-                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Contact Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="glass-card p-6 relative overflow-hidden"
+            >
+              <div className="absolute -top-6 -right-6 w-24 h-24 bg-emerald-50 rounded-full blur-2xl pointer-events-none" />
+              <div className="relative z-10">
+                <div className="flex items-center gap-2 mb-5">
+                  <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600">
+                    <AtSign className="w-4 h-4" />
                   </div>
-                  <div>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 pl-1">Transmission Subject</span>
-                    <p className="font-black text-black bg-white p-5 rounded-2xl border border-slate-300 shadow-sm" style={{ color: '#000000' }}>{draft[draftType].subject}</p>
-                  </div>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Business Contact</p>
+                </div>
+
+                {result.contact?.email ? (
                   <div className="space-y-4">
-                    {/* English Para */}
-                    <div>
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 pl-1 flex items-center gap-2">
-                        🇺🇸 English — Paragraph 1
-                      </span>
-                      <div
-                        className="max-w-none text-black font-black bg-white px-6 py-5 rounded-[1.5rem] border border-slate-300 shadow-sm leading-relaxed whitespace-pre-wrap"
-                        style={{ color: '#000000' }}
-                        dangerouslySetInnerHTML={{ __html: draft[draftType].english_body || draft[draftType].body || '<span class="text-slate-400 italic">No English content generated...</span>' }}
-                      />
+                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest mb-1">Email</p>
+                          <p className="text-sm font-black text-slate-800">{result.contact.email}</p>
+                        </div>
+                        <CopyButton text={result.contact.email} />
+                      </div>
                     </div>
-                    {/* Spanish Para */}
-                    {draft[draftType].spanish_body && (
+                    {result.contact.name && (
                       <div>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 pl-1 flex items-center gap-2">
-                          🇪🇸 Español — Párrafo 2
-                        </span>
-                        <div
-                          className="max-w-none text-black font-black bg-white px-6 py-5 rounded-[1.5rem] border border-slate-300 shadow-sm leading-relaxed whitespace-pre-wrap"
-                          style={{ color: '#000000' }}
-                          dangerouslySetInnerHTML={{ __html: draft[draftType].spanish_body || '<span class="text-slate-400 italic">No Spanish content generated...</span>' }}
-                        />
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Contact</p>
+                        <p className="text-sm font-bold text-slate-700">{result.contact.name}</p>
+                        {result.contact.role && <p className="text-xs text-slate-400">{result.contact.role}</p>}
                       </div>
                     )}
                   </div>
-                </div>
-
-                <div className="mt-8 pt-6 border-t border-white/50 flex flex-col sm:flex-row justify-end gap-4 relative z-10">
-                  <button
-                    onClick={() => setDraft(null)}
-                    className="px-6 py-3.5 bg-white/60 text-slate-600 rounded-xl font-bold transition-all border border-slate-200 hover:bg-white shadow-sm"
-                  >
-                    Discard Draft
-                  </button>
-                  <button
-                    onClick={() => handleSend(true)}
-                    disabled={sending}
-                    className="bg-slate-800 text-white px-8 py-3.5 rounded-xl font-bold hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg"
-                  >
-                    <Hand className="w-5 h-5 text-slate-400" /> Log Only (Manual Sent)
-                  </button>
-                  <button
-                    onClick={() => handleSend(false)}
-                    disabled={sending}
-                    className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white px-8 py-3.5 rounded-xl font-black disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-[0_8px_20px_rgba(16,185,129,0.3)] hover:shadow-[0_8px_30px_rgba(16,185,129,0.5)] hover:-translate-y-0.5"
-                  >
-                    {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                    Deploy Automated
-                  </button>
-                </div>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
-
-          {/* Activities Table */}
-          <motion.div variants={itemVariants} className="bg-white/40 backdrop-blur-xl rounded-[2.5rem] border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.05)] overflow-hidden">
-            <div className="p-8 border-b border-white/50 flex justify-between items-center">
-              <h2 className="font-black text-xl text-slate-800 flex items-center gap-3">
-                 <div className="p-2 bg-white/60 rounded-xl shadow-sm text-indigo-600"><Clock className="w-5 h-5" /></div>
-                 Operation History
-              </h2>
-            </div>
-
-            {activities.length === 0 ? (
-              <div className="p-16 flex flex-col items-center justify-center text-center relative pointer-events-none">
-                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-slate-200/50 rounded-full blur-[60px]"></div>
-                 <Bot className="w-12 h-12 text-slate-300 relative z-10 mb-4" />
-                 <h3 className="text-xl font-black text-slate-600 relative z-10">No Transmissions Found</h3>
-                 <p className="text-sm font-medium text-slate-400 mt-2 relative z-10">Deploy your first operation to record history here.</p>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-24 text-slate-300">
+                    <AtSign className="w-8 h-8 opacity-30" />
+                    <p className="text-xs text-slate-400 mt-2">No contact found</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="overflow-x-auto p-4">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b-2 border-slate-100">Target Identity</th>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b-2 border-slate-100">Operation Focus</th>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b-2 border-slate-100 hidden md:table-cell">Contact Vector</th>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b-2 border-slate-100">Timestamp</th>
-                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b-2 border-slate-100">Result</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/50">
-                    {activities.map((activity) => (
-                      <tr 
-                        key={activity.id} 
-                        onClick={() => setSelectedActivity(activity)}
-                        className="hover:bg-white/60 transition-colors cursor-pointer group"
-                      >
-                        <td className="px-6 py-5">
-                           <div className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{activity.company_name}</div>
-                        </td>
-                        <td className="px-6 py-5">
-                          {activity.recommended_services ? (
-                            <span className="inline-block px-3 py-1 rounded-lg bg-indigo-50/50 border border-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-wider">
-                              {activity.recommended_services.split(',')[0]} 
-                              {activity.recommended_services.split(',').length > 1 && <span className="text-indigo-400 ml-1">+{activity.recommended_services.split(',').length - 1}</span>}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">-</span>
+            </motion.div>
+          </div>
+
+          {/* Recommended Services */}
+          {result.recommended_services?.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="glass-card p-6 relative overflow-hidden"
+            >
+              <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-amber-50 rounded-full blur-3xl pointer-events-none" />
+              <div className="relative z-10">
+                <div className="flex items-center gap-2 mb-5">
+                  <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-600">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Recommended Services</p>
+                </div>
+                {result.email_hook && (
+                  <p className="text-sm text-slate-600 italic mb-5 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    &ldquo;{result.email_hook}&rdquo;
+                  </p>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {result.recommended_services.map((svc: any, i: number) => (
+                    <div key={i} className="p-4 bg-white border border-slate-100 rounded-xl hover:border-violet-200 hover:shadow-sm transition-all">
+                      <div className="flex items-start gap-3">
+                        <div className="p-1.5 rounded-lg bg-violet-50 text-violet-500 shrink-0 mt-0.5">
+                          <TrendingUp className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-700 text-sm">{svc.service_name}</p>
+                          <p className="text-xs text-slate-400 mt-1">{svc.why_relevant}</p>
+                          {svc.expected_impact && (
+                            <p className="text-[10px] text-emerald-600 font-bold mt-2 flex items-center gap-1">
+                              <CheckCircle className="w-3 h-3" /> {svc.expected_impact}
+                            </p>
                           )}
-                        </td>
-                        <td className="px-6 py-5 text-slate-500 font-medium hidden md:table-cell">{activity.email}</td>
-                        <td className="px-6 py-5 text-slate-500 text-xs font-bold">{formatDate(activity.sent_at)}</td>
-                        <td className="px-6 py-5">
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider bg-emerald-100/50 text-emerald-700 border border-emerald-200">
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            {activity.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            )}
-          </motion.div>
+            </motion.div>
+          )}
+
+          {/* Email Draft */}
+          {result.draft && (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="glass-card p-6 relative overflow-hidden"
+            >
+              <div className="absolute -top-8 -right-8 w-32 h-32 bg-indigo-50 rounded-full blur-3xl pointer-events-none" />
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Generated Email Draft</p>
+                  </div>
+                  <CopyButton text={activeTab === "english" ? (result.draft.english_body || result.draft.body || "") : (result.draft.spanish_body || "")} />
+                </div>
+
+                {/* Subject */}
+                {result.draft.subject && (
+                  <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                    <div>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Subject</p>
+                      <p className="text-sm font-bold text-slate-700">{result.draft.subject}</p>
+                    </div>
+                    <CopyButton text={result.draft.subject} />
+                  </div>
+                )}
+
+                {/* Language Tabs */}
+                <div className="flex gap-2 mb-4">
+                  {[
+                    { key: "english" as const, label: "English" },
+                    { key: "spanish" as const, label: "Espa\u00f1ol" },
+                  ].map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setActiveTab(tab.key)}
+                      className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                        activeTab === tab.key
+                          ? "bg-indigo-500 text-white shadow-md"
+                          : "bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-100"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Body */}
+                <div className="bg-white border border-slate-100 rounded-xl p-5 text-sm text-slate-600 whitespace-pre-wrap leading-relaxed max-h-80 overflow-auto">
+                  {activeTab === "english"
+                    ? (result.draft.english_body || result.draft.body || "No English draft generated")
+                    : (result.draft.spanish_body || "No Spanish draft generated")}
+                </div>
+
+                {/* Send Manually */}
+                {result.contact?.email && (
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                      <Send className="w-4 h-4 text-emerald-600" />
+                      <span className="text-sm font-bold text-emerald-700 flex-1">Ready to send to: {result.contact.email}</span>
+                      <button
+                        onClick={handleSendManually}
+                        disabled={sending || !!sendSuccess}
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-xs flex items-center gap-2 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                      >
+                        {sending ? (
+                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : sendSuccess ? (
+                          <CheckCircle className="w-3.5 h-3.5" />
+                        ) : (
+                          <UserPlus className="w-3.5 h-3.5" />
+                        )}
+                        {sending ? "Sending..." : sendSuccess ? "Sent" : "Send Manually"}
+                      </button>
+                    </div>
+                    {sendSuccess && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl"
+                      >
+                        <p className="text-xs font-bold text-emerald-700 flex items-center gap-2">
+                          <CheckCircle className="w-3.5 h-3.5" /> {sendSuccess}
+                        </p>
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </motion.div>
+      )}
+
+      {/* Recent Email Outreach */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="glass-card p-6 md:p-8 relative overflow-hidden"
+      >
+        <div className="absolute top-0 right-0 w-40 h-40 bg-violet-50 rounded-full blur-3xl pointer-events-none" />
+        <div className="flex items-center justify-between mb-6 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-violet-50 border border-violet-200 text-violet-600">
+              <Mail className="w-4 h-4" />
+            </div>
+            <h3 className="font-black text-[15px] text-slate-700">Recent Email Outreach</h3>
+          </div>
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            {totalSent} total
+          </span>
         </div>
-      </div>
-      
-      {/* View Email Content Modal - Glassmorphism */}
-      <AnimatePresence>
-        {selectedActivity && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 z-50">
-             <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-white/90 backdrop-blur-2xl rounded-[2.5rem] border border-white p-8 max-w-3xl w-full shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
-                <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-200">
-                  <h3 className="text-2xl font-black flex items-center gap-3 text-slate-800 tracking-tight">
-                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><Mail className="w-6 h-6" /></div>
-                    Transmission Log
-                  </h3>
-                  <button onClick={() => setSelectedActivity(null)} className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm border border-slate-100 text-slate-400 hover:text-slate-800 transition-colors">&times;</button>
+
+        {emailsLoading ? (
+          <div className="space-y-3">
+            {[1,2,3].map(i => (
+              <div key={i} className="p-4 rounded-2xl border border-slate-100">
+                <div className="flex items-center gap-4">
+                  <ShimmerBlock className="w-9 h-9 rounded-lg" />
+                  <div className="flex-1 space-y-2">
+                    <ShimmerBlock className="h-4 w-2/3" />
+                    <ShimmerBlock className="h-3 w-1/3" />
+                  </div>
+                  <ShimmerBlock className="h-6 w-16 rounded-full" />
                 </div>
-                
-                <div className="overflow-y-auto pr-2 custom-scrollbar space-y-6">
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-white/60 p-5 rounded-2xl border border-white shadow-sm">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Target</span>
-                      <p className="text-slate-800 font-bold truncate">{selectedActivity.company_name}</p>
+              </div>
+            ))}
+          </div>
+        ) : sentEmails.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-32 text-slate-300 gap-3">
+            <Mail className="w-10 h-10 opacity-30 text-slate-400" />
+            <p className="font-bold text-sm text-slate-400">No emails sent yet</p>
+            <p className="text-xs text-slate-300">Use the research tool above to start outreach</p>
+          </div>
+        ) : (
+          <div className="space-y-2 relative z-10">
+            {sentEmails.map((email, index) => {
+              const isExpanded = expandedId === email.id;
+              return (
+                <motion.div
+                  key={email.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.03 }}
+                  className="border border-slate-100 rounded-2xl overflow-hidden hover:border-slate-200 transition-all"
+                >
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : email.id)}
+                    className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                        email.manual ? "bg-amber-50 border border-amber-200 text-amber-600" : "bg-violet-50 border border-violet-200 text-violet-600"
+                      }`}>
+                        {email.manual ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-slate-700 text-sm truncate">{email.subject || "(No subject)"}</p>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          <span className="text-xs text-slate-400 truncate flex items-center gap-1">
+                            <Send className="w-3 h-3 shrink-0" /> {email.to_email}
+                          </span>
+                          {email.sent_at && (
+                            <span className="text-[10px] text-slate-300 font-bold flex items-center gap-1 shrink-0">
+                              <Clock className="w-3 h-3" />
+                              {new Date(email.sent_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="bg-white/60 p-5 rounded-2xl border border-white shadow-sm">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Vector</span>
-                      <p className="text-slate-800 font-bold truncate">{selectedActivity.email}</p>
-                    </div>
-                    <div className="bg-white/60 p-5 rounded-2xl border border-white shadow-sm">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Timestamp</span>
-                      <p className="text-slate-800 font-bold text-xs truncate mt-1">{formatDate(selectedActivity.sent_at)}</p>
-                    </div>
-                    <div className="bg-white/60 p-5 rounded-2xl border border-white shadow-sm flex flex-col justify-center">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Result</span>
-                      <span className="inline-flex items-center w-fit px-2.5 py-1 rounded-xl text-[10px] font-black uppercase bg-emerald-100/50 text-emerald-700 border border-emerald-200">
-                        <CheckCircle className="w-3 h-3 mr-1" /> {selectedActivity.status}
+                    <div className="flex items-center gap-3 shrink-0 ml-4">
+                      <span className={`text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full ${
+                        email.manual ? "bg-amber-50 text-amber-600 border border-amber-200" : "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                      }`}>
+                        {email.manual ? "Manual" : "Auto"}
                       </span>
+                      {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-300" /> : <ChevronDown className="w-4 h-4 text-slate-300" />}
                     </div>
-                  </div>
-                  
-                  <div>
-                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 pl-1">Transmission Subject</span>
-                     <p className="font-bold text-slate-800 bg-slate-50 p-5 rounded-2xl border border-slate-200">{selectedActivity.subject || 'Hidden / No Subject'}</p>
-                  </div>
-                  
-                  <div>
-                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 pl-1">Raw Payload</span>
-                     {selectedActivity.content ? (
-                       <div 
-                         className="prose prose-slate prose-sm max-w-none text-slate-700 font-medium bg-slate-50 p-6 sm:p-8 rounded-[2rem] border border-slate-200 shadow-inner min-h-[200px]"
-                         dangerouslySetInnerHTML={{ __html: selectedActivity.content }}
-                       />
-                     ) : (
-                       <div className="p-8 bg-slate-50 border border-slate-200 rounded-[2rem] text-center font-bold text-slate-400 flex flex-col items-center justify-center min-h-[200px]">
-                          <AlertCircle className="w-8 h-8 text-slate-300 mb-2" />
-                          Legacy log - payload encrypted or permanently purged.
-                       </div>
-                     )}
-                  </div>
-                </div>
-             </motion.div>
-          </motion.div>
+                  </button>
+
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      className="border-t border-slate-100 bg-slate-50 p-5"
+                    >
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {email.english_body && (
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">English Body</p>
+                              <CopyButton text={email.english_body} />
+                            </div>
+                            <div className="bg-white border border-slate-100 rounded-xl p-4 text-sm text-slate-600 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed">
+                              {email.english_body}
+                            </div>
+                          </div>
+                        )}
+                        {email.spanish_body && (
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Spanish Body</p>
+                              <CopyButton text={email.spanish_body} />
+                            </div>
+                            <div className="bg-white border border-slate-100 rounded-xl p-4 text-sm text-slate-600 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed">
+                              {email.spanish_body}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {email.recommended_services && (
+                        <div className="mt-4">
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Recommended Services</p>
+                          <div className="flex flex-wrap gap-2">
+                            {email.recommended_services.split(",").map((s: string) => (
+                              <span key={s} className="px-3 py-1.5 bg-violet-50 border border-violet-200 text-violet-700 font-bold text-xs rounded-lg">
+                                {s.trim()}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="mt-4 flex items-center gap-4 text-xs text-slate-400">
+                        <span className="flex items-center gap-1"><CheckCircle className="w-3 h-3 text-emerald-400" /> Delivered</span>
+                        {email.sent_at && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {new Date(email.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        )}
+                        {email.client_id && <span className="flex items-center gap-1"><User className="w-3 h-3" /> Client #{email.client_id}</span>}
+                      </div>
+                    </motion.div>
+                  )}
+                </motion.div>
+              );
+            })}
+          </div>
         )}
-      </AnimatePresence>
-    </motion.div>
+      </motion.div>
+    </div>
   );
 }

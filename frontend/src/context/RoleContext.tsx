@@ -11,6 +11,7 @@ interface User {
   email: string;
   name: string;
   role: Role;
+  client_id?: number;
 }
 
 interface RoleContextType {

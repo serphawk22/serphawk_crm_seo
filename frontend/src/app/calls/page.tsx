@@ -6,6 +6,7 @@ import {
   Phone, Plus, X, Clock, Loader2, Check, PhoneCall, PhoneOff, Zap,
   User, FileText, Briefcase, CalendarClock, AlertCircle, ChevronDown, ChevronUp
 } from "lucide-react";
+import PageGuide from '@/components/PageGuide';
 import { API_BASE_URL } from "@/config";
 import { cn } from "@/lib/utils";
 
@@ -275,6 +276,18 @@ export default function CallsPage() {
           </button>
         </div>
       </motion.div>
+
+      <PageGuide
+        pageKey="calls"
+        title="How the Call Log works"
+        description="Record, summarize, and track follow-ups for every phone call with clients and leads."
+        steps={[
+          { icon: '📞', text: 'Click \"Log Call\" to record a new call with the phone number, duration, and notes.' },
+          { icon: '🤖', text: 'Use \"AI Summarize\" to automatically generate a summary of the call from your notes.' },
+          { icon: '📅', text: 'Set follow-up dates and mark calls as needing follow-up to never miss a lead.' },
+          { icon: '📝', text: 'Click any call to expand details, see the full description, and edit information.' },
+        ]}
+      />
 
       {/* Note about auto-detection */}
       <motion.div variants={itemVariants} className="flex items-start gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">

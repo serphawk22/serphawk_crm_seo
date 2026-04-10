@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Activity, UserPlus, Search, MoreVertical, Mail, Trash2, X, Check, Loader2, Key } from "lucide-react";
 import { API_BASE_URL } from '@/config';
 import { cn } from "@/lib/utils";
+import PageGuide from '@/components/PageGuide';
 
 export default function InternsPage() {
   const [interns, setInterns] = useState([]);
@@ -82,6 +83,18 @@ export default function InternsPage() {
           <UserPlus className="w-4 h-4" /> Add Intern
         </button>
       </div>
+
+      <PageGuide
+        pageKey="interns"
+        title="How Intern Management works"
+        description="Create and manage intern accounts who can assist on projects and tasks."
+        steps={[
+          { icon: '🎓', text: 'Click \"Add Intern\" to provision a new intern with login credentials.' },
+          { icon: '📋', text: 'Interns can be assigned to projects and tasks but have limited system access.' },
+          { icon: '🔒', text: 'You can reset passwords or remove intern accounts at any time from the action menu.' },
+          { icon: '👁️', text: 'Interns can view project boards and update task statuses assigned to them.' },
+        ]}
+      />
 
       <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
         <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">

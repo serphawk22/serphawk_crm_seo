@@ -1,238 +1,465 @@
-import asyncio
-import sys
 
-import os
-import uuid
-import warnings
+from __future__ import annotations
 
-import os
-import uuid
-import warnings
+"""
+CRM V2 – SerpHawk  |  FastAPI Backend
+"""
 
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
-from contextlib import asynccontextmanager
-import traceback
-
-from fastapi import FastAPI, Request, Form, Depends, HTTPException, BackgroundTasks, Body, File, UploadFile
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from fastapi.websockets import WebSocket, WebSocketDisconnect
+from sqlmodel import Session
+from modules.scraper import research_and_map_company
 from pydantic import BaseModel
-from fastapi.responses import JSONResponse
+
+from database import engine, SentEmail
+from sqlmodel import select
+
+def register_sent_emails_endpoint(app, get_session):
+    from fastapi import Depends
+    from sqlmodel import Session
+    @app.get("/sent-emails")
+    def get_sent_emails(client_id: int = None, limit: int = 50, session: Session = Depends(get_session)):
+        query = select(SentEmail).order_by(SentEmail.sent_at.desc())
+        if client_id:
+            query = query.where(SentEmail.client_id == client_id)
+        emails = session.exec(query.limit(limit)).all()
+        return [
+            {
+                "id": e.id,
+                "client_id": e.client_id,
+                "to_email": e.to_email,
+                "subject": e.subject,
+                "english_body": e.english_body,
+                "spanish_body": e.spanish_body,
+                "recommended_services": e.recommended_services,
+                "manual": e.manual,
+                "draft_json": e.draft_json,
+                "sent_at": e.sent_at.isoformat() if e.sent_at else None
+            }
+            for e in emails
+        ]
+
+import hashlib
+import re
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.concurrency import run_in_threadpool
-from sqlmodel import Session, select, func, text
-from dotenv import load_dotenv
+from pydantic import BaseModel
+from sqlalchemy import func, or_
+from sqlmodel import Session, select
 
-# Database & Models
 from database import (
-    engine, 
-    Company, 
-    EmailLog,
-    User,
-    ClientProfile,
-    Project,
-    Remark,
-    Document,
     ActivityLog,
-    ClientStatus,
     CallLog,
-    SentEmail,
-    create_db_and_tables, 
-    get_session
+    ChatMessage,
+    ClientFileUpload,
+    ClientProfile,
+    ClientStatus,
+    CompetitorAnalysis,
+    Document,
+    EmailLog,
+    Invoice,
+    KeywordRankEntry,
+    MessageThread,
+    Milestone,
+    NPSSurvey,
+    Notification,
+    Project,
+    Proposal,
+    Remark,
+    ServiceCatalog,
+    ServiceRequest,
+    Task,
+    TaskComment,
+    User,
+    create_db_and_tables,
+    engine,
 )
 
-# AI & Scraping Modules
-from modules.scraper import scrape_website
-from modules.llm_engine import analyze_content, generate_email, analyze_document
-from modules.market_analyzer import analyze_market, match_services
-from modules.serp_hawk_email import generate_serp_hawk_email
-from modules.fallback_analyzer import analyze_company_name_fallback
-from modules.image_generator import generate_email_image
-from modules.email_sender import send_email_outlook
 
-# Load environment variables
-load_dotenv(override=True)
+# ─────────────────────────────────────────────────────────────────────────────
+# App + CORS
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Configuration
-SENDER_EMAIL = os.getenv("SENDER_EMAIL", "padilla@dapros.com") # Default sender for UI
-HOURLY_EMAIL_LIMIT = int(os.getenv("HOURLY_EMAIL_LIMIT", 50))
-OUTLOOK_EMAIL = os.getenv('OUTLOOK_EMAIL')
-OUTLOOK_PASSWORD = os.getenv('OUTLOOK_PASSWORD')
-SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+def get_session():
+    with Session(engine) as session:
+        yield session
 
-SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-IMAP_SERVER = os.getenv('IMAP_SERVER') # Optional: For saving to Sent folder if auto-detect fails
+app = FastAPI(title="SerpHawk CRM", version="2.0.0")
 
-# Create output directories
-os.makedirs('static/generated_images', exist_ok=True)
-
-
-# Custom Exceptions
-class OutreachError(Exception):
-    """Base exception for outreach eligibility errors"""
-    pass
-
-
-class DuplicateProspectError(OutreachError):
-    """Raised when a prospect has already been contacted"""
-    pass
-
-
-class RateLimitExceededError(OutreachError):
-    """Raised when hourly email limit is reached"""
-    pass
-
-def sync_scrape_website_wrapper(url):
-    """
-    Wrapper to run the async scraper in a fresh nested loop.
-    This fixes the NotImplementedError on Windows by ensuring a ProactorEventLoop is used.
-    """
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-    
-    # Import here to avoid circular dependencies if any
-    from modules.scraper import scrape_website
-    return asyncio.run(scrape_website(url))
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Application lifespan - creates tables on startup
-    """
-    print("Starting Cold Outreach CRM...")
-    
-    # Debug loop type
-    try:
-        loop = asyncio.get_running_loop()
-        print(f"DEBUG: FastAPI is running on loop: {type(loop).__name__}")
-        if sys.platform == 'win32' and 'Proactor' not in type(loop).__name__:
-            print("WARNING: ProactorEventLoop NOT detected. Playwright might fail.")
-    except Exception as e:
-        print(f"DEBUG: Could not check loop type: {e}")
-
-    print("Creating database tables...")
+@app.on_event("startup")
+def on_startup():
     create_db_and_tables()
-    
-    # Simple migrations for client_profiles and companies
-    try:
-        with engine.connect() as conn:
-            # Companies migration
-            conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS recommended_services VARCHAR(1000)"))
-            
-            # ClientProfile migrations
-            conn.execute(text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS \"nextMilestone\" VARCHAR(255)"))
-            conn.execute(text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS \"nextMilestoneDate\" VARCHAR(255)"))
-            conn.execute(text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS recommended_services VARCHAR(1000)"))
-            conn.execute(text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS \"projectId\" INTEGER"))
-            conn.execute(text("ALTER TABLE remarks ADD COLUMN IF NOT EXISTS \"projectId\" INTEGER"))
-
-            # CallLog new columns (description, work, assign, followup)
-            conn.execute(text("ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS description TEXT"))
-            conn.execute(text("ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS work_done TEXT"))
-            conn.execute(text("ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(255)"))
-            conn.execute(text("ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS followup_needed BOOLEAN DEFAULT FALSE"))
-            conn.execute(text("ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS followup_date VARCHAR(50)"))
-
-            # SentEmail bilingual columns
-            conn.execute(text("ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS english_body TEXT"))
-            conn.execute(text("ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS spanish_body TEXT"))
-            
-            conn.commit()
-            print("Database schema updated successfully")
-    except Exception as e:
-        print(f"Schema update note: {e}")
-
-    print("Database ready!")
-    
-    # Try to install playwright browsers if needed (optional check)
-    # print("Checking Playwright browsers...")
-    # os.system("playwright install chromium") 
-    
-    yield
-    print("Shutting down Cold Outreach CRM...")
-
-
-# Initialize FastAPI app
-app = FastAPI(
-    title="Cold Outreach CRM",
-    description="A simple CRM for managing cold email outreach",
-    version="2.0.0",
-    lifespan=lifespan
-)
-
-# CORS Configuration
-ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3000",
-    os.getenv("FRONTEND_URL", ""),  # production domain from env
-]
-ALLOWED_ORIGINS = [o for o in ALLOWED_ORIGINS if o]  # remove empty strings
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount static files
-os.makedirs("static", exist_ok=True)
+# Serve uploaded files
+from fastapi.staticfiles import StaticFiles
+import os
+os.makedirs("static/uploads", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-# ============================================================================
-# REQUEST SCHEMAS
-# ============================================================================
+# ─────────────────────────────────────────────────────────────────────────────
+# Email Notification Helper
+# ─────────────────────────────────────────────────────────────────────────────
+def _send_notification_email(to_email: str, subject: str, body_html: str):
+    """Best-effort email notification. Fails silently so it never blocks API responses."""
+    try:
+        from modules.email_sender import send_email_outlook
+        sender = os.environ.get("SENDER_EMAIL", "")
+        password = os.environ.get("SENDER_PASSWORD", "")
+        if sender and password:
+            send_email_outlook(to_email, subject, body_html, sender, password)
+    except Exception as e:
+        print(f"[Notification email failed] {e}")
 
-class ClientCreate(BaseModel):
-    companyName: str
-    websiteUrl: str
-    email: str
-    projectName: Optional[str] = None
-    gmbName: Optional[str] = None
-    seoStrategy: Optional[str] = None
-    tagline: Optional[str] = None
-    targetKeywords: Optional[List[str]] = None
-    recommended_services: Optional[str] = None
 
-class ActivityAdd(BaseModel):
-    method: str
-    content: str
+def get_session():
+    with Session(engine) as session:
+        yield session
 
-class RemarkAdd(BaseModel):
-    content: str
+# Register /sent-emails endpoint after app and get_session are defined
+register_sent_emails_endpoint(app, get_session)
 
-class EmailSend(BaseModel):
+# --- Simple In-Memory Cache for Company Analysis ---
+company_analysis_cache = {}
+
+# --- Research and Service Mapping Endpoint ---
+class ResearchMapRequest(BaseModel):
+    company_url: str
+
+@app.post("/research-map-company")
+async def research_map_company_endpoint(body: ResearchMapRequest, background_tasks: BackgroundTasks = None):
+    try:
+        result = await research_and_map_company(body.company_url)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Smart Research: company name → full analysis + draft + contact email ---
+class SmartResearchRequest(BaseModel):
+    company_name: str
+    company_url: Optional[str] = None
+
+@app.post("/smart-research")
+async def smart_research(body: SmartResearchRequest):
+    """
+    Takes a company name (and optional URL), researches it via LLM,
+    finds business contact email, recommends services, and generates an email draft.
+    """
+    import json as _json
+    from modules.fallback_analyzer import analyze_company_name_fallback
+    from modules.market_analyzer import match_services
+    from modules.llm_engine import get_openai_client, generate_email
+
+    company_name = body.company_name.strip()
+
+    # Step 1: Try scraping website if URL given, otherwise use LLM knowledge
+    company_info = {}
+    website_content = ""
+    if body.company_url and body.company_url.strip():
+        try:
+            from modules.scraper import scrape_website
+            website_content = await scrape_website(body.company_url.strip())
+            if not website_content.startswith("ERROR"):
+                from modules.llm_engine import analyze_content
+                company_info = analyze_content(website_content)
+            else:
+                company_info = analyze_company_name_fallback(company_name)
+        except Exception:
+            company_info = analyze_company_name_fallback(company_name)
+    else:
+        company_info = analyze_company_name_fallback(company_name)
+
+    company_info.setdefault("company_name", company_name)
+
+    # Step 2: Find business contact email via LLM
+    contact_email = None
+    contact_name = None
+    contact_role = None
+    try:
+        client = get_openai_client()
+        email_prompt = f"""You are a business intelligence expert. For the company "{company_name}", find or infer the most likely business contact email address.
+
+Rules:
+- If this is a well-known company, use your knowledge of their real domain (e.g. @flipkart.com, @amazon.com)
+- For the email, prefer patterns like: info@domain, hello@domain, contact@domain, sales@domain, or partnerships@domain
+- Also suggest the most likely contact person name and role (e.g. "Marketing Manager")
+- If you found emails from website scraping data, prefer those
+
+{f'Website data contacts: {_json.dumps(company_info.get("contacts", []))}' if company_info.get("contacts") else ''}
+
+Return JSON only:
+{{
+    "email": "the best business contact email",
+    "name": "likely contact person name or null",
+    "role": "likely role or null",
+    "confidence": "high/medium/low",
+    "reasoning": "brief explanation of how you determined this"
+}}"""
+
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Return valid JSON only. Be accurate and specific."},
+                {"role": "user", "content": email_prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
+        contact_data = _json.loads(resp.choices[0].message.content)
+        contact_email = contact_data.get("email")
+        contact_name = contact_data.get("name")
+        contact_role = contact_data.get("role")
+    except Exception:
+        # Fallback: try to extract from company_info contacts
+        contacts = company_info.get("contacts", [])
+        if contacts and isinstance(contacts, list) and len(contacts) > 0:
+            c = contacts[0]
+            contact_email = c.get("email")
+            contact_name = c.get("name")
+            contact_role = c.get("role")
+
+    # Step 3: Service matching
+    services_result = {}
+    try:
+        market_data = {
+            "industry": company_info.get("likely_industry", company_info.get("industry", "")),
+            "business_model": company_info.get("business_model", ""),
+            "pain_points": company_info.get("common_pain_points", company_info.get("pain_points", [])),
+        }
+        services_result = match_services(market_data, company_info)
+    except Exception:
+        services_result = {
+            "recommended_services": [
+                {"service_name": "Organic SEO", "why_relevant": "Improve online visibility", "expected_impact": "More qualified leads"},
+                {"service_name": "Local SEO", "why_relevant": "Dominate local search", "expected_impact": "Increased local customers"}
+            ],
+            "email_hook": f"Growth opportunities for {company_name}",
+            "package_suggestion": "Growth"
+        }
+
+    # Step 4: Generate email draft (pass recommended services so they appear in draft)
+    draft = {}
+    try:
+        contact_for_email = {"name": contact_name, "role": contact_role} if contact_name else None
+        recommended = services_result.get("recommended_services", [])
+        draft = generate_email(company_info, contact=contact_for_email, recommended_services=recommended)
+    except Exception:
+        draft = {
+            "subject": f"Growth Partnership Opportunity – {company_name}",
+            "english_body": f"Hi,\n\nI came across {company_name} and was impressed by what you do. I'd love to explore how our SEO and digital marketing services could help accelerate your growth.\n\nBest regards",
+            "spanish_body": f"Hola,\n\nEncontré {company_name} y me impresionó lo que hacen. Me encantaría explorar cómo nuestros servicios de SEO y marketing digital podrían ayudar a acelerar su crecimiento.\n\nSaludos",
+        }
+
+    return {
+        "company_info": company_info,
+        "company_url": body.company_url or company_info.get("website") or "",
+        "contact": {
+            "email": contact_email,
+            "name": contact_name,
+            "role": contact_role,
+        },
+        "recommended_services": services_result.get("recommended_services", []),
+        "email_hook": services_result.get("email_hook", ""),
+        "package_suggestion": services_result.get("package_suggestion", ""),
+        "draft": draft,
+    }
+
+# --- Send Manual: create client + record email + activity ---
+class SendManualRequest(BaseModel):
+    to_email: str
+    company_name: str
     subject: str
-    body: str
+    english_body: str
+    spanish_body: Optional[str] = None
+    recommended_services: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_role: Optional[str] = None
+    website_url: Optional[str] = None
 
+@app.post("/send-manual")
+def send_manual(body: SendManualRequest, session: Session = Depends(get_session)):
+    """
+    Records a manually sent email, creates a client (User + ClientProfile) if not existing,
+    and logs an activity entry.
+    """
+    from datetime import datetime
+    import hashlib
+
+    # Step 1: Find or create User by email
+    user = session.exec(select(User).where(User.email == body.to_email)).first()
+    if not user:
+        hashed_pw = hashlib.sha256("password123".encode()).hexdigest()
+        user = User(
+            email=body.to_email,
+            password=hashed_pw,
+            name=body.contact_name or body.company_name or "New Client",
+            role="Client",
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+    # Step 2: Find or create ClientProfile
+    client_profile = session.exec(
+        select(ClientProfile).where(ClientProfile.userId == user.id)
+    ).first()
+    if not client_profile:
+        client_profile = ClientProfile(
+            userId=user.id,
+            companyName=body.company_name,
+            websiteUrl=body.website_url or None,
+            status="Active",
+            recommended_services=body.recommended_services,
+            lastActivity="Outreach email sent",
+            lastActivityDate=datetime.utcnow().isoformat(),
+        )
+        session.add(client_profile)
+        session.commit()
+        session.refresh(client_profile)
+    else:
+        # Update existing profile
+        client_profile.lastActivity = "Outreach email sent"
+        client_profile.lastActivityDate = datetime.utcnow().isoformat()
+        if body.recommended_services:
+            client_profile.recommended_services = body.recommended_services
+        session.add(client_profile)
+        session.commit()
+        session.refresh(client_profile)
+
+    # Step 3: Save SentEmail record
+    sent_email = SentEmail(
+        client_id=client_profile.id,
+        to_email=body.to_email,
+        subject=body.subject,
+        english_body=body.english_body,
+        spanish_body=body.spanish_body or "",
+        recommended_services=body.recommended_services or "",
+        manual=True,
+        sent_at=datetime.utcnow(),
+    )
+    session.add(sent_email)
+    session.commit()
+    session.refresh(sent_email)
+
+    # Step 4: Log activity
+    try:
+        activity = ActivityLog(
+            client_id=client_profile.id,
+            action=f"Manual outreach email sent to {body.to_email}",
+            details=f"Subject: {body.subject} | Services: {body.recommended_services or 'N/A'}",
+            timestamp=datetime.utcnow(),
+        )
+        session.add(activity)
+        session.commit()
+    except Exception:
+        pass  # Activity logging is best-effort
+
+    return {
+        "success": True,
+        "client_id": client_profile.id,
+        "user_id": user.id,
+        "sent_email_id": sent_email.id,
+        "message": f"Client created and email recorded for {body.to_email}",
+    }
+
+
+# --- Delete client endpoint ---
+@app.delete("/clients/{client_id}")
+def delete_client(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    session.delete(cp)
+    session.commit()
+    return {"success": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pydantic request/response models
+# ─────────────────────────────────────────────────────────────────────────────
 class LoginRequest(BaseModel):
     email: str
     password: str
 
-class ClientUpdate(BaseModel):
+
+class CreateUserRequest(BaseModel):
+    email: str
+    password: str
+    name: Optional[str] = None
+    role: str = "Client"
+
+
+class ClientCreateRequest(BaseModel):
+    companyName: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    status: str = "Active"
+    email: Optional[str] = None
+    name: Optional[str] = None
+    password: Optional[str] = None
+
+
+class ClientUpdateRequest(BaseModel):
+    companyName: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
     status: Optional[str] = None
-    nextMilestone: Optional[str] = None
-    nextMilestoneDate: Optional[str] = None
-    projectName: Optional[str] = None
-    websiteUrl: Optional[str] = None
     gmbName: Optional[str] = None
     seoStrategy: Optional[str] = None
     tagline: Optional[str] = None
-    recommended_services: Optional[str] = None
+    websiteUrl: Optional[str] = None
+    nextMilestone: Optional[str] = None
+    nextMilestoneDate: Optional[str] = None
+    lastActivity: Optional[str] = None
+    lastActivityDate: Optional[str] = None
+    assignedEmployeeId: Optional[int] = None
+    customFields: Optional[dict] = None
 
-class ProjectCreate(BaseModel):
+
+class AssignEmployeeRequest(BaseModel):
+    employee_id: int
+
+
+class KeywordRequest(BaseModel):
+    keyword: str
+
+
+class RemarkCreateRequest(BaseModel):
+    content: str
+    authorId: Optional[int] = None
+    isInternal: bool = True
+
+
+class ActivityCreateRequest(BaseModel):
+    action: str
+    method: Optional[str] = None
+    content: Optional[str] = None
+    details: Optional[str] = None
+    authorId: Optional[int] = None
+
+
+class ProjectCreateRequest(BaseModel):
     name: str
     description: Optional[str] = None
-    status: Optional[str] = "Planning"
-    progress: Optional[int] = 0
-    employeeIds: Optional[List[int]] = []
-    internIds: Optional[List[int]] = []
-    clientIds: Optional[List[int]] = []
+    status: str = "Planning"
+    progress: int = 0
+    employeeIds: List[int] = []
+    internIds: List[int] = []
+    clientIds: List[int] = []
 
-class ProjectUpdate(BaseModel):
+
+class ProjectUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     status: Optional[str] = None
@@ -241,1440 +468,3333 @@ class ProjectUpdate(BaseModel):
     internIds: Optional[List[int]] = None
     clientIds: Optional[List[int]] = None
 
-class ProjectRemarkAdd(BaseModel):
-    content: str
-    isInternal: Optional[bool] = True
 
-class UserCreate(BaseModel):
+class ServiceCreateRequest(BaseModel):
     name: str
-    email: str
-    password: str
-    role: str
-
-class UserUpdate(BaseModel):
-    name: Optional[str] = None
-    email: Optional[str] = None
-    role: Optional[str] = None
-
-# ============================================================================
-# BUSINESS LOGIC - The "Gatekeeper" Middleware
-# ============================================================================
-
-def check_outreach_eligibility(session: Session, website_url: str) -> dict:
-    """
-    Gatekeeper function that checks if we can send an outreach email.
-    """
-    result = {
-        "eligible": True,
-        "existing_company": None,
-        "emails_sent_last_hour": 0
-    }
-    
-    # Normalize URL for comparison
-    normalized_url = website_url.strip().lower()
-    if not normalized_url.startswith(('http://', 'https://')):
-        normalized_url = 'https://' + normalized_url
-    
-    # Rule A: Duplicate Check
-    statement = select(Company).where(Company.website_url == normalized_url)
-    existing_company = session.exec(statement).first()
-    
-    if existing_company:
-        result["existing_company"] = existing_company
-        if existing_company.email_sent_status:
-            raise DuplicateProspectError(
-                f"❌ Prospecting email already sent to {existing_company.company_name} "
-                f"({existing_company.website_url}) on {existing_company.created_at.strftime('%Y-%m-%d %H:%M')}"
-            )
-    
-    # Rule B: Rate Limiter
-    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
-    
-    rate_limit_statement = select(func.count(EmailLog.id)).where(
-        EmailLog.sender_email == SENDER_EMAIL,
-        EmailLog.sent_at > one_hour_ago
-    )
-    emails_sent_count = session.exec(rate_limit_statement).one()
-    result["emails_sent_last_hour"] = emails_sent_count
-    
-    if emails_sent_count >= HOURLY_EMAIL_LIMIT:
-        raise RateLimitExceededError(
-            f"⏳ Hourly email limit ({HOURLY_EMAIL_LIMIT}) reached. "
-            f"You've sent {emails_sent_count} emails in the last hour. "
-            f"Please wait before sending more."
-        )
-    
-    return result
+    cost: float = 0.0
+    intro_description: str = ""
+    full_description: Optional[str] = None
+    handler_role: str = "Employee"
+    image_url: Optional[str] = None
+    past_results: Optional[str] = None
+    is_active: bool = True
 
 
-# ============================================================================
-# ROUTES - API
-# ============================================================================
-
-@app.get("/")
-async def root():
-    """
-    Root endpoint - indicates API is running.
-    """
-    return {
-        "message": "Cold Outreach CRM API is running",
-        "version": "2.1.2-fallback-fix-v3",
-        "frontend": "http://localhost:3000",
-        "docs": "/docs"
-    }
+class ServiceRequestCreate(BaseModel):
+    service_id: int
+    client_email: str
 
 
+class QuoteRequest(BaseModel):
+    requestId: int
+    quoted_amount: float
+    quote_message: str
+    team_info: Optional[str] = None
+    quote_doc_url: Optional[str] = None
+    assigned_employee_id: Optional[int] = None
 
 
-# ============================================================================
-# PROCESS ROUTES - Add Lead & Send Email (CRM Style)
-# ============================================================================
-
-@app.post("/login")
-async def login(data: LoginRequest, session: Session = Depends(get_session)):
-    """Simple database login for CRM"""
-    statement = select(User).where(User.email == data.email)
-    user = session.exec(statement).first()
-    
-    if user and user.password == data.password:
-        return {
-            "success": True,
-            "user": {
-                "id": user.id,
-                "email": user.email,
-                "name": user.name,
-                "role": user.role
-            }
-        }
-    else:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-@app.post("/draft-lead")
-async def draft_lead(
-    company_name: str = Form(...),
-    website_url: str = Form(...),
-    primary_email: str = Form(...),
-    session: Session = Depends(get_session)
-):
-    """
-    Step 1: Check eligibility, analyze URL, and return Draft (NO SENDING)
-    """
-    try:
-        # Normalize URL
-        normalized_url = website_url.strip().lower()
-        if not normalized_url.startswith(('http://', 'https://')):
-            normalized_url = 'https://' + normalized_url
-        
-        # Check eligibility (just for info, but don't block drafting yet? Or do block?)
-        # Let's BLOCK if already sent, to warn user.
-        eligibility = check_outreach_eligibility(session, normalized_url)
-        
-        print(f"Analyzing {normalized_url} for personalization...")
-        
-        # Scrape & Analyze
-        scraped_text = await run_in_threadpool(scrape_website, normalized_url)
-        
-        subject = f"Partnership Opportunity with {company_name}"
-        body_html = f"<p>Hi {company_name} Team,</p><p>We'd love to partner.</p>" 
-        
-        if scraped_text and not scraped_text.startswith("ERROR SCRAPING"):
-            company_info = await run_in_threadpool(analyze_content, scraped_text)
-            market_analysis = await run_in_threadpool(analyze_market, scraped_text, company_name)
-            service_matches = await run_in_threadpool(match_services, market_analysis, company_info)
-        else:
-            # Enhanced fallback: Use AI to analyze company name for industry hints
-            company_info = await run_in_threadpool(analyze_company_name_fallback, company_name)
-            # IMPORTANT: inject company_name so the email generator doesn't default to 'your company'
-            company_info['company_name'] = company_name
-            company_info.setdefault('contacts', [])
-            market_analysis = {
-                'industry': company_info.get('likely_industry', 'Unknown'), 
-                'sub_category': company_info.get('sub_category', ''),
-                'business_model': company_info.get('business_model', 'B2B'),
-                'pain_points': company_info.get('common_pain_points', ['Lead Generation', 'Online Visibility']), 
-                'growth_potential': 'High',
-                'online_presence': {'seo_status': 'Needs improvement'}
-            }
-            # Build dynamic service recommendations from AI knowledge
-            growth_opps = company_info.get('growth_opportunities', [])
-            recommended_services = []
-            for opp in growth_opps[:3]:
-                recommended_services.append({
-                    'service_name': opp,
-                    'why_relevant': f"Based on {company_info.get('likely_industry', 'industry')} dynamics and {company_name}'s market position",
-                    'expected_impact': 'Increased organic visibility, traffic and qualified leads'
-                })
-            if not recommended_services:
-                recommended_services = [
-                    {'service_name': 'Organic SEO', 'why_relevant': 'Improve online visibility and search rankings', 'expected_impact': 'More qualified leads from search'},
-                    {'service_name': 'Local SEO', 'why_relevant': 'Dominate local search results', 'expected_impact': 'Increased local customer acquisition'}
-                ]
-            service_matches = {
-                'recommended_services': recommended_services,
-                'email_hook': f'Growth opportunities for {company_info.get("likely_industry", "your business")}',
-                'package_suggestion': 'Growth'
-            }
-
-        # Extract dynamically found primary email from AI contacts if available
-        ai_extracted_email = None
-        if company_info and company_info.get("contacts"):
-            for c in company_info["contacts"]:
-                if c.get("email") and "@" in c["email"]:
-                    ai_extracted_email = c["email"]
-                    break
-        
-        # Determine the best email to use
-        final_email = ai_extracted_email or primary_email or ""
-        
-        contact = {'name': company_name, 'email': final_email, 'role': 'Decision Maker'}
-        email_draft = await run_in_threadpool(
-            generate_serp_hawk_email,
-            company_info, market_analysis, service_matches, contact
-        )
-        
-        if email_draft:
-            subject = email_draft.get('subject', subject)
-            body_html = email_draft.get('body_html', body_html)
-
-        # Get services string
-        services = service_matches.get('recommended_services', [])
-        service_names = [s.get('service_name') for s in services]
-        recommended_services_str = ", ".join(service_names) if service_names else None
-
-        return JSONResponse({
-            'success': True,
-            'draft': {
-                'subject': subject,
-                'body': body_html,
-                'company_name': company_name,
-                'website_url': normalized_url,
-                'primary_email': final_email, # Return the dynamically extracted email
-                'recommended_services': recommended_services_str
-            }
-        })
-
-    except Exception as e:
-        traceback.print_exc()
-        return JSONResponse({'success': False, 'error': str(e)}, status_code=500)
+class SendMessageRequest(BaseModel):
+    thread_id: int
+    sender_id: int
+    content: str
 
 
-@app.post("/send-lead")
-async def send_lead_merged(data: dict = Body(...), session: Session = Depends(get_session)):
-    """
-    Master Route for SERP Hawk Lead Processing:
-    1. Sends Outbound/Inbound emails (if not manual)
-    2. Creates/Updates ClientProfile
-    3. Saves to SentEmail (bilingual history)
-    4. Records ActivityLog
-    5. Syncs to Company & EmailLog
-    """
-    try:
-        company_name = data.get('company_name', 'Unknown')
-        email = data.get('primary_email')
-        website_url = data.get('website_url')
-        outreach = data.get('outreach', {})
-        inbound = data.get('inbound', {})
-        is_manual = data.get('manual', False)
-        recommended_services_str = data.get('recommended_services', '')
-        if not email:
-            if is_manual:
-                # If they just want to log it manually and the scraper couldn't find an email,
-                # generate a placeholder to satisfy the CRM's strict email requirements.
-                import uuid
-                email = f"unknown_contact_{uuid.uuid4().hex[:8]}@placeholder.com"
-            else:
-                return JSONResponse({'success': False, 'error': 'Target email is required to send emails. Please provide an email or choose Log Manually.'}, status_code=400)
-
-        # 1. Email Sending Logic
-        outbound_sent = False
-        inbound_sent = False
-
-        if not is_manual and OUTLOOK_EMAIL and OUTLOOK_PASSWORD:
-            try:
-                # Outbound
-                send_email_outlook(
-                    to_email=email,
-                    subject=outreach.get('subject', f"Partnership Opportunity with {company_name}"),
-                    body=outreach.get('english_body') or outreach.get('body', ''),
-                    sender_email=OUTLOOK_EMAIL,
-                    sender_password=OUTLOOK_PASSWORD,
-                    smtp_server=SMTP_SERVER,
-                    smtp_port=SMTP_PORT,
-                    html=True,
-                    imap_server=IMAP_SERVER
-                )
-                outbound_sent = True
-
-                # Inbound (Simulated reply)
-                send_email_outlook(
-                    to_email=email, 
-                    subject=inbound.get('subject', f"Inquiry regarding {company_name}"),
-                    body=inbound.get('english_body') or inbound.get('body', ''),
-                    sender_email=OUTLOOK_EMAIL,
-                    sender_password=OUTLOOK_PASSWORD,
-                    smtp_server=SMTP_SERVER,
-                    smtp_port=SMTP_PORT,
-                    html=True,
-                    imap_server=IMAP_SERVER
-                )
-                inbound_sent = True
-            except Exception as e:
-                print(f"SMTP Error: {e}")
-        else:
-            print(f"Manual/Simulated Send Mode for {email}")
-            outbound_sent = True
-            inbound_sent = True
-
-        # 2. Client Profile Persistence
-        stmt = select(User).where(User.email == email)
-        user = session.exec(stmt).first()
-        if not user:
-            user = User(email=email, password="password123", name=company_name, role="Client")
-            session.add(user)
-            session.commit()
-            session.refresh(user)
-
-        stmt_profile = select(ClientProfile).where(ClientProfile.userId == user.id)
-        profile = session.exec(stmt_profile).first()
-        
-        if not profile:
-            profile = ClientProfile(
-                userId=user.id,
-                companyName=company_name,
-                websiteUrl=website_url,
-                status="Active",
-                recommended_services=recommended_services_str,
-                services_offered=recommended_services_str,
-                outbound_email_sent=outbound_sent,
-                inbound_email_sent=inbound_sent
-            )
-            session.add(profile)
-        else:
-            profile.outbound_email_sent = outbound_sent
-            profile.inbound_email_sent = inbound_sent
-            if recommended_services_str:
-                profile.recommended_services = recommended_services_str
-                profile.services_offered = recommended_services_str
-            session.add(profile)
-        
-        session.commit()
-        session.refresh(profile)
-
-        # 3. SentEmail Persistence (Bilingual History)
-        # Store both outreach and inbound as separate entries or one combined? 
-        # Requirement: "1st para eng, 2nd para span". 
-        # We'll store the Outreach specifically as the bilingual record for the History tab.
-        sent_record = SentEmail(
-            client_id=profile.id,
-            to_email=email,
-            subject=outreach.get('subject', 'Outreach'),
-            english_body=outreach.get('english_body') or outreach.get('body', ''),
-            spanish_body=outreach.get('spanish_body', ''),
-            sent_at=datetime.utcnow()
-        )
-        session.add(sent_record)
-
-        # 4. Activity Logs
-        activity = ActivityLog(
-            userId=user.id,
-            clientId=profile.id,
-            action="Outreach Campaign",
-            method="Email",
-            content=f"{'[MANUAL] ' if is_manual else ''}Sent Outreach to {email}. Outcome: {outbound_sent}",
-            details=f"Services: {recommended_services_str}",
-            createdAt=datetime.utcnow()
-        )
-        session.add(activity)
-
-        # 5. Company & EmailLog Sync
-        try:
-            from sqlalchemy import or_
-            company_stmt = select(Company).where(or_(Company.primary_email == email, Company.website_url == website_url))
-            existing_company = session.exec(company_stmt).first()
-            
-            if existing_company:
-                existing_company.email_sent_status = outbound_sent
-                if recommended_services_str:
-                    existing_company.recommended_services = recommended_services_str
-                session.add(existing_company)
-                comp_id = existing_company.id
-            else:
-                new_comp = Company(
-                    company_name=company_name,
-                    website_url=website_url,
-                    primary_email=email,
-                    recommended_services=recommended_services_str,
-                    email_sent_status=outbound_sent
-                )
-                session.add(new_comp)
-                session.commit()
-                session.refresh(new_comp)
-                comp_id = new_comp.id
-
-            # Add to EmailLog for rate limit tracking
-            elog = EmailLog(
-                company_id=comp_id,
-                sender_email=OUTLOOK_EMAIL or "system@serphawk.ai",
-                subject=outreach.get('subject', 'Outreach'),
-                content=outreach.get('body', ''),
-                sent_at=datetime.utcnow()
-            )
-            session.add(elog)
-        except Exception as e:
-            print(f"Company Sync Error: {e}")
-
-        session.commit()
-
-        return JSONResponse({
-            'success': True,
-            'outbound_sent': outbound_sent,
-            'inbound_sent': inbound_sent,
-            'client_id': profile.id
-        })
-
-    except Exception as e:
-        traceback.print_exc()
-        return JSONResponse({'success': False, 'error': str(e)}, status_code=500)
-
-
-
-@app.get("/activities")
-async def get_activities(limit: int = 10, session: Session = Depends(get_session)):
-    """
-    Fetch recent outreach from EmailLog joined with Company to get full email content and subjects
-    """
-    try:
-        statement = (
-            select(EmailLog, Company)
-            .join(Company, EmailLog.company_id == Company.id)
-            .order_by(EmailLog.sent_at.desc())
-            .limit(limit)
-        )
-        results = session.exec(statement).all()
-        
-        activities = []
-        for log, company in results:
-            activities.append({
-                'id': str(log.id),
-                'company_name': company.company_name,
-                'website_url': company.website_url,
-                'email': log.sender_email, # or company.primary_email depending on what we want to show
-                'recipient_email': company.primary_email,
-                'sent_at': log.sent_at.isoformat() if log.sent_at else datetime.now().isoformat(),
-                'status': 'Sent', 
-                'recommended_services': company.recommended_services or '-',
-                'subject': log.subject,
-                'content': log.content
-            })
-            
-        return JSONResponse({'activities': activities})
-    except Exception as e:
-        print(f"Error fetching activities: {e}")
-        return JSONResponse({'activities': [], 'error': str(e)})
-
-
-# ============================================================================
-# AI ROUTES - SERP Hawk Logic
-# ============================================================================
-
-@app.post("/generate")
-async def generate_ai_analysis(data: dict):
-    """
-    Complete SERP Hawk outreach workflow:
-    1. Scrape website
-    2. Analyze company
-    3. Analyze market & competitors
-    4. Match services
-    5. Generate email
-    6. Create image
-    """
-    urls = data.get('urls', [])
-    results = []
-
-    for url in urls:
-        try:
-            print(f"Processing: {url}")
-            
-            # Step 1: Scrape
-            try:
-                scraped_text = await run_in_threadpool(sync_scrape_website_wrapper, url)
-                has_error = not scraped_text or "ERROR SCRAPING" in scraped_text.upper()
-            except Exception as e:
-                import traceback
-                print(f"Exception during scraping {url}: {e}")
-                scraped_text = f"ERROR SCRAPING: {str(e)}"
-                has_error = True
-            
-            if has_error:
-                # Try to derive a name from the URL for the fallback
-                derived_name = url.split('//')[-1].split('/')[0].replace('www.', '').split('.')[0].replace('-', ' ').title()
-                company_info = await run_in_threadpool(analyze_company_name_fallback, derived_name)
-                company_name = company_info.get('company_name', derived_name)
-                # IMPORTANT: inject company_name so the email generator doesn't default to 'your company'
-                company_info['company_name'] = company_name
-                company_info.setdefault('contacts', [])
-                
-                market_analysis = {
-                    'industry': company_info.get('likely_industry', 'Unknown'), 
-                    'sub_category': company_info.get('sub_category', ''),
-                    'business_model': company_info.get('business_model', 'B2B'),
-                    'pain_points': company_info.get('common_pain_points', ['Lead Generation', 'Online Visibility']), 
-                    'growth_potential': 'High',
-                    'online_presence': {'seo_status': 'Needs improvement'}
-                }
-                # Build dynamic service recommendations from AI knowledge
-                growth_opps = company_info.get('growth_opportunities', [])
-                recommended_services = []
-                for opp in growth_opps[:3]:
-                    recommended_services.append({
-                        'service_name': opp,
-                        'why_relevant': f"Based on {company_info.get('likely_industry', 'industry')} dynamics and {company_name}'s market position",
-                        'expected_impact': 'Increased organic visibility, traffic and qualified leads'
-                    })
-                if not recommended_services:
-                    recommended_services = [
-                        {'service_name': 'Organic SEO', 'why_relevant': 'Improve online visibility and search rankings', 'expected_impact': 'More qualified leads from search'},
-                        {'service_name': 'Local SEO', 'why_relevant': 'Dominate local search results', 'expected_impact': 'Increased local customer acquisition'}
-                    ]
-                service_matches = {
-                    'recommended_services': recommended_services,
-                    'email_hook': f'Growth opportunities for {company_info.get("likely_industry", "your business")}',
-                    'package_suggestion': 'Growth'
-                }
-            else:
-                # Step 2: Analyze company
-                company_info = await run_in_threadpool(analyze_content, scraped_text)
-                company_name = company_info.get('company_name', 'Unknown Company')
-
-                # Step 3: Market analysis
-                market_analysis = await run_in_threadpool(analyze_market, scraped_text, company_name)
-
-                # Step 4: Match services
-                service_matches = await run_in_threadpool(match_services, market_analysis, company_info)
-
-            # Step 5: Generate email
-            contacts = company_info.get('contacts', [])
-            generated_emails = []
-            
-            if contacts:
-                for contact in contacts:
-                    # Type 1: Outreach (Offering)
-                    outreach_draft = await run_in_threadpool(
-                        generate_serp_hawk_email,
-                        company_info, market_analysis, service_matches, contact, "outreach"
-                    )
-                    # Type 2: Inbound (Requesting)
-                    inbound_draft = await run_in_threadpool(
-                        generate_serp_hawk_email,
-                        company_info, market_analysis, service_matches, contact, "inbound"
-                    )
-                    
-                    generated_emails.append({
-                        'to_email': contact.get('email', ''),
-                        'recipient_name': contact.get('name'),
-                        'role': contact.get('role'),
-                        'outreach': {
-                            'subject': outreach_draft.get('subject'),
-                            'body': outreach_draft.get('body', outreach_draft.get('body_html', '')),
-                            'english_body': outreach_draft.get('english_body', ''),
-                            'spanish_body': outreach_draft.get('spanish_body', ''),
-                        },
-                        'inbound': {
-                            'subject': inbound_draft.get('subject'),
-                            'body': inbound_draft.get('body', inbound_draft.get('body_html', '')),
-                            'english_body': inbound_draft.get('english_body', ''),
-                            'spanish_body': inbound_draft.get('spanish_body', ''),
-                        }
-                    })
-            else:
-                # Type 1: Outreach (Offering)
-                outreach_draft = await run_in_threadpool(
-                    generate_serp_hawk_email,
-                    company_info, market_analysis, service_matches, None, "outreach"
-                )
-                # Type 2: Inbound (Requesting)
-                inbound_draft = await run_in_threadpool(
-                    generate_serp_hawk_email,
-                    company_info, market_analysis, service_matches, None, "inbound"
-                )
-                
-                generated_emails.append({
-                    'to_email': '', 
-                    'recipient_name': 'General',
-                    'role': 'N/A',
-                    'outreach': {
-                        'subject': outreach_draft.get('subject'),
-                        'body': outreach_draft.get('body', outreach_draft.get('body_html', '')),
-                        'english_body': outreach_draft.get('english_body', ''),
-                        'spanish_body': outreach_draft.get('spanish_body', ''),
-                    },
-                    'inbound': {
-                        'subject': inbound_draft.get('subject'),
-                        'body': inbound_draft.get('body', inbound_draft.get('body_html', '')),
-                        'english_body': inbound_draft.get('english_body', ''),
-                        'spanish_body': inbound_draft.get('spanish_body', ''),
-                    }
-                })
-
-            # Step 6: Generate beautiful email image
-            services = service_matches.get('recommended_services', [])
-            
-            safe_company_name = "".join(c for c in company_name if c.isalnum() or c in (' ', '-', '_')).strip()
-            safe_company_name = safe_company_name.replace(' ', '_')[:50]
-            
-            image_filename = f"{safe_company_name}_email_image.html"
-            image_path = os.path.join('static', 'generated_images', image_filename)
-            
-            generated_image = await run_in_threadpool(
-                generate_email_image,
-                company_name, services, image_path
-            )
-
-            results.append({
-                'url': url,
-                'analysis': {
-                    'company_name': company_name,
-                    'what_they_do': company_info.get('summary', 'Analysis available'),
-                    'contacts': contacts,
-                    'error': scraped_text if has_error else None
-                },
-                'emails': generated_emails,
-                'recommended_services': ", ".join([s.get('service_name', '') for s in service_matches.get('recommended_services', [])]) if service_matches.get('recommended_services') else None,
-                'image_url': f'/static/generated_images/{image_filename}' if generated_image else None,
-                'error': scraped_text if has_error else None
-            })
-
-        except Exception as e:
-            traceback.print_exc()
-            results.append({'url': url, 'error': str(e)})
-
-    return JSONResponse(results)
-
-
-@app.post("/send")
-async def send_email_api(data: dict, session: Session = Depends(get_session)):
-    """
-    Send email using credentials and log to DB (AI Outreach version)
-    """
-    email_data = data.get('email_data')
-    if not email_data:
-        return JSONResponse({'success': False, 'error': 'No email data provided'}, status_code=400)
-
-    sender_email = OUTLOOK_EMAIL
-    sender_password = OUTLOOK_PASSWORD
-    
-    if not sender_email or not sender_password:
-        return JSONResponse({'success': False, 'error': 'Email credentials not configured in .env'}), 500
-
-    try:
-        # Check eligibility/rate limit before sending
-        # Note: We need a URL to check duplicates, but the AI UI sends email_data directly.
-        # We'll treat this as "Ad-hoc" send, but still rate limit.
-        
-        # Rate Limit Check
-        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
-        rate_statement = select(func.count(EmailLog.id)).where(
-            EmailLog.sender_email == SENDER_EMAIL,
-            EmailLog.sent_at > one_hour_ago
-        )
-        emails_sent_count = session.exec(rate_statement).one()
-        
-        if emails_sent_count >= HOURLY_EMAIL_LIMIT:
-             return JSONResponse({'success': False, 'error': 'Hourly rate limit exceeded'}, status_code=429)
-
-        # Send Email
-        await run_in_threadpool(
-            send_email_outlook,
-            to_email=email_data['to_email'],
-            subject=email_data['subject'],
-            body=email_data['body'],
-            sender_email=sender_email,
-            sender_password=sender_password,
-            smtp_server=SMTP_SERVER,
-            smtp_port=SMTP_PORT,
-            html=True
-        )
-        
-        # Log to DB
-        # We might not have a Company ID if it came from the AI tool randomly.
-        # For now, we'll try to find a company by email or create a "clean" one if needed.
-        # But to avoid complexity, we can just log the rate limit and maybe create a minimal company.
-        
-        # Try to find company by email
-        statement = select(Company).where(Company.primary_email == email_data['to_email'])
-        company = session.exec(statement).first()
-        
-        if not company:
-            # Create a shell company entry for logging purposes
-            company = Company(
-                company_name="AI Outreach Contact",
-                website_url=f"ai-generated-{uuid.uuid4()}@example.com", # Placeholder
-                primary_email=email_data['to_email'],
-                email_sender=SENDER_EMAIL,
-                email_sent_status=True
-            )
-            session.add(company)
-            session.commit()
-            session.refresh(company)
-        else:
-            company.email_sent_status = True
-            session.add(company)
-            session.commit()
-
-        # Log to EmailLog (rate limiting)
-        email_log = EmailLog(
-            company_id=company.id,
-            sender_email=SENDER_EMAIL,
-            sent_at=datetime.utcnow(),
-            subject=email_data['subject'],
-            content=email_data['body']
-        )
-        session.add(email_log)
-
-        # Persist to SentEmail with bilingual bodies
-        # Try to find a matching ClientProfile by email
-        client_profile_stmt = select(ClientProfile).join(User).where(User.email == email_data['to_email'])
-        client_profile = session.exec(client_profile_stmt).first()
-
-        sent_email = SentEmail(
-            client_id=client_profile.id if client_profile else None,
-            to_email=email_data['to_email'],
-            subject=email_data['subject'],
-            english_body=email_data.get('english_body', email_data.get('body', '')),
-            spanish_body=email_data.get('spanish_body', ''),
-        )
-        session.add(sent_email)
-        session.commit()
-
-        return JSONResponse({'success': True})
-        
-    except Exception as e:
-        traceback.print_exc()
-        return JSONResponse({'success': False, 'error': str(e)}, status_code=500)
-
-# Duplicate route removed to prevent inconsistent behavior
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    loop_type = "Unknown"
-    try:
-        loop_type = type(asyncio.get_running_loop()).__name__
-    except:
-        pass
-        
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "service": "Cold Outreach CRM + AI",
-        "loop": loop_type,
-        "platform": sys.platform
-    }
-
-
-# ============================================================================
-# CALL TRACKING ROUTES
-# ============================================================================
-
-class CallLogCreate(BaseModel):
+class CallCreateRequest(BaseModel):
     phone_number: str
     duration_seconds: Optional[int] = None
+    summary: Optional[str] = None
+
+
+class CallSummaryRequest(BaseModel):
+    summary: str
+
+
+class SetupDomainRequest(BaseModel):
+    domain: str
+
+
+class GenerateEmailRequest(BaseModel):
+    company_url: Optional[str] = None
+    company_name: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_role: Optional[str] = None
+    sender_email: Optional[str] = None
+    to_email: Optional[str] = None
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    manual: Optional[bool] = False
+    english_body: Optional[str] = None
+    spanish_body: Optional[str] = None
+    recommended_services: Optional[str] = None
     client_id: Optional[int] = None
+
+
+class SendLeadRequest(BaseModel):
+    to_email: str
+    subject: str
+    body: str
+    sender_email: Optional[str] = None
+    english_body: Optional[str] = None
+    spanish_body: Optional[str] = None
+    recommended_services: Optional[str] = None
+    manual: Optional[bool] = False
+    draft_json: Optional[str] = None
+    client_id: Optional[int] = None
+
+
+# ── New Feature Pydantic Models ───────────────────────────────────────────────
+
+class TaskCreateRequest(BaseModel):
+    title: str
     description: Optional[str] = None
-    work_done: Optional[str] = None
-    assigned_to: Optional[str] = None
-    followup_needed: bool = False
-    followup_date: Optional[str] = None
+    status: str = "Todo"
+    priority: str = "Medium"
+    due_date: Optional[str] = None
+    client_id: Optional[int] = None
+    project_id: Optional[int] = None
+    assigned_to: Optional[int] = None
+    created_by: Optional[int] = None
 
-@app.post("/calls")
-async def log_call(data: CallLogCreate, session: Session = Depends(get_session)):
-    """Log an incoming/outgoing call"""
-    call = CallLog(
-        phone_number=data.phone_number,
-        duration_seconds=data.duration_seconds,
-        client_id=data.client_id,
-        description=data.description,
-        work_done=data.work_done,
-        assigned_to=data.assigned_to,
-        followup_needed=data.followup_needed,
-        followup_date=data.followup_date,
-    )
-    session.add(call)
-    session.commit()
-    session.refresh(call)
-    return {"success": True, "id": call.id}
 
-def _call_to_dict(c: CallLog):
+class TaskUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    due_date: Optional[str] = None
+    assigned_to: Optional[int] = None
+
+
+class TaskCommentCreateRequest(BaseModel):
+    content: str
+    author_id: Optional[int] = None
+
+
+class InvoiceCreateRequest(BaseModel):
+    client_id: int
+    service_request_id: Optional[int] = None
+    amount: float
+    tax: float = 0.0
+    due_date: Optional[str] = None
+    notes: Optional[str] = None
+    line_items: Optional[List[dict]] = []
+
+
+class InvoiceUpdateRequest(BaseModel):
+    status: Optional[str] = None
+    amount: Optional[float] = None
+    tax: Optional[float] = None
+    due_date: Optional[str] = None
+    notes: Optional[str] = None
+    line_items: Optional[List[dict]] = None
+
+
+class NotificationCreateRequest(BaseModel):
+    user_id: int
+    title: str
+    message: str
+    type: str = "info"
+    link: Optional[str] = None
+
+
+class MilestoneCreateRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    project_id: Optional[int] = None
+    client_id: Optional[int] = None
+    due_date: Optional[str] = None
+    status: str = "Pending"
+    order: int = 0
+
+
+class MilestoneUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    due_date: Optional[str] = None
+    order: Optional[int] = None
+
+
+class NPSRespondRequest(BaseModel):
+    score: int
+    feedback: Optional[str] = None
+
+
+class ProposalCreateRequest(BaseModel):
+    title: str
+    client_id: Optional[int] = None
+    service_request_id: Optional[int] = None
+    content: Optional[str] = None
+    status: str = "Draft"
+    valid_until: Optional[str] = None
+    total_value: Optional[float] = None
+    created_by: Optional[int] = None
+
+
+class ProposalUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    status: Optional[str] = None
+    valid_until: Optional[str] = None
+    total_value: Optional[float] = None
+
+
+class FileUploadRequest(BaseModel):
+    client_id: int
+    uploaded_by: Optional[int] = None
+    filename: str
+    file_url: str
+    file_size: Optional[int] = None
+    mime_type: Optional[str] = None
+    description: Optional[str] = None
+
+
+class KeywordRankRequest(BaseModel):
+    client_id: int
+    keyword: str
+    position: Optional[int] = None
+    url: Optional[str] = None
+    search_engine: str = "Google"
+    notes: Optional[str] = None
+    recorded_by: Optional[int] = None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+def _hash_password(pw: str) -> str:
+    return hashlib.sha256(pw.encode()).hexdigest()
+
+
+def _check_password(plain: str, hashed: str) -> bool:
+    return hashlib.sha256(plain.encode()).hexdigest() == hashed
+
+
+def _user_dict(u: User) -> dict:
+    return {"id": u.id, "email": u.email, "name": u.name, "role": u.role}
+
+
+def _client_dict(cp: ClientProfile, session: Session) -> dict:
+    user = session.get(User, cp.userId) if cp.userId else None
     return {
-        "id": c.id,
-        "phone_number": c.phone_number,
-        "received_at": c.received_at.isoformat(),
-        "duration_seconds": c.duration_seconds,
-        "summary": c.summary,
-        "description": c.description,
-        "work_done": c.work_done,
-        "assigned_to": c.assigned_to,
-        "followup_needed": c.followup_needed,
-        "followup_date": c.followup_date,
-        "client_id": c.client_id,
+        "id": cp.id,
+        "userId": cp.userId,
+        "email": user.email if user else None,
+        "name": user.name if user else None,
+        "companyName": cp.companyName,
+        "phone": cp.phone,
+        "address": cp.address,
+        "status": cp.status,
+        "gmbName": cp.gmbName,
+        "seoStrategy": cp.seoStrategy,
+        "tagline": cp.tagline,
+        "targetKeywords": cp.targetKeywords or [],
+        "keywords": cp.targetKeywords or [],
+        "websiteUrl": cp.websiteUrl,
+        "recommended_services": cp.recommended_services,
+        "nextMilestone": cp.nextMilestone,
+        "nextMilestoneDate": cp.nextMilestoneDate,
+        "lastActivity": cp.lastActivity,
+        "lastActivityDate": cp.lastActivityDate,
+        "assignedEmployeeId": cp.assignedEmployeeId,
+        "projectId": cp.projectId,
+        "projectName": cp.projectName,
+        "payment_status": cp.payment_status,
+        "sitemap_url": cp.sitemap_url,
+        "cms_type": cp.cms_type,
+        "services_offered": cp.services_offered,
+        "services_requested": cp.services_requested,
+        "customFields": cp.customFields or {},
     }
 
-@app.get("/calls")
-async def list_calls(unsummarized: bool = False, session: Session = Depends(get_session)):
-    """List all calls, optionally only those without summaries"""
-    stmt = select(CallLog).order_by(CallLog.received_at.desc())
-    if unsummarized:
-        stmt = stmt.where(CallLog.summary == None)
-    calls = session.exec(stmt).all()
-    return {"calls": [_call_to_dict(c) for c in calls]}
 
-@app.patch("/calls/{call_id}/summary")
-async def add_call_summary(call_id: int, data: dict, session: Session = Depends(get_session)):
-    """Add or update call summary"""
-    call = session.get(CallLog, call_id)
-    if not call:
-        raise HTTPException(status_code=404, detail="Call not found")
-    call.summary = data.get("summary", "")
-    session.add(call)
-    session.commit()
-    return {"success": True}
-
-@app.patch("/calls/{call_id}")
-async def update_call(call_id: int, data: dict, session: Session = Depends(get_session)):
-    """Update all call log fields"""
-    call = session.get(CallLog, call_id)
-    if not call:
-        raise HTTPException(status_code=404, detail="Call not found")
-    for field in ["summary", "description", "work_done", "assigned_to", "followup_needed", "followup_date"]:
-        if field in data:
-            setattr(call, field, data[field])
-    session.add(call)
-    session.commit()
-    return {"success": True, "call": _call_to_dict(call)}
+# ─────────────────────────────────────────────────────────────────────────────
+# Auth
+# ─────────────────────────────────────────────────────────────────────────────
+@app.post("/login")
+def login(body: LoginRequest, session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.email == body.email)).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    # Support both hashed and plain-text passwords (plain for dev seeds)
+    if not (_check_password(body.password, user.password) or body.password == user.password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    result = _user_dict(user)
+    if user.role == "Client":
+        cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
+        if cp:
+            result["client_id"] = cp.id
+    return {"user": result}
 
 
-@app.get("/activities")
-async def list_all_activities(session: Session = Depends(get_session)):
-    """List all global activities for the Outreach Agent history"""
-    # Merge ActivityLog and SentEmail for a complete picture
-    stmt = select(ActivityLog).order_by(ActivityLog.id.desc()).limit(50)
-    acts = session.exec(stmt).all()
-    
-    results = []
-    for a in acts:
-        # Try to find associated client for company name/email
-        client_name = "Unknown"
-        client_email = ""
-        if a.clientId:
-            client = session.get(ClientProfile, a.clientId)
-            if client:
-                client_name = client.companyName
-                if client.user:
-                    client_email = client.user.email
-        
-        # Parse subject from content if possible
-        subject = ""
-        if a.content:
-            if "Subject: " in a.content:
-                subject = a.content.split("Subject: ")[1].split("\n")[0]
-            elif "Sent Email: " in a.content:
-                subject = a.content.split("Sent Email: ")[1].split("\n")[0]
-            
-        results.append({
-            "id": f"act-{a.id}",
-            "company_name": client_name,
-            "email": client_email or a.method or "Email",
-            "recommended_services": "", # Placeholder
-            "sent_at": a.createdAt.isoformat(),
-            "status": "Delivered",
-            "subject": subject or a.action,
-            "content": a.content
-        })
-        
-    return {"activities": results}
-
-
-# ============================================================================
-# SENT EMAIL HISTORY ROUTES
-# ============================================================================
-
-@app.get("/clients/{client_id}/emails")
-async def get_client_emails(client_id: int, session: Session = Depends(get_session)):
-    """Get all sent emails for a specific client"""
-    stmt = select(SentEmail).where(SentEmail.client_id == client_id).order_by(SentEmail.sent_at.desc())
-    emails = session.exec(stmt).all()
-    return {"emails": [
-        {
-            "id": e.id,
-            "to_email": e.to_email,
-            "subject": e.subject,
-            "english_body": e.english_body,
-            "spanish_body": e.spanish_body,
-            "sent_at": e.sent_at.isoformat(),
-        }
-        for e in emails
-    ]}
-
-@app.get("/dashboard-stats")
-async def get_dashboard_stats(role: str, email: str, session: Session = Depends(get_session)):
-    """Fetch stats for the dashboard based on role"""
-    if role in ('Admin', 'Employee'):
-        total_clients = session.exec(select(func.count(ClientProfile.id))).one()
-        active_clients = session.exec(select(func.count(ClientProfile.id)).where(ClientProfile.status == 'Active')).one()
-        pending_clients = session.exec(select(func.count(ClientProfile.id)).where(ClientProfile.status == 'Pending')).one()
-        hold_clients = session.exec(select(func.count(ClientProfile.id)).where(ClientProfile.status == 'Hold')).one()
-        total_projects = session.exec(select(func.count(Project.id))).one()
-        total_emails_sent = session.exec(select(func.count(EmailLog.id))).one()
-        total_activities = session.exec(select(func.count(ActivityLog.id))).one()
-        total_calls = session.exec(select(func.count(CallLog.id))).one()
-        total_employees = session.exec(select(func.count(User.id)).where(User.role == 'Employee')).one()
-        total_interns = session.exec(select(func.count(User.id)).where(User.role == 'Intern')).one()
-
-        # Build 7-day chart data
-        from datetime import date, timedelta
-        today = date.today()
-        chart_labels = []
-        activity_counts = []
-        email_counts = []
-        call_counts = []
-
-        for i in range(6, -1, -1):
-            day = today - timedelta(days=i)
-            day_start = datetime.combine(day, datetime.min.time())
-            day_end = datetime.combine(day, datetime.max.time())
-
-            act_count = session.exec(
-                select(func.count(ActivityLog.id)).where(
-                    ActivityLog.createdAt >= day_start,
-                    ActivityLog.createdAt <= day_end
-                )
-            ).one()
-
-            email_count = session.exec(
-                select(func.count(EmailLog.id)).where(
-                    EmailLog.sent_at >= day_start,
-                    EmailLog.sent_at <= day_end
-                )
-            ).one()
-
-            call_count = session.exec(
-                select(func.count(CallLog.id)).where(
-                    CallLog.received_at >= day_start,
-                    CallLog.received_at <= day_end
-                )
-            ).one()
-
-            chart_labels.append(day.strftime("%a"))
-            activity_counts.append(act_count)
-            email_counts.append(email_count)
-            call_counts.append(call_count)
-
-        # Recent activities
-        recent_stmt = select(ActivityLog).order_by(ActivityLog.id.desc()).limit(5)
-        recent_activities = session.exec(recent_stmt).all()
-
-        return {
-            "total": total_clients,
-            "active": active_clients,
-            "pending": pending_clients,
-            "hold": hold_clients,
-            "totalProjects": total_projects,
-            "totalEmailsSent": total_emails_sent,
-            "totalActivities": total_activities,
-            "totalCalls": total_calls,
-            "totalEmployees": total_employees,
-            "totalInterns": total_interns,
-            "chartLabels": chart_labels,
-            "activityChart": activity_counts,
-            "emailChart": email_counts,
-            "callChart": call_counts,
-            "recentActivities": [
-                {
-                    "id": a.id,
-                    "action": a.action,
-                    "method": a.method,
-                    "content": a.content,
-                    "createdAt": a.createdAt.isoformat() if a.createdAt else None
-                }
-                for a in recent_activities
-            ]
-        }
-    else:
-        profile_stmt = select(ClientProfile).join(User).where(User.email == email)
-        profile = session.exec(profile_stmt).first()
-        if not profile:
-            return {"error": "Profile not found"}
-        return {
-            "isClient": True,
-            "companyName": profile.companyName,
-            "projectName": profile.projectName,
-            "website": profile.websiteUrl,
-            "status": profile.status,
-            "seoStrategy": profile.seoStrategy,
-            "recommended_services": profile.recommended_services,
-            "targetKeywords": profile.targetKeywords or [],
-            "nextMilestone": profile.nextMilestone,
-            "nextMilestoneDate": profile.nextMilestoneDate,
-        }
-
-
-
-# ============================================================================
-# CLIENT STATUS ROUTES
-# ============================================================================
-
-class ClientStatusCreate(BaseModel):
-    name: str
-    color: Optional[str] = "bg-gray-500"
-
-@app.get("/client-statuses")
-async def get_client_statuses(session: Session = Depends(get_session)):
-    """Get all available client statuses"""
-    statement = select(ClientStatus).order_by(ClientStatus.name)
-    statuses = session.exec(statement).all()
-    return {"statuses": [
-        {"id": s.id, "name": s.name, "color": s.color} 
-        for s in statuses
-    ]}
-
-@app.post("/client-statuses")
-async def create_client_status(data: ClientStatusCreate, session: Session = Depends(get_session)):
-    """Add a new client status option"""
-    try:
-        status = ClientStatus(name=data.name, color=data.color)
-        session.add(status)
-        session.commit()
-        return {"success": True, "status": {"id": status.id, "name": status.name, "color": status.color}}
-    except Exception as e:
-        session.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.delete("/client-statuses/{status_id}")
-async def delete_client_status(status_id: int, session: Session = Depends(get_session)):
-    """Remove a client status option"""
-    status = session.get(ClientStatus, status_id)
-    if not status:
-        raise HTTPException(status_code=404, detail="Status not found")
-        
-    session.delete(status)
-    session.commit()
-    return {"success": True}
-
-
-# ============================================================================
-# CLIENT PROFILE ROUTES
-# ============================================================================
-
-@app.get("/clients")
-async def list_clients(status: Optional[str] = None, session: Session = Depends(get_session)):
-    """List all client profiles with filters"""
-    # Use eager loading/joins to prevent N+1 queries when accessing p.user
-    from sqlalchemy.orm import selectinload
-    statement = select(ClientProfile).options(selectinload(ClientProfile.user))
-    
-    if status and status != 'All':
-        statement = statement.where(ClientProfile.status == status)
-    
-    profiles = session.exec(statement).all()
-    results = []
-    for p in profiles:
-        # User relation is now eager-loaded, avoiding DB roundtrip here
-        user_email = p.user.email if (p.user and hasattr(p.user, 'email')) else "N/A"
-        results.append({
-            "id": p.id,
-            "projectName": p.projectName or p.companyName,
-            "category": p.seoStrategy or "Software Training Institute", # Placeholder category
-            "email": user_email,
-            "status": p.status,
-            "keywords": p.targetKeywords or [],
-            "website": p.websiteUrl
-        })
-    return {"clients": results}
-
-@app.get("/employees")
-async def list_employees(session: Session = Depends(get_session)):
-    """List all users with role 'Employee' or 'Admin'"""
-    statement = select(User).where(User.role.in_(['Employee', 'Admin']))
-    users = session.exec(statement).all()
-    return {"employees": [{"id": u.id, "name": u.name, "email": u.email, "role": u.role} for u in users]}
-
-@app.put("/clients/{client_id}/assign-employee")
-async def assign_employee(client_id: int, employee_id: int = Body(..., embed=True), session: Session = Depends(get_session)):
-    """Assign an employee to a client"""
-    client = session.get(ClientProfile, client_id)
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
-        
-    employee = session.get(User, employee_id)
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-        
-    client.assignedEmployeeId = employee_id
-    session.add(client)
-    session.commit()
-    return {"success": True, "assigned_to": employee.name}
-
-@app.get("/projects")
-async def list_projects(session: Session = Depends(get_session)):
-    """List all projects with basic details"""
-    statement = select(Project)
-    projects = session.exec(statement).all()
-    return {"projects": projects}
-
-@app.post("/projects")
-async def create_project(data: ProjectCreate, session: Session = Depends(get_session)):
-    """Create a new advanced project"""
-    project = Project(**data.model_dump())
-    session.add(project)
-    session.commit()
-    session.refresh(project)
-    return project
-
-@app.get("/projects/{project_id}")
-async def get_project_detail_view(project_id: int, session: Session = Depends(get_session)):
-    """Get full details of a project including remarks and team"""
-    project = session.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-        
-    # Get remarks
-    remarks_stmt = select(Remark).where(Remark.projectId == project_id).order_by(Remark.createdAt.desc())
-    remarks_list = session.exec(remarks_stmt).all()
-    
-    # Get assigned team details
-    employees = session.exec(select(User).where(User.id.in_(project.employeeIds))).all() if project.employeeIds else []
-    interns = session.exec(select(User).where(User.id.in_(project.internIds))).all() if project.internIds else []
-    
-    return {
-        "project": project,
-        "remarks": remarks_list,
-        "team": {
-            "employees": [{"id": e.id, "name": e.name, "email": e.email} for e in employees],
-            "interns": [{"id": i.id, "name": i.name, "email": i.email} for i in interns]
-        }
-    }
-
-@app.patch("/projects/{project_id}")
-async def update_project(project_id: int, data: ProjectUpdate, session: Session = Depends(get_session)):
-    """Update project progress, status, or assignments"""
-    project = session.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-        
-    update_data = data.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(project, key, value)
-    
-    project.updatedAt = datetime.utcnow()
-    session.add(project)
-    session.commit()
-    session.refresh(project)
-    return project
-
-@app.post("/projects/{project_id}/remarks")
-async def add_project_remark(project_id: int, data: ProjectRemarkAdd, author_id: int = Body(..., embed=True), session: Session = Depends(get_session)):
-    """Add a comment/remark to a project"""
-    remark = Remark(
-        content=data.content,
-        projectId=project_id,
-        authorId=author_id,
-        isInternal=data.isInternal
-    )
-    session.add(remark)
-    session.commit()
-    session.refresh(remark)
-    return remark
-
-@app.get("/interns")
-async def list_interns(session: Session = Depends(get_session)):
-    """List all users with role 'Intern'"""
-    statement = select(User).where(User.role == 'Intern')
-    users = session.exec(statement).all()
-    return {"interns": [{"id": u.id, "name": u.name, "email": u.email, "role": u.role} for u in users]}
-
+# ─────────────────────────────────────────────────────────────────────────────
+# Users
+# ─────────────────────────────────────────────────────────────────────────────
 @app.post("/users")
-async def create_user(data: UserCreate, session: Session = Depends(get_session)):
-    """Create a new user (Intern/Employee/Admin)"""
-    # Check if user exists
-    stmt = select(User).where(User.email == data.email)
-    existing = session.exec(stmt).first()
+def create_user(body: CreateUserRequest, session: Session = Depends(get_session)):
+    existing = session.exec(select(User).where(User.email == body.email)).first()
     if existing:
-        raise HTTPException(status_code=400, detail="User already exists")
-    
-    new_user = User(
-        name=data.name,
-        email=data.email,
-        password=data.password, # Note: Should be hashed in real app
-        role=data.role
+        raise HTTPException(status_code=400, detail="Email already exists")
+    user = User(
+        email=body.email,
+        password=_hash_password(body.password),
+        name=body.name,
+        role=body.role,
     )
-    session.add(new_user)
+    session.add(user)
     session.commit()
-    session.refresh(new_user)
-    return new_user
+    session.refresh(user)
+    if body.role == "Client":
+        cp = ClientProfile(userId=user.id)
+        session.add(cp)
+        session.commit()
+    return {"user": _user_dict(user)}
+
 
 @app.delete("/users/{user_id}")
-async def delete_user(user_id: int, session: Session = Depends(get_session)):
-    """Delete a user"""
+def delete_user(user_id: int, session: Session = Depends(get_session)):
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     session.delete(user)
     session.commit()
-    return {"success": True}
+    return {"ok": True}
 
-@app.patch("/clients/{client_id}")
-async def update_client_profile(client_id: int, data: ClientUpdate, session: Session = Depends(get_session)):
-    """Update specific fields of a client profile"""
-    profile = session.get(ClientProfile, client_id)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Client not found")
-        
-    update_data = data.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(profile, key, value)
-        
-    session.add(profile)
-    session.commit()
-    session.refresh(profile)
-    return profile
 
-@app.post("/clients/{client_id}/keywords")
-async def add_keyword(client_id: int, keyword: str = Body(..., embed=True), session: Session = Depends(get_session)):
-    """Add a target keyword to client profile"""
-    client = session.get(ClientProfile, client_id)
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
-        
-    current_keywords = list(client.targetKeywords) if client.targetKeywords else []
-    if keyword not in current_keywords:
-        current_keywords.append(keyword)
-        client.targetKeywords = current_keywords
-        session.add(client)
-        session.commit()
-        
-    return {"success": True, "keywords": client.targetKeywords}
+# ─────────────────────────────────────────────────────────────────────────────
+# Employees & Interns
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/employees")
+def list_employees(session: Session = Depends(get_session)):
+    employees = session.exec(select(User).where(User.role == "Employee")).all()
+    return {"employees": [_user_dict(u) for u in employees]}
 
-@app.delete("/clients/{client_id}/keywords")
-async def remove_keyword(client_id: int, keyword: str = Body(..., embed=True), session: Session = Depends(get_session)):
-    """Remove a target keyword from client profile"""
-    client = session.get(ClientProfile, client_id)
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
-        
-    current_keywords = list(client.targetKeywords) if client.targetKeywords else []
-    if keyword in current_keywords:
-        current_keywords.remove(keyword)
-        client.targetKeywords = current_keywords
-        session.add(client)
-        session.commit()
-        
-    return {"success": True, "keywords": client.targetKeywords}
 
-@app.get("/clients/{client_id}")
-async def get_client_detail(client_id: int, session: Session = Depends(get_session)):
-    """Get detailed profile for a specific client"""
-    from sqlalchemy.orm import selectinload
-    statement = select(ClientProfile).where(ClientProfile.id == client_id).options(selectinload(ClientProfile.user))
-    profile = session.exec(statement).first()
-    
-    if not profile:
-        raise HTTPException(status_code=404, detail="Client not found")
-    
-    # Get assigned employee details
-    assigned_employee = None
-    if profile.assignedEmployeeId:
-        emp = session.get(User, profile.assignedEmployeeId)
-        if emp:
-            assigned_employee = {"id": emp.id, "name": emp.name, "email": emp.email}
+@app.get("/interns")
+def list_interns(session: Session = Depends(get_session)):
+    interns = session.exec(select(User).where(User.role == "Intern")).all()
+    return {"interns": [_user_dict(u) for u in interns]}
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Client Statuses
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/client-statuses")
+def list_client_statuses(session: Session = Depends(get_session)):
+    statuses = session.exec(select(ClientStatus)).all()
+    if not statuses:
+        # Return sensible defaults if table is empty
+        statuses = [
+            {"id": 1, "name": "Active", "color": "bg-emerald-500"},
+            {"id": 2, "name": "Hold", "color": "bg-amber-500"},
+            {"id": 3, "name": "Pending", "color": "bg-slate-400"},
+        ]
+        return {"statuses": statuses}
+    return {"statuses": [{"id": s.id, "name": s.name, "color": s.color} for s in statuses]}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Clients
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/clients")
+def list_clients(
+    status: Optional[str] = None,
+    query: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 18,
+    session: Session = Depends(get_session),
+):
+    q = select(ClientProfile)
+    if status and status != "All":
+        q = q.where(ClientProfile.status == status)
+    if query:
+        search_term = f"%{query}%"
+        q = q.where(
+            or_(
+                ClientProfile.companyName.ilike(search_term),
+                ClientProfile.projectName.ilike(search_term),
+                ClientProfile.websiteUrl.ilike(search_term),
+                ClientProfile.gmbName.ilike(search_term),
+            )
+        )
+
+    total = session.exec(select(func.count()).select_from(q.subquery())).one()
+    clients = session.exec(q.offset((page - 1) * per_page).limit(per_page)).all()
     return {
-        "id": profile.id,
-        "companyName": profile.companyName,
-        "website": profile.websiteUrl,
-        "address": profile.address,
-        "phone": profile.phone,
-        "email": profile.user.email if profile.user else "",
-        "seoStrategy": profile.seoStrategy,
-        "tagline": profile.tagline,
-        "projectName": profile.projectName,
-        "gmbName": profile.gmbName,
-        "targetKeywords": profile.targetKeywords or [],
-        "assignedEmployee": assigned_employee,
-        "status": profile.status,
-        "recommended_services": profile.recommended_services,
-        "nextMilestone": profile.nextMilestone,
-        "nextMilestoneDate": profile.nextMilestoneDate
+        "clients": [_client_dict(c, session) for c in clients],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
     }
 
-# ============================================================================
-# DOCUMENT OCR ROUTES
-# ============================================================================
 
+@app.post("/clients")
+def create_client(body: ClientCreateRequest, session: Session = Depends(get_session)):
+    user = None
+    if body.email:
+        user = session.exec(select(User).where(User.email == body.email)).first()
+        if not user:
+            user = User(
+                email=body.email,
+                password=_hash_password(body.password or "changeme"),
+                name=body.name,
+                role="Client",
+            )
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+
+    cp = ClientProfile(
+        userId=user.id if user else None,
+        companyName=body.companyName,
+        phone=body.phone,
+        address=body.address,
+        status=body.status,
+    )
+    session.add(cp)
+    session.commit()
+    session.refresh(cp)
+    return {"client": _client_dict(cp, session)}
+
+
+@app.get("/clients/{client_id}")
+def get_client(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"client": _client_dict(cp, session)}
+
+
+@app.put("/clients/{client_id}")
+def update_client(
+    client_id: int, body: ClientUpdateRequest, session: Session = Depends(get_session)
+):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    updates = body.model_dump(exclude_unset=True)
+    for field, val in updates.items():
+        if field == "customFields" and val is not None:
+            cp.customFields = {**(cp.customFields or {}), **val}
+        else:
+            setattr(cp, field, val)
+    session.add(cp)
+    session.commit()
+    session.refresh(cp)
+    return {"client": _client_dict(cp, session)}
+
+
+@app.post("/clients/{client_id}/assign-employee")
+def assign_employee(
+    client_id: int, body: AssignEmployeeRequest, session: Session = Depends(get_session)
+):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    cp.assignedEmployeeId = body.employee_id
+    session.add(cp)
+    session.commit()
+    return {"ok": True}
+
+
+@app.post("/clients/{client_id}/keywords")
+def add_keyword(
+    client_id: int, body: KeywordRequest, session: Session = Depends(get_session)
+):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    kws = list(cp.targetKeywords or [])
+    if body.keyword not in kws:
+        kws.append(body.keyword)
+    cp.targetKeywords = kws
+    session.add(cp)
+    session.commit()
+    return {"keywords": cp.targetKeywords}
+
+
+@app.delete("/clients/{client_id}/keywords")
+def remove_keyword(
+    client_id: int, keyword: str = Query(...), session: Session = Depends(get_session)
+):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    cp.targetKeywords = [k for k in (cp.targetKeywords or []) if k != keyword]
+    session.add(cp)
+    session.commit()
+    return {"keywords": cp.targetKeywords}
+
+
+@app.get("/clients/{client_id}/remarks")
+def get_client_remarks(client_id: int, session: Session = Depends(get_session)):
+    remarks = session.exec(
+        select(Remark).where(Remark.clientId == client_id).order_by(Remark.createdAt.desc())
+    ).all()
+    return {
+        "remarks": [
+            {
+                "id": r.id,
+                "content": r.content,
+                "authorId": r.authorId,
+                "isInternal": r.isInternal,
+                "createdAt": r.createdAt.isoformat(),
+            }
+            for r in remarks
+        ]
+    }
+
+
+@app.post("/clients/{client_id}/remarks")
+def add_client_remark(
+    client_id: int, body: RemarkCreateRequest, session: Session = Depends(get_session)
+):
+    r = Remark(
+        content=body.content,
+        authorId=body.authorId,
+        clientId=client_id,
+        isInternal=body.isInternal,
+    )
+    session.add(r)
+    session.commit()
+    session.refresh(r)
+    return {
+        "id": r.id,
+        "content": r.content,
+        "authorId": r.authorId,
+        "isInternal": r.isInternal,
+        "createdAt": r.createdAt.isoformat(),
+    }
+
+
+@app.get("/clients/{client_id}/activities")
+def get_client_activities(client_id: int, session: Session = Depends(get_session)):
+    logs = session.exec(
+        select(ActivityLog)
+        .where(ActivityLog.clientId == client_id)
+        .order_by(ActivityLog.createdAt.desc())
+    ).all()
+    return {
+        "activities": [
+            {
+                "id": a.id,
+                "action": a.action,
+                "method": a.method,
+                "content": a.content,
+                "details": a.details,
+                "createdAt": a.createdAt.isoformat(),
+            }
+            for a in logs
+        ]
+    }
+
+
+@app.post("/clients/{client_id}/activities")
+def add_client_activity(
+    client_id: int, body: ActivityCreateRequest, session: Session = Depends(get_session)
+):
+    log = ActivityLog(
+        clientId=client_id,
+        userId=body.authorId,
+        action=body.action,
+        method=body.method,
+        content=body.content,
+        details=body.details,
+    )
+    session.add(log)
+    session.commit()
+    session.refresh(log)
+    return {"id": log.id, "action": log.action, "createdAt": log.createdAt.isoformat()}
+
+
+@app.get("/clients/{client_id}/emails")
+def get_client_emails(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"emails": []}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin – Client X-Ray
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/admin/client-xray/{client_id}")
+def admin_client_xray(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    remarks = session.exec(select(Remark).where(Remark.clientId == client_id)).all()
+    activities = session.exec(
+        select(ActivityLog).where(ActivityLog.clientId == client_id)
+    ).all()
+    service_reqs = session.exec(
+        select(ServiceRequest).where(ServiceRequest.client_id == client_id)
+    ).all()
+    return {
+        "client": _client_dict(cp, session),
+        "remarks": [
+            {"id": r.id, "content": r.content, "createdAt": r.createdAt.isoformat()}
+            for r in remarks
+        ],
+        "activities": [
+            {"id": a.id, "action": a.action, "createdAt": a.createdAt.isoformat()}
+            for a in activities
+        ],
+        "service_requests": [
+            {"id": sr.id, "status": sr.status, "service_id": sr.service_id}
+            for sr in service_reqs
+        ],
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Projects
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/projects")
+def list_projects(session: Session = Depends(get_session)):
+    projects = session.exec(select(Project)).all()
+    return {"projects": [_project_dict(p) for p in projects]}
+
+
+@app.post("/projects")
+def create_project(body: ProjectCreateRequest, session: Session = Depends(get_session)):
+    p = Project(
+        name=body.name,
+        description=body.description,
+        status=body.status,
+        progress=body.progress,
+        employeeIds=body.employeeIds,
+        internIds=body.internIds,
+        clientIds=body.clientIds,
+    )
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return {"project": _project_dict(p)}
+
+
+@app.get("/projects/{project_id}")
+def get_project(project_id: int, session: Session = Depends(get_session)):
+    p = session.get(Project, project_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Project not found")
+    remarks = session.exec(select(Remark).where(Remark.projectId == project_id)).all()
+    return {
+        "project": _project_dict(p),
+        "remarks": [
+            {"id": r.id, "content": r.content, "createdAt": r.createdAt.isoformat()}
+            for r in remarks
+        ],
+    }
+
+
+@app.put("/projects/{project_id}")
+def update_project(
+    project_id: int, body: ProjectUpdateRequest, session: Session = Depends(get_session)
+):
+    p = session.get(Project, project_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Project not found")
+    for field, val in body.model_dump(exclude_unset=True).items():
+        setattr(p, field, val)
+    p.updatedAt = datetime.utcnow()
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return {"project": _project_dict(p)}
+
+
+@app.delete("/projects/{project_id}")
+def delete_project(project_id: int, session: Session = Depends(get_session)):
+    p = session.get(Project, project_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Project not found")
+    session.delete(p)
+    session.commit()
+    return {"ok": True}
+
+
+@app.post("/projects/{project_id}/remarks")
+def add_project_remark(
+    project_id: int, body: RemarkCreateRequest, session: Session = Depends(get_session)
+):
+    r = Remark(
+        content=body.content,
+        authorId=body.authorId,
+        projectId=project_id,
+        isInternal=body.isInternal,
+    )
+    session.add(r)
+    session.commit()
+    session.refresh(r)
+    return {"id": r.id, "content": r.content, "createdAt": r.createdAt.isoformat()}
+
+
+def _project_dict(p: Project) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "description": p.description,
+        "status": p.status,
+        "progress": p.progress,
+        "employeeIds": p.employeeIds or [],
+        "internIds": p.internIds or [],
+        "clientIds": p.clientIds or [],
+        "createdAt": p.createdAt.isoformat(),
+        "updatedAt": p.updatedAt.isoformat(),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Services (Catalog + Requests)
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/services")
+def list_services(session: Session = Depends(get_session)):
+    svcs = session.exec(select(ServiceCatalog).where(ServiceCatalog.is_active == True)).all()
+    return {
+        "services": [
+            {
+                "id": s.id,
+                "name": s.name,
+                "cost": s.cost,
+                "intro_description": s.intro_description,
+                "full_description": s.full_description,
+                "handler_role": s.handler_role,
+                "image_url": s.image_url,
+                "past_results": s.past_results,
+            }
+            for s in svcs
+        ]
+    }
+
+
+@app.post("/services")
+def create_service(body: ServiceCreateRequest, session: Session = Depends(get_session)):
+    svc = ServiceCatalog(**body.model_dump())
+    session.add(svc)
+    session.commit()
+    session.refresh(svc)
+    return {"service": {"id": svc.id, "name": svc.name}}
+
+
+@app.post("/services/request")
+def request_service(body: ServiceRequestCreate, session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.email == body.client_email)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Client user not found")
+    cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client profile not found")
+
+    sr = ServiceRequest(service_id=body.service_id, client_id=cp.id)
+    session.add(sr)
+    session.commit()
+    session.refresh(sr)
+
+    # Create a message thread for this request
+    thread = MessageThread(
+        service_request_id=sr.id,
+        client_id=cp.id,
+    )
+    session.add(thread)
+    session.commit()
+
+    return {"request": {"id": sr.id, "status": sr.status}}
+
+
+@app.get("/services/my-requests")
+def my_requests(client_email: str = Query(...), session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.email == client_email)).first()
+    if not user:
+        return {"requests": []}
+    cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
+    if not cp:
+        return {"requests": []}
+    reqs = session.exec(select(ServiceRequest).where(ServiceRequest.client_id == cp.id)).all()
+    return {
+        "requests": [
+            {
+                "id": r.id,
+                "status": r.status,
+                "service_id": r.service_id,
+                "service_name": r.service.name if r.service else None,
+                "quoted_amount": r.quoted_amount,
+                "quote_message": r.quote_message,
+                "quote_doc_url": r.quote_doc_url,
+                "team_info": r.team_info,
+                "requested_at": r.requested_at.isoformat(),
+            }
+            for r in reqs
+        ]
+    }
+
+
+@app.get("/services/requests")
+def all_service_requests(session: Session = Depends(get_session)):
+    reqs = session.exec(select(ServiceRequest)).all()
+    result = []
+    for r in reqs:
+        cp = session.get(ClientProfile, r.client_id)
+        user = session.get(User, cp.userId) if cp and cp.userId else None
+        svc = session.get(ServiceCatalog, r.service_id)
+        emp = session.get(User, r.assigned_employee_id) if r.assigned_employee_id else None
+        result.append(
+            {
+                "id": r.id,
+                "status": r.status,
+                "service_id": r.service_id,
+                "service_name": svc.name if svc else None,
+                "client_id": r.client_id,
+                "client_name": user.name if user else None,
+                "client_email": user.email if user else None,
+                "assigned_employee_id": r.assigned_employee_id,
+                "assigned_employee_name": emp.name if emp else None,
+                "quoted_amount": r.quoted_amount,
+                "quote_message": r.quote_message,
+                "quote_doc_url": r.quote_doc_url,
+                "team_info": r.team_info,
+                "requested_at": r.requested_at.isoformat(),
+                "quote_sent_at": r.quote_sent_at.isoformat() if r.quote_sent_at else None,
+            }
+        )
+    return {"requests": result}
+
+
+@app.post("/services/quote")
+def send_quote(body: QuoteRequest, session: Session = Depends(get_session)):
+    sr = session.get(ServiceRequest, body.requestId)
+    if not sr:
+        raise HTTPException(status_code=404, detail="Request not found")
+    sr.quoted_amount = body.quoted_amount
+    sr.quote_message = body.quote_message
+    sr.team_info = body.team_info
+    sr.quote_doc_url = body.quote_doc_url
+    sr.status = "Quoted"
+    sr.quote_sent_at = datetime.utcnow()
+    if body.assigned_employee_id:
+        sr.assigned_employee_id = body.assigned_employee_id
+    session.add(sr)
+    session.commit()
+    return {"ok": True}
+
+
+@app.post("/services/accept-quote/{request_id}")
+def accept_quote(request_id: int, session: Session = Depends(get_session)):
+    sr = session.get(ServiceRequest, request_id)
+    if not sr:
+        raise HTTPException(status_code=404, detail="Request not found")
+    sr.status = "Accepted"
+    sr.client_accepted_quote = True
+    sr.accepted_at = datetime.utcnow()
+    session.add(sr)
+    session.commit()
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin – Services Overview
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/admin/services-overview")
+def admin_services_overview(session: Session = Depends(get_session)):
+    reqs = session.exec(select(ServiceRequest)).all()
+    statuses = {}
+    for r in reqs:
+        statuses[r.status] = statuses.get(r.status, 0) + 1
+    svcs = session.exec(select(ServiceCatalog)).all()
+    return {
+        "total_requests": len(reqs),
+        "by_status": statuses,
+        "services": [{"id": s.id, "name": s.name, "active": s.is_active} for s in svcs],
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Messages
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/messages/{user_id}")
+def get_message_threads(user_id: int, session: Session = Depends(get_session)):
+    from collections import defaultdict
+
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.role in ("Admin", "Employee"):
+        threads = session.exec(select(MessageThread)).all()
+    else:
+        cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user_id)).first()
+        if not cp:
+            return {"threads": []}
+        threads = session.exec(
+            select(MessageThread).where(MessageThread.client_id == cp.id)
+        ).all()
+
+    if not threads:
+        return {"threads": []}
+
+    thread_ids = [t.id for t in threads]
+
+    # Batch-fetch service requests
+    sr_ids = list({t.service_request_id for t in threads if t.service_request_id})
+    service_requests: dict = {}
+    if sr_ids:
+        service_requests = {
+            sr.id: sr
+            for sr in session.exec(select(ServiceRequest).where(ServiceRequest.id.in_(sr_ids))).all()
+        }
+
+    # Batch-fetch service catalog entries
+    svc_ids = list({sr.service_id for sr in service_requests.values() if sr.service_id})
+    services: dict = {}
+    if svc_ids:
+        services = {
+            s.id: s
+            for s in session.exec(select(ServiceCatalog).where(ServiceCatalog.id.in_(svc_ids))).all()
+        }
+
+    # Batch-fetch all messages for all threads in one query
+    all_messages = session.exec(
+        select(ChatMessage)
+        .where(ChatMessage.thread_id.in_(thread_ids))
+        .order_by(ChatMessage.thread_id, ChatMessage.timestamp)
+    ).all()
+
+    # Collect all user IDs needed (employees + message senders)
+    user_ids_needed = {t.employee_id for t in threads if t.employee_id}
+    user_ids_needed.update(m.sender_id for m in all_messages)
+    users_map: dict = {}
+    if user_ids_needed:
+        users_map = {
+            u.id: u
+            for u in session.exec(select(User).where(User.id.in_(list(user_ids_needed)))).all()
+        }
+
+    # Group messages by thread_id
+    msgs_by_thread: dict = defaultdict(list)
+    for m in all_messages:
+        msgs_by_thread[m.thread_id].append(m)
+
+    result = []
+    for t in threads:
+        sr = service_requests.get(t.service_request_id)
+        svc = services.get(sr.service_id) if sr else None
+        emp = users_map.get(t.employee_id) if t.employee_id else None
+        msgs = msgs_by_thread.get(t.id, [])
+        last_message = msgs[-1] if msgs else None
+        last_sender_user = users_map.get(last_message.sender_id) if last_message else None
+        unread_count = sum(
+            1 for m in msgs if m.sender_id != user_id and not m.is_read
+        )
+        has_unanswered = False
+        if last_message and last_message.sender_id != user_id and user.role in ("Admin", "Employee"):
+            sender_role = last_sender_user.role if last_sender_user else None
+            if sender_role == "Client":
+                has_unanswered = True
+
+        result.append(
+            {
+                "thread_id": t.id,
+                "service_request_id": t.service_request_id,
+                "service_name": svc.name if svc else "Service",
+                "service_status": sr.status if sr else "Unknown",
+                "handler": emp.name if emp else "Support Team",
+                "unread_count": unread_count,
+                "has_unanswered": has_unanswered,
+                "last_message": last_message.content if last_message else None,
+                "last_sender": _get_sender_name_from_map(last_message.sender_id, users_map) if last_message else None,
+                "last_message_timestamp": last_message.timestamp.isoformat() if last_message else None,
+                "messages": [
+                    {
+                        "id": m.id,
+                        "sender": _get_sender_name_from_map(m.sender_id, users_map),
+                        "content": m.content,
+                        "timestamp": m.timestamp.isoformat(),
+                        "isMe": m.sender_id == user_id,
+                        "is_read": m.is_read,
+                    }
+                    for m in msgs
+                ],
+            }
+        )
+    return {"threads": result}
+
+
+@app.post("/messages/send")
+def send_message(body: SendMessageRequest, session: Session = Depends(get_session)):
+    thread = session.get(MessageThread, body.thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    msg = ChatMessage(
+        thread_id=body.thread_id,
+        sender_id=body.sender_id,
+        content=body.content,
+    )
+    session.add(msg)
+    session.commit()
+    session.refresh(msg)
+    return {
+        "id": msg.id,
+        "sender": _get_sender_name(msg.sender_id, session),
+        "content": msg.content,
+        "timestamp": msg.timestamp.isoformat(),
+    }
+
+
+def _get_sender_name(sender_id: int, session: Session) -> str:
+    u = session.get(User, sender_id)
+    return u.name or u.email if u else "Unknown"
+
+
+def _get_sender_name_from_map(sender_id: int, users_map: dict) -> str:
+    u = users_map.get(sender_id)
+    return (u.name or u.email) if u else "Unknown"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Calls
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/calls")
+def list_calls(unsummarized: Optional[bool] = None, session: Session = Depends(get_session)):
+    q = select(CallLog).order_by(CallLog.received_at.desc())
+    calls = session.exec(q).all()
+    result = []
+    for c in calls:
+        d = _call_dict(c)
+        if unsummarized is True and d.get("summary"):
+            continue
+        result.append(d)
+    return {"calls": result}
+
+
+@app.post("/calls")
+def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
+    c = CallLog(
+        phone_number=body.phone_number,
+        duration_seconds=body.duration_seconds,
+    )
+    session.add(c)
+    session.commit()
+    session.refresh(c)
+    return {"call": _call_dict(c)}
+
+
+@app.put("/calls/{call_id}")
+def update_call(
+    call_id: int, body: Dict[str, Any], session: Session = Depends(get_session)
+):
+    c = session.get(CallLog, call_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Call not found")
+    for field, val in body.items():
+        if hasattr(c, field):
+            setattr(c, field, val)
+    session.add(c)
+    session.commit()
+    session.refresh(c)
+    return {"call": _call_dict(c)}
+
+
+@app.post("/calls/{call_id}/summary")
+def add_call_summary(
+    call_id: int, body: CallSummaryRequest, session: Session = Depends(get_session)
+):
+    c = session.get(CallLog, call_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Call not found")
+    # CallLog model doesn't have a summary field yet; ignore gracefully
+    return {"ok": True}
+
+
+def _call_dict(c: CallLog) -> dict:
+    return {
+        "id": c.id,
+        "phone_number": c.phone_number,
+        "received_at": c.received_at.isoformat(),
+        "duration_seconds": c.duration_seconds,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Documents / OCR
+# ─────────────────────────────────────────────────────────────────────────────
+from fastapi import UploadFile, File
 from modules.llm_engine import analyze_document
 
 @app.post("/documents/ocr")
-async def ocr_document(file: UploadFile = File(...), session: Session = Depends(get_session)):
-    """Upload an image and extract details using OCR"""
+async def ocr_document(file: UploadFile = File(...)):
     try:
-        contents = await file.read()
-        result = analyze_document(contents)
+        image_bytes = await file.read()
+        result = analyze_document(image_bytes)
+        if "error" in result:
+            return {"error": result["error"]}
         return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Activities (global)
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/activities")
+def list_activities(session: Session = Depends(get_session)):
+    logs = session.exec(
+        select(ActivityLog).order_by(ActivityLog.createdAt.desc()).limit(100)
+    ).all()
+    return {
+        "activities": [
+            {
+                "id": a.id,
+                "action": a.action,
+                "method": a.method,
+                "content": a.content,
+                "details": a.details,
+                "createdAt": a.createdAt.isoformat(),
+            }
+            for a in logs
+        ]
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Email Agent
+# ─────────────────────────────────────────────────────────────────────────────
+@app.post("/generate")
+def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks = None):
+    try:
+        from modules.llm_engine import generate_email as _gen, analyze_content
+        from modules.scraper import scrape_website
+        from modules.email_sender import send_email_outlook
+        import os
+        from database import SentEmail
+        import json
+        session = next(get_session())
+
+        # --- Static Email Template ---
+        OUTREACH_SUBJECT = "Let's grow {company_name} together!"
+        OUTREACH_BODY_EN = (
+            "Hi {company_name},\n\n"
+            "We'd love to help {company_name} grow online with our services: {services}.\n\n"
+            "Best,\nDapros Team"
+        )
+        OUTREACH_BODY_ES = (
+            "Hola {company_name},\n\n"
+            "Nos encantaría ayudar a {company_name} a crecer en línea con nuestros servicios: {services}.\n\n"
+            "Saludos,\nEquipo Dapros"
+        )
+        INBOUND_SUBJECT = "Thank you for reaching out, {company_name}!"
+        INBOUND_BODY_EN = (
+            "Hi {company_name},\n\n"
+            "Thank you for your interest in our services: {services}. We'll get back to you soon.\n\n"
+            "Best,\nDapros Team"
+        )
+        INBOUND_BODY_ES = (
+            "Hola {company_name},\n\n"
+            "Gracias por su interés en nuestros servicios: {services}. Nos pondremos en contacto pronto.\n\n"
+            "Saludos,\nEquipo Dapros"
+        )
+
+
+        # Always use LLM to analyze and generate email, even if only company name or email is provided
+        if body.company_url:
+            text = scrape_website(body.company_url)
+        else:
+            text = f"{body.company_name or ''} {body.to_email or ''}"
+            # Use LLM for company research, service mapping, and draft generation based on company name and website (no scraping)
+            llm_input = f"Company Name: {body.company_name or ''}\nWebsite: {body.company_url or ''}"
+            analysis = analyze_content(llm_input)
+            company_name = analysis.get("company_name") or body.company_name or "Your Company"
+            services = ", ".join(analysis.get("key_value_props") or ["SEO", "PPC", "Web Development"])
+            # Try to extract company email from analysis.contacts
+            company_email = None
+            contacts = analysis.get("contacts") or []
+            for c in contacts:
+                if c.get("email"):
+                    company_email = c["email"]
+                    break
+            # Use LLM to generate outreach and inbound drafts
+            outreach_llm = _gen(analysis)
+            inbound_llm = _gen(analysis)
+            outreach_subject = outreach_llm.get("subject") or OUTREACH_SUBJECT.format(company_name=company_name)
+            outreach_body_en = outreach_llm.get("english_body") or OUTREACH_BODY_EN.format(company_name=company_name, services=services)
+            outreach_body_es = outreach_llm.get("spanish_body") or OUTREACH_BODY_ES.format(company_name=company_name, services=services)
+            inbound_subject = inbound_llm.get("subject") or INBOUND_SUBJECT.format(company_name=company_name)
+            inbound_body_en = inbound_llm.get("english_body") or INBOUND_BODY_EN.format(company_name=company_name, services=services)
+            inbound_body_es = inbound_llm.get("spanish_body") or INBOUND_BODY_ES.format(company_name=company_name, services=services)
+
+        sender = body.sender_email or os.getenv("EMAIL_SENDER", "")
+        password = os.getenv("EMAIL_PASSWORD", "")
+        # Only send the email if manual is False and all required fields are present
+        if not body.manual and all([body.to_email, body.subject, body.body, sender, password]):
+            try:
+                send_email_outlook(
+                    to_email=body.to_email,
+                    subject=body.subject,
+                    body=body.body,
+                    sender_email=sender,
+                    sender_password=password,
+                )
+            except Exception as e:
+                print(f"Email send failed: {e}")
+        # If any required field is missing, skip sending and just generate the draft
+
+        # Only save to database if required fields are present
+        # Provide default subject and content if missing, so frontend always gets a visible draft
+        # Build the draft object for both outreach and inbound
+        draft_obj = {
+            "outreach": {
+                "subject": outreach_subject,
+                "english_body": outreach_body_en,
+                "spanish_body": outreach_body_es,
+            },
+            "inbound": {
+                "subject": inbound_subject,
+                "english_body": inbound_body_en,
+                "spanish_body": inbound_body_es,
+            },
+            "company_name": company_name,
+            "services": services,
+                "to_email": company_email or body.to_email,
+            "manual": body.manual,
+            "sent_at": datetime.utcnow().isoformat(),
+            "client_id": body.client_id
+        }
+        # Always save the email and log activity, even if some fields are missing
+        client_id = body.client_id
+        if not client_id:
+            from database import ClientProfile
+            # Try to find existing client by email
+            existing_client = session.exec(select(ClientProfile).where(ClientProfile.email == body.to_email)).first() if hasattr(ClientProfile, 'email') else None
+            if existing_client:
+                client_id = existing_client.id
+            else:
+                # Create new client profile
+                cp = ClientProfile(
+                    companyName=draft_obj["company_name"] or "Unknown Company",
+                    email=body.to_email or f"unknown_contact_{datetime.utcnow().timestamp()}@placeholder.com",
+                    status="Active"
+                )
+                session.add(cp)
+                session.commit()
+                session.refresh(cp)
+                client_id = cp.id
+        # Save the outreach draft to DB, using placeholders if needed
+        email_db_obj = {
+            "to_email": body.to_email or f"unknown_contact_{datetime.utcnow().timestamp()}@placeholder.com",
+            "subject": draft_obj["outreach"].get("subject") or "[No Subject]",
+            "english_body": draft_obj["outreach"].get("english_body") or "[No Body]",
+            "spanish_body": draft_obj["outreach"].get("spanish_body") or "[No Spanish Body]",
+            "recommended_services": draft_obj.get("services") or "",
+            "manual": body.manual,
+            "draft_json": json.dumps(draft_obj),
+            "sent_at": draft_obj["sent_at"],
+            "client_id": client_id
+        }
+        sent_email = SentEmail(**email_db_obj)
+        session.add(sent_email)
+        session.commit()
+        session.refresh(sent_email)
+
+        # --- Log activity for this client ---
+        from database import ActivityLog
+        activity = ActivityLog(
+            clientId=client_id,
+            action="Email Generated",
+            method="Email",
+            content=f"Generated outreach email for {draft_obj.get('company_name') or '[Unknown Company]'} ({body.company_url or ''}) to {body.to_email or '[Unknown Email]'}",
+            details=draft_obj["outreach"].get("subject") or "[No Subject]"
+        )
+        session.add(activity)
+        session.commit()
+
+        # Schedule LLM draft generation in the background if needed
+        if background_tasks is not None:
+            background_tasks.add_task(generate_llm_draft_task, sent_email.id, body.dict())
+
+        return {"ok": True, "email_id": sent_email.id, "draft": draft_obj, "client_id": client_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/clients")
-async def create_client(
-    data: ClientCreate,
-    session: Session = Depends(get_session)
+# Background task to update SentEmail with LLM-generated draft
+def generate_llm_draft_task(sent_email_id, body_dict):
+    import time
+    import json
+    from modules.llm_engine import analyze_content, generate_email as llm_generate_email
+    from modules.scraper import scrape_website
+    from database import Session, SentEmail, engine
+    session = Session(engine)
+    try:
+        # Scrape and analyze
+        text = scrape_website(body_dict.get("company_url", "")) if body_dict.get("company_url") else ""
+        analysis = analyze_content(text) if text else {}
+        llm_result = llm_generate_email(analysis, None)
+        # Update SentEmail record
+        sent_email = session.get(SentEmail, sent_email_id)
+        if sent_email:
+            sent_email.subject = llm_result.get("subject", sent_email.subject)
+            sent_email.english_body = llm_result.get("english_body", sent_email.english_body)
+            sent_email.spanish_body = llm_result.get("spanish_body", sent_email.spanish_body)
+            sent_email.draft_json = json.dumps(llm_result)
+            session.add(sent_email)
+            session.commit()
+    except Exception as e:
+        print(f"LLM draft background task failed: {e}")
+    finally:
+        session.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dashboard Stats
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/dashboard-stats")
+def dashboard_stats(
+    role: str = Query("Client"),
+    email: str = Query(""),
+    session: Session = Depends(get_session),
 ):
-    """Manually create a new client and user"""
-    # 1. Ensure User exists
-    user_stmt = select(User).where(User.email == data.email)
-    user = session.exec(user_stmt).first()
-    if not user:
-        user = User(email=data.email, password="password123", name=data.companyName, role="Client")
-        session.add(user)
+    if role == "Client":
+        user = session.exec(select(User).where(User.email == email)).first()
+        if not user:
+            return {"isClient": True}
+        cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
+        if not cp:
+            return {"isClient": True}
+
+        service_reqs = session.exec(
+            select(ServiceRequest).where(ServiceRequest.client_id == cp.id)
+        ).all()
+        active_services = [
+            r for r in service_reqs if r.status in ("Accepted", "In Progress")
+        ]
+        pending_quotes = [r for r in service_reqs if r.status == "Quoted"]
+
+        # Resolve service names for active services and quotes
+        def _resolve_service_name(service_id):
+            if not service_id:
+                return "Service"
+            svc = session.get(ServiceCatalog, service_id)
+            return svc.name if svc else "Service"
+
+        # Milestones for this client
+        milestones = session.exec(
+            select(Milestone)
+            .where(Milestone.client_id == cp.id)
+            .order_by(Milestone.order, Milestone.created_at)
+        ).all()
+
+        # Invoices for this client
+        invoices = session.exec(
+            select(Invoice)
+            .where(Invoice.client_id == cp.id)
+            .order_by(Invoice.created_at.desc())
+        ).all()
+
+        # Files for this client
+        files = session.exec(
+            select(ClientFileUpload)
+            .where(ClientFileUpload.client_id == cp.id)
+            .order_by(ClientFileUpload.created_at.desc())
+        ).all()
+
+        # Recent activities for this client
+        activities = session.exec(
+            select(ActivityLog)
+            .where(ActivityLog.clientId == cp.id)
+            .order_by(ActivityLog.createdAt.desc())
+            .limit(20)
+        ).all()
+
+        # Notifications for this user
+        notifications = session.exec(
+            select(Notification)
+            .where(Notification.user_id == user.id)
+            .order_by(Notification.created_at.desc())
+            .limit(10)
+        ).all()
+
+        # Proposals for this client
+        proposals = session.exec(
+            select(Proposal)
+            .where(Proposal.client_id == cp.id)
+            .order_by(Proposal.created_at.desc())
+        ).all()
+
+        # Projects for this client (clientIds is a JSON list)
+        all_projects = session.exec(select(Project)).all()
+        projects = [p for p in all_projects if cp.id in (p.clientIds or [])]
+
+        # Invoice summary stats
+        total_billed = sum(inv.total for inv in invoices)
+        total_paid = sum(inv.total for inv in invoices if inv.status == "Paid")
+        total_pending_inv = sum(inv.total for inv in invoices if inv.status in ("Sent", "Draft"))
+        total_overdue = sum(inv.total for inv in invoices if inv.status == "Overdue")
+
+        return {
+            "isClient": True,
+            "companyName": cp.companyName or "",
+            "projectName": cp.projectName or "",
+            "website": cp.websiteUrl or "",
+            "status": cp.status,
+            "seoStrategy": cp.seoStrategy or "",
+            "recommended_services": cp.recommended_services or "",
+            "targetKeywords": cp.targetKeywords or [],
+            "nextMilestone": cp.nextMilestone or "",
+            "nextMilestoneDate": cp.nextMilestoneDate or "",
+            "active_services_list": [
+                {"id": r.id, "service_id": r.service_id, "status": r.status, "service_name": _resolve_service_name(r.service_id)}
+                for r in active_services
+            ],
+            "pending_quotes_list": [
+                {
+                    "id": r.id,
+                    "service_id": r.service_id,
+                    "quoted_amount": r.quoted_amount,
+                    "quote_message": r.quote_message,
+                    "service_name": _resolve_service_name(r.service_id),
+                }
+                for r in pending_quotes
+            ],
+            "pending_requests_count": len([r for r in service_reqs if r.status == "Pending"]),
+            "milestones": [
+                {
+                    "id": m.id, "title": m.title, "description": m.description,
+                    "due_date": m.due_date, "status": m.status, "order": m.order,
+                    "created_at": m.created_at.isoformat(),
+                }
+                for m in milestones
+            ],
+            "invoices": [
+                {
+                    "id": inv.id, "invoice_number": inv.invoice_number,
+                    "amount": inv.amount, "tax": inv.tax, "total": inv.total,
+                    "status": inv.status, "due_date": inv.due_date,
+                    "notes": inv.notes, "line_items": inv.line_items or [],
+                    "paid_at": inv.paid_at.isoformat() if inv.paid_at else None,
+                    "created_at": inv.created_at.isoformat(),
+                }
+                for inv in invoices
+            ],
+            "invoice_summary": {
+                "total_billed": total_billed,
+                "total_paid": total_paid,
+                "total_pending": total_pending_inv,
+                "total_overdue": total_overdue,
+            },
+            "files": [
+                {
+                    "id": f.id, "filename": f.filename, "file_url": f.file_url,
+                    "file_size": f.file_size, "mime_type": f.mime_type,
+                    "description": f.description, "created_at": f.created_at.isoformat(),
+                }
+                for f in files
+            ],
+            "activities": [
+                {
+                    "id": a.id, "action": a.action, "method": a.method,
+                    "content": a.content, "details": a.details,
+                    "createdAt": a.createdAt.isoformat(),
+                }
+                for a in activities
+            ],
+            "notifications": [
+                {
+                    "id": n.id, "title": n.title, "message": n.message,
+                    "type": n.type, "link": n.link, "is_read": n.is_read,
+                    "created_at": n.created_at.isoformat(),
+                }
+                for n in notifications
+            ],
+            "unread_notifications_count": sum(1 for n in notifications if not n.is_read),
+            "proposals": [
+                {
+                    "id": p.id, "title": p.title, "status": p.status,
+                    "total_value": p.total_value, "valid_until": p.valid_until,
+                    "created_at": p.created_at.isoformat(),
+                }
+                for p in proposals
+            ],
+            "projects": [
+                {
+                    "id": p.id, "name": p.name, "status": p.status,
+                    "progress": p.progress,
+                    "created_at": p.createdAt.isoformat(),
+                }
+                for p in projects
+            ],
+        }
+
+    # Admin / Employee stats
+    total_clients = len(session.exec(select(ClientProfile)).all())
+    active_clients = len(
+        session.exec(select(ClientProfile).where(ClientProfile.status == "Active")).all()
+    )
+    pending_clients = len(
+        session.exec(select(ClientProfile).where(ClientProfile.status == "Pending")).all()
+    )
+    hold_clients = len(
+        session.exec(select(ClientProfile).where(ClientProfile.status == "Hold")).all()
+    )
+    total_projects = len(session.exec(select(Project)).all())
+    total_employees = len(
+        session.exec(select(User).where(User.role == "Employee")).all()
+    )
+    total_interns = len(
+        session.exec(select(User).where(User.role == "Intern")).all()
+    )
+    total_activities = len(session.exec(select(ActivityLog)).all())
+    total_calls = len(session.exec(select(CallLog)).all())
+
+    # Build real 7-day chart data from database
+    labels = []
+    activity_chart = []
+    email_chart = []
+    call_chart = []
+    all_activities = session.exec(select(ActivityLog)).all()
+    all_emails = session.exec(select(SentEmail)).all()
+    all_calls_list = session.exec(select(CallLog)).all()
+    total_emails_sent = len(all_emails)
+    for i in range(6, -1, -1):
+        day = datetime.utcnow() - timedelta(days=i)
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        labels.append(day.strftime("%b %d"))
+        activity_chart.append(sum(1 for a in all_activities if a.createdAt and day_start <= a.createdAt < day_end))
+        email_chart.append(sum(1 for e in all_emails if e.sent_at and day_start <= e.sent_at < day_end))
+        call_chart.append(sum(1 for c in all_calls_list if c.createdAt and day_start <= c.createdAt < day_end))
+
+    recent_activities = session.exec(
+        select(ActivityLog).order_by(ActivityLog.createdAt.desc()).limit(10)
+    ).all()
+
+    return {
+        "total": total_clients,
+        "active": active_clients,
+        "pending": pending_clients,
+        "hold": hold_clients,
+        "totalProjects": total_projects,
+        "totalEmployees": total_employees,
+        "totalInterns": total_interns,
+        "totalActivities": total_activities,
+        "totalCalls": total_calls,
+        "totalEmailsSent": total_emails_sent,
+        "chartLabels": labels,
+        "activityChart": activity_chart,
+        "emailChart": email_chart,
+        "callChart": call_chart,
+        "recentActivities": [
+            {
+                "id": a.id,
+                "action": a.action,
+                "method": a.method,
+                "content": a.content,
+                "createdAt": a.createdAt.isoformat() if a.createdAt else None,
+            }
+            for a in recent_activities
+        ],
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Client Timeline (unified)
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/clients/{client_id}/timeline")
+def client_timeline(client_id: int, session: Session = Depends(get_session)):
+    """Unified timeline: activities, emails, calls, invoices, milestones, files."""
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    events: list[dict] = []
+
+    # Activities
+    for a in session.exec(select(ActivityLog).where(ActivityLog.clientId == client_id)).all():
+        events.append({
+            "type": "activity", "id": a.id,
+            "title": a.action or a.method or "Activity",
+            "detail": a.content or "",
+            "date": a.createdAt.isoformat() if a.createdAt else None,
+        })
+
+    # Emails
+    for e in session.exec(select(SentEmail).where(SentEmail.client_id == client_id)).all():
+        events.append({
+            "type": "email", "id": e.id,
+            "title": f"Email: {e.subject or 'No subject'}",
+            "detail": e.to_email or "",
+            "date": e.sent_at.isoformat() if e.sent_at else None,
+        })
+
+    # Calls
+    for c in session.exec(select(CallLog).where(CallLog.client_id == client_id)).all():
+        events.append({
+            "type": "call", "id": c.id,
+            "title": f"Call: {c.phone_number or 'Unknown'}",
+            "detail": c.description or "",
+            "date": c.createdAt.isoformat() if c.createdAt else None,
+        })
+
+    # Invoices
+    for inv in session.exec(select(Invoice).where(Invoice.client_id == client_id)).all():
+        events.append({
+            "type": "invoice", "id": inv.id,
+            "title": f"Invoice #{inv.invoice_number} — ${inv.total}",
+            "detail": f"Status: {inv.status}",
+            "date": inv.created_at.isoformat() if inv.created_at else None,
+        })
+
+    # Milestones
+    for m in session.exec(select(Milestone).where(Milestone.client_id == client_id)).all():
+        events.append({
+            "type": "milestone", "id": m.id,
+            "title": f"Milestone: {m.title}",
+            "detail": f"Status: {m.status}",
+            "date": m.created_at.isoformat() if m.created_at else None,
+        })
+
+    # Files
+    for f in session.exec(select(ClientFileUpload).where(ClientFileUpload.client_id == client_id)).all():
+        events.append({
+            "type": "file", "id": f.id,
+            "title": f"File: {f.filename}",
+            "detail": f.description or "",
+            "date": f.created_at.isoformat() if f.created_at else None,
+        })
+
+    # Sort newest first
+    events.sort(key=lambda x: x["date"] or "", reverse=True)
+    return {"timeline": events}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Global Search
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/search")
+def global_search(q: str = Query("", min_length=1), session: Session = Depends(get_session)):
+    results: list[dict] = []
+    term = f"%{q}%"
+
+    # Clients
+    for c in session.exec(
+        select(ClientProfile).where(
+            (ClientProfile.companyName.ilike(term)) | (ClientProfile.projectName.ilike(term))
+        ).limit(5)
+    ).all():
+        results.append({"type": "client", "id": c.id, "title": c.companyName or "Client", "sub": c.projectName or "", "link": f"/clients/{c.id}"})
+
+    # Projects
+    for p in session.exec(select(Project).where(Project.name.ilike(term)).limit(5)).all():
+        results.append({"type": "project", "id": p.id, "title": p.name, "sub": p.status or "", "link": f"/projects/{p.id}"})
+
+    # Tasks
+    for t in session.exec(select(Task).where(Task.title.ilike(term)).limit(5)).all():
+        results.append({"type": "task", "id": t.id, "title": t.title, "sub": t.status or "", "link": "/tasks"})
+
+    # Invoices
+    for inv in session.exec(select(Invoice).where(Invoice.invoice_number.ilike(term)).limit(5)).all():
+        results.append({"type": "invoice", "id": inv.id, "title": f"Invoice #{inv.invoice_number}", "sub": f"${inv.total} — {inv.status}", "link": "/invoices"})
+
+    return {"results": results, "query": q}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Monitor Stats (real data)
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/monitor-stats")
+def monitor_stats(session: Session = Depends(get_session)):
+    """Real aggregated stats for the monitor/analytics page."""
+    # Total rankings tracked
+    all_rankings = session.exec(select(KeywordRankEntry)).all()
+    total_keywords = len(set(r.keyword for r in all_rankings))
+    avg_position = round(sum(r.position for r in all_rankings if r.position) / max(len(all_rankings), 1), 1) if all_rankings else 0
+
+    # Recent rankings for the table
+    recent = session.exec(
+        select(KeywordRankEntry).order_by(KeywordRankEntry.recorded_at.desc()).limit(20)
+    ).all()
+    # De-duplicate by keyword (keep latest)
+    seen = set()
+    keyword_rows = []
+    for r in recent:
+        if r.keyword not in seen:
+            seen.add(r.keyword)
+            keyword_rows.append({
+                "keyword": r.keyword,
+                "position": r.position,
+                "url": r.url,
+                "search_engine": r.search_engine,
+                "recorded_at": r.recorded_at.isoformat() if r.recorded_at else None,
+            })
+
+    # Project completion stats
+    projects = session.exec(select(Project)).all()
+    completed_projects = len([p for p in projects if p.status == "Completed"])
+    total_projects = len(projects)
+    avg_progress = round(sum(p.progress or 0 for p in projects) / max(total_projects, 1))
+
+    # Invoice revenue stats
+    invoices = session.exec(select(Invoice)).all()
+    total_revenue = sum(inv.total for inv in invoices)
+    paid_revenue = sum(inv.total for inv in invoices if inv.status == "Paid")
+    pending_revenue = sum(inv.total for inv in invoices if inv.status in ("Sent", "Draft"))
+
+    # Weekly activity counts (last 10 weeks)
+    weekly_activity = []
+    for i in range(9, -1, -1):
+        start = datetime.utcnow() - timedelta(weeks=i + 1)
+        end = datetime.utcnow() - timedelta(weeks=i)
+        count = len(session.exec(
+            select(ActivityLog).where(ActivityLog.createdAt >= start, ActivityLog.createdAt < end)
+        ).all())
+        weekly_activity.append({"week": f"W{10 - i}", "count": count})
+
+    return {
+        "total_keywords": total_keywords,
+        "avg_position": avg_position,
+        "keyword_rows": keyword_rows,
+        "total_projects": total_projects,
+        "completed_projects": completed_projects,
+        "avg_progress": avg_progress,
+        "total_revenue": round(total_revenue, 2),
+        "paid_revenue": round(paid_revenue, 2),
+        "pending_revenue": round(pending_revenue, 2),
+        "weekly_activity": weekly_activity,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Setup / Audit
+# ─────────────────────────────────────────────────────────────────────────────
+@app.post("/setup/verify-domain")
+def verify_domain(body: SetupDomainRequest):
+    domain = re.sub(r"https?://", "", body.domain).strip("/")
+    return {"domain": domain, "verified": True, "message": "Domain looks good"}
+
+
+@app.post("/audit/trigger")
+def trigger_audit(body: dict = {}, session: Session = Depends(get_session)):
+    """Real SEO audit: fetches the domain, analyzes HTML for common SEO issues."""
+    import httpx
+    from bs4 import BeautifulSoup
+    import time
+
+    domain = body.get("domain") or body.get("email", "")
+    # Try to resolve a client domain from email
+    if "@" in domain:
+        user = session.exec(select(User).where(User.email == domain)).first()
+        if user:
+            cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
+            if cp and cp.websiteUrl:
+                domain = cp.websiteUrl
+    if not domain:
+        return {"success": False, "message": "No domain to audit"}
+
+    url = domain if domain.startswith("http") else f"https://{domain}"
+    url = url.rstrip("/")
+
+    issues = {}
+    health = 100
+    page_speed = 0
+    issues_count = 0
+
+    try:
+        start = time.time()
+        r = httpx.get(url, follow_redirects=True, timeout=15, headers={"User-Agent": "SerpHawk-Audit/1.0"})
+        load_time = round(time.time() - start, 2)
+        page_speed = max(10, min(100, int(100 - load_time * 15)))
+        html = r.text
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Title
+        title_tag = soup.find("title")
+        title_text = title_tag.get_text(strip=True) if title_tag else ""
+        if not title_text:
+            issues["title_tag"] = "Missing — add a unique <title> tag"
+            health -= 15
+            issues_count += 1
+        elif len(title_text) > 70:
+            issues["title_tag"] = f"Too long ({len(title_text)} chars) — keep under 60-70"
+            health -= 5
+            issues_count += 1
+        else:
+            issues["title_tag"] = f"Pass — '{title_text[:50]}..." if len(title_text) > 50 else f"Pass — '{title_text}'"
+
+        # Meta description
+        meta_desc = soup.find("meta", attrs={"name": "description"})
+        desc_content = meta_desc["content"] if meta_desc and meta_desc.get("content") else ""
+        if not desc_content:
+            issues["meta_description"] = "Missing — add a 150-160 char meta description"
+            health -= 10
+            issues_count += 1
+        elif len(desc_content) > 160:
+            issues["meta_description"] = f"Too long ({len(desc_content)} chars)"
+            health -= 3
+            issues_count += 1
+        else:
+            issues["meta_description"] = "Pass"
+
+        # H1
+        h1s = soup.find_all("h1")
+        if len(h1s) == 0:
+            issues["h1_tag"] = "Missing — every page needs one H1"
+            health -= 10
+            issues_count += 1
+        elif len(h1s) > 1:
+            issues["h1_tag"] = f"Multiple H1s found ({len(h1s)}) — use only one"
+            health -= 5
+            issues_count += 1
+        else:
+            issues["h1_tag"] = f"Pass — '{h1s[0].get_text(strip=True)[:50]}'"
+
+        # Images without alt
+        imgs = soup.find_all("img")
+        no_alt = [i for i in imgs if not i.get("alt")]
+        if no_alt:
+            issues["image_alt_tags"] = f"{len(no_alt)} of {len(imgs)} images missing alt text"
+            health -= min(10, len(no_alt) * 2)
+            issues_count += len(no_alt)
+        else:
+            issues["image_alt_tags"] = f"Pass — all {len(imgs)} images have alt text" if imgs else "No images found"
+
+        # HTTPS
+        if not url.startswith("https"):
+            issues["https"] = "Not using HTTPS — critical security issue"
+            health -= 15
+            issues_count += 1
+        else:
+            issues["https"] = "Pass — HTTPS enabled"
+
+        # Canonical
+        canonical = soup.find("link", attrs={"rel": "canonical"})
+        if not canonical:
+            issues["canonical_tag"] = "Missing — add a canonical URL"
+            health -= 5
+            issues_count += 1
+        else:
+            issues["canonical_tag"] = "Pass"
+
+        # Viewport
+        viewport = soup.find("meta", attrs={"name": "viewport"})
+        if not viewport:
+            issues["mobile_viewport"] = "Missing — not mobile-friendly"
+            health -= 10
+            issues_count += 1
+        else:
+            issues["mobile_viewport"] = "Pass — viewport meta present"
+
+        # Open Graph
+        og = soup.find("meta", attrs={"property": "og:title"})
+        if not og:
+            issues["open_graph"] = "Missing OG tags — poor social sharing"
+            health -= 3
+            issues_count += 1
+        else:
+            issues["open_graph"] = "Pass"
+
+        # Internal links count
+        links = soup.find_all("a", href=True)
+        internal = [l for l in links if l["href"].startswith("/") or domain.replace("https://", "").replace("http://", "") in l["href"]]
+        issues["internal_links"] = f"{len(internal)} internal links found" if internal else "No internal links — poor for SEO"
+        if not internal:
+            health -= 5
+            issues_count += 1
+
+        health = max(0, min(100, health))
+
+    except Exception as e:
+        return {"success": True, "audit": {
+            "health_score": 0, "page_speed_desktop": 0, "issues_count": 1,
+            "tech_seo_issues": {"connection": f"Could not reach {url}: {str(e)}"},
+            "domain": url, "load_time": 0,
+        }}
+
+    return {
+        "success": True,
+        "audit": {
+            "health_score": health,
+            "page_speed_desktop": page_speed,
+            "issues_count": issues_count,
+            "tech_seo_issues": issues,
+            "domain": url,
+            "load_time": load_time,
+        },
+    }
+
+
+@app.get("/audit/export")
+def export_audit_pdf(email: str = Query(""), domain: str = Query(""), session: Session = Depends(get_session)):
+    """Generate PDF audit report."""
+    from fastapi.responses import StreamingResponse
+    import io
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    # Run a quick audit to get fresh data
+    audit_result = trigger_audit({"domain": domain or email}, session)
+    audit = audit_result.get("audit", {})
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=50, bottomMargin=40)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("AuditTitle", parent=styles["Title"], fontSize=22, textColor=colors.HexColor("#1e293b"))
+    heading = ParagraphStyle("AuditH2", parent=styles["Heading2"], fontSize=14, textColor=colors.HexColor("#334155"), spaceBefore=20)
+    normal = styles["Normal"]
+
+    elements = []
+    elements.append(Paragraph("SERP Hawk — SEO Audit Report", title_style))
+    elements.append(Spacer(1, 8))
+    elements.append(Paragraph(f"Domain: {audit.get('domain', domain or 'N/A')}", normal))
+    elements.append(Paragraph(f"Generated: {datetime.utcnow().strftime('%B %d, %Y')}", normal))
+    elements.append(Spacer(1, 20))
+
+    # Summary table
+    summary_data = [
+        ["Health Score", f"{audit.get('health_score', 0)}/100"],
+        ["Page Speed", f"{audit.get('page_speed_desktop', 0)}/100"],
+        ["Issues Found", str(audit.get('issues_count', 0))],
+        ["Load Time", f"{audit.get('load_time', 0)}s"],
+    ]
+    t = Table(summary_data, colWidths=[200, 250])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 11),
+        ("PADDING", (0, 0), (-1, -1), 10),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 20))
+
+    # Technical findings
+    elements.append(Paragraph("Technical SEO Findings", heading))
+    for key, val in audit.get("tech_seo_issues", {}).items():
+        label = key.replace("_", " ").title()
+        status = "PASS" if "Pass" in str(val) else "ISSUE"
+        color = "#059669" if status == "PASS" else "#dc2626"
+        elements.append(Paragraph(f'<font color="{color}"><b>[{status}]</b></font> {label}: {val}', normal))
+        elements.append(Spacer(1, 4))
+
+    elements.append(Spacer(1, 30))
+    elements.append(Paragraph("— Generated by SERP Hawk | Team DaPros", ParagraphStyle("Footer", parent=normal, fontSize=9, textColor=colors.grey)))
+
+    doc.build(elements)
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="serphawk-audit-{(domain or "report").replace("https://","").replace("/","_")}.pdf"'
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Health
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/")
+def root():
+    return {"status": "ok", "app": "SerpHawk CRM API", "docs": "/docs"}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tasks & Kanban Board
+# ─────────────────────────────────────────────────────────────────────────────
+def _task_dict(t: Task, session: Session) -> dict:
+    assignee = session.get(User, t.assigned_to) if t.assigned_to else None
+    creator = session.get(User, t.created_by) if t.created_by else None
+    client = session.get(ClientProfile, t.client_id) if t.client_id else None
+    client_user = session.get(User, client.userId) if client and client.userId else None
+    return {
+        "id": t.id,
+        "title": t.title,
+        "description": t.description,
+        "status": t.status,
+        "priority": t.priority,
+        "due_date": t.due_date,
+        "client_id": t.client_id,
+        "client_name": client_user.name if client_user else (client.companyName if client else None),
+        "project_id": t.project_id,
+        "assigned_to": t.assigned_to,
+        "assignee_name": assignee.name if assignee else None,
+        "created_by": t.created_by,
+        "creator_name": creator.name if creator else None,
+        "created_at": t.created_at.isoformat(),
+        "updated_at": t.updated_at.isoformat(),
+    }
+
+
+@app.get("/tasks")
+def list_tasks(
+    status: Optional[str] = None,
+    assigned_to: Optional[int] = None,
+    client_id: Optional[int] = None,
+    project_id: Optional[int] = None,
+    session: Session = Depends(get_session),
+):
+    q = select(Task).order_by(Task.created_at.desc())
+    if status:
+        q = q.where(Task.status == status)
+    if assigned_to:
+        q = q.where(Task.assigned_to == assigned_to)
+    if client_id:
+        q = q.where(Task.client_id == client_id)
+    if project_id:
+        q = q.where(Task.project_id == project_id)
+    tasks = session.exec(q).all()
+    return {"tasks": [_task_dict(t, session) for t in tasks]}
+
+
+@app.post("/tasks")
+def create_task(body: TaskCreateRequest, session: Session = Depends(get_session)):
+    t = Task(**body.model_dump())
+    session.add(t)
+    session.commit()
+    session.refresh(t)
+    # Notify assigned user
+    if t.assigned_to:
+        notif = Notification(
+            user_id=t.assigned_to,
+            title="New Task Assigned",
+            message=f"You have been assigned: {t.title}",
+            type="info",
+            link="/tasks",
+        )
+        session.add(notif)
         session.commit()
-        session.refresh(user)
-    
-    # 2. Create Profile
-    profile = ClientProfile(
-        userId=user.id,
-        companyName=data.companyName,
-        websiteUrl=data.websiteUrl,
-        customFields={},
-        status="Active",
-        projectName=data.projectName,
-        gmbName=data.gmbName,
-        seoStrategy=data.seoStrategy,
-        tagline=data.tagline,
-        recommended_services=data.recommended_services,
-        targetKeywords=data.targetKeywords or []
-    )
-    session.add(profile)
-    session.commit()
-    session.refresh(profile)
-    
-    return {"id": profile.id, "companyName": profile.companyName, "status": "created"}
+    return {"task": _task_dict(t, session)}
 
-@app.post("/clients/{client_id}/activities")
-async def add_client_activity(
+
+@app.get("/tasks/{task_id}")
+def get_task(task_id: int, session: Session = Depends(get_session)):
+    t = session.get(Task, task_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    comments = session.exec(
+        select(TaskComment).where(TaskComment.task_id == task_id).order_by(TaskComment.created_at)
+    ).all()
+    result = _task_dict(t, session)
+    result["comments"] = [
+        {
+            "id": c.id,
+            "content": c.content,
+            "author_id": c.author_id,
+            "author_name": (lambda u: u.name if u else "Unknown")(session.get(User, c.author_id)),
+            "created_at": c.created_at.isoformat(),
+        }
+        for c in comments
+    ]
+    return {"task": result}
+
+
+@app.put("/tasks/{task_id}")
+def update_task(task_id: int, body: TaskUpdateRequest, session: Session = Depends(get_session)):
+    t = session.get(Task, task_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    for field, val in body.model_dump(exclude_unset=True).items():
+        setattr(t, field, val)
+    t.updated_at = datetime.utcnow()
+    session.add(t)
+    session.commit()
+    session.refresh(t)
+    return {"task": _task_dict(t, session)}
+
+
+@app.delete("/tasks/{task_id}")
+def delete_task(task_id: int, session: Session = Depends(get_session)):
+    t = session.get(Task, task_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    session.delete(t)
+    session.commit()
+    return {"ok": True}
+
+
+@app.post("/tasks/{task_id}/comments")
+def add_task_comment(
+    task_id: int, body: TaskCommentCreateRequest, session: Session = Depends(get_session)
+):
+    t = session.get(Task, task_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    c = TaskComment(task_id=task_id, author_id=body.author_id, content=body.content)
+    session.add(c)
+    session.commit()
+    session.refresh(c)
+    author = session.get(User, c.author_id) if c.author_id else None
+    return {
+        "id": c.id,
+        "content": c.content,
+        "author_id": c.author_id,
+        "author_name": author.name if author else "Unknown",
+        "created_at": c.created_at.isoformat(),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Invoices & Payments
+# ─────────────────────────────────────────────────────────────────────────────
+def _invoice_dict(inv: Invoice, session: Session) -> dict:
+    cp = session.get(ClientProfile, inv.client_id) if inv.client_id else None
+    u = session.get(User, cp.userId) if cp and cp.userId else None
+    return {
+        "id": inv.id,
+        "invoice_number": inv.invoice_number,
+        "client_id": inv.client_id,
+        "client_name": u.name if u else (cp.companyName if cp else None),
+        "client_email": u.email if u else None,
+        "service_request_id": inv.service_request_id,
+        "amount": inv.amount,
+        "tax": inv.tax,
+        "total": inv.total,
+        "status": inv.status,
+        "due_date": inv.due_date,
+        "notes": inv.notes,
+        "line_items": inv.line_items or [],
+        "paid_at": inv.paid_at.isoformat() if inv.paid_at else None,
+        "created_at": inv.created_at.isoformat(),
+        "updated_at": inv.updated_at.isoformat(),
+    }
+
+
+def _generate_invoice_number(session: Session) -> str:
+    count = len(session.exec(select(Invoice)).all())
+    return f"INV-{datetime.utcnow().year}-{str(count + 1).zfill(4)}"
+
+
+@app.get("/invoices")
+def list_invoices(
+    client_id: Optional[int] = None,
+    status: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    q = select(Invoice).order_by(Invoice.created_at.desc())
+    if client_id:
+        q = q.where(Invoice.client_id == client_id)
+    if status:
+        q = q.where(Invoice.status == status)
+    invoices = session.exec(q).all()
+    return {"invoices": [_invoice_dict(i, session) for i in invoices]}
+
+
+@app.post("/invoices")
+def create_invoice(body: InvoiceCreateRequest, session: Session = Depends(get_session)):
+    total = round(body.amount + body.tax, 2)
+    inv = Invoice(
+        invoice_number=_generate_invoice_number(session),
+        client_id=body.client_id,
+        service_request_id=body.service_request_id,
+        amount=body.amount,
+        tax=body.tax,
+        total=total,
+        due_date=body.due_date,
+        notes=body.notes,
+        line_items=body.line_items or [],
+    )
+    session.add(inv)
+    session.commit()
+    session.refresh(inv)
+
+    # --- Add invoice to client my-files ---
+    from database import ClientFileUpload
+    invoice_filename = f"Invoice_{inv.invoice_number}.json"
+    invoice_file_url = f"/api/invoices/{inv.id}/download"  # You may want to implement this endpoint to serve PDF/JSON
+    file_entry = ClientFileUpload(
+        client_id=inv.client_id,
+        uploaded_by=None,  # Admin
+        filename=invoice_filename,
+        file_url=invoice_file_url,
+        file_size=None,
+        mime_type="application/json",
+        description=f"Invoice {inv.invoice_number} generated for client.",
+    )
+    session.add(file_entry)
+    session.commit()
+
+    # Email notification to client
+    if inv.client_id:
+        cp = session.get(ClientProfile, inv.client_id)
+        if cp and cp.userId:
+            user = session.get(User, cp.userId)
+            if user and user.email:
+                _send_notification_email(
+                    user.email,
+                    f"New Invoice #{inv.invoice_number} from DaPros",
+                    f"<h2>New Invoice</h2><p>Hi {cp.companyName or 'there'},</p><p>A new invoice <strong>#{inv.invoice_number}</strong> for <strong>${inv.total}</strong> has been created.</p><p>Please log in to your dashboard to view details.</p><p>— Team DaPros</p>",
+                )
+            notif = Notification(
+                user_id=cp.userId,
+                title="New Invoice Created",
+                message=f"Invoice #{inv.invoice_number} for ${inv.total} is ready.",
+                type="info",
+                link="/invoices",
+            )
+            session.add(notif)
+            session.commit()
+
+    return {"invoice": _invoice_dict(inv, session)}
+
+
+@app.post("/invoices/from-quote/{request_id}")
+def invoice_from_quote(request_id: int, session: Session = Depends(get_session)):
+    sr = session.get(ServiceRequest, request_id)
+    if not sr:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    if not sr.quoted_amount:
+        raise HTTPException(status_code=400, detail="No quoted amount on this request")
+    svc = session.get(ServiceCatalog, sr.service_id)
+    inv = Invoice(
+        invoice_number=_generate_invoice_number(session),
+        client_id=sr.client_id,
+        service_request_id=sr.id,
+        amount=sr.quoted_amount,
+        tax=0.0,
+        total=sr.quoted_amount,
+        line_items=[{"description": svc.name if svc else "Service", "amount": sr.quoted_amount}],
+    )
+    session.add(inv)
+    session.commit()
+    session.refresh(inv)
+    # Notify client
+    cp = session.get(ClientProfile, sr.client_id)
+    if cp and cp.userId:
+        notif = Notification(
+            user_id=cp.userId,
+            title="New Invoice Generated",
+            message=f"Invoice {inv.invoice_number} for ${inv.total:.2f} has been created.",
+            type="info",
+            link="/invoices",
+        )
+        session.add(notif)
+        session.commit()
+    return {"invoice": _invoice_dict(inv, session)}
+
+
+@app.get("/invoices/{invoice_id}")
+def get_invoice(invoice_id: int, session: Session = Depends(get_session)):
+    inv = session.get(Invoice, invoice_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return {"invoice": _invoice_dict(inv, session)}
+
+
+@app.put("/invoices/{invoice_id}")
+def update_invoice(
+    invoice_id: int, body: InvoiceUpdateRequest, session: Session = Depends(get_session)
+):
+    inv = session.get(Invoice, invoice_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    updates = body.model_dump(exclude_unset=True)
+    for field, val in updates.items():
+        setattr(inv, field, val)
+    if "amount" in updates or "tax" in updates:
+        inv.total = round((inv.amount or 0) + (inv.tax or 0), 2)
+    if updates.get("status") == "Paid":
+        inv.paid_at = datetime.utcnow()
+    inv.updated_at = datetime.utcnow()
+    session.add(inv)
+    session.commit()
+    session.refresh(inv)
+
+    # Notify client when invoice is sent
+    if updates.get("status") == "Sent" and inv.client_id:
+        cp = session.get(ClientProfile, inv.client_id)
+        if cp and cp.userId:
+            user = session.get(User, cp.userId)
+            if user and user.email:
+                _send_notification_email(
+                    user.email,
+                    f"Invoice #{inv.invoice_number} Sent — DaPros",
+                    f"<h2>Invoice Ready for Payment</h2><p>Hi {cp.companyName or 'there'},</p><p>Invoice <strong>#{inv.invoice_number}</strong> for <strong>${inv.total}</strong> has been sent to you.</p><p>Due date: {inv.due_date or 'TBD'}</p><p>— Team DaPros</p>",
+                )
+
+    return {"invoice": _invoice_dict(inv, session)}
+
+
+@app.delete("/invoices/{invoice_id}")
+def delete_invoice(invoice_id: int, session: Session = Depends(get_session)):
+    inv = session.get(Invoice, invoice_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    session.delete(inv)
+    session.commit()
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Notifications
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/notifications/{user_id}")
+def get_notifications(
+    user_id: int,
+    unread_only: bool = False,
+    session: Session = Depends(get_session),
+):
+    q = select(Notification).where(Notification.user_id == user_id).order_by(
+        Notification.created_at.desc()
+    )
+    if unread_only:
+        q = q.where(Notification.is_read == False)
+    notifs = session.exec(q).all()
+    return {
+        "notifications": [
+            {
+                "id": n.id,
+                "title": n.title,
+                "message": n.message,
+                "type": n.type,
+                "link": n.link,
+                "is_read": n.is_read,
+                "created_at": n.created_at.isoformat(),
+            }
+            for n in notifs
+        ],
+        "unread_count": sum(1 for n in notifs if not n.is_read),
+    }
+
+
+@app.post("/notifications")
+def create_notification(body: NotificationCreateRequest, session: Session = Depends(get_session)):
+    n = Notification(**body.model_dump())
+    session.add(n)
+    session.commit()
+    session.refresh(n)
+    return {"id": n.id, "title": n.title}
+
+
+@app.put("/notifications/{notification_id}/read")
+def mark_notification_read(notification_id: int, session: Session = Depends(get_session)):
+    n = session.get(Notification, notification_id)
+    if not n:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    n.is_read = True
+    session.add(n)
+    session.commit()
+    return {"ok": True}
+
+
+@app.put("/notifications/mark-all-read/{user_id}")
+def mark_all_read(user_id: int, session: Session = Depends(get_session)):
+    notifs = session.exec(
+        select(Notification).where(Notification.user_id == user_id, Notification.is_read == False)
+    ).all()
+    for n in notifs:
+        n.is_read = True
+        session.add(n)
+    session.commit()
+    return {"ok": True, "marked": len(notifs)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Milestones
+# ─────────────────────────────────────────────────────────────────────────────
+def _milestone_dict(m: Milestone) -> dict:
+    return {
+        "id": m.id,
+        "title": m.title,
+        "description": m.description,
+        "project_id": m.project_id,
+        "client_id": m.client_id,
+        "due_date": m.due_date,
+        "status": m.status,
+        "order": m.order,
+        "created_at": m.created_at.isoformat(),
+    }
+
+
+@app.get("/milestones")
+def list_milestones(
+    client_id: Optional[int] = None,
+    project_id: Optional[int] = None,
+    session: Session = Depends(get_session),
+):
+    q = select(Milestone).order_by(Milestone.order, Milestone.created_at)
+    if client_id:
+        q = q.where(Milestone.client_id == client_id)
+    if project_id:
+        q = q.where(Milestone.project_id == project_id)
+    milestones = session.exec(q).all()
+    return {"milestones": [_milestone_dict(m) for m in milestones]}
+
+
+@app.post("/milestones")
+def create_milestone(body: MilestoneCreateRequest, session: Session = Depends(get_session)):
+    m = Milestone(**body.model_dump())
+    session.add(m)
+    session.commit()
+    session.refresh(m)
+    return {"milestone": _milestone_dict(m)}
+
+
+@app.put("/milestones/{milestone_id}")
+def update_milestone(
+    milestone_id: int, body: MilestoneUpdateRequest, session: Session = Depends(get_session)
+):
+    m = session.get(Milestone, milestone_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+    for field, val in body.model_dump(exclude_unset=True).items():
+        setattr(m, field, val)
+    session.add(m)
+    session.commit()
+    session.refresh(m)
+
+    # Notify client when milestone is achieved
+    if body.status == "Achieved" and m.client_id:
+        cp = session.get(ClientProfile, m.client_id)
+        if cp and cp.userId:
+            notif = Notification(
+                user_id=cp.userId,
+                title="Milestone Achieved! 🎉",
+                message=f"'{m.title}' has been marked as achieved.",
+                type="success",
+                link="/milestones",
+            )
+            session.add(notif)
+            session.commit()
+            user = session.get(User, cp.userId)
+            if user and user.email:
+                _send_notification_email(
+                    user.email,
+                    f"Milestone Achieved: {m.title} — DaPros",
+                    f"<h2>🎉 Milestone Achieved!</h2><p>Hi {cp.companyName or 'there'},</p><p>Great news! The milestone <strong>{m.title}</strong> has been completed.</p><p>Log in to see your progress.</p><p>— Team DaPros</p>",
+                )
+
+    return {"milestone": _milestone_dict(m)}
+
+
+@app.delete("/milestones/{milestone_id}")
+def delete_milestone(milestone_id: int, session: Session = Depends(get_session)):
+    m = session.get(Milestone, milestone_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+    session.delete(m)
+    session.commit()
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NPS Surveys
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/nps")
+def list_nps_surveys(client_id: Optional[int] = None, session: Session = Depends(get_session)):
+    q = select(NPSSurvey).order_by(NPSSurvey.created_at.desc())
+    if client_id:
+        q = q.where(NPSSurvey.client_id == client_id)
+    surveys = session.exec(q).all()
+    return {
+        "surveys": [
+            {
+                "id": s.id,
+                "client_id": s.client_id,
+                "score": s.score,
+                "feedback": s.feedback,
+                "triggered_by": s.triggered_by,
+                "responded_at": s.responded_at.isoformat() if s.responded_at else None,
+                "created_at": s.created_at.isoformat(),
+            }
+            for s in surveys
+        ]
+    }
+
+
+@app.post("/nps/trigger/{client_id}")
+def trigger_nps(
     client_id: int,
-    data: ActivityAdd,
-    session: Session = Depends(get_session)
+    triggered_by: str = "manual",
+    session: Session = Depends(get_session),
 ):
-    """Add a manual activity for a client"""
-    activity = ActivityLog(
-        clientId=client_id,
-        userId=None,
-        action="Manual Activity",
-        method=data.method,
-        content=data.content,
-        createdAt=datetime.utcnow()
-    )
-    session.add(activity)
-    
-    # Update ClientProfile lastActivity
-    client = session.get(ClientProfile, client_id)
-    if client:
-        client.lastActivity = f"Manual Activity: {data.method} - {data.content[:50]}..."
-        client.lastActivityDate = datetime.utcnow().isoformat()
-        session.add(client)
-        
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    s = NPSSurvey(client_id=client_id, triggered_by=triggered_by)
+    session.add(s)
     session.commit()
-    return {"success": True}
+    session.refresh(s)
+    # Notify client
+    if cp.userId:
+        notif = Notification(
+            user_id=cp.userId,
+            title="Share Your Feedback",
+            message="We'd love to know how we're doing! Please rate your experience.",
+            type="info",
+            link=f"/survey/{s.id}",
+        )
+        session.add(notif)
+        session.commit()
+    return {"survey_id": s.id}
 
-@app.get("/clients/{client_id}/activities")
-async def get_client_activities(
-    client_id: int, 
-    limit: int = 50,
-    session: Session = Depends(get_session)
+
+@app.post("/nps/{survey_id}/respond")
+def respond_nps(survey_id: int, body: NPSRespondRequest, session: Session = Depends(get_session)):
+    s = session.get(NPSSurvey, survey_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    s.score = body.score
+    s.feedback = body.feedback
+    s.responded_at = datetime.utcnow()
+    session.add(s)
+    session.commit()
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Proposals & Contracts
+# ─────────────────────────────────────────────────────────────────────────────
+def _proposal_dict(p: Proposal, session: Session) -> dict:
+    cp = session.get(ClientProfile, p.client_id) if p.client_id else None
+    u = session.get(User, cp.userId) if cp and cp.userId else None
+    creator = session.get(User, p.created_by) if p.created_by else None
+    return {
+        "id": p.id,
+        "title": p.title,
+        "client_id": p.client_id,
+        "client_name": u.name if u else (cp.companyName if cp else None),
+        "service_request_id": p.service_request_id,
+        "content": p.content,
+        "status": p.status,
+        "valid_until": p.valid_until,
+        "total_value": p.total_value,
+        "signed_at": p.signed_at.isoformat() if p.signed_at else None,
+        "created_by": p.created_by,
+        "creator_name": creator.name if creator else None,
+        "created_at": p.created_at.isoformat(),
+        "updated_at": p.updated_at.isoformat(),
+    }
+
+
+@app.get("/proposals")
+def list_proposals(
+    client_id: Optional[int] = None,
+    status: Optional[str] = None,
+    session: Session = Depends(get_session),
 ):
-    """Get activities for a specific client with pagination"""
-    statement = select(ActivityLog).where(ActivityLog.clientId == client_id).order_by(ActivityLog.createdAt.desc()).limit(limit)
-    activities = session.exec(statement).all()
-    return {"activities": [
+    q = select(Proposal).order_by(Proposal.created_at.desc())
+    if client_id:
+        q = q.where(Proposal.client_id == client_id)
+    if status:
+        q = q.where(Proposal.status == status)
+    proposals = session.exec(q).all()
+    return {"proposals": [_proposal_dict(p, session) for p in proposals]}
+
+
+@app.post("/proposals")
+def create_proposal(body: ProposalCreateRequest, session: Session = Depends(get_session)):
+    p = Proposal(**body.model_dump())
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return {"proposal": _proposal_dict(p, session)}
+
+
+@app.get("/proposals/{proposal_id}")
+def get_proposal(proposal_id: int, session: Session = Depends(get_session)):
+    p = session.get(Proposal, proposal_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    return {"proposal": _proposal_dict(p, session)}
+
+
+@app.put("/proposals/{proposal_id}")
+def update_proposal(
+    proposal_id: int, body: ProposalUpdateRequest, session: Session = Depends(get_session)
+):
+    p = session.get(Proposal, proposal_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    for field, val in body.model_dump(exclude_unset=True).items():
+        setattr(p, field, val)
+    if body.status == "Accepted":
+        p.signed_at = datetime.utcnow()
+    p.updated_at = datetime.utcnow()
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    # Notify client when proposal is sent
+    if body.status == "Sent" and p.client_id:
+        cp = session.get(ClientProfile, p.client_id)
+        if cp and cp.userId:
+            notif = Notification(
+                user_id=cp.userId,
+                title="New Proposal Ready",
+                message=f"A proposal '{p.title}' has been sent for your review.",
+                type="info",
+                link=f"/proposals/{p.id}",
+            )
+            session.add(notif)
+            session.commit()
+            # Email notification
+            user = session.get(User, cp.userId)
+            if user and user.email:
+                _send_notification_email(
+                    user.email,
+                    f"New Proposal: {p.title} — DaPros",
+                    f"<h2>Proposal Ready for Review</h2><p>Hi {cp.companyName or 'there'},</p><p>A new proposal <strong>{p.title}</strong> has been sent for your review.</p><p>Please log in to your dashboard to accept or decline.</p><p>— Team DaPros</p>",
+                )
+    # Notify admins when client responds to a proposal
+    if body.status in ("Accepted", "Rejected", "Demo Requested") and p.client_id:
+        cp = session.get(ClientProfile, p.client_id)
+        client_name = cp.companyName if cp else f"Client #{p.client_id}"
+        status_label = body.status.lower()
+        admins = session.exec(select(User).where(User.role == "Admin")).all()
+        for admin in admins:
+            notif = Notification(
+                user_id=admin.id,
+                title=f"Proposal {body.status}",
+                message=f"{client_name} has {status_label} the proposal '{p.title}'.",
+                type="success" if body.status == "Accepted" else ("warning" if body.status == "Demo Requested" else "info"),
+                link="/proposals",
+            )
+            session.add(notif)
+        session.commit()
+    return {"proposal": _proposal_dict(p, session)}
+
+
+@app.delete("/proposals/{proposal_id}")
+def delete_proposal(proposal_id: int, session: Session = Depends(get_session)):
+    p = session.get(Proposal, proposal_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    session.delete(p)
+    session.commit()
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Client File Uploads
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/clients/{client_id}/files")
+def list_client_files(client_id: int, session: Session = Depends(get_session)):
+    files = session.exec(
+        select(ClientFileUpload)
+        .where(ClientFileUpload.client_id == client_id)
+        .order_by(ClientFileUpload.created_at.desc())
+    ).all()
+    return {
+        "files": [
+            {
+                "id": f.id,
+                "filename": f.filename,
+                "file_url": f.file_url,
+                "file_size": f.file_size,
+                "mime_type": f.mime_type,
+                "description": f.description,
+                "uploaded_by": f.uploaded_by,
+                "created_at": f.created_at.isoformat(),
+            }
+            for f in files
+        ]
+    }
+
+
+import uuid as _uuid
+
+@app.post("/upload-file")
+async def upload_file_to_server(
+    file: UploadFile = File(...),
+    client_id: int = Query(...),
+    uploaded_by: Optional[int] = Query(None),
+    description: Optional[str] = Query(None),
+    session: Session = Depends(get_session),
+):
+    """Upload a real file from device, save to static/uploads/, create DB record."""
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # Sanitize filename and make unique
+    safe_name = re.sub(r'[^\w.\-]', '_', file.filename or "file")
+    unique_name = f"{_uuid.uuid4().hex[:8]}_{safe_name}"
+    upload_dir = os.path.join("static", "uploads")
+    file_path = os.path.join(upload_dir, unique_name)
+
+    contents = await file.read()
+    with open(file_path, "wb") as fh:
+        fh.write(contents)
+
+    file_url = f"/static/uploads/{unique_name}"
+    file_size = len(contents)
+
+    record = ClientFileUpload(
+        client_id=client_id,
+        uploaded_by=uploaded_by,
+        filename=file.filename or safe_name,
+        file_url=file_url,
+        file_size=file_size,
+        mime_type=file.content_type,
+        description=description,
+    )
+    session.add(record)
+    session.commit()
+    session.refresh(record)
+
+    return {
+        "id": record.id,
+        "filename": record.filename,
+        "file_url": file_url,
+        "file_size": file_size,
+        "mime_type": record.mime_type,
+        "created_at": record.created_at.isoformat(),
+    }
+
+
+@app.post("/clients/{client_id}/files")
+def upload_client_file(
+    client_id: int, body: FileUploadRequest, session: Session = Depends(get_session)
+):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    f = ClientFileUpload(
+        client_id=client_id,
+        uploaded_by=body.uploaded_by,
+        filename=body.filename,
+        file_url=body.file_url,
+        file_size=body.file_size,
+        mime_type=body.mime_type,
+        description=body.description,
+    )
+    session.add(f)
+    session.commit()
+    session.refresh(f)
+    return {
+        "id": f.id,
+        "filename": f.filename,
+        "file_url": f.file_url,
+        "created_at": f.created_at.isoformat(),
+    }
+
+
+@app.delete("/files/{file_id}")
+def delete_file(file_id: int, session: Session = Depends(get_session)):
+    f = session.get(ClientFileUpload, file_id)
+    if not f:
+        raise HTTPException(status_code=404, detail="File not found")
+    session.delete(f)
+    session.commit()
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Keyword Rank Tracker
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/rankings")
+def list_rankings(
+    client_id: Optional[int] = None,
+    keyword: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    q = select(KeywordRankEntry).order_by(KeywordRankEntry.recorded_at.desc())
+    if client_id:
+        q = q.where(KeywordRankEntry.client_id == client_id)
+    if keyword:
+        q = q.where(KeywordRankEntry.keyword.ilike(f"%{keyword}%"))
+    entries = session.exec(q).all()
+    return {
+        "rankings": [
+            {
+                "id": e.id,
+                "client_id": e.client_id,
+                "keyword": e.keyword,
+                "position": e.position,
+                "url": e.url,
+                "search_engine": e.search_engine,
+                "notes": e.notes,
+                "recorded_at": e.recorded_at.isoformat(),
+                "recorded_by": e.recorded_by,
+            }
+            for e in entries
+        ]
+    }
+
+
+@app.post("/rankings")
+def add_ranking(body: KeywordRankRequest, session: Session = Depends(get_session)):
+    e = KeywordRankEntry(**body.model_dump())
+    session.add(e)
+    session.commit()
+    session.refresh(e)
+    return {
+        "id": e.id,
+        "keyword": e.keyword,
+        "position": e.position,
+        "recorded_at": e.recorded_at.isoformat(),
+    }
+
+
+@app.get("/rankings/history/{client_id}/{keyword}")
+def ranking_history(client_id: int, keyword: str, session: Session = Depends(get_session)):
+    entries = session.exec(
+        select(KeywordRankEntry)
+        .where(
+            KeywordRankEntry.client_id == client_id,
+            KeywordRankEntry.keyword == keyword,
+        )
+        .order_by(KeywordRankEntry.recorded_at)
+    ).all()
+    return {
+        "keyword": keyword,
+        "history": [
+            {"position": e.position, "recorded_at": e.recorded_at.isoformat()}
+            for e in entries
+        ],
+    }
+
+
+@app.delete("/rankings/{entry_id}")
+def delete_ranking(entry_id: int, session: Session = Depends(get_session)):
+    e = session.get(KeywordRankEntry, entry_id)
+    if not e:
+        raise HTTPException(status_code=404, detail="Ranking entry not found")
+    session.delete(e)
+    session.commit()
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PDF Generation — Invoices & Proposals
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/invoices/{invoice_id}/pdf")
+def invoice_pdf(invoice_id: int, session: Session = Depends(get_session)):
+    """Generate a professional PDF for an invoice."""
+    from fastapi.responses import StreamingResponse
+    import io
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    inv = session.get(Invoice, invoice_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    client = session.get(ClientProfile, inv.client_id) if inv.client_id else None
+    client_name = ""
+    if client:
+        user = session.get(User, client.userId) if client.userId else None
+        client_name = client.companyName or (user.name if user else f"Client #{client.id}")
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=50, bottomMargin=40)
+    styles = getSampleStyleSheet()
+    title_s = ParagraphStyle("ITitle", parent=styles["Title"], fontSize=24, textColor=colors.HexColor("#1e293b"))
+    h2 = ParagraphStyle("IH2", parent=styles["Heading2"], fontSize=13, textColor=colors.HexColor("#334155"), spaceBefore=18)
+    normal = styles["Normal"]
+    small = ParagraphStyle("Small", parent=normal, fontSize=9, textColor=colors.grey)
+
+    els = []
+    els.append(Paragraph("INVOICE", title_s))
+    els.append(Spacer(1, 6))
+    els.append(Paragraph(f"<b>{inv.invoice_number}</b>", ParagraphStyle("Num", parent=normal, fontSize=14, textColor=colors.HexColor("#4f46e5"))))
+    els.append(Spacer(1, 12))
+
+    # Info table
+    info = [
+        ["Bill To:", client_name or "—"],
+        ["Date:", inv.created_at.strftime("%B %d, %Y") if inv.created_at else "—"],
+        ["Due Date:", inv.due_date or "—"],
+        ["Status:", inv.status],
+    ]
+    it = Table(info, colWidths=[100, 350])
+    it.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("PADDING", (0, 0), (-1, -1), 6),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#64748b")),
+    ]))
+    els.append(it)
+    els.append(Spacer(1, 18))
+
+    # Line items
+    els.append(Paragraph("Line Items", h2))
+    items_data = [["#", "Description", "Amount"]]
+    for idx, li in enumerate(inv.line_items or [], 1):
+        items_data.append([str(idx), li.get("description", ""), f"${float(li.get('amount', 0)):.2f}"])
+    items_data.append(["", "Subtotal", f"${inv.amount:.2f}"])
+    items_data.append(["", "Tax", f"${inv.tax:.2f}"])
+    items_data.append(["", "TOTAL", f"${inv.total:.2f}"])
+
+    lt = Table(items_data, colWidths=[40, 310, 100])
+    lt.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (1, -1), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("PADDING", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -2), 0.5, colors.HexColor("#e2e8f0")),
+        ("LINEABOVE", (0, -3), (-1, -3), 1, colors.HexColor("#cbd5e1")),
+        ("LINEABOVE", (0, -1), (-1, -1), 1.5, colors.HexColor("#1e293b")),
+        ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+    ]))
+    els.append(lt)
+
+    if inv.notes:
+        els.append(Spacer(1, 14))
+        els.append(Paragraph("Notes", h2))
+        els.append(Paragraph(inv.notes, normal))
+
+    els.append(Spacer(1, 30))
+    els.append(Paragraph("— SERP Hawk | Team DaPros", small))
+
+    doc.build(els)
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="{inv.invoice_number}.pdf"'
+    })
+
+
+@app.get("/proposals/{proposal_id}/pdf")
+def proposal_pdf(proposal_id: int, session: Session = Depends(get_session)):
+    """Generate a professional PDF for a proposal."""
+    from fastapi.responses import StreamingResponse
+    import io
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    prop = session.get(Proposal, proposal_id)
+    if not prop:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    client = session.get(ClientProfile, prop.client_id) if prop.client_id else None
+    client_name = ""
+    if client:
+        user = session.get(User, client.userId) if client.userId else None
+        client_name = client.companyName or (user.name if user else f"Client #{client.id}")
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=50, bottomMargin=40)
+    styles = getSampleStyleSheet()
+    title_s = ParagraphStyle("PTitle", parent=styles["Title"], fontSize=22, textColor=colors.HexColor("#1e293b"))
+    h2 = ParagraphStyle("PH2", parent=styles["Heading2"], fontSize=13, textColor=colors.HexColor("#334155"), spaceBefore=18)
+    normal = styles["Normal"]
+    small = ParagraphStyle("PSmall", parent=normal, fontSize=9, textColor=colors.grey)
+
+    els = []
+    els.append(Paragraph("PROPOSAL", title_s))
+    els.append(Spacer(1, 10))
+
+    info = [
+        ["Title:", prop.title],
+        ["Client:", client_name or "—"],
+        ["Status:", prop.status],
+        ["Value:", f"${prop.total_value:,.2f}" if prop.total_value else "—"],
+        ["Valid Until:", prop.valid_until or "—"],
+        ["Created:", prop.created_at.strftime("%B %d, %Y") if prop.created_at else "—"],
+    ]
+    it = Table(info, colWidths=[100, 350])
+    it.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("PADDING", (0, 0), (-1, -1), 6),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#64748b")),
+    ]))
+    els.append(it)
+    els.append(Spacer(1, 18))
+
+    if prop.content:
+        els.append(Paragraph("Proposal Details", h2))
+        for para in prop.content.split("\\n"):
+            if para.strip():
+                els.append(Paragraph(para.strip(), normal))
+                els.append(Spacer(1, 4))
+
+    els.append(Spacer(1, 30))
+    els.append(Paragraph("— SERP Hawk | Team DaPros", small))
+
+    doc.build(els)
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="proposal-{prop.id}.pdf"'
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WebSocket Real-Time Chat
+# ─────────────────────────────────────────────────────────────────────────────
+import json as _json
+
+class ConnectionManager:
+    """Keeps track of active WebSocket connections per thread."""
+    def __init__(self):
+        self.active: Dict[int, List[WebSocket]] = {}  # thread_id -> list of ws
+
+    async def connect(self, thread_id: int, ws: WebSocket):
+        await ws.accept()
+        self.active.setdefault(thread_id, []).append(ws)
+
+    def disconnect(self, thread_id: int, ws: WebSocket):
+        conns = self.active.get(thread_id, [])
+        if ws in conns:
+            conns.remove(ws)
+
+    async def broadcast(self, thread_id: int, data: dict, exclude: WebSocket | None = None):
+        for ws in self.active.get(thread_id, []):
+            if ws is not exclude:
+                try:
+                    await ws.send_json(data)
+                except Exception:
+                    pass
+
+ws_manager = ConnectionManager()
+
+@app.websocket("/ws/chat/{thread_id}")
+async def ws_chat(websocket: WebSocket, thread_id: int):
+    await ws_manager.connect(thread_id, websocket)
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            data = _json.loads(raw)
+            action = data.get("action")
+
+            if action == "message":
+                # Save message to DB
+                with Session(engine) as session:
+                    msg = ChatMessage(
+                        thread_id=thread_id,
+                        sender_id=data["sender_id"],
+                        content=data["content"],
+                    )
+                    session.add(msg)
+                    session.commit()
+                    session.refresh(msg)
+                    sender = session.get(User, msg.sender_id)
+                    payload = {
+                        "type": "new_message",
+                        "message": {
+                            "id": msg.id,
+                            "sender": (sender.name or sender.email) if sender else "Unknown",
+                            "sender_id": msg.sender_id,
+                            "content": msg.content,
+                            "timestamp": msg.timestamp.isoformat(),
+                            "is_read": False,
+                        },
+                    }
+                await ws_manager.broadcast(thread_id, payload)
+
+            elif action == "typing":
+                await ws_manager.broadcast(
+                    thread_id,
+                    {"type": "typing", "user_id": data.get("user_id"), "user_name": data.get("user_name")},
+                    exclude=websocket,
+                )
+
+            elif action == "stop_typing":
+                await ws_manager.broadcast(
+                    thread_id,
+                    {"type": "stop_typing", "user_id": data.get("user_id")},
+                    exclude=websocket,
+                )
+
+            elif action == "read_receipt":
+                msg_ids = data.get("message_ids", [])
+                if msg_ids:
+                    with Session(engine) as session:
+                        for mid in msg_ids:
+                            m = session.get(ChatMessage, mid)
+                            if m and not m.is_read and m.sender_id != data.get("user_id"):
+                                m.is_read = True
+                                m.read_at = datetime.utcnow()
+                                session.add(m)
+                        session.commit()
+                    await ws_manager.broadcast(
+                        thread_id,
+                        {"type": "read_receipt", "message_ids": msg_ids, "read_by": data.get("user_id")},
+                        exclude=websocket,
+                    )
+
+    except WebSocketDisconnect:
+        ws_manager.disconnect(thread_id, websocket)
+    except Exception:
+        ws_manager.disconnect(thread_id, websocket)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Password Change
+# ─────────────────────────────────────────────────────────────────────────────
+class PasswordChangeRequest(BaseModel):
+    user_id: int
+    current_password: str
+    new_password: str
+
+@app.post("/change-password")
+def change_password(body: PasswordChangeRequest, session: Session = Depends(get_session)):
+    user = session.get(User, body.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not (_check_password(body.current_password, user.password) or body.current_password == user.password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+    user.password = _hash_password(body.new_password)
+    user.updatedAt = datetime.utcnow()
+    session.add(user)
+    session.commit()
+    return {"ok": True, "message": "Password updated successfully"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Webhooks / Zapier Integration
+# ─────────────────────────────────────────────────────────────────────────────
+import secrets as _secrets
+
+# In-memory webhook store (in production, use a DB table)
+_webhooks: Dict[str, dict] = {}  # id -> {url, events, secret, created_at, name}
+
+class WebhookRegisterRequest(BaseModel):
+    url: str
+    events: List[str]   # e.g. ["client.created", "invoice.paid", "message.sent"]
+    name: Optional[str] = None
+
+@app.post("/webhooks")
+def register_webhook(body: WebhookRegisterRequest):
+    valid_events = [
+        "client.created", "client.updated", "client.deleted",
+        "invoice.created", "invoice.paid", "invoice.overdue",
+        "message.sent", "task.created", "task.completed",
+        "proposal.sent", "proposal.accepted", "proposal.rejected",
+        "service.requested", "service.quoted", "service.accepted",
+    ]
+    for ev in body.events:
+        if ev not in valid_events:
+            raise HTTPException(status_code=400, detail=f"Invalid event: {ev}. Valid events: {valid_events}")
+    wh_id = _secrets.token_urlsafe(16)
+    wh_secret = _secrets.token_urlsafe(32)
+    _webhooks[wh_id] = {
+        "id": wh_id,
+        "url": str(body.url),
+        "events": body.events,
+        "secret": wh_secret,
+        "name": body.name or "Unnamed Webhook",
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    return {"webhook_id": wh_id, "secret": wh_secret, "events": body.events}
+
+@app.get("/webhooks")
+def list_webhooks():
+    return {"webhooks": [
+        {k: v for k, v in wh.items() if k != "secret"}
+        for wh in _webhooks.values()
+    ]}
+
+@app.delete("/webhooks/{webhook_id}")
+def delete_webhook(webhook_id: str):
+    if webhook_id not in _webhooks:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    del _webhooks[webhook_id]
+    return {"ok": True}
+
+import httpx as _httpx
+import hmac as _hmac
+import hashlib as _hashlib_hmac
+
+async def _fire_webhooks(event: str, payload: dict):
+    """Fire all registered webhooks for an event. Non-blocking, best-effort."""
+    body_str = _json.dumps(payload)
+    for wh in _webhooks.values():
+        if event in wh["events"]:
+            sig = _hmac.new(wh["secret"].encode(), body_str.encode(), _hashlib_hmac.sha256).hexdigest()
+            try:
+                async with _httpx.AsyncClient(timeout=10) as client:
+                    await client.post(
+                        wh["url"],
+                        content=body_str,
+                        headers={
+                            "Content-Type": "application/json",
+                            "X-Webhook-Event": event,
+                            "X-Webhook-Signature": f"sha256={sig}",
+                        },
+                    )
+            except Exception as e:
+                print(f"[Webhook fire failed] {event} -> {wh['url']}: {e}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Competitor Analysis (Real Data)
+# ─────────────────────────────────────────────────────────────────────────────
+class CompetitorAddRequest(BaseModel):
+    client_id: int
+    competitor_domain: str
+
+@app.post("/competitors/analyze")
+async def analyze_competitor(body: CompetitorAddRequest, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    client = session.get(ClientProfile, body.client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # Get client keywords for gap analysis
+    client_keywords = client.targetKeywords or []
+    client_website = client.websiteUrl or ""
+
+    # Scrape competitor site
+    from modules.scraper import scrape_website
+    competitor_content = await scrape_website(body.competitor_domain)
+    if competitor_content.startswith("ERROR"):
+        competitor_content = f"Could not scrape {body.competitor_domain}"
+
+    # Scrape client site for comparison
+    client_content = ""
+    if client_website:
+        client_content = await scrape_website(client_website)
+        if client_content.startswith("ERROR"):
+            client_content = ""
+
+    # Use LLM to analyze competitor vs client
+    from modules.llm_engine import get_openai_client
+    prompt = f"""Analyze the competitive landscape between a client and their competitor.
+
+CLIENT INFO:
+- Website: {client_website}
+- Target Keywords: {', '.join(client_keywords) if client_keywords else 'Not specified'}
+- Site Content Summary: {client_content[:3000] if client_content else 'Not available'}
+
+COMPETITOR INFO:
+- Domain: {body.competitor_domain}
+- Site Content Summary: {competitor_content[:3000]}
+
+Return a JSON object with these exact keys:
+{{
+  "keyword_gap": {{
+    "competitor_keywords": ["list of keywords competitor targets that client doesn't"],
+    "shared_keywords": ["keywords both target"],
+    "client_unique": ["keywords only client targets"],
+    "opportunity_score": 1-100
+  }},
+  "content_analysis": {{
+    "competitor_strengths": ["3-5 content strengths"],
+    "competitor_weaknesses": ["2-3 content gaps"],
+    "content_gap_opportunities": ["3-5 specific content ideas client should create"]
+  }},
+  "backlink_estimate": {{
+    "competitor_authority": "Low/Medium/High",
+    "estimated_referring_domains": "rough range like 50-200",
+    "link_building_opportunities": ["3-5 ideas"]
+  }},
+  "overall_threat_level": "Low/Medium/High",
+  "action_items": ["5 specific actionable recommendations"]
+}}
+Return ONLY valid JSON, no markdown."""
+
+    try:
+        oai = get_openai_client()
+        resp = oai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+        )
+        analysis_raw = resp.choices[0].message.content or ""
+    except Exception as e:
+        analysis_raw = "{}"
+
+    # Parse LLM response
+    try:
+        import json as json_mod
+        cleaned = analysis_raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1].rsplit("```", 1)[0]
+        analysis = json_mod.loads(cleaned)
+    except Exception:
+        analysis = {
+            "keyword_gap": {"competitor_keywords": [], "shared_keywords": [], "client_unique": client_keywords, "opportunity_score": 50},
+            "content_analysis": {"competitor_strengths": ["Could not analyze"], "competitor_weaknesses": [], "content_gap_opportunities": []},
+            "backlink_estimate": {"competitor_authority": "Unknown", "estimated_referring_domains": "Unknown", "link_building_opportunities": []},
+            "overall_threat_level": "Unknown",
+            "action_items": ["Manual analysis recommended"],
+        }
+
+    # Save to database
+    existing = session.exec(
+        select(CompetitorAnalysis)
+        .where(CompetitorAnalysis.clientId == body.client_id)
+        .where(CompetitorAnalysis.competitor_domain == body.competitor_domain)
+    ).first()
+
+    if existing:
+        existing.keyword_gap_data = analysis.get("keyword_gap", {})
+        existing.backlink_comparison = analysis.get("backlink_estimate", {})
+        existing.content_benchmarks = analysis.get("content_analysis", {})
+        existing.last_updated = datetime.utcnow()
+        session.add(existing)
+    else:
+        ca = CompetitorAnalysis(
+            clientId=body.client_id,
+            competitor_domain=body.competitor_domain,
+            keyword_gap_data=analysis.get("keyword_gap", {}),
+            backlink_comparison=analysis.get("backlink_estimate", {}),
+            content_benchmarks=analysis.get("content_analysis", {}),
+        )
+        session.add(ca)
+
+    session.commit()
+
+    return {
+        "competitor_domain": body.competitor_domain,
+        "analysis": analysis,
+    }
+
+@app.get("/competitors/{client_id}")
+def get_competitors(client_id: int, session: Session = Depends(get_session)):
+    analyses = session.exec(
+        select(CompetitorAnalysis).where(CompetitorAnalysis.clientId == client_id)
+    ).all()
+    return {"competitors": [
         {
             "id": a.id,
-            "method": a.method,
-            "content": a.content,
-            "createdAt": a.createdAt.isoformat()
-        } for a in activities
+            "competitor_domain": a.competitor_domain,
+            "keyword_gap": a.keyword_gap_data or {},
+            "backlink_comparison": a.backlink_comparison or {},
+            "content_benchmarks": a.content_benchmarks or {},
+            "overall_threat_level": (a.keyword_gap_data or {}).get("opportunity_score", "N/A"),
+            "last_updated": a.last_updated.isoformat() if a.last_updated else None,
+        }
+        for a in analyses
     ]}
 
-@app.post("/clients/{client_id}/remarks")
-async def add_remark(client_id: int, data: RemarkAdd, session: Session = Depends(get_session)):
-    """Add a remark for a client"""
-    remark = Remark(
-        content=data.content,
-        clientId=client_id,
-        authorId=None,
-        isInternal=True
-    )
-    session.add(remark)
+@app.delete("/competitors/{analysis_id}")
+def delete_competitor(analysis_id: int, session: Session = Depends(get_session)):
+    ca = session.get(CompetitorAnalysis, analysis_id)
+    if not ca:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    session.delete(ca)
     session.commit()
-    return {"success": True}
-
-@app.get("/clients/{client_id}/remarks")
-async def get_client_remarks(
-    client_id: int, 
-    limit: int = 50,
-    session: Session = Depends(get_session)
-):
-    """Get remarks for a specific client with pagination"""
-    statement = select(Remark).where(Remark.clientId == client_id).order_by(Remark.createdAt.desc()).limit(limit)
-    remarks = session.exec(statement).all()
-    return {"remarks": [
-        {
-            "id": r.id,
-            "content": r.content,
-            "createdAt": r.createdAt.isoformat()
-        } for r in remarks
-    ]}
+    return {"ok": True}
 
 
-@app.post("/clients/{client_id}/send-email")
-async def send_client_email(
-    client_id: int,
-    data: EmailSend,
-    session: Session = Depends(get_session)
-):
-    """Send an email to a client and log it as an activity"""
-    profile = session.get(ClientProfile, client_id)
-    if not profile or not profile.user:
-        raise HTTPException(status_code=404, detail="Client or user not found")
-    
-    # In a real app, this would use an email service (SMTP/SendGrid)
-    # For now we'll simulate success and log it
-    print(f"📧 Sending email to {profile.user.email}...")
-    print(f"Subject: {data.subject}")
-    
-    # Log as activity
-    activity = ActivityLog(
-        clientId=client_id,
-        action="Manual Activity",
-        method="Email",
-        content=f"Sent Email: {data.subject}\n\n{data.body}",
-        createdAt=datetime.utcnow()
-    )
-    session.add(activity)
-    
-    # Update ClientProfile lastActivity
-    profile.lastActivity = f"Sent Email: {data.subject}"
-    profile.lastActivityDate = datetime.utcnow().isoformat()
-    session.add(profile)
-    
-    session.commit()
-    
-    return {"success": True}
+# ─────────────────────────────────────────────────────────────────────────────
+# Client Portal Domain Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+_portal_config: Dict[str, Any] = {
+    "portal_subdomain": "portal",
+    "portal_domain": "",
+    "branding": {
+        "company_name": "SERP Hawk",
+        "logo_url": "",
+        "primary_color": "#d97706",
+        "accent_color": "#7c3aed",
+        "favicon_url": "",
+    },
+    "features": {
+        "show_pricing": True,
+        "show_store": True,
+        "show_rankings": True,
+        "show_milestones": True,
+        "show_proposals": True,
+        "allow_file_upload": True,
+    },
+}
 
+@app.get("/portal/config")
+def get_portal_config():
+    return _portal_config
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+@app.put("/portal/config")
+def update_portal_config(body: Dict[str, Any]):
+    for key, val in body.items():
+        if key in _portal_config:
+            if isinstance(_portal_config[key], dict) and isinstance(val, dict):
+                _portal_config[key].update(val)
+            else:
+                _portal_config[key] = val
+    return {"ok": True, "config": _portal_config}

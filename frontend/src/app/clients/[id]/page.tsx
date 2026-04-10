@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Globe, 
@@ -25,12 +26,17 @@ import {
   TrendingUp,
   Zap,
   ChevronRight,
-  Mail
+  Mail,
+  FolderKanban,
+  Target,
+  Eye
 } from 'lucide-react';
 import { API_BASE_URL } from '@/config';
 import { useRole } from '@/context/RoleContext';
 import { cn } from '@/lib/utils';
+import PageGuide from '@/components/PageGuide';
 import axios from 'axios';
+import { DollarSign, XCircle } from 'lucide-react';
 
 // Framer Motion Variants
 const containerVariants = {
@@ -40,7 +46,7 @@ const containerVariants = {
 
 const itemVariants = {
   hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100 } }
+  show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 100 } }
 };
 
 const CommentSkeleton = () => (
@@ -68,6 +74,44 @@ const ActivitySkeletonTab = () => (
   </div>
 );
 
+// Payment Status Widget
+const paymentStatusColors = {
+  Paid: {
+    bg: 'bg-emerald-100',
+    text: 'text-emerald-700',
+    icon: <CheckCircle className="w-5 h-5 text-emerald-500" />,
+    label: 'Paid'
+  },
+  Pending: {
+    bg: 'bg-amber-100',
+    text: 'text-amber-700',
+    icon: <Clock className="w-5 h-5 text-amber-500" />,
+    label: 'Pending'
+  },
+  Failed: {
+    bg: 'bg-red-100',
+    text: 'text-red-700',
+    icon: <XCircle className="w-5 h-5 text-red-500" />,
+    label: 'Failed'
+  }
+};
+
+function PaymentStatusWidget({ status }: { status: string }) {
+  const validStatus = (status as keyof typeof paymentStatusColors) in paymentStatusColors 
+    ? status as keyof typeof paymentStatusColors 
+    : 'Pending';
+  const config = paymentStatusColors[validStatus];
+  return (
+    <div className={`flex items-center gap-4 p-6 rounded-2xl border border-white/60 shadow-sm ${config.bg}`}> 
+      <div className="bg-white p-3 rounded-xl shadow-sm">{config.icon}</div>
+      <div>
+        <div className="text-xs font-black uppercase tracking-widest text-slate-400 mb-1">Payment Status</div>
+        <div className={`text-lg font-bold ${config.text}`}>{config.label}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function ClientDetailPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -77,6 +121,8 @@ export default function ClientDetailPage() {
   const [emails, setEmails] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [statuses, setStatuses] = useState<any[]>([]);
+  const [timeline, setTimeline] = useState<any[]>([]);
+  const [timelineFilter, setTimelineFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -95,6 +141,28 @@ export default function ClientDetailPage() {
     services_offered: '',
     services_requested: ''
   });
+  const [serviceRequests, setServiceRequests] = useState<any[]>([]);
+  const [isEditingMetrics, setIsEditingMetrics] = useState(false);
+  const [metricsForm, setMetricsForm] = useState<Record<string, string>>({
+    total_revenue: '', growth_rate: '',
+    monthly_revenue: '', revenue_growth_pct: '',
+    total_conversions: '', avg_conversion_value: '',
+    roi_multiple: '', roi_detail: '',
+    campaign_progress: '', campaign_phase_note: '',
+    untapped_revenue_note: '',
+    total_visitors: '', engagement_rate: '', avg_time_on_site: '',
+  });
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({ companyName: '', projectName: '', websiteUrl: '' });
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await updateProfile({
+      companyName: profileForm.companyName,
+      projectName: profileForm.projectName,
+      websiteUrl: profileForm.websiteUrl
+    });
+    setIsEditingProfile(false);
+  };
 
   useEffect(() => {
     if (id) {
@@ -104,7 +172,9 @@ export default function ClientDetailPage() {
         fetchActivities(),
         fetchEmails(),
         fetchEmployees(),
-        fetchStatuses()
+        fetchStatuses(),
+        fetchServiceRequests(),
+        fetchTimeline(),
       ]).finally(() => setPageLoading(false));
     }
   }, [id]);
@@ -135,6 +205,23 @@ export default function ClientDetailPage() {
       if (res.ok) {
         const data = await res.json();
         setClient(data);
+        const cf = data.customFields || {};
+        setMetricsForm({
+          total_revenue: cf.total_revenue || '',
+          growth_rate: cf.growth_rate || '',
+          monthly_revenue: cf.monthly_revenue || '',
+          revenue_growth_pct: cf.revenue_growth_pct || '',
+          total_conversions: cf.total_conversions || '',
+          avg_conversion_value: cf.avg_conversion_value || '',
+          roi_multiple: cf.roi_multiple || '',
+          roi_detail: cf.roi_detail || '',
+          campaign_progress: cf.campaign_progress || '',
+          campaign_phase_note: cf.campaign_phase_note || '',
+          untapped_revenue_note: cf.untapped_revenue_note || '',
+          total_visitors: cf.total_visitors || '',
+          engagement_rate: cf.engagement_rate || '',
+          avg_time_on_site: cf.avg_time_on_site || '',
+        });
         setEditServicesForm({
           services_offered: data.services_offered || '',
           services_requested: data.services_requested || ''
@@ -179,6 +266,30 @@ export default function ClientDetailPage() {
       if (res.ok) {
         const data = await res.json();
         setEmails(data.emails || []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchServiceRequests = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/services/requests`);
+      if (res.ok) {
+        const data = await res.json();
+        setServiceRequests((data.requests || []).filter((r: any) => r.client_id === Number(id)));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchTimeline = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${id}/timeline`);
+      if (res.ok) {
+        const data = await res.json();
+        setTimeline(data.timeline || []);
       }
     } catch (err) {
       console.error(err);
@@ -282,7 +393,7 @@ export default function ClientDetailPage() {
   const updateProfile = async (updates: any) => {
     try {
       const res = await fetch(`${API_BASE_URL}/clients/${id}`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
       });
@@ -291,6 +402,16 @@ export default function ClientDetailPage() {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleSaveMetrics = async () => {
+    setLoading(true);
+    try {
+      await updateProfile({ customFields: metricsForm });
+      setIsEditingMetrics(false);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -318,569 +439,697 @@ export default function ClientDetailPage() {
   }
   if (!client) return <div className="p-8 text-red-500 font-bold text-center">Neural link failed. Client not found.</div>;
 
+  // --- INTERACTIVE STORYTELLING DASHBOARD ---
   return (
-    <motion.div 
-      initial="hidden" animate="show" variants={containerVariants}
-      className="max-w-7xl mx-auto space-y-8"
-    >
-      {/* Header Section */}
-      <motion.div variants={itemVariants} className="bg-white/50 backdrop-blur-2xl rounded-[3rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)] border border-white p-8 md:p-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative overflow-hidden">
-        <div className="absolute -right-20 -top-20 w-64 h-64 bg-indigo-500/10 blur-[80px] rounded-full z-0 pointer-events-none"></div>
-        <div className="relative z-10 w-full flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div className="flex items-center gap-6">
-             <div className="w-20 h-20 bg-gradient-to-br from-indigo-500 to-cyan-400 rounded-3xl flex items-center justify-center shadow-lg text-white font-black text-3xl">
-               {client.companyName?.substring(0, 1).toUpperCase() || 'C'}
-             </div>
-             <div>
-               <h1 className="text-4xl font-black text-slate-800 tracking-tight flex items-center gap-3">
-                 {client.companyName}
-                 <span className={cn("text-[10px] px-3 py-1 rounded-full uppercase tracking-wider font-bold border", 
-                   client.status === 'Active' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-amber-100 text-amber-700 border-amber-200')}>
-                   {client.status}
-                 </span>
-               </h1>
-               <div className="flex flex-wrap items-center gap-4 mt-2">
-                 <a href={client.website?.startsWith('http') ? client.website : `https://${client.website}`} target="_blank" rel="noreferrer" className="text-slate-500 hover:text-indigo-600 font-medium flex items-center gap-1.5 transition-colors bg-white/60 px-3 py-1.5 rounded-full border border-white/80 backdrop-blur-sm text-sm">
-                   <Globe className="w-4 h-4" /> {client.website}
-                 </a>
-                 <span className="text-slate-500 font-medium flex items-center gap-1.5 bg-white/60 px-3 py-1.5 rounded-full border border-white/80 backdrop-blur-sm text-sm">
-                   <User className="w-4 h-4" /> {client.email}
-                 </span>
-               </div>
-             </div>
-          </div>
-          <div className="flex gap-3 w-full md:w-auto">
-            <button 
-              onClick={() => setIsAssignModalOpen(true)}
-              className="w-full md:w-auto px-6 py-3 bg-white/70 backdrop-blur-md border border-white text-indigo-700 rounded-2xl font-bold hover:bg-white transition-all shadow-sm flex items-center justify-center gap-2"
-            >
-              <Users className="w-5 h-5" /> 
-              {client.assignedEmployee ? `Lead: ${client.assignedEmployee.name}` : 'Assign Lead'}
-            </button>
-          </div>
-        </div>
-      </motion.div>
+    <>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* EPIC WELCOME HERO */}
+        <motion.div 
+          initial={{ opacity: 0, y: 40 }} 
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+          className="relative mb-16 overflow-hidden rounded-3xl"
+        >
+          {/* Animated Background */}
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 opacity-90"></div>
+          <motion.div 
+            animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.5, 0.3] }}
+            transition={{ duration: 8, repeat: Infinity }}
+            className="absolute top-0 right-0 w-96 h-96 bg-white/20 rounded-full blur-3xl"
+          ></motion.div>
+          <motion.div 
+            animate={{ scale: [1, 0.9, 1], opacity: [0.2, 0.4, 0.2] }}
+            transition={{ duration: 10, repeat: Infinity, delay: 1 }}
+            className="absolute bottom-0 left-0 w-96 h-96 bg-cyan-400/20 rounded-full blur-3xl"
+          ></motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Main Content Area */}
-        <div className="lg:col-span-8 space-y-8">
-          {/* Custom Animated Tabs */}
-          <motion.div variants={itemVariants} className="flex gap-2 p-1.5 bg-white/40 backdrop-blur-md rounded-2xl border border-white shadow-sm overflow-x-auto scrollbar-hide">
-            {['overview', 'remarks', 'activities', 'emails'].map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className="relative px-6 py-3 rounded-xl font-bold text-sm tracking-wide capitalize flex-1 whitespace-nowrap transition-colors"
-                style={{ WebkitTapHighlightColor: "transparent" }}
-              >
-                {activeTab === tab && (
+          {/* Content */}
+          <div className="relative z-10 p-12 text-white">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2, duration: 0.6 }}
+            >
+              <p className="text-cyan-200 font-bold text-sm uppercase tracking-widest mb-3">Welcome Back To Your Growth Hub</p>
+              <h1 className="text-6xl md:text-7xl font-black mb-4 leading-tight">
+                {client.companyName}
+              </h1>
+              <p className="text-xl text-white/90 font-medium max-w-2xl">
+                Your intelligent growth partner is ready to scale your business to new heights. Let's unlock extraordinary results together.
+              </p>
+            </motion.div>
+
+            {/* Stats Preview */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.4, duration: 0.6 }}
+              className="grid grid-cols-3 gap-6 mt-8"
+            >
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
+                <p className="text-white/70 text-sm font-bold uppercase tracking-wider mb-2">Active Services</p>
+                <p className="text-3xl font-black text-cyan-200">{serviceRequests.filter(r => r.status !== 'Pending').length || 0}</p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
+                <p className="text-white/70 text-sm font-bold uppercase tracking-wider mb-2">Total Revenue</p>
+                <p className="text-3xl font-black text-cyan-200">{client.customFields?.total_revenue || '—'}</p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
+                <p className="text-white/70 text-sm font-bold uppercase tracking-wider mb-2">Growth Rate</p>
+                <p className="text-3xl font-black text-cyan-200">{client.customFields?.growth_rate || '—'}</p>
+              </div>
+            </motion.div>
+          </div>
+        </motion.div>
+
+
+        {/* STORYTELLING SECTION: Your Performance Journey */}
+        <PageGuide
+          pageKey="client-detail"
+          title="Understanding Your Client Dashboard"
+          description="This is the complete profile page for this client — a 360° view of their business, services, and performance."
+          steps={[
+            { icon: '📊', text: 'Performance Story section shows growth metrics like traffic, revenue, and rankings over time.' },
+            { icon: '💼', text: 'Scroll down to see active services, recent activity, communications, and project timeline.' },
+            { icon: '✏️', text: 'Admins can click \"Edit Metrics\" to update this client\'s financial and performance data.' },
+            { icon: '💬', text: 'The comments section lets you add internal notes and track all communication history.' },
+          ]}
+        />
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.8 }}
+          className="mb-16"
+        >
+          <div className="flex items-center gap-3 mb-8">
+            <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
+            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-wider">Your Performance Story</h2>
+            {(role === 'Admin' || role === 'Employee') && (
+              <button onClick={() => setIsEditingMetrics(true)} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-bold rounded-lg transition-all">
+                <Edit2 size={12} /> Edit Metrics
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Card 1: Growth Momentum */}
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.9, duration: 0.6 }}
+              whileHover={{ y: -8 }}
+              className="bg-white border border-slate-200 rounded-3xl p-8 group overflow-hidden shadow-sm"
+            >
+              <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-green-400/20 to-emerald-400/20 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-500"></div>
+              <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-green-100 text-green-600 rounded-xl"><TrendingUp size={24} /></div>
+                  <h3 className="text-xl font-black text-slate-800">Growth Momentum</h3>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500 font-bold mb-2">This Month's Revenue</p>
+                  <p className="text-4xl font-black text-green-600">{client.customFields?.monthly_revenue || '—'}</p>
+                  <p className="text-sm text-green-700 mt-2 font-bold">{client.customFields?.revenue_growth_pct || 'No data yet'}</p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Card 2: Conversion Power */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1, duration: 0.6 }}
+              whileHover={{ y: -8 }}
+              className="bg-white border border-slate-200 rounded-3xl p-8 group overflow-hidden shadow-sm"
+            >
+              <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-blue-400/20 to-cyan-400/20 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-500"></div>
+              <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-blue-100 text-blue-600 rounded-xl"><Zap size={24} /></div>
+                  <h3 className="text-xl font-black text-slate-800">Conversion Power</h3>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500 font-bold mb-2">Total Conversions</p>
+                  <p className="text-4xl font-black text-blue-600">{client.customFields?.total_conversions || '—'}</p>
+                  <p className="text-sm text-blue-700 mt-2 font-bold">{client.customFields?.avg_conversion_value || 'No data yet'}</p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Card 3: ROI Victory */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 1.1, duration: 0.6 }}
+              whileHover={{ y: -8 }}
+              className="bg-white border border-slate-200 rounded-3xl p-8 group overflow-hidden shadow-sm"
+            >
+              <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-500"></div>
+              <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-purple-100 text-purple-600 rounded-xl"><DollarSign size={24} /></div>
+                  <h3 className="text-xl font-black text-slate-800">ROI Victory</h3>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500 font-bold mb-2">Return on Investment</p>
+                  <p className="text-4xl font-black text-purple-600">{client.customFields?.roi_multiple || '—'}</p>
+                  <p className="text-sm text-purple-700 mt-2 font-bold">{client.customFields?.roi_detail || 'No data yet'}</p>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </motion.div>
+
+        {/* PARTNERSHIP PROFILE HERO */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.2 }}
+          className="mb-16"
+        >
+          <div className="flex items-center gap-3 mb-8">
+            <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
+            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-wider">Your Partnership</h2>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Profile Card - Modern Design */}
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 1.3, duration: 0.6 }}
+              className="group relative bg-white border border-slate-200 rounded-3xl p-10 overflow-hidden shadow-sm"
+            >
+              {/* Animated glow */}
+              <motion.div
+                className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100"
+                transition={{ duration: 0.5 }}
+              ></motion.div>
+
+              <div className="relative z-10">
+                <div className="flex items-center gap-4 mb-8">
                   <motion.div
-                    layoutId="active-tab"
-                    className="absolute inset-0 bg-white shadow-sm border border-slate-100 rounded-xl"
-                    initial={false}
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                  />
-                )}
-                <span className={cn("relative z-10", activeTab === tab ? "text-indigo-600" : "text-slate-500 hover:text-slate-800")}>
-                  {tab}
-                </span>
+                    whileHover={{ scale: 1.1, rotate: 5 }}
+                    className="w-16 h-16 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-2xl flex items-center justify-center shadow-lg"
+                  >
+                    <Briefcase size={32} className="text-white" />
+                  </motion.div>
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-800">Company Profile</h3>
+                    <p className="text-sm text-slate-500 font-bold">Your business details</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Editable Company Profile Fields */}
+                  {isEditingProfile ? (
+                    <form onSubmit={handleSaveProfile} className="space-y-4">
+                      <motion.div className="p-4 bg-cyan-50 border border-cyan-200 rounded-2xl">
+                        <label className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 block">Company Name</label>
+                        <input className="w-full px-3 py-2 rounded-xl border border-cyan-200 font-black text-cyan-700 bg-white" value={profileForm.companyName} onChange={e => setProfileForm({ ...profileForm, companyName: e.target.value })} />
+                      </motion.div>
+                      <motion.div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl">
+                        <label className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 block">Project Name</label>
+                        <input className="w-full px-3 py-2 rounded-xl border border-blue-200 font-black text-blue-700 bg-white" value={profileForm.projectName} onChange={e => setProfileForm({ ...profileForm, projectName: e.target.value })} />
+                      </motion.div>
+                      <motion.div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl">
+                        <label className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 block">Website</label>
+                        <input className="w-full px-3 py-2 rounded-xl border border-purple-200 font-black text-purple-700 bg-white" value={profileForm.websiteUrl} onChange={e => setProfileForm({ ...profileForm, websiteUrl: e.target.value })} />
+                      </motion.div>
+                      <div className="flex gap-2 pt-2">
+                        <button type="button" onClick={() => setIsEditingProfile(false)} className="px-4 py-2 rounded-xl bg-slate-200 text-slate-700 font-bold">Cancel</button>
+                        <button type="submit" className="px-6 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 text-white font-bold">Save</button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.4 }} className="p-4 bg-cyan-50 border border-cyan-200 rounded-2xl hover:bg-cyan-100 transition-all flex justify-between items-center">
+                        <div>
+                          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Company Name</p>
+                          <p className="text-xl font-black text-cyan-700">{client.companyName}</p>
+                        </div>
+                        <button onClick={() => { setIsEditingProfile(true); setProfileForm({ companyName: client.companyName || '', projectName: client.projectName || '', websiteUrl: client.website || client.websiteUrl || '' }); }} className="ml-4 p-2 rounded-full bg-cyan-100 hover:bg-cyan-200"><Edit2 className="w-4 h-4 text-cyan-700" /></button>
+                      </motion.div>
+                      <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.45 }} className="p-4 bg-blue-50 border border-blue-200 rounded-2xl hover:bg-blue-100 transition-all flex justify-between items-center">
+                        <div>
+                          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Project Name</p>
+                          <p className="text-xl font-black text-blue-700">{client.projectName || 'Active Project'}</p>
+                        </div>
+                        <button onClick={() => { setIsEditingProfile(true); setProfileForm({ companyName: client.companyName || '', projectName: client.projectName || '', websiteUrl: client.website || client.websiteUrl || '' }); }} className="ml-4 p-2 rounded-full bg-blue-100 hover:bg-blue-200"><Edit2 className="w-4 h-4 text-blue-700" /></button>
+                      </motion.div>
+                      <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.5 }} className="p-4 bg-purple-50 border border-purple-200 rounded-2xl hover:bg-purple-100 transition-all flex justify-between items-center">
+                        <div>
+                          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Website</p>
+                          <p className="text-lg font-black text-purple-700 truncate">{client.website || client.websiteUrl || 'www.yourwebsite.com'}</p>
+                        </div>
+                        <button onClick={() => { setIsEditingProfile(true); setProfileForm({ companyName: client.companyName || '', projectName: client.projectName || '', websiteUrl: client.website || client.websiteUrl || '' }); }} className="ml-4 p-2 rounded-full bg-purple-100 hover:bg-purple-200"><Edit2 className="w-4 h-4 text-purple-700" /></button>
+                      </motion.div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Team & Services - Interactive */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 1.3, duration: 0.6 }}
+              className="group relative bg-white border border-slate-200 rounded-3xl p-10 overflow-hidden shadow-sm"
+            >
+              {/* Animated glow */}
+              <motion.div
+                className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100"
+                transition={{ duration: 0.5 }}
+              ></motion.div>
+
+              <div className="relative z-10">
+                <div className="flex items-center gap-4 mb-8">
+                  <motion.div
+                    whileHover={{ scale: 1.1, rotate: -5 }}
+                    className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg"
+                  >
+                    <Users size={32} className="text-white" />
+                  </motion.div>
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-800">Active Services</h3>
+                    <p className="text-sm text-slate-500 font-bold">What we're doing for you</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 mb-6">
+                  {serviceRequests.length === 0 ? (
+                    <p className="text-sm text-slate-500 italic py-2">No active services yet.</p>
+                  ) : (
+                    serviceRequests.map((svc: any, idx: number) => (
+                      <motion.div
+                        key={svc.id}
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 1.4 + idx * 0.05 }}
+                        className="flex items-center gap-3 p-3 bg-purple-50 rounded-xl border border-purple-200 hover:bg-purple-100 transition-all"
+                      >
+                        <motion.div
+                          animate={{ scale: [1, 1.2, 1] }}
+                          transition={{ duration: 2, repeat: Infinity, delay: idx * 0.2 }}
+                          className="w-3 h-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full shrink-0"
+                        />
+                        <span className="font-bold text-slate-800 flex-1">{svc.service_name}</span>
+                        <span className="text-xs text-slate-500 font-medium">{svc.status}</span>
+                        <CheckCircle size={14} className="text-green-400" />
+                      </motion.div>
+                    ))
+                  )}
+                </div>
+
+                <motion.button
+                  whileHover={{ scale: 1.05, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-black rounded-xl shadow-lg hover:shadow-purple-500/30 transition-all"
+                >
+                  Connect With Your Team
+                </motion.button>
+              </div>
+            </motion.div>
+          </div>
+        </motion.div>
+        {/* ENGAGEMENT OPPORTUNITIES */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.4 }}
+          className="mb-16"
+        >
+          <div className="flex items-center gap-3 mb-8">
+            <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
+            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-wider">Next Steps Forward</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Strategy Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.5 }}
+              whileHover={{ y: -8 }}
+              className="group relative bg-white border border-slate-200 rounded-3xl p-8 overflow-hidden cursor-pointer shadow-sm"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="relative z-10">
+                <div className="flex items-start justify-between mb-6">
+                  <div>
+                    <h3 className="text-xl font-black text-slate-800 mb-2">{client.nextMilestone || 'Next Campaign Phase'}</h3>
+                    <p className="text-sm text-slate-500">{client.nextMilestoneDate || 'No deadline set'}</p>
+                  </div>
+                  <div className="p-3 bg-green-100 text-green-600 rounded-xl"><Zap size={24} /></div>
+                </div>
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(100, Number(client.customFields?.campaign_progress) || 0)}%` }}
+                  transition={{ delay: 1.6, duration: 0.8 }}
+                  className="h-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full mb-3"
+                />
+                <p className="text-sm font-bold text-slate-600">
+                  {client.customFields?.campaign_phase_note || (client.nextMilestone ? `${client.customFields?.campaign_progress || 0}% Complete` : 'Not yet configured')}
+                </p>
+              </div>
+            </motion.div>
+
+            {/* Opportunity Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.55 }}
+              whileHover={{ y: -8 }}
+              className="group relative bg-white border border-slate-200 rounded-3xl p-8 overflow-hidden cursor-pointer shadow-sm"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="relative z-10">
+                <div className="flex items-start justify-between mb-6">
+                  <div>
+                    <h3 className="text-xl font-black text-slate-800 mb-2">Untapped Revenue</h3>
+                    <p className="text-sm text-slate-500">Growth opportunities ahead</p>
+                  </div>
+                  <div className="p-3 bg-orange-100 text-orange-600 rounded-xl"><TrendingUp size={24} /></div>
+                </div>
+                <p className="text-lg font-bold text-slate-600 mb-4">
+                  {client.customFields?.untapped_revenue_note || 'No data yet — admin can set this'}
+                </p>
+                <Link href="/store" className="block w-full py-2 text-center bg-orange-600/80 hover:bg-orange-600 text-white rounded-xl font-bold text-sm transition-all">
+                  See Opportunities →
+                </Link>
+              </div>
+            </motion.div>
+          </div>
+        </motion.div>
+
+        {/* DETAILED INSIGHTS - Tabs with Content */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.6 }}
+          className="mb-16"
+        >
+          <div className="flex items-center gap-3 mb-8">
+            <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
+            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-wider">Detailed Insights</h2>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Overview Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.7 }}
+              whileHover={{ y: -8 }}
+              className="group bg-white border border-slate-200 rounded-3xl p-8 overflow-hidden shadow-sm"
+            >
+              <div className="absolute top-0 left-0 w-32 h-32 bg-blue-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="relative z-10">
+                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+                  <Eye size={24} className="text-blue-600" />
+                  Performance Overview
+                </h3>
+                <div className="space-y-3">
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                    <p className="text-xs text-slate-500 font-bold mb-1">Total Visitors</p>
+                    <p className="text-2xl font-black text-blue-700">{client.customFields?.total_visitors || '—'}</p>
+                  </div>
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                    <p className="text-xs text-slate-500 font-bold mb-1">Engagement Rate</p>
+                    <p className="text-2xl font-black text-blue-700">{client.customFields?.engagement_rate || '—'}</p>
+                  </div>
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                    <p className="text-xs text-slate-500 font-bold mb-1">Avg Time on Site</p>
+                    <p className="text-2xl font-black text-blue-700">{client.customFields?.avg_time_on_site || '—'}</p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Recent Activity Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.75 }}
+              whileHover={{ y: -8 }}
+              className="group bg-white border border-slate-200 rounded-3xl p-8 overflow-hidden shadow-sm"
+            >
+              <div className="absolute top-0 left-0 w-32 h-32 bg-purple-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="relative z-10">
+                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+                  <Activity size={24} className="text-purple-600" />
+                  Recent Activity
+                </h3>
+                <div className="space-y-3">
+                  {activities.length === 0 ? (
+                    <p className="text-sm text-slate-500 italic">No activities recorded yet.</p>
+                  ) : (
+                    activities.slice(0, 3).map((item: any, idx: number) => (
+                      <motion.div
+                        key={item.id}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 1.8 + idx * 0.05 }}
+                        className="p-3 bg-purple-50 border border-purple-200 rounded-xl"
+                      >
+                        <p className="text-sm font-bold text-slate-800">{item.action || item.content}</p>
+                        <p className="text-xs text-slate-500 font-medium">{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}</p>
+                      </motion.div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Team Connection Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.8 }}
+              whileHover={{ y: -8 }}
+              className="group bg-white border border-slate-200 rounded-3xl p-8 overflow-hidden shadow-sm"
+            >
+              <div className="absolute top-0 left-0 w-32 h-32 bg-pink-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="relative z-10">
+                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+                  <Users size={24} className="text-pink-600" />
+                  Your Team
+                </h3>
+                <div className="space-y-3">
+                  {(() => {
+                    const assignedEmp = employees.find((e: any) => e.id === client.assignedEmployeeId);
+                    return assignedEmp ? (
+                      <div className="p-4 bg-pink-50 border border-pink-200 rounded-xl">
+                        <p className="text-xs text-slate-500 font-bold mb-2">Account Manager</p>
+                        <p className="text-sm font-black text-pink-700">{assignedEmp.name}</p>
+                        <p className="text-xs text-slate-400 mt-1">{assignedEmp.email}</p>
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-pink-50 border border-pink-200 rounded-xl">
+                        <p className="text-xs text-slate-500 font-bold mb-2">Account Manager</p>
+                        <p className="text-sm font-medium text-slate-400 italic">Not assigned yet</p>
+                      </div>
+                    );
+                  })()}
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    className="w-full py-3 bg-gradient-to-r from-pink-600 to-rose-600 text-white rounded-xl font-bold text-sm shadow-lg hover:shadow-pink-500/30 transition-all"
+                  >
+                    Message Your Team
+                  </motion.button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </motion.div>
+
+        {/* ─── UNIFIED ACTIVITY TIMELINE ─── */}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.9 }} className="mb-16">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
+            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-wider">Activity Timeline</h2>
+          </div>
+          {/* Filters */}
+          <div className="flex flex-wrap gap-2 mb-6">
+            {[
+              { key: 'all', label: 'All' },
+              { key: 'email', label: 'Emails' },
+              { key: 'call', label: 'Calls' },
+              { key: 'invoice', label: 'Invoices' },
+              { key: 'milestone', label: 'Milestones' },
+              { key: 'file', label: 'Files' },
+              { key: 'activity', label: 'Activities' },
+            ].map(f => (
+              <button key={f.key} onClick={() => setTimelineFilter(f.key)}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${timelineFilter === f.key ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}>
+                {f.label}
               </button>
             ))}
-          </motion.div>
-
-          <AnimatePresence mode="wait">
-            <motion.div 
-              key={activeTab}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="bg-white/40 backdrop-blur-2xl rounded-[2.5rem] border border-white shadow-[0_8px_32px_rgba(0,0,0,0.05)] p-8 min-h-[500px]"
-            >
-              {activeTab === 'overview' && (
-                <div className="space-y-10">
-                  <section>
-                    <h3 className="text-xl font-black mb-6 flex items-center gap-3 text-slate-800">
-                      <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><MapPin className="w-5 h-5" /></div>
-                      Project Identity
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                       <div className="p-5 bg-white/60 border border-white/80 rounded-2xl shadow-sm">
-                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Project Name</label>
-                         <p className="font-bold text-slate-800">{client.projectName || 'N/A'}</p>
-                       </div>
-                       <div className="p-5 bg-white/60 border border-white/80 rounded-2xl shadow-sm">
-                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">GMB Name</label>
-                         <p className="font-bold text-slate-800">{client.gmbName || 'N/A'}</p>
-                       </div>
-                       <div className="p-5 bg-white/60 border border-white/80 rounded-2xl shadow-sm">
-                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Associated Email</label>
-                         <p className="font-bold text-slate-800">{client.email}</p>
-                       </div>
-                       <div className="p-5 bg-white/60 border border-white/80 rounded-2xl shadow-sm">
-                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Contact Phone</label>
-                         <p className="font-bold text-slate-800">{client.phone || 'N/A'}</p>
-                       </div>
-                    </div>
-                  </section>
-
-                  <section>
-                    <h3 className="text-xl font-black mb-6 flex items-center gap-3 text-slate-800">
-                      <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><ShieldCheck className="w-5 h-5" /></div>
-                      Core Strategy
-                    </h3>
-                    <div className="p-6 border border-white rounded-[2rem] bg-gradient-to-br from-indigo-50/50 to-cyan-50/50 italic text-slate-700 font-medium leading-relaxed relative overflow-hidden shadow-inner">
-                      <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-400"></div>
-                      "{client.seoStrategy || 'Intelligence network is analyzing the target vector...'}"
-                    </div>
-                  </section>
-
-                  <section>
-                     <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-xl font-black flex items-center gap-3 text-slate-800">
-                           <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><Hash className="w-5 h-5" /></div>
-                           Target Keywords
-                        </h3>
-                        <button 
-                          onClick={() => setIsKeywordModalOpen(true)}
-                          className="px-4 py-2 bg-white/80 border border-slate-200 rounded-xl text-indigo-600 hover:text-indigo-800 hover:bg-white flex items-center gap-2 text-sm font-bold transition-all shadow-sm"
-                        >
-                          <Plus className="w-4 h-4" /> Add Keyword
-                        </button>
-                     </div>
-                     <div className="flex flex-wrap gap-2.5">
-                       {client.targetKeywords?.map((kw: string) => (
-                         <span key={kw} className="px-4 py-2 bg-white/80 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 flex items-center gap-3 group shadow-sm">
-                           {kw}
-                           <button onClick={() => handleRemoveKeyword(kw)} className="text-slate-300 hover:text-red-500 bg-white rounded-full p-0.5 transition-colors">
-                             <Trash2 className="w-3.5 h-3.5" />
-                           </button>
-                         </span>
-                       ))}
-                     </div>
-                  </section>
-                </div>
-              )}
-
-              {activeTab === 'remarks' && (
-                <div className="space-y-8">
-                  <form onSubmit={handleAddRemark} className="space-y-4">
-                    <div className="relative">
-                      <textarea 
-                        name="content"
-                        placeholder="Log classified intelligence or general remarks..."
-                        className="w-full p-6 bg-white/60 border border-white/80 rounded-[2rem] focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 outline-none min-h-[140px] text-slate-700 font-medium placeholder:text-slate-400 shadow-inner"
-                        required
-                      />
-                      <button className="absolute bottom-6 right-6 w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center font-bold shadow-lg hover:shadow-indigo-500/30 hover:-translate-y-0.5 transition-all">
-                        <Send className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </form>
-
-                  <div className="space-y-4 relative">
-                    {loading && <CommentSkeleton />}
-                    {remarks.map(r => (
-                      <div key={r.id} className="p-6 bg-white/50 backdrop-blur-sm rounded-[2rem] border border-white/60 shadow-sm relative group">
-                        <div className="absolute top-0 left-0 w-1.5 h-0 bg-indigo-500 group-hover:h-full transition-all duration-300 rounded-l-[2rem]"></div>
-                        <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
-                          <span className="text-xs font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg">{r.createdBy}</span>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                            <Clock className="w-3 h-3" /> {new Date(r.createdAt).toLocaleString()}
-                          </span>
-                        </div>
-                        <p className="text-slate-700 font-medium leading-relaxed">{r.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'activities' && (
-                <div className="space-y-8">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-xl font-black flex items-center gap-3 text-slate-800">
-                      <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><Activity className="w-5 h-5" /></div>
-                      Activity Feed
-                    </h3>
-                    <button onClick={() => setIsActivityModalOpen(true)} className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white rounded-xl font-bold shadow-[0_8px_20px_rgba(79,70,229,0.3)] hover:-translate-y-0.5 hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-                      <Plus className="w-4 h-4" /> Log Entry
-                    </button>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    {loading && <ActivitySkeletonTab />}
-                    {activities.map(a => (
-                      <div key={a.id} className="flex gap-5 p-5 bg-white/50 backdrop-blur-md border border-white/80 shadow-sm rounded-2xl relative overflow-hidden group">
-                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-blue-500 group-hover:bg-cyan-400 transition-colors"></div>
-                        <div className="bg-white p-3 rounded-2xl h-fit border border-slate-100 shadow-sm">
-                          {a.method === 'Email' ? <Send className="w-5 h-5 text-indigo-500" /> : <Zap className="w-5 h-5 text-amber-500" />}
-                        </div>
-                        <div className="flex-1">
-                          <div className="font-bold text-slate-800 text-lg">{a.action} <span className="text-xs font-bold bg-white text-slate-500 border rounded-lg px-2 py-1 ml-2 align-middle">{a.method}</span></div>
-                          <p className="text-slate-600 font-medium whitespace-pre-wrap mt-2 leading-relaxed bg-white/40 p-3 rounded-xl border border-white/40">{a.content}</p>
-                          <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-4 font-black uppercase tracking-widest">
-                            <Clock className="w-3 h-3" /> {new Date(a.createdAt).toLocaleString()}
+          </div>
+          {/* Timeline List */}
+          <div className="relative">
+            <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-indigo-300 via-purple-300 to-transparent"></div>
+            <div className="space-y-4">
+              {timeline.filter(e => timelineFilter === 'all' || e.type === timelineFilter).length === 0 ? (
+                <p className="text-sm text-slate-400 italic pl-14">No events found.</p>
+              ) : (
+                timeline.filter(e => timelineFilter === 'all' || e.type === timelineFilter).slice(0, 30).map((ev: any, idx: number) => {
+                  const colors: Record<string, { bg: string; ring: string; icon: string }> = {
+                    email: { bg: 'bg-violet-100', ring: 'ring-violet-300', icon: '✉️' },
+                    call: { bg: 'bg-amber-100', ring: 'ring-amber-300', icon: '📞' },
+                    invoice: { bg: 'bg-emerald-100', ring: 'ring-emerald-300', icon: '💰' },
+                    milestone: { bg: 'bg-pink-100', ring: 'ring-pink-300', icon: '🎯' },
+                    file: { bg: 'bg-sky-100', ring: 'ring-sky-300', icon: '📁' },
+                    activity: { bg: 'bg-slate-100', ring: 'ring-slate-300', icon: '⚡' },
+                  };
+                  const c = colors[ev.type] || colors.activity;
+                  return (
+                    <motion.div key={`${ev.type}-${ev.id}`} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }}
+                      className="relative flex items-start gap-4 pl-14">
+                      <div className={`absolute left-3.5 w-5 h-5 rounded-full ${c.bg} ring-2 ${c.ring} flex items-center justify-center text-[10px]`}>{c.icon}</div>
+                      <div className="flex-1 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{ev.type}</span>
+                            <p className="text-sm font-bold text-slate-800 mt-0.5">{ev.title}</p>
+                            {ev.detail && <p className="text-xs text-slate-500 mt-1">{ev.detail}</p>}
                           </div>
+                          <span className="text-[10px] text-slate-400 font-medium shrink-0">{ev.date ? new Date(ev.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'emails' && (
-                <div className="space-y-6">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><Mail className="w-5 h-5" /></div>
-                    <h3 className="text-xl font-black text-slate-800">Email History</h3>
-                    <span className="text-xs bg-indigo-100 text-indigo-700 font-bold px-2.5 py-1 rounded-full">{emails.length} sent</span>
-                  </div>
-                  {emails.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
-                      <Mail className="w-10 h-10 opacity-30" />
-                      <p className="font-bold">No emails sent to this client yet</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-5">
-                      {emails.map((em: any) => (
-                        <div key={em.id} className="bg-white/60 border border-white/80 rounded-[2rem] p-6 shadow-sm">
-                          <div className="flex items-start justify-between mb-4">
-                            <div>
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Subject</p>
-                              <p className="font-black text-slate-800 text-lg">{em.subject}</p>
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-bold shrink-0 ml-4">{new Date(em.sent_at).toLocaleDateString()}</span>
-                          </div>
-                          {em.english_body && (
-                            <div className="mb-3">
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">🇺🇸 English</p>
-                              <p className="text-sm text-slate-700 font-medium leading-relaxed bg-white/80 p-4 rounded-2xl border border-white whitespace-pre-wrap">{em.english_body}</p>
-                            </div>
-                          )}
-                          {em.spanish_body && (
-                            <div>
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">🇪🇸 Español</p>
-                              <p className="text-sm text-slate-700 font-medium leading-relaxed bg-orange-50/60 p-4 rounded-2xl border border-orange-100 whitespace-pre-wrap">{em.spanish_body}</p>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-
-        {/* Sidebar Widgets (Right) */}
-        <div className="lg:col-span-4 space-y-6">
-          <motion.div variants={itemVariants} className="bg-white/40 backdrop-blur-2xl rounded-[2.5rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)] border border-white/60 p-8">
-            <div className="flex justify-between items-center mb-6 border-b border-white/50 pb-4">
-              <h3 className="font-black text-lg flex items-center gap-3 text-slate-800">
-                <div className="p-2 bg-cyan-50 text-cyan-600 rounded-xl"><Activity className="w-5 h-5" /></div>
-                Service Analysis
-              </h3>
-              {(role === 'Admin' || role === 'Employee') && (
-                <button 
-                  onClick={() => {
-                    if (isEditingServices) {
-                      updateProfile({
-                        services_offered: editServicesForm.services_offered,
-                        services_requested: editServicesForm.services_requested
-                      });
-                    }
-                    setIsEditingServices(!isEditingServices);
-                  }}
-                  className={cn(
-                    "w-10 h-10 flex items-center justify-center rounded-xl transition-all font-bold shadow-sm border",
-                    isEditingServices ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-white text-slate-500 border-slate-100 hover:text-indigo-600"
-                  )}
-                >
-                  {isEditingServices ? <Save className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
-                </button>
+                    </motion.div>
+                  );
+                })
               )}
             </div>
-            
-            <div className="space-y-6">
-              <div>
-                <label className="text-[10px] font-black tracking-widest text-slate-500 uppercase flex justify-between mb-2">
-                  Services Offered
-                  {isEditingServices && <span className="text-indigo-400 opacity-60">Comma Seperated</span>}
-                </label>
-                {isEditingServices ? (
-                  <textarea
-                    value={editServicesForm.services_offered}
-                    onChange={e => setEditServicesForm({...editServicesForm, services_offered: e.target.value})}
-                    className="w-full p-4 border border-indigo-200/50 rounded-2xl text-sm bg-white/80 focus:ring-2 focus:ring-indigo-500/30 outline-none shadow-inner"
-                    rows={3}
-                  />
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {client.services_offered ? (
-                      client.services_offered.split(',').map((s: string, i: number) => (
-                        <span key={i} className="px-3.5 py-1.5 bg-indigo-50/80 text-indigo-700 rounded-xl text-sm font-bold border border-indigo-100/50 shadow-sm">
-                          {s.trim()}
-                        </span>
-                      ))
-                    ) : (
-                      <p className="text-sm text-slate-400 italic">No services recorded</p>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="pt-6 border-t border-white/50">
-                <label className="text-[10px] font-black tracking-widest text-slate-500 uppercase flex justify-between mb-2">
-                  Requested Operations
-                </label>
-                {isEditingServices ? (
-                  <textarea
-                    value={editServicesForm.services_requested}
-                    onChange={e => setEditServicesForm({...editServicesForm, services_requested: e.target.value})}
-                    className="w-full p-4 border border-cyan-200/50 rounded-2xl text-sm bg-white/80 focus:ring-2 focus:ring-cyan-500/30 outline-none shadow-inner"
-                    rows={3}
-                  />
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {client.services_requested ? (
-                      client.services_requested.split(',').map((s: string, i: number) => (
-                        <span key={i} className="px-3.5 py-1.5 bg-cyan-50/80 text-cyan-700 rounded-xl text-sm font-bold border border-cyan-100/50 shadow-sm">
-                          {s.trim()}
-                        </span>
-                      ))
-                    ) : (
-                      <p className="text-sm text-slate-400 italic">No operations requested</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </motion.div>
+          </div>
+        </motion.div>
 
-          {/* Email Status Widget */}
-          <motion.div variants={itemVariants} className="bg-slate-900 rounded-[2.5rem] shadow-2xl p-8 text-white relative overflow-hidden group">
-            <div className="absolute top-[-20%] right-[-20%] w-[60%] h-[60%] bg-indigo-500/30 blur-[60px] rounded-full group-hover:bg-cyan-500/30 transition-colors duration-1000 z-0"></div>
-            <div className="relative z-10">
-              <h3 className="font-black text-xl mb-6 flex items-center gap-3">
-                <div className="p-2 bg-indigo-500/20 text-indigo-300 rounded-xl"><Send className="w-5 h-5" /></div>
-                Comms Link
-              </h3>
-              <div className="space-y-4">
-                <div className="p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 flex justify-between items-center group-hover:bg-white/10 transition-colors">
-                  <p className="text-sm font-bold text-slate-300">Outbound Offer</p>
-                   {client.outbound_email_sent ? (
-                      <div className="flex items-center gap-2 text-emerald-400 font-bold bg-emerald-400/10 px-3 py-1.5 rounded-xl border border-emerald-400/20">
-                        <CheckCircle className="w-4 h-4" /> Delivered
-                      </div>
-                   ) : (
-                      <div className="flex items-center gap-2 text-slate-400 font-bold bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
-                        <Clock className="w-4 h-4" /> Pending
-                      </div>
-                   )}
-                </div>
-                <div className="p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 flex justify-between items-center group-hover:bg-white/10 transition-colors">
-                  <p className="text-sm font-bold text-slate-300">Inbound Data</p>
-                   {client.inbound_email_sent ? (
-                      <div className="flex items-center gap-2 text-emerald-400 font-bold bg-emerald-400/10 px-3 py-1.5 rounded-xl border border-emerald-400/20">
-                        <CheckCircle className="w-4 h-4" /> Delivered
-                      </div>
-                   ) : (
-                      <div className="flex items-center gap-2 text-slate-400 font-bold bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
-                        <Clock className="w-4 h-4" /> Pending
-                      </div>
-                   )}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div variants={itemVariants} className="bg-white/40 backdrop-blur-2xl rounded-[2.5rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)] border border-white/60 p-8 relative overflow-hidden">
-             <div className="absolute left-0 bottom-0 w-full h-1 bg-gradient-to-r from-indigo-400 to-cyan-400"></div>
-             <div className="flex justify-between items-center mb-6 border-b border-white/50 pb-4">
-              <h3 className="font-black text-lg text-slate-800 flex items-center gap-3">
-                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><TrendingUp className="w-5 h-5" /></div>
-                Next Milestone
-              </h3>
-              {(role === 'Admin' || role === 'Employee') && (
-                <button 
-                  onClick={() => setIsMilestoneModalOpen(true)}
-                  className="w-10 h-10 bg-white border border-slate-100 flex items-center justify-center rounded-xl hover:text-indigo-600 transition-colors shadow-sm"
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-            
-            <div className="space-y-4 relative">
-              <div className="absolute left-3 top-2 bottom-2 w-px bg-indigo-100"></div>
-              
-              <div className="relative pl-10">
-                 <div className="absolute left-0 top-1 w-6 h-6 bg-white border-2 border-indigo-400 rounded-full flex items-center justify-center shadow-sm">
-                    <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
-                 </div>
-                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Target</p>
-                 <p className="font-bold text-slate-800 bg-white/70 p-4 rounded-xl border border-white shadow-sm inline-block w-full">
-                    {client.nextMilestone || "Awaiting Setup"}
-                 </p>
-              </div>
-              <div className="relative pl-10 pt-4">
-                 <div className="absolute left-0 top-5 w-6 h-6 bg-indigo-50 border-2 border-indigo-200 rounded-full flex items-center justify-center">
-                    <Clock className="w-3 h-3 text-indigo-300" />
-                 </div>
-                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Schedule</p>
-                 <span className="inline-flex items-center gap-2 bg-slate-900 text-white font-bold text-sm px-4 py-2 rounded-xl shadow-md">
-                     <Clock className="w-4 h-4 text-cyan-400" />
-                     {client.nextMilestoneDate || "TBD"}
-                 </span>
-              </div>
-            </div>
-          </motion.div>
-        </div>
       </div>
-
-      {/* Modals updated to Glassmorphism styling */}
-      <AnimatePresence>
-        {isAssignModalOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-white/90 backdrop-blur-2xl rounded-[2rem] border border-white shadow-2xl w-full max-w-sm p-8 relative">
-              <button onClick={() => setIsAssignModalOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-800"><X className="w-6 h-6" /></button>
-              <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3">
-                 <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><Users className="w-5 h-5" /></div>
-                 Assign Lead
-              </h2>
-              <div className="space-y-3">
-                {employees.map(employee => (
-                  <button 
-                    key={employee.id} 
-                    onClick={() => handleAssignEmployee(employee.id)}
-                    className="w-full text-left px-5 py-4 rounded-2xl border border-slate-100 bg-white/60 hover:bg-white hover:border-indigo-200 hover:shadow-md transition-all font-bold text-slate-700 flex justify-between items-center group"
-                  >
-                    {employee.name}
-                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500" />
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-
-        {isKeywordModalOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-white/90 backdrop-blur-2xl rounded-[2rem] border border-white shadow-2xl w-full max-w-sm p-8 relative">
-              <button onClick={() => setIsKeywordModalOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-800"><X className="w-6 h-6" /></button>
-              <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3">
-                 <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><Hash className="w-5 h-5" /></div>
-                 Add Vector
-              </h2>
-              <form onSubmit={handleAddKeyword} className="space-y-6">
-                <div>
-                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Target Keyword</label>
-                   <input 
-                     type="text"
-                     placeholder="e.g. SEO optimization"
-                     value={newKeyword}
-                     onChange={(e) => setNewKeyword(e.target.value)}
-                     className="w-full px-5 py-3 bg-white/60 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold text-slate-700 shadow-inner"
-                     autoFocus
-                     required
-                   />
-                </div>
-                <button 
-                  type="submit" 
-                  disabled={loading}
-                  className="w-full px-5 py-3 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white rounded-2xl font-bold shadow-[0_8px_20px_rgba(79,70,229,0.3)] hover:-translate-y-0.5 hover:shadow-lg transition-all disabled:opacity-50 flex justify-center items-center gap-2"
-                >
-                  {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Register Keyword
-                </button>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-
-        {isActivityModalOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-white/90 backdrop-blur-2xl rounded-[2.5rem] border border-white shadow-2xl w-full max-w-lg p-8 relative">
-              <button onClick={() => setIsActivityModalOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-800"><X className="w-6 h-6" /></button>
-              <h2 className="text-2xl font-black text-slate-800 mb-8 flex items-center gap-3">
-                 <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><Activity className="w-6 h-6" /></div>
-                 Log Feed Entry
-              </h2>
-              <form onSubmit={handleAddActivity} className="space-y-6">
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Operation Type</label>
-                  <select name="method" className="w-full px-5 py-3.5 bg-white/60 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold text-slate-700 shadow-inner appearance-none cursor-pointer">
-                    <option value="Email">Email Transmission</option>
-                    <option value="Call">Direct Call</option>
-                    <option value="Meeting">Meeting / Standup</option>
-                    <option value="Research">Data Research</option>
-                    <option value="Other">Other Operation</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Content Details</label>
-                  <textarea 
-                    name="content" 
-                    required 
-                    placeholder="Provide detailed breakdown..."
-                    className="w-full px-5 py-4 bg-white/60 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 shadow-inner min-h-[140px]"
-                  />
-                </div>
-                <button 
-                  type="submit" 
-                  disabled={loading}
-                  className="w-full px-5 py-4 bg-slate-900 text-white rounded-2xl font-bold shadow-xl hover:bg-black transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {loading && <Loader2 className="w-4 h-4 animate-spin" />} Submit Log
-                </button>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-
-        {isMilestoneModalOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-white/90 backdrop-blur-2xl rounded-[2.5rem] border border-white shadow-2xl w-full max-w-lg p-8 relative">
-              <button onClick={() => setIsMilestoneModalOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-800"><X className="w-6 h-6" /></button>
-              <h2 className="text-2xl font-black text-slate-800 mb-8 flex items-center gap-3">
-                 <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><TrendingUp className="w-6 h-6" /></div>
-                 Update Trajectory
-              </h2>
-              <form onSubmit={handleUpdateMilestone} className="space-y-6">
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Target Overview</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={milestoneData.nextMilestone}
-                    onChange={e => setMilestoneData({...milestoneData, nextMilestone: e.target.value})}
-                    placeholder="e.g. SEO Audit V2"
-                    className="w-full px-5 py-3.5 bg-white/60 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold text-slate-700 shadow-inner"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Target Date</label>
-                  <input 
-                    type="date" 
-                    required
-                    value={milestoneData.nextMilestoneDate}
-                    onChange={e => setMilestoneData({...milestoneData, nextMilestoneDate: e.target.value})}
-                    className="w-full px-5 py-3.5 bg-white/60 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold text-slate-700 shadow-inner"
-                  />
-                </div>
-                <button 
-                  type="submit" 
-                  disabled={loading}
-                  className="w-full px-5 py-4 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white rounded-2xl font-bold shadow-[0_8px_20px_rgba(79,70,229,0.3)] hover:-translate-y-0.5 transition-all text-shadow disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {loading && <Loader2 className="w-4 h-4 animate-spin" />} Implement Fix
-                </button>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </motion.div>
+
+    {/* ── Edit Metrics Modal ── */}
+    {isEditingMetrics && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white border border-slate-200 rounded-3xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-black text-slate-800">Edit Performance Metrics</h3>
+            <button onClick={() => setIsEditingMetrics(false)} className="p-2 text-slate-500 hover:text-slate-800 transition-colors">
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Hero Stats */}
+          <p className="text-xs font-black text-cyan-400 uppercase tracking-widest mb-3">Hero Stats</p>
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            {([['total_revenue', 'Total Revenue (e.g. $152K)'], ['growth_rate', 'Growth Rate (e.g. +34%)']] as [string, string][]).map(([key, label]) => (
+              <div key={key}>
+                <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">{label}</label>
+                <input
+                  value={metricsForm[key] || ''}
+                  onChange={e => setMetricsForm(p => ({ ...p, [key]: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Performance Story */}
+          <p className="text-xs font-black text-green-400 uppercase tracking-widest mb-3">Performance Story</p>
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            {([
+              ['monthly_revenue', 'Monthly Revenue (e.g. $34,560)'],
+              ['revenue_growth_pct', 'Revenue Growth % (e.g. +28%)'],
+              ['total_conversions', 'Total Conversions (e.g. 1,247)'],
+              ['avg_conversion_value', 'Avg Conversion Value (e.g. $27.66)'],
+              ['roi_multiple', 'ROI Multiple (e.g. 7.2x)'],
+              ['roi_detail', 'ROI Detail (e.g. $720 back per $100)'],
+            ] as [string, string][]).map(([key, label]) => (
+              <div key={key}>
+                <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">{label}</label>
+                <input
+                  value={metricsForm[key] || ''}
+                  onChange={e => setMetricsForm(p => ({ ...p, [key]: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-green-500"
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Next Steps */}
+          <p className="text-xs font-black text-orange-400 uppercase tracking-widest mb-3">Next Steps Forward</p>
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <div>
+              <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">Campaign Progress (0–100)</label>
+              <input
+                type="number" min="0" max="100"
+                value={metricsForm.campaign_progress || ''}
+                onChange={e => setMetricsForm(p => ({ ...p, campaign_progress: e.target.value }))}
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-orange-400"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">Phase Note (e.g. Expansion Phase Ready)</label>
+              <input
+                value={metricsForm.campaign_phase_note || ''}
+                onChange={e => setMetricsForm(p => ({ ...p, campaign_phase_note: e.target.value }))}
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-orange-400"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">Untapped Revenue Note (e.g. Potential +$84K annually)</label>
+              <input
+                value={metricsForm.untapped_revenue_note || ''}
+                onChange={e => setMetricsForm(p => ({ ...p, untapped_revenue_note: e.target.value }))}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-orange-500"
+              />
+            </div>
+          </div>
+
+          {/* Detailed Insights */}
+          <p className="text-xs font-black text-purple-400 uppercase tracking-widest mb-3">Detailed Insights</p>
+          <div className="grid grid-cols-3 gap-3 mb-8">
+            {([
+              ['total_visitors', 'Total Visitors (e.g. 24.5K)'],
+              ['engagement_rate', 'Engagement Rate (e.g. 68%)'],
+              ['avg_time_on_site', 'Avg Time on Site (e.g. 4m 28s)'],
+            ] as [string, string][]).map(([key, label]) => (
+              <div key={key}>
+                <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">{label}</label>
+                <input
+                  value={metricsForm[key] || ''}
+                  onChange={e => setMetricsForm(p => ({ ...p, [key]: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => setIsEditingMetrics(false)}
+              className="flex-1 py-3 border border-slate-300 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-100 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveMetrics}
+              disabled={loading}
+              className="flex-1 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50"
+            >
+              {loading ? 'Saving…' : 'Save Metrics'}
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    )}
+    </>
   );
 }

@@ -15,22 +15,25 @@ def analyze_content(text):
     try:
         client = get_openai_client()
         prompt = f"""
-        Analyze the following website content and return a JSON object with this exact structure:
+        You are an expert business analyst. Given the following company name and website, do real research (using your knowledge and reasoning) and return a JSON object with:
         {{
-            "company_name": "Name of the company",
-            "what_they_do": "Brief summary of their business (2-3 sentences)",
+            "company_name": "The real name of the company (never a placeholder)",
+            "what_they_do": "A real, concise summary of what this company does (2-3 sentences, never a template)",
             "contacts": [
                 {{
-                    "name": "Full Name",
-                    "role": "Job Title",
-                    "email": "Email address if found, else null",
-                    "context": "Any specific context or null"
+                    "name": "If you can infer a real contact name, otherwise null",
+                    "role": "If you can infer a real role, otherwise null",
+                    "email": "A real company email address, or guess a likely one like info@domain if not found",
+                    "context": "How you found or inferred this contact, or null"
                 }}
             ],
-            "key_value_props": ["prop1", "prop2"]
+            "key_value_props": ["List of my services that best match this company (real, never prop1/prop2)"]
         }}
 
-        Website Content:
+        My services are: Organic SEO, Local SEO, Google Ads, Meta Ads, Social Media, Content Marketing, Web Development, App Development, Automation & Consulting.
+        Map the most relevant of these to the company based on their business.
+
+        Company Info:
         {text[:15000]}
         """
 
@@ -51,7 +54,7 @@ def analyze_content(text):
             "error": str(e)
         }
 
-def generate_email(analysis, contact=None):
+def generate_email(analysis, contact=None, recommended_services=None):
     """
     Generates a personalized bilingual cold email using OpenAI.
     Returns english_body (para 1) and spanish_body (para 2) separately.
@@ -60,21 +63,65 @@ def generate_email(analysis, contact=None):
         client = get_openai_client()
         recipient_info = f"Recipient: {contact.get('name')} ({contact.get('role')})" if contact else "General Inbox"
 
+        company_name = analysis.get('company_name', '')
+        what_they_do = analysis.get('what_they_do', analysis.get('summary', ''))
+        services = analysis.get('key_value_props', [])
+        website = ''
+        if 'website' in analysis:
+            website = analysis['website']
+
+        # Use recommended_services if provided (from smart-research flow)
+        services_to_mention = []
+        if recommended_services and isinstance(recommended_services, list):
+            for svc in recommended_services:
+                if isinstance(svc, dict):
+                    services_to_mention.append(svc.get('service_name', ''))
+                elif isinstance(svc, str):
+                    services_to_mention.append(svc)
+        if not services_to_mention:
+            services_to_mention = services
+
+        services_list_str = ', '.join(services_to_mention) if services_to_mention else 'SEO, digital marketing, and automation'
+
         prompt = f"""
-        Write a personalized B2B cold email for the following company.
-        Target Company: {analysis.get('company_name')}
-        What they do: {analysis.get('what_they_do')}
+        You are an expert B2B outreach copywriter writing on behalf of Team DaPros (SERP Hawk Digital Agency). Use ONLY the provided company info below. Do not invent details.
+
+        PROSPECT INFO:
+        Company: {company_name}
+        Website: {website}
+        What they do: {what_they_do}
         {recipient_info}
 
-        The email MUST have exactly TWO paragraphs:
-        - Paragraph 1: Written in ENGLISH. Introduce yourself, reference the company specifically, and offer value.
-        - Paragraph 2: The SAME message translated into SPANISH. Mirror the meaning and tone exactly.
+        SERVICES TO HIGHLIGHT: {services_list_str}
+
+        OUR FULL SERVICE CATALOG (for context):
+        • Organic SEO — higher Google rankings, more organic traffic
+        • Local SEO — dominate Google Maps & local search
+        • Google Ads — targeted PPC with measurable ROI
+        • Meta Ads — Facebook & Instagram campaigns that convert
+        • Social Media — brand presence & audience engagement
+        • Content Marketing — SEO blogs, landing pages, conversion copy
+        • Web Development — fast, modern, conversion-optimized sites
+        • App Development — custom mobile & web applications
+        • Automation & Consulting — smart workflows & strategy
+
+        EMAIL STRUCTURE (English):
+        1. Hook (1-2 sentences) — A specific observation about {company_name}'s online presence or an opportunity you spotted. Make it personal.
+        2. Problem/Opportunity (2-3 sentences) — A concrete challenge they likely face based on their industry and what they do.
+        3. Service Spotlight (3-5 sentences) — For EACH service in [{services_list_str}], write one clear sentence: what it does + the measurable result for them. Use concrete outcomes like "rank on page 1", "2x local visibility", "cut ad spend waste by 30%".
+        4. Social proof (1 sentence) — Mention working with similar businesses to build trust.
+        5. CTA (1 sentence) — Invite them to a free 15-minute strategy call. Make it effortless.
+        6. Sign-off: "Warm regards,\nTeam DaPros from Mexico | SERP Hawk Digital Agency"
+
+        STYLE: 120-180 words total. Short paragraphs (2-3 sentences each), separated by blank lines. Conversational, confident, zero fluff. Services are the STAR — the reader should finish knowing exactly what you offer and why it matters for them.
+
+        Then provide the FULL Spanish translation with identical structure, signed as "Equipo DaPros de México | SERP Hawk Digital Agency".
 
         Return a JSON object with exactly these fields:
         {{
-            "subject": "Email subject line in English",
-            "english_body": "Full paragraph 1 in English",
-            "spanish_body": "Full paragraph 2 in Spanish (translation of paragraph 1)"
+            "subject": "Short benefit-focused subject (under 8 words, mention company or sector)",
+            "english_body": "Full English email (short paragraphs separated by \\n\\n, plain text, no HTML)",
+            "spanish_body": "Full Spanish translation (same structure, plain text, no HTML)"
         }}
         """
 
