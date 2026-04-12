@@ -97,6 +97,7 @@ allowed_origins = [
     "https://serphawk-crm-seo.vercel.app",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://web-production-6cd72.up.railway.app",
     "https://web-production-80e20.up.railway.app",
 ]
 
