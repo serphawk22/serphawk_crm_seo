@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import {
   Users, Send, Clock, Briefcase, Target, Zap, Activity,
   Globe, CheckCircle, FolderKanban, Mail, ArrowUpRight,
   Bot, UserCheck, GraduationCap, Phone, Sparkles, FileText, ChevronRight, MessageCircle,
-  Shield, Lock, FileCheck, Bell, DollarSign, TrendingUp, Eye, Download, AlertTriangle, CheckCircle2, Circle, Timer
+  Shield, Lock, FileCheck, Bell, DollarSign, TrendingUp, Eye, Download, AlertTriangle, CheckCircle2, Circle, Timer, Rocket
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { fetchWithCache } from "@/lib/cache";
@@ -117,7 +118,127 @@ function StatCard({ title, value, sub, icon: Icon, gradient, href }: {
   return href ? <Link href={href} className="cursor-pointer">{inner}</Link> : inner;
 }
 
-export default function Dashboard() {
+export default function HomePage() {
+  const { role, email, user, isAuthenticated, loading: authLoading } = useRole();
+  const router = useRouter();
+
+  // Show landing page if not authenticated
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
+        {/* Animated background elements */}
+        <div className="absolute top-0 left-0 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl animate-pulse" />
+        <motion.div
+          animate={{ y: [0, 20, 0] }}
+          transition={{ duration: 6, repeat: Infinity }}
+          className="absolute bottom-0 right-0 w-96 h-96 bg-violet-600/20 rounded-full blur-3xl"
+        />
+
+        {/* Content */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+          className="relative z-10 text-center px-4 max-w-3xl"
+        >
+          {/* Logo */}
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.2, duration: 0.6 }}
+            className="flex justify-center mb-8"
+          >
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-2xl shadow-indigo-500/30">
+              <Rocket className="w-10 h-10 text-white" />
+            </div>
+          </motion.div>
+
+          {/* Headline */}
+          <motion.h1
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4, duration: 0.8 }}
+            className="text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent"
+          >
+            SERP Hawk CRM
+          </motion.h1>
+
+          {/* Subheading */}
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6, duration: 0.8 }}
+            className="text-xl md:text-2xl text-slate-300 mb-4"
+          >
+            Elevate your growth strategy
+          </motion.p>
+
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.8, duration: 0.8 }}
+            className="text-slate-400 mb-12 max-w-xl mx-auto"
+          >
+            AI-powered CRM for cold outreach campaigns, SEO tracking, and team collaboration
+          </motion.p>
+
+          {/* CTA Buttons */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1, duration: 0.8 }}
+            className="flex flex-col md:flex-row gap-4 justify-center"
+          >
+            <button
+              onClick={() => router.push("/login")}
+              className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/40 transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+            >
+              <Lock className="w-5 h-5" />
+              Sign In
+            </button>
+            <button
+              onClick={() => router.push("/login")}
+              className="px-8 py-4 border-2 border-slate-600 hover:border-indigo-500 text-white rounded-xl font-semibold transition-all backdrop-blur-sm hover:bg-indigo-600/10"
+            >
+              Get Started
+            </button>
+          </motion.div>
+
+          {/* Features Grid */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.2, duration: 0.8 }}
+            className="grid md:grid-cols-3 gap-6 mt-16 max-w-2xl mx-auto"
+          >
+            {[
+              { icon: Bot, title: "AI Email Agent", desc: "Automated cold outreach" },
+              { icon: TrendingUp, title: "SEO Tracking", desc: "Real-time rankings" },
+              { icon: Users, title: "Team Hub", desc: "Centralized collaboration" },
+            ].map((item, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1.3 + i * 0.1 }}
+                className="p-4 rounded-lg bg-white/5 border border-white/10 backdrop-blur-sm hover:border-indigo-500/50 transition-all"
+              >
+                <item.icon className="w-6 h-6 text-indigo-400 mx-auto mb-2" />
+                <h3 className="font-semibold text-white mb-1">{item.title}</h3>
+                <p className="text-xs text-slate-400">{item.desc}</p>
+              </motion.div>
+            ))}
+          </motion.div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // Show dashboard if authenticated
+  return <Dashboard />;
+}
+
+function Dashboard() {
   const { role, email, user } = useRole();
   const [stats, setStats] = useState<StatsData>(null);
   const [loading, setLoading] = useState(true);
