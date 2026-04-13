@@ -100,6 +100,7 @@ allowed_origins = [
     "https://web-production-6cd72.up.railway.app",
     "https://web-production-80e20.up.railway.app",
     "https://crm-seo.allytechcourses.com",
+    "https://crm-seo.serphawk.in",
 ]
 
 app.add_middleware(
