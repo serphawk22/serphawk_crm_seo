@@ -5,14 +5,7 @@ import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-DEFAULT_CC_EMAILS = [
-    "dapros.mx.com@gmail.com",
-    "contacto@dapros.com.mx",
-    "dapros.mx@gmail.com",
-    "onemanarmy.smp@gmail.com",
-    "harischamsa@gmail.com",
-    "gayathri@serphawk.com"
-]
+DEFAULT_CC_EMAILS = []
 
 def save_to_sent(to_email, msg, sender_email, sender_password, imap_server, imap_port=993):
     """
@@ -63,13 +56,13 @@ def save_to_sent(to_email, msg, sender_email, sender_password, imap_server, imap
             # Python's datetime for internal date
             now = imaplib.Time2Internaldate(time.time())
             mail.append(f'"{target_folder}"', '\\Seen', now, msg.as_bytes())
-            print(f"✓ Successfully saved copy to {target_folder}")
+            print(f"Successfully saved copy to {target_folder}")
         else:
-            print(f"⚠ Could not find a 'Sent' folder. Available: {folders}")
+            print(f"Could not find a 'Sent' folder. Available: {folders}")
             
         mail.logout()
     except Exception as e:
-        print(f"❌ Failed to save copy to Sent folder: {e}")
+        print(f"Failed to save copy to Sent folder: {e}")
 
 def send_email_outlook(to_email, subject, body, sender_email, sender_password, smtp_server='smtp.office365.com', smtp_port=587, html=True, cc_emails=None, imap_server=None):
     """

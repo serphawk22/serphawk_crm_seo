@@ -15,7 +15,7 @@ def analyze_content(text):
     try:
         client = get_openai_client()
         prompt = f"""
-        You are an expert business analyst. Given the following company name and website, do real research (using your knowledge and reasoning) and return a JSON object with:
+        You are an expert business analyst. Given the following website text, do real research (using your knowledge and reasoning) and return a JSON object with:
         {{
             "company_name": "The real name of the company (never a placeholder)",
             "what_they_do": "A real, concise summary of what this company does (2-3 sentences, never a template)",
@@ -23,7 +23,8 @@ def analyze_content(text):
                 {{
                     "name": "If you can infer a real contact name, otherwise null",
                     "role": "If you can infer a real role, otherwise null",
-                    "email": "A real company email address, or guess a likely one like info@domain if not found",
+                    "email": "A real company email address (look at the 'Extracted Emails' list at the top, or guess a likely one like info@domain if not found)",
+                    "phone_number": "A real company phone number (look at the 'Extracted Phone Numbers' list at the top. Prefer the actual scraped phone numbers if available, otherwise null)",
                     "context": "How you found or inferred this contact, or null"
                 }}
             ],
@@ -32,6 +33,8 @@ def analyze_content(text):
 
         My services are: Organic SEO, Local SEO, Google Ads, Meta Ads, Social Media, Content Marketing, Web Development, App Development, Automation & Consulting.
         Map the most relevant of these to the company based on their business.
+
+        Look closely at the 'Extracted Emails' and 'Extracted Phone Numbers' sections in the company info below. Always prefer using the actual scraped emails and phone numbers instead of placeholders or guesses.
 
         Company Info:
         {text[:15000]}

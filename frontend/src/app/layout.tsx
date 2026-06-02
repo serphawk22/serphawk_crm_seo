@@ -4,14 +4,13 @@ import { useEffect } from "react";
 import "./globals.css";
 import { Inter } from "next/font/google";
 import { Chatbot } from "@/components/Chatbot";
-import { AdminSidebar } from "@/components/AdminSidebar";
 import { AdminTopbar } from "@/components/AdminTopbar";
 import { SidebarProvider, useSidebar } from "@/context/SidebarContext";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
   return (
-    <main className={`relative z-10 pt-16 min-h-screen transition-all duration-300 ${collapsed ? "md:ml-[72px]" : "md:ml-[260px]"}`}>
+    <main className="relative z-10 pt-16 min-h-screen transition-all duration-300">
       <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
         {children}
       </div>
@@ -87,8 +86,6 @@ function AppContent({ children }: { children: React.ReactNode }) {
     return (
       <SidebarProvider>
       <div className="admin-shell min-h-screen">
-        {/* Sidebar */}
-        <AdminSidebar />
 
         {/* Topbar */}
         <AdminTopbar />

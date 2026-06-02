@@ -59,10 +59,13 @@ class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(unique=True, index=True)
     password: str
+    hashed_password: str = Field(default="")
     name: Optional[str] = None
     role: str = Field(default="Client") # Admin, Employee, Client
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+    is_active: bool = Field(default=True)
+    status: str = Field(default="Active")
+    createdAt: datetime = Field(default_factory=datetime.utcnow, sa_column=Column("created_at", DateTime))
+    updatedAt: datetime = Field(default_factory=datetime.utcnow, sa_column=Column("updated_at", DateTime))
     
     # Relationships
     # Relationships

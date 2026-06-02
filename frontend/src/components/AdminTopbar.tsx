@@ -3,46 +3,24 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search,
-  Bell,
-  Settings,
-  ChevronDown,
-  LogOut,
-  User,
-  X,
-  Sparkles,
-  Clock,
-  Command,
+  Search, Bell, Settings, ChevronDown, LogOut, User, X, Sparkles, Clock, Command,
+  LayoutDashboard, Users, FolderKanban, CheckSquare, Bot, Phone, MessageCircle,
+  FileText, FileSignature, LayoutGrid, Inbox, GraduationCap, UserCog, Briefcase,
+  BarChart2, Activity, Zap
 } from "lucide-react";
 import { useRole, Role } from "@/context/RoleContext";
-import { useSidebar } from "@/context/SidebarContext";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { API_BASE_URL } from "@/config";
+import { cn } from "@/lib/utils";
 
 const PAGE_TITLES: Record<string, string> = {
-  "/": "Dashboard",
-  "/clients": "Clients",
-  "/projects": "Projects",
-  "/tasks": "Task Board",
-  "/invoices": "Invoices",
-  "/proposals": "Proposals",
-  "/rankings": "Keyword Rankings",
-  "/notifications": "Notifications",
-  "/email-agent": "Email Agent",
-  "/calls": "Call Center",
-  "/messages": "Messages",
-  "/interns": "Intern Pool",
-  "/employees": "Employees",
-  "/admin/services-overview": "Services Overview",
-  "/admin/requests": "Request Board",
-  "/admin/services": "Services",
-  "/audit": "Audit Center",
-  "/pricing": "Pricing",
-  "/store": "Growth Services",
-  "/setup": "Initial Setup",
-  "/monitor": "Live Monitor",
-  "/documents": "Documents",
+  "/": "Dashboard", "/clients": "Clients", "/projects": "Projects", "/tasks": "Task Board",
+  "/invoices": "Invoices", "/proposals": "Proposals", "/rankings": "Keyword Rankings",
+  "/notifications": "Notifications", "/email-agent": "Email Agent", "/calls": "Call Center",
+  "/messages": "Messages", "/interns": "Intern Pool", "/employees": "Employees",
+  "/admin/services-overview": "Services Overview", "/admin/requests": "Request Board",
+  "/admin/services": "Services", "/audit": "Audit Center", "/pricing": "Pricing"
 };
 
 const ROLE_BADGE: Record<Role, { label: string; color: string }> = {
@@ -52,26 +30,76 @@ const ROLE_BADGE: Record<Role, { label: string; color: string }> = {
   Intern: { label: "Intern", color: "bg-amber-100 text-amber-700 border border-amber-200" },
 };
 
+const NAV_MENUS = [
+  {
+    label: "Core",
+    items: [
+      { name: "Dashboard", icon: LayoutDashboard, href: "/", roles: ["Admin", "Employee", "Intern"] },
+      { name: "Clients", icon: Users, href: "/clients", roles: ["Admin", "Employee"] },
+      { name: "Projects", icon: FolderKanban, href: "/projects", roles: ["Admin", "Employee", "Intern"] },
+      { name: "Tasks", icon: CheckSquare, href: "/tasks", roles: ["Admin", "Employee", "Intern"] },
+    ]
+  },
+  {
+    label: "Growth Engine",
+    items: [
+      { name: "Email Agent", icon: Bot, href: "/email-agent", roles: ["Admin", "Employee"] },
+      { name: "Calls", icon: Phone, href: "/calls", roles: ["Admin", "Employee"] },
+      { name: "Messages", icon: MessageCircle, href: "/messages", roles: ["Admin", "Employee"] },
+      { name: "Notifications", icon: Bell, href: "/notifications", roles: ["Admin", "Employee", "Intern"] },
+    ]
+  },
+  {
+    label: "Revenue",
+    items: [
+      { name: "Invoices", icon: FileText, href: "/invoices", roles: ["Admin", "Employee"] },
+      { name: "Proposals", icon: FileSignature, href: "/proposals", roles: ["Admin", "Employee"] },
+    ]
+  },
+  {
+    label: "Organization",
+    items: [
+      { name: "Services Overview", icon: LayoutGrid, href: "/admin/services-overview", roles: ["Admin", "Employee"] },
+      { name: "Request Board", icon: Inbox, href: "/admin/requests", roles: ["Admin", "Employee"] },
+      { name: "Interns", icon: GraduationCap, href: "/interns", roles: ["Admin", "Employee"] },
+      { name: "Employees", icon: UserCog, href: "/employees", roles: ["Admin"] },
+      { name: "Services", icon: Briefcase, href: "/admin/services", roles: ["Admin"] },
+    ]
+  },
+  {
+    label: "Tools",
+    items: [
+      { name: "Rankings", icon: BarChart2, href: "/rankings", roles: ["Admin", "Employee"] },
+      { name: "Audit", icon: Activity, href: "/audit", roles: ["Employee"] },
+      { name: "Pricing", icon: Zap, href: "/pricing", roles: ["Employee"] },
+    ]
+  }
+];
+
 export function AdminTopbar() {
   const { role, email, logout, user } = useRole();
-  const { collapsed } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
+  
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
+  
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  
   const [unreadCount, setUnreadCount] = useState(0);
   const [recentNotifs, setRecentNotifs] = useState<any[]>([]);
+  
   const searchRef = useRef<HTMLInputElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLDivElement>(null);
 
-  const pageTitle = PAGE_TITLES[pathname] || pathname.split("/").filter(Boolean).pop()?.replace(/-/g, " ") || "Dashboard";
   const badge = ROLE_BADGE[role as Role];
 
-  // Fetch unread notification count
   useEffect(() => {
     if (!user?.id) return;
     const fetchNotifs = async () => {
@@ -83,17 +111,14 @@ export function AdminTopbar() {
       } catch {}
     };
     fetchNotifs();
-    const interval = setInterval(fetchNotifs, 30000); // poll every 30s
+    const interval = setInterval(fetchNotifs, 30000);
     return () => clearInterval(interval);
   }, [user?.id]);
 
-  // Close dropdowns on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (userRef.current && !userRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-        setNotifOpen(false);
-      }
+      if (userRef.current && !userRef.current.contains(e.target as Node)) setUserMenuOpen(false);
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -107,7 +132,6 @@ export function AdminTopbar() {
     }
   }, [searchOpen]);
 
-  // Live search debounce
   useEffect(() => {
     if (!searchQuery.trim()) { setSearchResults([]); return; }
     setSearching(true);
@@ -122,64 +146,116 @@ export function AdminTopbar() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Keyboard shortcut Cmd+K / Ctrl+K
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setSearchOpen(true);
       }
-      if (e.key === "Escape") {
-        setSearchOpen(false);
-      }
+      if (e.key === "Escape") setSearchOpen(false);
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
   return (
-    <header className={`admin-topbar fixed top-0 right-0 left-0 ${collapsed ? 'md:left-[72px]' : 'md:left-[260px]'} h-16 z-30 flex items-center px-6 gap-4 transition-all duration-300`}>
-      {/* Subtle top border gradient */}
-      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-indigo-300/40 to-transparent" />
+    <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-slate-200 z-50 flex items-center px-4 md:px-6 justify-between shadow-sm">
+      
+      {/* ── Left: Logo & Nav Menus ── */}
+      <div className="flex items-center gap-6" ref={navRef}>
+        
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2 group">
+          <div className="btn-glow-indigo w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-xs shrink-0">
+            SH
+          </div>
+          <div className="hidden md:flex flex-col">
+            <span className="font-black text-slate-800 text-sm leading-tight tracking-tight group-hover:text-indigo-600 transition-colors">SERP Hawk</span>
+            <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest flex items-center gap-1">
+              CRM
+            </span>
+          </div>
+        </Link>
 
-      {/* ── Page Title ── */}
-      <div className="flex-1 flex items-center gap-3">
-        <div>
-          <h1 className="text-[15px] font-black text-slate-800 leading-tight capitalize">{pageTitle}</h1>
-          <p className="text-[10px] text-slate-400 font-medium hidden md:block">
-            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
-          </p>
-        </div>
+        {/* Divider */}
+        <div className="hidden lg:block w-px h-6 bg-slate-200" />
+
+        {/* Desktop Nav Items */}
+        <nav className="hidden lg:flex items-center gap-1">
+          {NAV_MENUS.map((menu) => {
+            const allowedItems = menu.items.filter(i => i.roles.includes(role as Role));
+            if (allowedItems.length === 0) return null;
+            
+            const isActive = allowedItems.some(i => pathname === i.href || (i.href !== "/" && pathname.startsWith(i.href)));
+
+            return (
+              <div 
+                key={menu.label}
+                className="relative"
+                onMouseEnter={() => setActiveDropdown(menu.label)}
+                onMouseLeave={() => setActiveDropdown(null)}
+              >
+                <button
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors",
+                    isActive ? "text-indigo-600 bg-indigo-50" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  )}
+                >
+                  {menu.label}
+                  <ChevronDown className="w-3.5 h-3.5 opacity-50" />
+                </button>
+
+                <AnimatePresence>
+                  {activeDropdown === menu.label && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute top-full left-0 mt-1 w-56 bg-white border border-slate-100 rounded-xl shadow-lg p-2 z-50"
+                    >
+                      {allowedItems.map(item => {
+                        const isItemActive = pathname === item.href;
+                        return (
+                          <Link key={item.href} href={item.href}>
+                            <div className={cn(
+                              "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group",
+                              isItemActive ? "bg-indigo-50 text-indigo-700" : "hover:bg-slate-50 text-slate-600"
+                            )}>
+                              <item.icon className={cn("w-4 h-4 shrink-0 transition-colors", isItemActive ? "text-indigo-600" : "text-slate-400 group-hover:text-indigo-500")} />
+                              <span className="text-sm font-semibold">{item.name}</span>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
+        </nav>
       </div>
 
-      {/* ── Search Bar ── */}
-      <div className="hidden md:flex">
+      {/* ── Right Controls ── */}
+      <div className="flex items-center gap-2 md:gap-3">
+        
+        {/* Search Bar Trigger */}
         <motion.button
           onClick={() => setSearchOpen(true)}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          className="flex items-center gap-3 px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all text-[13px] min-w-[200px]"
+          className="flex items-center justify-center md:justify-start gap-3 md:px-4 p-2 md:py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all text-[13px] md:min-w-[200px]"
         >
-          <Search className="w-3.5 h-3.5" />
-          <span>Search...</span>
-          <div className="ml-auto flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-100 rounded-md px-1.5 py-0.5">
+          <Search className="w-4 h-4 md:w-3.5 md:h-3.5" />
+          <span className="hidden md:inline">Search...</span>
+          <div className="ml-auto hidden md:flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-white rounded-md px-1.5 py-0.5 border border-slate-200 shadow-sm">
             <Command className="w-3 h-3" />K
           </div>
         </motion.button>
-      </div>
-
-      {/* ── Right Controls ── */}
-      <div className="flex items-center gap-2" ref={userRef}>
-        {/* Mobile search */}
-        <button
-          onClick={() => setSearchOpen(true)}
-          className="md:hidden p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
-        >
-          <Search className="w-4.5 h-4.5" />
-        </button>
 
         {/* Notifications */}
-        <div className="relative">
+        <div className="relative" ref={notifRef}>
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -201,7 +277,7 @@ export function AdminTopbar() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 8, scale: 0.97 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-full mt-2 w-80 glass-card overflow-hidden z-50"
+                className="absolute right-0 top-full mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50"
               >
                 <div className="px-4 py-3 border-b border-slate-100">
                   <p className="text-[13px] font-black text-slate-700">Notifications</p>
@@ -224,7 +300,7 @@ export function AdminTopbar() {
                 )) : (
                   <div className="px-4 py-6 text-center text-[12px] text-slate-400">No new notifications</div>
                 )}
-                <div className="px-4 py-2.5 border-t border-slate-100">
+                <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50">
                   <Link href="/notifications" onClick={() => setNotifOpen(false)}
                     className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 w-full text-center block transition-colors">
                     View all notifications
@@ -239,14 +315,14 @@ export function AdminTopbar() {
         <div className="w-px h-6 bg-slate-200 mx-1" />
 
         {/* User Menu */}
-        <div className="relative">
+        <div className="relative" ref={userRef}>
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => { setUserMenuOpen(!userMenuOpen); setNotifOpen(false); }}
             className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-xl hover:bg-slate-50 transition-all border border-transparent hover:border-slate-200"
           >
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-black text-[13px] shadow-md">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-black text-[13px] shadow-sm">
               {email ? email[0].toUpperCase() : "U"}
             </div>
             <div className="hidden sm:block text-left">
@@ -263,35 +339,35 @@ export function AdminTopbar() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 8, scale: 0.97 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-full mt-2 w-52 glass-card overflow-hidden z-50"
+                className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50"
               >
-                {/* Profile header */}
-                  <div className="px-3 py-3 border-b border-slate-100 flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-black text-sm">
+                <div className="px-4 py-4 border-b border-slate-100 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-black text-sm shadow-inner">
                     {email ? email[0].toUpperCase() : "U"}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-bold text-slate-700 truncate">{email || "User"}</p>
-                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${badge?.color}`}>
+                    <p className="text-[13px] font-bold text-slate-700 truncate">{email || "User"}</p>
+                    <span className={`inline-block mt-1 text-[9px] font-black px-1.5 py-0.5 rounded-full ${badge?.color}`}>
                       {badge?.label}
                     </span>
                   </div>
                 </div>
-                {/* Menu items */}
-                <div className="py-1.5">
-                  <button className="flex items-center gap-2.5 w-full px-3 py-2 text-[12px] font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-all">
-                    <User className="w-3.5 h-3.5" /> Profile
+                
+                <div className="py-2">
+                  <button className="flex items-center gap-3 w-full px-4 py-2 text-[13px] font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
+                    <User className="w-4 h-4" /> Profile
                   </button>
-                  <button className="flex items-center gap-2.5 w-full px-3 py-2 text-[12px] font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-all">
-                    <Settings className="w-3.5 h-3.5" /> Settings
+                  <button className="flex items-center gap-3 w-full px-4 py-2 text-[13px] font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
+                    <Settings className="w-4 h-4" /> Settings
                   </button>
                 </div>
-                <div className="border-t border-slate-100 py-1.5">
+                
+                <div className="border-t border-slate-100 py-2 bg-slate-50">
                   <button
                     onClick={() => { logout(); router.push("/login"); }}
-                    className="flex items-center gap-2.5 w-full px-3 py-2 text-[12px] font-semibold text-rose-500 hover:text-rose-600 hover:bg-rose-50 transition-all"
+                    className="flex items-center gap-3 w-full px-4 py-2 text-[13px] font-medium text-rose-500 hover:text-rose-600 hover:bg-rose-100/50 transition-all"
                   >
-                    <LogOut className="w-3.5 h-3.5" /> Sign out
+                    <LogOut className="w-4 h-4" /> Sign out
                   </button>
                 </div>
               </motion.div>
@@ -310,29 +386,29 @@ export function AdminTopbar() {
             className="fixed inset-0 z-[100] flex items-start justify-center pt-24 px-4"
             onClick={(e) => { if (e.target === e.currentTarget) setSearchOpen(false); }}
           >
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setSearchOpen(false)} />
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setSearchOpen(false)} />
             <motion.div
               initial={{ opacity: 0, y: -16, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -16, scale: 0.97 }}
-              className="relative w-full max-w-xl glass-card shadow-[0_12px_40px_rgba(0,0,0,0.12)] overflow-hidden"
+              className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden"
             >
               <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100">
-                <Search className="w-4 h-4 text-indigo-400 shrink-0" />
+                <Search className="w-5 h-5 text-indigo-500 shrink-0" />
                 <input
                   ref={searchRef}
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search clients, projects, tasks, invoices..."
-                  className="flex-1 bg-transparent text-[14px] text-slate-700 placeholder:text-slate-400 outline-none font-medium"
+                  className="flex-1 bg-transparent text-[15px] text-slate-700 placeholder:text-slate-400 outline-none font-medium"
                 />
                 {searching && <div className="w-4 h-4 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin shrink-0" />}
                 <button
                   onClick={() => setSearchOpen(false)}
-                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all"
+                  className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all bg-slate-50 border border-slate-200"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
               <div className="p-3 max-h-80 overflow-y-auto">
@@ -344,11 +420,11 @@ export function AdminTopbar() {
                       return (
                         <button key={`${r.type}-${r.id}-${i}`}
                           onClick={() => { router.push(r.link); setSearchOpen(false); }}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-all text-left">
-                          <span className="text-sm">{icons[r.type] || '🔍'}</span>
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-indigo-50 hover:text-indigo-700 transition-all text-left group">
+                          <span className="text-sm bg-slate-100 p-1.5 rounded-lg group-hover:bg-indigo-100">{icons[r.type] || '🔍'}</span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-[12px] font-bold text-slate-700 truncate">{r.title}</p>
-                            {r.sub && <p className="text-[10px] text-slate-400 truncate">{r.sub}</p>}
+                            <p className="text-[13px] font-bold text-slate-700 group-hover:text-indigo-700 truncate">{r.title}</p>
+                            {r.sub && <p className="text-[11px] text-slate-400 truncate group-hover:text-indigo-500">{r.sub}</p>}
                           </div>
                           <span className="text-[9px] font-black uppercase tracking-widest text-slate-300 shrink-0">{r.type}</span>
                         </button>
@@ -356,15 +432,15 @@ export function AdminTopbar() {
                     })}
                   </>
                 ) : searchQuery.trim() && !searching ? (
-                  <p className="text-[12px] text-slate-400 text-center py-6">No results for &ldquo;{searchQuery}&rdquo;</p>
+                  <p className="text-[13px] text-slate-500 text-center py-8 font-medium">No results for &ldquo;{searchQuery}&rdquo;</p>
                 ) : (
                   <>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Quick Navigation</p>
                     {["/", "/clients", "/projects", "/email-agent", "/calls", "/admin/services-overview"].map((href) => (
                       <button key={href}
                         onClick={() => { router.push(href); setSearchOpen(false); }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-all group">
-                        <span className="text-[12px] font-semibold text-slate-500 group-hover:text-slate-700 transition-colors capitalize">
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-all group">
+                        <span className="text-[13px] font-semibold text-slate-600 group-hover:text-indigo-600 transition-colors capitalize">
                           {PAGE_TITLES[href] || href}
                         </span>
                       </button>
@@ -372,10 +448,10 @@ export function AdminTopbar() {
                   </>
                 )}
               </div>
-              <div className="px-4 py-2.5 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[10px] text-slate-400">Press ESC to close</span>
-                <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                  <Sparkles className="w-2.5 h-2.5" /> Powered by CRM
+              <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                <span className="text-[11px] font-medium text-slate-400">Press <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-slate-500 font-sans mx-1">ESC</kbd> to close</span>
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+                  <Sparkles className="w-3 h-3 text-indigo-400" /> Powered by AI Search
                 </div>
               </div>
             </motion.div>

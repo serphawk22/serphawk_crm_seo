@@ -39,7 +39,16 @@ async def research_and_map_company(url, dapros_services=DAPROS_SERVICES):
     Returns: dict with analysis, mapping, and suggested inbound/outbound requests.
     """
     website_text = await scrape_website(url)
-    analysis = analyze_content(website_text)
+    if website_text.startswith("ERROR"):
+        # Infer company name from URL
+        from urllib.parse import urlparse
+        domain = urlparse(url).netloc or urlparse('https://' + url if not url.startswith('http') else url).netloc
+        comp_name = domain.replace("www.", "").split(".")[0].capitalize()
+        logger.info(f"Scraping failed/blocked. Triggering LLM fallback for {comp_name}")
+        from modules.fallback_analyzer import analyze_company_name_fallback
+        analysis = analyze_company_name_fallback(comp_name)
+    else:
+        analysis = analyze_content(website_text)
     # Try to extract company services from analysis (fallback to empty list)
     company_services = analysis.get("key_value_props") or []
     mapping = map_services_to_dapros(company_services, dapros_services)
@@ -69,6 +78,7 @@ import re
 import requests
 from bs4 import BeautifulSoup
 import logging
+from urllib.parse import urljoin, urlparse
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -76,8 +86,8 @@ logger = logging.getLogger(__name__)
 
 async def scrape_website(url):
     """
-    Fetches the website content using Requests and BeautifulSoup.
-    This replaces Playwright to avoid browser download requirements.
+    Fetches the website content, extracts contact emails/phones from homepage
+    and related contact/about pages, and compiles the info.
     """
     # Ensure URL has schema
     if not url.startswith('http'):
@@ -91,45 +101,158 @@ async def scrape_website(url):
         'Accept-Language': 'en-US,en;q=0.5',
     }
     
-    try:
-        # 1. Fetch the page
-        # specific timeout to prevent hanging
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
-        
-        # 2. Parse HTML
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # 3. Clean up script and style elements
-        for script in soup(["script", "style", "nav", "footer", "header", "noscript", "iframe", "svg"]):
-            script.decompose()
-            
-        # 4. Extract text
-        text = soup.get_text(separator=' ')
-        
-        # 5. Clean whitespace
-        lines = (line.strip() for line in text.splitlines())
-        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-        text = '\n'.join(chunk for chunk in chunks if chunk)
-        
-        # 6. Basic email extraction (fallback if LLM misses it)
-        email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-        found_emails = list(set(re.findall(email_pattern, response.text)))
-        
-        # Combine text with found emails to help the LLM
-        final_content = f"Source URL: {url}\n\nExtracted Emails: {', '.join(found_emails)}\n\nWebsite Content:\n{text[:15000]}" # Limit to 15k chars
-        
-        return final_content
+    email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+    # Robust pattern matching international & local phone numbers:
+    phone_pattern = re.compile(
+        r'(?:\+\d{1,4}[-.\s]?)?\(?\d{2,5}\)?[-.\s]?\d{2,5}[-.\s]?\d{3,5}(?:[-.\s]?\d{3,5})?|\+?\d{10,12}'
+    )
 
-    except requests.exceptions.HTTPError as e:
-        logger.error(f"HTTP Error scraping {url}: {e}")
-        return f"ERROR SCRAPING: HTTP {e.response.status_code}"
-    except requests.exceptions.ConnectionError:
-        logger.error(f"Connection Error scraping {url}")
-        return "ERROR SCRAPING: Connection refused or host unreachable"
-    except requests.exceptions.Timeout:
-        logger.error(f"Timeout scraping {url}")
-        return "ERROR SCRAPING: Request timed out"
+    found_emails = set()
+    found_phones = set()
+    scraped_texts = []
+
+    def clean_phone(phone_str):
+        # Remove common false positives like version numbers, CSS parameters, or very short strings
+        cleaned = re.sub(r'[^\d+]', '', phone_str)
+        # Phone numbers should have between 7 and 15 digits
+        if len(cleaned) >= 7 and len(cleaned) <= 15:
+            # Avoid matching standard dates/versions (e.g. 2026-05-30 or 1.2.3.4)
+            if not re.match(r'^\d{4}-\d{2}-\d{2}$', phone_str.strip()):
+                return phone_str.strip()
+        return None
+
+    def extract_from_html(html_content, page_url):
+        # 1. Regex search on raw HTML (before parsing) to catch mailto/tel and plain text matches
+        for email in email_pattern.findall(html_content):
+            found_emails.add(email)
+            
+        # Extract from href="mailto:..." and href="tel:..."
+        temp_soup = BeautifulSoup(html_content, 'html.parser')
+        for a in temp_soup.find_all('a', href=True):
+            href = a['href'].strip()
+            if href.lower().startswith('mailto:'):
+                email = href[7:].split('?')[0].strip()
+                if email_pattern.match(email):
+                    found_emails.add(email)
+            elif href.lower().startswith('tel:'):
+                phone = href[4:].split('?')[0].strip()
+                # Clean and add
+                cleaned = clean_phone(phone)
+                if cleaned:
+                    found_phones.add(cleaned)
+
+        # 2. Extract plain text phone numbers
+        # Clean soup script and style elements to avoid extracting numbers from Javascript/CSS
+        for element in temp_soup(["script", "style", "noscript", "iframe", "svg"]):
+            element.decompose()
+            
+        text_content = temp_soup.get_text(separator=' ')
+        for phone in phone_pattern.findall(text_content):
+            cleaned = clean_phone(phone)
+            if cleaned:
+                # Further validate that it's not a common false positive
+                if not re.match(r'^\d+\.\d+$', cleaned) and not re.match(r'^[0-9\s.-]+$', cleaned) == False:
+                    # Let's ensure it has at least some spaces, hyphens, or a + to distinguish from plain large ints
+                    if any(c in cleaned for c in ['+', '-', ' ', '(', ')']) or len(cleaned.strip()) >= 10:
+                        found_phones.add(cleaned.strip())
+        
+        # Clean whitespace for display text
+        lines = (line.strip() for line in text_content.splitlines())
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        clean_text = '\n'.join(chunk for chunk in chunks if chunk)
+        return clean_text
+
+    response_text = ""
+    try:
+        # Fetch the main URL
+        response = requests.get(url, headers=headers, timeout=12)
+        response.raise_for_status()
+        response_text = response.text
     except Exception as e:
-        logger.error(f"Unexpected error scraping {url}: {e}")
-        return f"ERROR SCRAPING: {str(e)}"
+        # If https fails, try http as a fallback
+        if url.startswith('https://'):
+            http_url = 'http://' + url[8:]
+            logger.info(f"Https failed, retrying http: {http_url}")
+            try:
+                response = requests.get(http_url, headers=headers, timeout=10)
+                response.raise_for_status()
+                response_text = response.text
+                url = http_url
+            except Exception as e_inner:
+                logger.error(f"Failed to scrape {url}: {e_inner}")
+                return f"ERROR SCRAPING: {str(e)}"
+        else:
+            logger.error(f"Failed to scrape {url}: {e}")
+            return f"ERROR SCRAPING: {str(e)}"
+
+    # Check if the page is a WAF challenge or empty response
+    is_blocked = False
+    status_code = response.status_code if 'response' in locals() else 200
+    if status_code in [202, 403, 503, 429]:
+        is_blocked = True
+    elif not response_text or len(response_text.strip()) < 200:
+        is_blocked = True
+    else:
+        # Check for typical anti-bot signature keywords in HTML
+        lower_html = response_text.lower()
+        anti_bot_signatures = [
+            'bm-verify', 'akamai', 'cloudflare', 'captcha', 'sucuri', 
+            'incapsula', 'shield', 'please enable javascript', 
+            'interstitial', 'security challenge', 'bot verification',
+            'ddos-guard', 'access denied', 'unusual activity'
+        ]
+        if any(sig in lower_html for sig in anti_bot_signatures):
+            is_blocked = True
+
+    if is_blocked:
+        logger.warning(f"Scraping blocked by security challenge/WAF for {url}")
+        return f"ERROR: Scraping blocked by security challenge or WAF on {url} (HTTP {status_code})"
+
+    # Extract from homepage
+    homepage_text = extract_from_html(response_text, url)
+    scraped_texts.append(homepage_text)
+
+    # 3. Contact Page Discovery
+    contact_links = []
+    try:
+        soup = BeautifulSoup(response_text, 'html.parser')
+        keywords = ['contact', 'about', 'reach', 'info', 'support', 'help', 'career', 'team']
+        seen_urls = set()
+        for a in soup.find_all('a', href=True):
+            href = a['href'].strip()
+            text = a.get_text().lower()
+            href_lower = href.lower()
+            
+            is_contact = any(kw in href_lower or kw in text for kw in keywords)
+            if is_contact and not href_lower.startswith(('mailto:', 'tel:', 'javascript:', '#')):
+                full_url = urljoin(url, href)
+                parsed_base = urlparse(url)
+                parsed_full = urlparse(full_url)
+                if parsed_full.netloc == parsed_base.netloc or not parsed_full.netloc:
+                    if full_url not in seen_urls and full_url != url:
+                        seen_urls.add(full_url)
+                        contact_links.append(full_url)
+    except Exception as e:
+        logger.error(f"Error parsing contact links: {e}")
+
+    # Scrape top contact/about pages for contact info
+    for link in contact_links[:2]:
+        logger.info(f"Scraping contact/about subpage: {link}")
+        try:
+            sub_resp = requests.get(link, headers=headers, timeout=6)
+            if sub_resp.status_code == 200:
+                sub_text = extract_from_html(sub_resp.text, link)
+                # Keep text compact
+                scraped_texts.append(sub_text[:3000])
+        except Exception as e:
+            logger.error(f"Failed to scrape subpage {link}: {e}")
+
+    # Combine everything
+    all_emails = sorted(list(found_emails))
+    all_phones = sorted(list(found_phones))
+
+    # Keep unique paragraphs
+    combined_website_text = "\n\n".join(scraped_texts)
+    
+    final_content = f"Source URL: {url}\n\nExtracted Emails: {', '.join(all_emails)}\nExtracted Phone Numbers: {', '.join(all_phones)}\n\nWebsite Content:\n{combined_website_text[:15000]}"
+    return final_content

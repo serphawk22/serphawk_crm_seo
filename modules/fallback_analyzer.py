@@ -37,7 +37,14 @@ Return a JSON object with these exact fields:
     "geographic_presence": "Local / National / International",
     "common_pain_points": ["3-4 growth challenges this type of company typically faces that SEO / digital marketing can solve"],
     "growth_opportunities": ["2-3 specific areas where SERP Hawk's SEO and digital services could help them grow"],
-    "contacts": []
+    "contacts": [
+        {{
+            "name": "If you know a real contact name (e.g. key executive), otherwise null",
+            "role": "Their role or null",
+            "email": "A real or highly likely business contact email address (e.g., partnerships@domain.com, info@domain.com)",
+            "phone_number": "A real or highly likely business contact phone number with country code, or null"
+        }}
+    ]
 }}
 
 Be specific and accurate. If this is a major brand (like Flipkart, Zomato, etc.), describe their real products and services."""
