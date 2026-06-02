@@ -1,10 +1,10 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, ChevronLeft, HelpCircle, X } from 'lucide-react';
+import { ChevronRight, ChevronLeft, HelpCircle, X, Sparkles } from 'lucide-react';
 
 interface GuideStep {
-  icon: string;
+  icon: string | React.ReactNode;
   text: string;
 }
 
@@ -14,9 +14,11 @@ interface PageGuideProps {
   description: string;
   steps: GuideStep[];
   variant?: 'light' | 'dark';
+  buttonClassName?: string;
+  iconClassName?: string;
 }
 
-export default function PageGuide({ pageKey, title, description, steps }: PageGuideProps) {
+export default function PageGuide({ pageKey, title, description, steps, buttonClassName, iconClassName }: PageGuideProps) {
   const storageKey = `tour_v2_${pageKey}`;
   const [isOpen, setIsOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
@@ -84,10 +86,10 @@ export default function PageGuide({ pageKey, title, description, steps }: PageGu
             exit={{ scale: 0, opacity: 0 }}
             transition={{ type: 'spring', damping: 20, stiffness: 300 }}
             onClick={restart}
-            className="fixed bottom-24 right-5 z-[90] group"
+            className={buttonClassName || "fixed bottom-24 right-5 z-[90] group"}
             aria-label="Restart page tour"
           >
-            <span className="flex items-center justify-center w-11 h-11 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/25 transition-transform group-hover:scale-110">
+            <span className={iconClassName || "flex items-center justify-center w-11 h-11 rounded-full bg-black text-white shadow-lg shadow-black/25 transition-transform group-hover:scale-110"}>
               <HelpCircle className="w-5 h-5" />
             </span>
           </motion.button>
@@ -119,7 +121,7 @@ export default function PageGuide({ pageKey, title, description, steps }: PageGu
               {/* Progress bar */}
               <div className="h-1 bg-gray-100">
                 <motion.div
-                  className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-violet-500"
+                  className="h-full bg-black"
                   animate={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
                   transition={{ duration: 0.4, ease: 'easeOut' }}
                 />
@@ -135,7 +137,7 @@ export default function PageGuide({ pageKey, title, description, steps }: PageGu
 
               {/* Step label */}
               <div className="px-7 pt-6">
-                <span className="text-[11px] font-bold text-indigo-500 uppercase tracking-widest">
+                <span className="text-[11px] font-bold text-black uppercase tracking-widest">
                   Step {currentStep + 1} of {totalSteps}
                 </span>
               </div>
@@ -155,16 +157,22 @@ export default function PageGuide({ pageKey, title, description, steps }: PageGu
                   >
                     {currentStep === 0 ? (
                       <>
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-50 to-violet-50 mb-4">
-                          <span className="text-4xl">🚀</span>
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gray-100 mb-4">
+                          <Sparkles className="w-8 h-8 text-black" />
                         </div>
                         <h2 className="text-lg font-bold text-gray-900 mb-2">{title}</h2>
                         <p className="text-[13px] text-gray-500 leading-relaxed max-w-xs mx-auto">{description}</p>
                       </>
                     ) : (
                       <>
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-50 to-violet-50 mb-4">
-                          <span className="text-4xl">{steps[currentStep - 1].icon}</span>
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gray-100 mb-4 text-black">
+                          {typeof steps[currentStep - 1].icon === 'string' ? (
+                            <span className="text-4xl">{steps[currentStep - 1].icon}</span>
+                          ) : (
+                            <div className="w-8 h-8 [&>svg]:w-full [&>svg]:h-full">
+                              {steps[currentStep - 1].icon}
+                            </div>
+                          )}
                         </div>
                         <p className="text-[13px] text-gray-700 leading-relaxed max-w-xs mx-auto font-medium">{steps[currentStep - 1].text}</p>
                       </>
@@ -184,9 +192,9 @@ export default function PageGuide({ pageKey, title, description, steps }: PageGu
                       aria-label={`Go to step ${i + 1}`}
                       className={`h-2 rounded-full transition-all duration-300 ${
                         i === currentStep
-                          ? 'w-7 bg-indigo-600'
+                          ? 'w-7 bg-black'
                           : i < currentStep
-                            ? 'w-2 bg-indigo-300 hover:bg-indigo-400'
+                            ? 'w-2 bg-gray-400 hover:bg-gray-500'
                             : 'w-2 bg-gray-200 hover:bg-gray-300'
                       }`}
                     />
@@ -212,7 +220,7 @@ export default function PageGuide({ pageKey, title, description, steps }: PageGu
                   )}
                   <button
                     onClick={handleNext}
-                    className="px-5 py-2.5 text-xs font-bold bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl hover:from-indigo-700 hover:to-violet-700 transition-all flex items-center gap-1 shadow-md shadow-indigo-500/20"
+                    className="px-5 py-2.5 text-xs font-bold bg-black text-white rounded-xl hover:bg-gray-800 transition-all flex items-center gap-1 shadow-md shadow-black/20"
                   >
                     {currentStep === totalSteps - 1 ? 'Get Started' : 'Next'}
                     <ChevronRight className="w-3.5 h-3.5" />

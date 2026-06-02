@@ -193,19 +193,35 @@ async def smart_research(body: SmartResearchRequest):
 
     company_info.setdefault("company_name", company_name)
 
-    # Step 2: Find business contact email via LLM
+    extracted_emails_str = ""
+    extracted_phones_str = ""
+    if website_content and not website_content.startswith("ERROR"):
+        try:
+            if "Extracted Emails: " in website_content:
+                extracted_emails_str = website_content.split("Extracted Emails: ")[1].split("\n")[0].strip()
+            if "Extracted Phone Numbers: " in website_content:
+                extracted_phones_str = website_content.split("Extracted Phone Numbers: ")[1].split("\n")[0].strip()
+        except Exception:
+            pass
+
+    # Step 2: Find business contact details via LLM
     contact_email = None
     contact_name = None
     contact_role = None
+    contact_phone = None
     try:
         client = get_openai_client()
-        email_prompt = f"""You are a business intelligence expert. For the company "{company_name}", find or infer the most likely business contact email address.
+        email_prompt = f"""You are a business intelligence expert. For the company "{company_name}", find or infer the most likely business contact details.
 
 Rules:
-- If this is a well-known company, use your knowledge of their real domain (e.g. @flipkart.com, @amazon.com)
-- For the email, prefer patterns like: info@domain, hello@domain, contact@domain, sales@domain, or partnerships@domain
+- If you found emails or phones from website scraping data, you MUST prefer and use those EXACTLY as they are. DO NOT override, guess, or invent domain-based emails (like contact@domain or info@domain) if a scraped email is available (even if it's a generic gmail address like anupojubhavani9849@gmail.com).
+- Similarly, DO NOT use default placeholder phone numbers (like +919999999999) if a real scraped phone number is available in the 'Scraped Phone Numbers from Website'.
+- If this is a well-known company, and NO email was scraped, use your knowledge of their real domain (e.g. @flipkart.com, @amazon.com) and prefer patterns like: info@domain, hello@domain, contact@domain, sales@domain, or partnerships@domain.
+- Suggest the most likely contact phone number (with country code, in international format like +91XXXXXXXXXX or similar country context. If completely unknown and no scraped phone was found, suggest a likely number or use '+919999999999' as a placeholder)
 - Also suggest the most likely contact person name and role (e.g. "Marketing Manager")
-- If you found emails from website scraping data, prefer those
+
+Scraped Emails from Website: {extracted_emails_str}
+Scraped Phone Numbers from Website: {extracted_phones_str}
 
 {f'Website data contacts: {_json.dumps(company_info.get("contacts", []))}' if company_info.get("contacts") else ''}
 
@@ -214,6 +230,7 @@ Return JSON only:
     "email": "the best business contact email",
     "name": "likely contact person name or null",
     "role": "likely role or null",
+    "phone_number": "the best business contact phone number with country code",
     "confidence": "high/medium/low",
     "reasoning": "brief explanation of how you determined this"
 }}"""
@@ -230,6 +247,7 @@ Return JSON only:
         contact_email = contact_data.get("email")
         contact_name = contact_data.get("name")
         contact_role = contact_data.get("role")
+        contact_phone = contact_data.get("phone_number")
     except Exception:
         # Fallback: try to extract from company_info contacts
         contacts = company_info.get("contacts", [])
@@ -238,6 +256,7 @@ Return JSON only:
             contact_email = c.get("email")
             contact_name = c.get("name")
             contact_role = c.get("role")
+            contact_phone = c.get("phone_number") or c.get("phone") or c.get("mobile")
 
     # Step 3: Service matching
     services_result = {}
@@ -278,6 +297,7 @@ Return JSON only:
             "email": contact_email,
             "name": contact_name,
             "role": contact_role,
+            "phone_number": contact_phone or "+919999999999",
         },
         "recommended_services": services_result.get("recommended_services", []),
         "email_hook": services_result.get("email_hook", ""),
@@ -296,6 +316,7 @@ class SendManualRequest(BaseModel):
     contact_name: Optional[str] = None
     contact_role: Optional[str] = None
     website_url: Optional[str] = None
+    phone_number: Optional[str] = None
 
 @app.post("/send-manual")
 def send_manual(body: SendManualRequest, session: Session = Depends(get_session)):
@@ -329,6 +350,7 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
             userId=user.id,
             companyName=body.company_name,
             websiteUrl=body.website_url or None,
+            phone=body.phone_number or None,
             status="Active",
             recommended_services=body.recommended_services,
             lastActivity="Outreach email sent",
@@ -343,6 +365,8 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
         client_profile.lastActivityDate = datetime.utcnow().isoformat()
         if body.recommended_services:
             client_profile.recommended_services = body.recommended_services
+        if body.phone_number:
+            client_profile.phone = body.phone_number
         session.add(client_profile)
         session.commit()
         session.refresh(client_profile)
@@ -361,6 +385,51 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     session.add(sent_email)
     session.commit()
     session.refresh(sent_email)
+
+    # Step 3.5: Send the actual email
+    from modules.email_sender import send_email_outlook
+    import os
+    sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "prasanthanupojuwork@gmail.com")
+    password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", 587))
+    imap_server = os.getenv("IMAP_SERVER", "imap.gmail.com")
+
+    if sender and password:
+        try:
+            full_body = f"{body.english_body}\n\n{body.spanish_body}" if body.spanish_body else body.english_body
+            send_email_outlook(
+                to_email=body.to_email,
+                subject=body.subject,
+                body=full_body,
+                sender_email=sender,
+                sender_password=password,
+                smtp_server=smtp_server,
+                smtp_port=smtp_port,
+                imap_server=imap_server
+            )
+            # --- Trigger n8n Webhook ---
+            try:
+                import httpx
+                webhook_url = "http://localhost:5678/webhook-test/serphawk-followup"
+                payload = {
+                    "event": "email_sent",
+                    "sender": sender,
+                    "to_email": body.to_email,
+                    "subject": body.subject,
+                    "company_name": body.company_name,
+                    "contact_name": body.contact_name or "Prospect",
+                    "phone_number": body.phone_number or "+919999999999",
+                    "recommended_services": body.recommended_services or "SEO",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                httpx.post(webhook_url, json=payload, timeout=5.0)
+                print(f"Webhook successfully triggered from manual send to {webhook_url}")
+            except Exception as wh_e:
+                print(f"Webhook trigger failed: {wh_e}")
+        except Exception as e:
+            print(f"Manual Email send failed: {e}")
+
 
     # Step 4: Log activity
     try:
@@ -681,8 +750,37 @@ def _check_password(plain: str, hashed: str) -> bool:
     return hashlib.sha256(plain.encode()).hexdigest() == hashed
 
 
+def _normalize_role(role: Optional[str]) -> str:
+    if not role:
+        return "Client"
+    mapping = {
+        "admin": "Admin",
+        "employee": "Employee",
+        "client": "Client",
+        "intern": "Intern",
+    }
+    return mapping.get(role.lower(), role)
+
+
+def _verify_password(plain: str, user: User) -> bool:
+    """Support SHA256 (password column) and bcrypt (hashed_password column)."""
+    if user.password:
+        if _check_password(plain, user.password) or plain == user.password:
+            return True
+    stored = (user.hashed_password or "").strip()
+    if not stored:
+        return False
+    if stored.startswith("$2"):
+        try:
+            import bcrypt
+            return bcrypt.checkpw(plain.encode("utf-8"), stored.encode("utf-8"))
+        except Exception:
+            return False
+    return _check_password(plain, stored) or plain == stored
+
+
 def _user_dict(u: User) -> dict:
-    return {"id": u.id, "email": u.email, "name": u.name, "role": u.role}
+    return {"id": u.id, "email": u.email, "name": u.name, "role": _normalize_role(u.role)}
 
 
 def _client_dict(cp: ClientProfile, session: Session) -> dict:
@@ -727,8 +825,7 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
     user = session.exec(select(User).where(User.email == body.email)).first()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    # Support both hashed and plain-text passwords (plain for dev seeds)
-    if not (_check_password(body.password, user.password) or body.password == user.password):
+    if not _verify_password(body.password, user):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     result = _user_dict(user)
     if user.role == "Client":
@@ -1632,8 +1729,12 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
             inbound_body_en = inbound_llm.get("english_body") or INBOUND_BODY_EN.format(company_name=company_name, services=services)
             inbound_body_es = inbound_llm.get("spanish_body") or INBOUND_BODY_ES.format(company_name=company_name, services=services)
 
-        sender = body.sender_email or os.getenv("EMAIL_SENDER", "")
-        password = os.getenv("EMAIL_PASSWORD", "")
+        sender = body.sender_email or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "prasanth.anupoju@sasi.ac.in")
+        password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
+        smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+        smtp_port = os.getenv("SMTP_PORT", 587)
+        imap_server = os.getenv("IMAP_SERVER", "imap.gmail.com")
+
         # Only send the email if manual is False and all required fields are present
         if not body.manual and all([body.to_email, body.subject, body.body, sender, password]):
             try:
@@ -1643,7 +1744,28 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
                     body=body.body,
                     sender_email=sender,
                     sender_password=password,
+                    smtp_server=smtp_server,
+                    smtp_port=smtp_port,
+                    imap_server=imap_server
                 )
+                
+                # --- Trigger n8n Webhook ---
+                try:
+                    import httpx
+                    webhook_url = "http://localhost:5678/webhook-test/serphawk-followup"
+                    payload = {
+                        "event": "email_sent",
+                        "sender": sender,
+                        "to_email": body.to_email,
+                        "subject": body.subject,
+                        "company": company_name,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                    httpx.post(webhook_url, json=payload, timeout=5.0)
+                    print(f"Webhook successfully triggered to {webhook_url}")
+                except Exception as wh_e:
+                    print(f"Webhook trigger failed: {wh_e}")
+                    
             except Exception as e:
                 print(f"Email send failed: {e}")
         # If any required field is missing, skip sending and just generate the draft
@@ -2747,7 +2869,14 @@ def get_notifications(
     )
     if unread_only:
         q = q.where(Notification.is_read == False)
-    notifs = session.exec(q).all()
+    
+    try:
+        notifs = session.exec(q).all()
+    except Exception as e:
+        print(f"Warning: Failed to fetch notifications: {e}")
+        notifs = []
+        session.rollback()
+    
     return {
         "notifications": [
             {
@@ -3534,7 +3663,7 @@ def change_password(body: PasswordChangeRequest, session: Session = Depends(get_
     user = session.get(User, body.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if not (_check_password(body.current_password, user.password) or body.current_password == user.password):
+    if not _verify_password(body.current_password, user):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     if len(body.new_password) < 6:
         raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
