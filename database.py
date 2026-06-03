@@ -72,6 +72,7 @@ class User(SQLModel, table=True):
     profile: Optional["ClientProfile"] = Relationship(back_populates="user")
     activities: List["ActivityLog"] = Relationship(back_populates="user")
     assigned_requests: List["ServiceRequest"] = Relationship(back_populates="assigned_employee")
+    deals: List["Deal"] = Relationship(back_populates="assigned_user")
 
 class ServiceCatalog(SQLModel, table=True):
     """
@@ -98,7 +99,6 @@ class ServiceRequest(SQLModel, table=True):
     Client's request for a specific service from the catalog.
     """
     __tablename__ = "service_requests"
-
     id: Optional[int] = Field(default=None, primary_key=True)
     service_id: int = Field(foreign_key="service_catalog.id")
     client_id: int = Field(foreign_key="client_profiles.id")
@@ -217,6 +217,18 @@ class ClientProfile(SQLModel, table=True):
     services_requested: Optional[str] = Field(default=None, sa_column=Column(Text))
     outbound_email_sent: bool = Field(default=False)
     inbound_email_sent: bool = Field(default=False)
+
+    # CRM Sales Intelligence Fields
+    lead_score: Optional[int] = Field(default=None)  # 0-100
+    lead_source: Optional[str] = Field(default=None, max_length=100)  # Cold Email, Referral, Inbound, etc.
+    deal_value: Optional[float] = Field(default=None)
+    industry: Optional[str] = Field(default=None, max_length=200)
+    employee_count: Optional[str] = Field(default=None, max_length=100)
+    revenue_range: Optional[str] = Field(default=None, max_length=100)
+    linkedin_url: Optional[str] = Field(default=None, max_length=500)
+    contact_person: Optional[str] = Field(default=None, max_length=255)
+    last_contact_date: Optional[str] = Field(default=None, max_length=50)
+    next_followup_date: Optional[str] = Field(default=None, max_length=50)
     
     # Relationships
     user: Optional[User] = Relationship(back_populates="profile")
@@ -237,6 +249,7 @@ class ClientProfile(SQLModel, table=True):
     file_uploads: List["ClientFileUpload"] = Relationship(back_populates="client")
     milestones: List["Milestone"] = Relationship(back_populates="client")
     nps_surveys: List["NPSSurvey"] = Relationship(back_populates="client")
+    deals: List["Deal"] = Relationship(back_populates="client")
     invoices: List["Invoice"] = Relationship(back_populates="client")
     proposals: List["Proposal"] = Relationship(back_populates="client")
     keyword_ranks: List["KeywordRankEntry"] = Relationship(back_populates="client")
@@ -603,6 +616,74 @@ class KeywordRankEntry(SQLModel, table=True):
     client: Optional[ClientProfile] = Relationship(back_populates="keyword_ranks")
 
 
+class ClientNote(SQLModel, table=True):
+    """Rich notes with tags and pinning for a client"""
+    __tablename__ = "client_notes"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    client_id: int = Field(foreign_key="client_profiles.id")
+    content: str = Field(sa_column=Column(Text))
+    tags: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    is_pinned: bool = Field(default=False)
+    author_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    author_name: Optional[str] = Field(default=None, max_length=255)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ConversationLog(SQLModel, table=True):
+    """Call/meeting/WhatsApp/email/visit conversation logs"""
+    __tablename__ = "conversation_logs"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    client_id: int = Field(foreign_key="client_profiles.id")
+    title: str = Field(max_length=500)
+    type: str = Field(default="call")  # call, meeting, email, whatsapp, visit, other
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    author_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    author_name: Optional[str] = Field(default=None, max_length=255)
+    attachment_urls: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    replies: List["ConversationReply"] = Relationship(back_populates="conversation")
+
+
+class ConversationReply(SQLModel, table=True):
+    """Threaded replies on conversation logs"""
+    __tablename__ = "conversation_replies"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    conversation_id: int = Field(foreign_key="conversation_logs.id")
+    content: str = Field(sa_column=Column(Text))
+    author_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    author_name: Optional[str] = Field(default=None, max_length=255)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    conversation: Optional[ConversationLog] = Relationship(back_populates="replies")
+
+
+class ClientResearch(SQLModel, table=True):
+    """Pre-sales research data for a client"""
+    __tablename__ = "client_research"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    client_id: int = Field(foreign_key="client_profiles.id", unique=True)
+    company_overview: Optional[str] = Field(default=None, sa_column=Column(Text))
+    competitors: Optional[str] = Field(default=None, sa_column=Column(Text))
+    tech_stack: Optional[str] = Field(default=None, sa_column=Column(Text))
+    recent_news: Optional[str] = Field(default=None, sa_column=Column(Text))
+    pain_points: Optional[str] = Field(default=None, sa_column=Column(Text))
+    business_goals: Optional[str] = Field(default=None, sa_column=Column(Text))
+    key_decision_makers: Optional[str] = Field(default=None, sa_column=Column(Text))
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ClientTicket(SQLModel, table=True):
+    """Internal support tickets raised by Salesperson to Admin"""
+    __tablename__ = "client_tickets"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    client_id: int = Field(foreign_key="client_profiles.id")
+    author_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    title: str = Field(max_length=255)
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    status: str = Field(default="Pending")  # Pending, Done, Not Done
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 def create_db_and_tables():
     """
     Create all database tables (drops existing tables first to ensure schema matches)
@@ -631,7 +712,17 @@ def create_db_and_tables():
         "ALTER TABLE analytics_data ADD COLUMN \"google_ads_spend\" FLOAT DEFAULT 0.0",
         "ALTER TABLE analytics_data ADD COLUMN \"meta_ads_spend\" FLOAT DEFAULT 0.0",
         "ALTER TABLE analytics_data ADD COLUMN \"google_ads_conversions\" INTEGER DEFAULT 0",
-        "ALTER TABLE analytics_data ADD COLUMN \"meta_ads_conversions\" INTEGER DEFAULT 0"
+        "ALTER TABLE analytics_data ADD COLUMN \"meta_ads_conversions\" INTEGER DEFAULT 0",
+        "ALTER TABLE client_profiles ADD COLUMN lead_score INTEGER",
+        "ALTER TABLE client_profiles ADD COLUMN lead_source VARCHAR(100)",
+        "ALTER TABLE client_profiles ADD COLUMN deal_value FLOAT",
+        "ALTER TABLE client_profiles ADD COLUMN industry VARCHAR(200)",
+        "ALTER TABLE client_profiles ADD COLUMN employee_count VARCHAR(100)",
+        "ALTER TABLE client_profiles ADD COLUMN revenue_range VARCHAR(100)",
+        "ALTER TABLE client_profiles ADD COLUMN linkedin_url VARCHAR(500)",
+        "ALTER TABLE client_profiles ADD COLUMN contact_person VARCHAR(255)",
+        "ALTER TABLE client_profiles ADD COLUMN last_contact_date VARCHAR(50)",
+        "ALTER TABLE client_profiles ADD COLUMN next_followup_date VARCHAR(50)"
     ]
     
     with engine.connect() as conn:

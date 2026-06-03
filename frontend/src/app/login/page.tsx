@@ -16,9 +16,9 @@ export default function LoginPage() {
     setError('');
     setIsSubmitting(true);
 
-    const success = await login(email, password);
-    if (!success) {
-      setError('Invalid credentials. Please try again.');
+    const result = await login(email, password);
+    if (!result.success) {
+      setError(result.message || 'Invalid credentials. Please try again.');
       setIsSubmitting(false);
     }
   };

@@ -5,6 +5,7 @@ import {
   Users,
   FileText,
   Bot,
+  UserCheck,
   MessageSquare,
   Mail,
   FileScan,
@@ -17,6 +18,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useRole, Role } from '@/context/RoleContext';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface SidebarProps {
   role: Role;
@@ -25,14 +27,16 @@ interface SidebarProps {
 export function Sidebar({ role }: SidebarProps) {
   const pathname = usePathname();
   const { logout } = useRole();
+  const { t, language } = useLanguage();
 
   const allItems = [
-    { name: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['Admin', 'Employee', 'Client', 'Intern'] },
-    { name: 'Projects', icon: StickyNote, href: '/projects', roles: ['Admin', 'Employee', 'Intern'] },
-    { name: 'Clients', icon: Users, href: '/clients', roles: ['Admin', 'Employee'] },
-    { name: 'Interns', icon: Activity, href: '/interns', roles: ['Admin', 'Employee'] },
-    { name: 'Employees', icon: Users, href: '/employees', roles: ['Admin'] },
-    { name: 'Email Agent', icon: Bot, href: '/email-agent', roles: ['Admin', 'Employee'] },
+    { name: language === 'es' ? 'Tablero' : 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['Admin', 'Employee', 'Client', 'Intern'] },
+    { name: language === 'es' ? 'Proyectos' : 'Projects', icon: StickyNote, href: '/projects', roles: ['Admin', 'Employee', 'Intern'] },
+    { name: language === 'es' ? 'Clientes' : 'Clients', icon: Users, href: '/clients', roles: ['Admin', 'Employee', 'SalesManager'] },
+    { name: language === 'es' ? 'Gerente de Ventas' : 'Sales Manager', icon: UserCheck, href: '/sales-manager', roles: ['Admin', 'Employee', 'SalesManager'] },
+    { name: language === 'es' ? 'Pasantes' : 'Interns', icon: Activity, href: '/interns', roles: ['Admin', 'Employee'] },
+    { name: language === 'es' ? 'Equipo de Ventas' : 'Sales Team', icon: UserCheck, href: '/admin/sales-team', roles: ['Admin'] },
+    { name: language === 'es' ? 'Agente de Email' : 'Email Agent', icon: Bot, href: '/email-agent', roles: ['Admin', 'Employee'] },
   ];
 
   const filteredItems = allItems.filter(item => item.roles.includes(role));
@@ -73,7 +77,7 @@ export function Sidebar({ role }: SidebarProps) {
           className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg w-full transition-colors"
         >
           <LogOut className="w-5 h-5" />
-          Logout
+          {language === 'es' ? 'Cerrar Sesión' : 'Logout'}
         </button>
       </div>
     </div>
