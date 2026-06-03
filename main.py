@@ -513,40 +513,35 @@ def delete_client(client_id: int, session: Session = Depends(get_session)):
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
         
-    tables_to_clean = [
-        ("service_requests", "client_id"),
-        ("message_threads", "client_id"),
-        ("remarks", "clientId"),
-        ("documents", "clientId"),
-        ("activity_logs", "clientId"),
-        ("call_logs", "client_id"),
-        ("sent_emails", "client_id"),
-        ("social_profiles", "clientId"),
-        ("seo_audits", "clientId"),
-        ("competitor_analyses", "clientId"),
-        ("ranking_tracker", "clientId"),
-        ("analytics_data", "clientId"),
-        ("tasks", "client_id"),
-        ("invoices", "client_id"),
-        ("milestones", "client_id"),
-        ("nps_surveys", "client_id"),
-        ("proposals", "client_id"),
-        ("client_file_uploads", "client_id"),
-        ("keyword_rank_entries", "client_id"),
-        ("client_notes", "client_id"),
-        ("deals", "client_id"),
-        ("conversation_logs", "client_id"),
-        ("client_research", "client_id"),
-        ("client_tickets", "client_id"),
+    models_to_clean = [
+        ServiceRequest, MessageThread, Remark, Document, ActivityLog, CallLog,
+        SentEmail, SocialProfile, SEOAudit, CompetitorAnalysis, RankingTracker,
+        AnalyticsData, Task, Invoice, Milestone, NPSSurvey, Proposal,
+        ClientFileUpload, KeywordRankEntry, ClientNote, Deal, ConversationLog,
+        ClientResearch, ClientTicket, Project
     ]
-    for table, col in tables_to_clean:
+    
+    from sqlmodel import delete
+    for model in models_to_clean:
         try:
-            session.execute(text(f"DELETE FROM {table} WHERE {col} = :id"), {"id": client_id})
+            # SQLAlchemy determines the correct column mapping for "clientId" or "client_id" dynamically
+            # We just need to check which attribute exists on the model
+            if hasattr(model, "clientId"):
+                session.execute(delete(model).where(model.clientId == client_id))
+            elif hasattr(model, "client_id"):
+                session.execute(delete(model).where(model.client_id == client_id))
         except Exception as e:
-            print(f"Error cleaning {table} for client {client_id}: {e}")
+            # Safe rollback to prevent transaction abortion if one model fails somehow
+            session.rollback()
+            print(f"Error cleaning {model.__name__} for client {client_id}: {e}")
             
-    session.delete(cp)
-    session.commit()
+    try:
+        session.delete(cp)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete client: {e}")
+        
     return {"success": True}
 
 
