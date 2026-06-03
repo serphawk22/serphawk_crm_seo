@@ -535,6 +535,13 @@ def delete_client(client_id: int, session: Session = Depends(get_session)):
             session.rollback()
             print(f"Error cleaning {model.__name__} for client {client_id}: {e}")
             
+    # Handle old db schema for projects table where client_id might still exist as a FK
+    try:
+        session.execute(text("DELETE FROM projects WHERE client_id = :id"), {"id": client_id})
+        session.commit()
+    except Exception as e:
+        session.rollback()
+            
     try:
         session.delete(cp)
         session.commit()
