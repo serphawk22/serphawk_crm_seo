@@ -1140,7 +1140,7 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
             user = User(
                 email=body.email,
                 password=_hash_password(body.password or "changeme"),
-                name=body.name,
+                name=body.name or body.companyName or "Client",
                 role="Client",
             )
             session.add(user)
