@@ -7,7 +7,7 @@ import {
   Users, Send, Clock, Briefcase, Target, Zap, Activity,
   Globe, CheckCircle, FolderKanban, Mail, ArrowUpRight,
   Bot, UserCheck, GraduationCap, Phone, Sparkles, FileText, ChevronRight, MessageCircle,
-  Shield, Lock, FileCheck, Bell, DollarSign, TrendingUp, Eye, Download, AlertTriangle, CheckCircle2, Circle, Timer, Rocket
+  Shield, Lock, FileCheck, Bell, DollarSign, TrendingUp, Eye, Download, AlertTriangle, CheckCircle2, Circle, Timer, Rocket, Kanban
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { fetchWithCache } from "@/lib/cache";
@@ -143,6 +143,7 @@ function Dashboard() {
     { href: "/messages", icon: Send, gradient: "from-violet-500 to-purple-600", title: language === 'es' ? "Centro de Comunicación" : "Team Comm Hub", description: language === 'es' ? "Comunicación directa con especialistas SEO, archivos compartidos y colas prioritarias." : "Direct communication with your assigned SEO specialists, shared files, and priority queues.", roles: ["Client", "Admin", "Employee"] },
     { href: "/monitor", icon: Target, gradient: "from-amber-500 to-orange-600", title: language === 'es' ? "Monitor en Vivo" : "Live Monitor", description: language === 'es' ? "Rastreador de clasificación en tiempo real y análisis de rendimiento sincronizado con GA4 y GSC." : "Real-time ranking tracker and performance analytics synced with GA4 and GSC.", roles: ["Client"] },
     { href: "/store", icon: Briefcase, gradient: "from-indigo-500 to-violet-600", title: language === 'es' ? "Servicios de Crecimiento" : "Growth Services", description: language === 'es' ? "Explore nuestro catálogo exclusivo de servicios de crecimiento. Solicite cualquier cosa y reciba una cotización personalizada." : "Explore our exclusive catalog of growth services. Request anything and receive a personalized quote from your dedicated team.", roles: ["Client"] },
+    { href: "/pipeline", icon: Kanban, gradient: "from-blue-500 to-indigo-600", title: language === 'es' ? "Pipeline de Ventas" : "Sales Pipeline", description: language === 'es' ? "Pipeline visual Kanban." : "Visual drag-and-drop Kanban board for managing deals.", roles: ["Admin", "Employee", "SalesManager"] },
   ];
 
   useEffect(() => {

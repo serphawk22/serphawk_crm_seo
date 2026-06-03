@@ -234,3 +234,37 @@ def analyze_document(image_bytes):
                     "website": ""
                 }
             continue
+
+def extract_tasks_from_note(note_content):
+    """
+    Uses GPT-4o to read a meeting note or conversation log and extract actionable tasks.
+    Returns a list of dictionaries with 'title' and 'description'.
+    """
+    try:
+        client = get_openai_client()
+        prompt = f"""
+        You are an expert sales assistant. Read the following meeting note or conversation log and extract all clear actionable tasks or next steps that need to be done.
+        
+        Note content:
+        {note_content}
+        
+        Return ONLY a JSON object with a single key "tasks" which contains an array of objects. 
+        Each task object must have exactly two keys:
+        - "title": A short, clear task title (max 5-7 words).
+        - "description": Additional details or context for the task.
+        
+        If there are no actionable tasks, return {{"tasks": []}}.
+        """
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        return result.get("tasks", [])
+    except Exception as e:
+        print(f"Error in task extraction: {e}")
+        return []
+

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Pin, PinOff, Plus, Search, Trash2, Edit3, Save, X, StickyNote, Tag } from 'lucide-react';
+import { Pin, PinOff, Plus, Search, Trash2, Edit3, Save, X, StickyNote, Tag, Sparkles, Loader2 } from 'lucide-react';
 import { API_BASE_URL } from '@/config';
 import { useLanguage } from '@/context/LanguageContext';
 
@@ -33,6 +33,7 @@ function NoteCard({ note, clientId, onRefresh }: { note: any; clientId: any; onR
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>(note.tags || []);
   const [saving, setSaving] = useState(false);
+  const [extracting, setExtracting] = useState(false);
 
   const togglePin = async () => {
     await fetch(`${API_BASE_URL}/clients/${clientId}/notes/${note.id}`, {
@@ -68,6 +69,27 @@ function NoteCard({ note, clientId, onRefresh }: { note: any; clientId: any; onR
     setTagInput('');
   };
 
+  const handleExtractTasks = async () => {
+    setExtracting(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${clientId}/notes/${note.id}/extract-tasks`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(`Extracted ${data.extracted_count} tasks! They have been added to the Tasks Board.`);
+        onRefresh();
+      } else {
+        alert("Failed to extract tasks.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error extracting tasks.");
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   return (
     <motion.div
       layout
@@ -92,6 +114,9 @@ function NoteCard({ note, clientId, onRefresh }: { note: any; clientId: any; onR
           <div className="flex items-center gap-1">
             <button onClick={togglePin} className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-amber-500 transition-colors">
               {note.is_pinned ? <PinOff size={13} /> : <Pin size={13} />}
+            </button>
+            <button onClick={handleExtractTasks} disabled={extracting} title="Extract Tasks via AI" className="p-1 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-slate-400 hover:text-indigo-500 transition-colors disabled:opacity-50">
+              {extracting ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
             </button>
             <button onClick={() => setEditing(!editing)} className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-500 transition-colors">
               {editing ? <X size={13} /> : <Edit3 size={13} />}
