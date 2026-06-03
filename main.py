@@ -966,6 +966,7 @@ def _user_dict(u: User) -> dict:
 
 def _client_dict(cp: ClientProfile, session: Session) -> dict:
     user = session.get(User, cp.userId) if cp.userId else None
+    employee = session.get(User, cp.assignedEmployeeId) if cp.assignedEmployeeId else None
     return {
         "id": cp.id,
         "userId": cp.userId,
@@ -987,6 +988,7 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
         "lastActivity": cp.lastActivity,
         "lastActivityDate": cp.lastActivityDate,
         "assignedEmployeeId": cp.assignedEmployeeId,
+        "assignedEmployeeName": employee.name if employee else None,
         "projectId": cp.projectId,
         "projectName": cp.projectName,
         "payment_status": cp.payment_status,
