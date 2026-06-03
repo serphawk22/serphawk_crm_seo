@@ -512,6 +512,39 @@ def delete_client(client_id: int, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
+        
+    tables_to_clean = [
+        ("service_requests", "client_id"),
+        ("message_threads", "client_id"),
+        ("remarks", "clientId"),
+        ("documents", "clientId"),
+        ("activity_logs", "clientId"),
+        ("call_logs", "client_id"),
+        ("sent_emails", "client_id"),
+        ("social_profiles", "clientId"),
+        ("seo_audits", "clientId"),
+        ("competitor_analyses", "clientId"),
+        ("ranking_tracker", "clientId"),
+        ("analytics_data", "clientId"),
+        ("tasks", "client_id"),
+        ("invoices", "client_id"),
+        ("milestones", "client_id"),
+        ("nps_surveys", "client_id"),
+        ("proposals", "client_id"),
+        ("client_file_uploads", "client_id"),
+        ("keyword_rank_entries", "client_id"),
+        ("client_notes", "client_id"),
+        ("deals", "client_id"),
+        ("conversation_logs", "client_id"),
+        ("client_research", "client_id"),
+        ("client_tickets", "client_id"),
+    ]
+    for table, col in tables_to_clean:
+        try:
+            session.execute(text(f"DELETE FROM {table} WHERE {col} = :id"), {"id": client_id})
+        except Exception as e:
+            print(f"Error cleaning {table} for client {client_id}: {e}")
+            
     session.delete(cp)
     session.commit()
     return {"success": True}
@@ -540,6 +573,12 @@ class ClientCreateRequest(BaseModel):
     email: Optional[str] = None
     name: Optional[str] = None
     password: Optional[str] = None
+    projectName: Optional[str] = None
+    gmbName: Optional[str] = None
+    seoStrategy: Optional[str] = None
+    tagline: Optional[str] = None
+    websiteUrl: Optional[str] = None
+    targetKeywords: Optional[list[str]] = None
 
 
 class ClientUpdateRequest(BaseModel):
@@ -1112,6 +1151,12 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
         phone=body.phone,
         address=body.address,
         status=body.status,
+        projectName=body.projectName,
+        gmbName=body.gmbName,
+        seoStrategy=body.seoStrategy,
+        tagline=body.tagline,
+        websiteUrl=body.websiteUrl,
+        targetKeywords=body.targetKeywords,
     )
     session.add(cp)
     session.commit()
