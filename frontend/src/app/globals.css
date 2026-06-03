@@ -13,6 +13,49 @@
   --admin-accent: #6366f1;
 }
 
+/* ── Dark mode tokens ───────────────────────────────────────────── */
+.dark {
+  --background: #0a0a0f;
+  --foreground: #f1f5f9;
+  --admin-bg: #0f0f17;
+  --admin-sidebar: #111118;
+  --admin-topbar: #111118;
+  --admin-border: #1e1e2e;
+  --admin-text: #f1f5f9;
+  --admin-muted: #94a3b8;
+}
+.dark body {
+  background: #0a0a0f;
+  color: #f1f5f9;
+}
+
+/* Enterprise workspace scrollbar */
+.scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.dark .scrollbar-thin::-webkit-scrollbar-thumb { background: #334155; }
+
+/* Tab indicator animation */
+@keyframes tab-glow {
+  0%, 100% { box-shadow: 0 0 4px rgba(99,102,241,0.4); }
+  50%       { box-shadow: 0 0 10px rgba(99,102,241,0.7); }
+}
+
+/* Conversation thread connector */
+.thread-line {
+  position: relative;
+}
+.thread-line::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 24px;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, #c7d2fe, transparent);
+  border-radius: 1px;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

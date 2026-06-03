@@ -15,54 +15,81 @@ def save_to_sent(to_email, msg, sender_email, sender_password, imap_server, imap
         print(f"Connecting to IMAP {imap_server} to save copy...")
         mail = imaplib.IMAP4_SSL(imap_server, imap_port)
         mail.login(sender_email, sender_password)
-        
+
         # Get list of folders
-        status, folder_list = mail.list()
+        status, folder_list = mail.list('', '*')
         folders = []
-        if status == 'OK':
+        if status == 'OK' and folder_list:
             for f in folder_list:
-                # Parse folder name from bytes: b'(\HasNoChildren) "/" "Sent"'
-                name = f.decode().split(' "|" ')[-1].split(' "/" ')[-1].strip('"')
-                # simpler parsing for common formats
-                if '"' in f.decode():
-                    name = f.decode().split('"')[-2]
+                decoded = f.decode()
+                if '"' in decoded:
+                    name = decoded.split('"')[-2]
                 else:
-                    name = f.decode().split(' ')[-1]
+                    name = decoded.split()[-1]
                 folders.append(name)
-        
+
         print(f"Available folders: {folders}")
 
-        # Intelligent Sent folder detection
-        sent_candidates = ['Expected Sent Folder', 'Sent Items', 'Sent', 'INBOX.Sent', 'INBOX.Sent Items', 'Enviados']
+        def folder_exists(name):
+            try:
+                status, _ = mail.select(name, readonly=True)
+                return status == 'OK'
+            except Exception:
+                return False
+
+        sent_candidates = [
+            '[Gmail]/Sent Mail',
+            '[Gmail]/Sent',
+            'Sent Mail',
+            'Sent Items',
+            'Sent',
+            'INBOX.Sent',
+            'INBOX.Sent Items',
+            'Enviados',
+        ]
+
         target_folder = None
-        
-        # 1. Try exact matches from our list
+
         for candidate in sent_candidates:
-            if candidate in folders:
+            if candidate in folders and folder_exists(candidate):
                 target_folder = candidate
                 break
-                
-        # 2. If not found, look for "Sent" in the name (case insensitive)
+
+        if not target_folder:
+            for candidate in sent_candidates:
+                if folder_exists(candidate):
+                    target_folder = candidate
+                    break
+
         if not target_folder:
             for folder in folders:
-                if 'sent' in folder.lower():
+                if 'sent' in folder.lower() and folder_exists(folder):
                     target_folder = folder
                     break
-        
+
         if target_folder:
             print(f"Saving to folder: {target_folder}")
-            # Append the message
-            # Flags: \Seen (read) and \Answered (replied) if applicable, or usually just \Seen
-            # Python's datetime for internal date
             now = imaplib.Time2Internaldate(time.time())
-            mail.append(f'"{target_folder}"', '\\Seen', now, msg.as_bytes())
+            try:
+                mail.append(target_folder, '\\Seen', now, msg.as_bytes())
+            except Exception as append_err:
+                print(f"First append attempt failed for {target_folder}: {append_err}")
+                try:
+                    mail.append(f'"{target_folder}"', '\\Seen', now, msg.as_bytes())
+                except Exception as alt_err:
+                    print(f"Second append attempt failed for {target_folder}: {alt_err}")
+                    mail.logout()
+                    return False
             print(f"Successfully saved copy to {target_folder}")
-        else:
-            print(f"Could not find a 'Sent' folder. Available: {folders}")
-            
+            mail.logout()
+            return True
+
+        print(f"Could not find a Sent folder. Available: {folders}")
         mail.logout()
+        return False
     except Exception as e:
         print(f"Failed to save copy to Sent folder: {e}")
+        return False
 
 def send_email_outlook(to_email, subject, body, sender_email, sender_password, smtp_server='smtp.office365.com', smtp_port=587, html=True, cc_emails=None, imap_server=None):
     """
@@ -126,7 +153,9 @@ def send_email_outlook(to_email, subject, body, sender_email, sender_password, s
             elif 'mail.' in smtp_server:
                 target_imap = smtp_server  # Already in correct format
             
-        save_to_sent(to_email, msg, sender_email, sender_password, target_imap)
+        saved = save_to_sent(to_email, msg, sender_email, sender_password, target_imap)
+        if not saved:
+            print(f"Warning: message sent but saving to Sent folder failed for IMAP server {target_imap}")
         
         return True
     except Exception as e:

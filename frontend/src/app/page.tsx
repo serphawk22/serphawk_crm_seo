@@ -12,6 +12,7 @@ import {
 import { API_BASE_URL } from "@/config";
 import { fetchWithCache } from "@/lib/cache";
 import { useRole } from "@/context/RoleContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { cn } from "@/lib/utils";
 import PageGuide from '@/components/PageGuide';
 import Link from "next/link";
@@ -54,19 +55,6 @@ interface ClientStats {
 }
 type StatsData = AdminStats | ClientStats | null;
 
-const NAV_CARDS = [
-  { href: "/clients", icon: Users, gradient: "from-indigo-500 to-indigo-600", title: "Clients Hub", description: "The Foundation: Manage every client profile, track growth protocols, milestones, and maintain professional relationships in one central hub.", roles: ["Admin", "Employee"] },
-  { href: "/email-agent", icon: Bot, gradient: "from-violet-500 to-purple-600", title: "Email Agent", description: "Growth Engine: AI-powered outreach that auto-analyzes leads and drafts personalized bilingual emails to scale your revenue automatically.", roles: ["Admin", "Employee"] },
-  { href: "/calls", icon: Phone, gradient: "from-amber-500 to-orange-600", title: "Call Center", description: "Touchpoint Intelligence: Log every conversation, track follow-ups, and ensure no lead is ever left without a clear next step or work assignment.", roles: ["Admin", "Employee"] },
-  { href: "/projects", icon: FolderKanban, gradient: "from-sky-400 to-cyan-500", title: "Project Board", description: "Execution Layer: Oversee complex workflows, assign specialized team members, and ensure every milestone is delivered with precision and quality.", roles: ["Admin", "Employee", "Intern"] },
-  { href: "/interns", icon: GraduationCap, gradient: "from-rose-400 to-rose-500", title: "Talent Pool", description: "Scale Support: Manage your interns, assign learning tasks, and monitor their contribution to the core team's productivity and growth.", roles: ["Admin", "Employee"] },
-  { href: "/admin/services-overview", icon: Briefcase, gradient: "from-fuchsia-500 to-pink-600", title: "Services Overview", description: "Master Board: Organization-wide view of all active service lines, client consumers, and assigned execution teams.", roles: ["Admin", "Employee"] },
-  { href: "/setup", icon: Globe, gradient: "from-indigo-500 to-indigo-600", title: "Initial Setup", description: "Connect your website and social media profiles for automated cross-channel analysis.", roles: ["Client"] },
-  { href: "/audit", icon: Activity, gradient: "from-emerald-500 to-teal-500", title: "One-Click Audit", description: "Run deep technical SEO scans and compare your performance against top competitors.", roles: ["Client", "Admin", "Employee"] },
-  { href: "/messages", icon: Send, gradient: "from-violet-500 to-purple-600", title: "Team Comm Hub", description: "Direct communication with your assigned SEO specialists, shared files, and priority queues.", roles: ["Client", "Admin", "Employee"] },
-  { href: "/monitor", icon: Target, gradient: "from-amber-500 to-orange-600", title: "Live Monitor", description: "Real-time ranking tracker and performance analytics synced with GA4 and GSC.", roles: ["Client"] },
-  { href: "/store", icon: Briefcase, gradient: "from-indigo-500 to-violet-600", title: "Growth Services", description: "Explore our exclusive catalog of growth services. Request anything and receive a personalized quote from your dedicated team.", roles: ["Client"] },
-];
 
 // Inline mini bar chart (no external library needed)
 function MiniBarChart({ data, labels, color }: { data: number[]; labels: string[]; color: string }) {
@@ -106,11 +94,11 @@ function StatCard({ title, value, sub, icon: Icon, gradient, href }: {
           </div>
           {href && <ArrowUpRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 transition-colors" />}
         </div>
-        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{title}</p>
-        <h3 className="text-2xl font-black text-slate-800 tracking-tight">{value}</h3>
+        <p className="text-[11px] font-black text-slate-600 uppercase tracking-widest mb-0.5">{title}</p>
+        <h3 className="text-2xl font-black text-slate-900 tracking-tight">{value}</h3>
         <div className="mt-2 inline-flex items-center gap-1.5">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
-          <p className="text-[10px] font-bold text-slate-400">{sub}</p>
+          <p className="text-[12px] font-bold text-slate-500">{sub}</p>
         </div>
       </div>
     </motion.div>
@@ -136,9 +124,26 @@ export default function HomePage() {
 
 function Dashboard() {
   const { role, email, user } = useRole();
+  const { t, language } = useLanguage();
   const [stats, setStats] = useState<StatsData>(null);
   const [loading, setLoading] = useState(true);
   const isAdmin = role === "Admin" || role === "Employee";
+
+  const NAV_CARDS = [
+    { href: "/clients", icon: Users, gradient: "from-indigo-500 to-indigo-600", title: language === 'es' ? "Centro de Clientes" : "Clients Hub", description: language === 'es' ? "La Fundación: Gestione cada perfil de cliente, realice un seguimiento de los protocolos de crecimiento, hitos y mantenga relaciones profesionales en un solo lugar." : "The Foundation: Manage every client profile, track growth protocols, milestones, and maintain professional relationships in one central hub.", roles: ["Admin", "Employee", "SalesManager"] },
+    { href: "/sales-manager", icon: UserCheck, gradient: "from-fuchsia-500 to-pink-600", title: language === 'es' ? "Centro de Gerente de Ventas" : "Sales Manager Hub", description: language === 'es' ? "Espacio de trabajo para el propietario de los ingresos en cuentas asignadas, registros de comunicación, traspasos de facturas y escalado administrativo." : "Revenue owner workspace for assigned accounts, communication logs, invoice handoffs, and admin escalation.", roles: ["Admin", "Employee", "SalesManager"] },
+    { href: "/admin/sales-team", icon: UserCheck, gradient: "from-teal-500 to-emerald-500", title: language === 'es' ? "Equipo de Ventas" : "Sales Team", description: language === 'es' ? "Espacio de trabajo del administrador para agregar vendedores, gestionar cuentas y crear acceso de inicio de sesión para los Gerentes de Ventas." : "Admin workspace for adding salespeople, managing accounts, and creating Sales Manager login access.", roles: ["Admin"] },
+    { href: "/email-agent", icon: Bot, gradient: "from-violet-500 to-purple-600", title: language === 'es' ? "Agente de Email" : "Email Agent", description: language === 'es' ? "Motor de Crecimiento: Alcance automatizado por IA que analiza prospectos y redacta correos personalizados bilingües para escalar sus ingresos." : "Growth Engine: AI-powered outreach that auto-analyzes leads and drafts personalized bilingual emails to scale your revenue automatically.", roles: ["Admin", "Employee", "SalesManager"] },
+    { href: "/calls", icon: Phone, gradient: "from-amber-500 to-orange-600", title: language === 'es' ? "Centro de Llamadas" : "Call Center", description: language === 'es' ? "Inteligencia de Puntos de Contacto: Registre cada conversación, haga seguimiento y asegúrese de que ningún prospecto quede sin un próximo paso claro." : "Touchpoint Intelligence: Log every conversation, track follow-ups, and ensure no lead is ever left without a clear next step or work assignment.", roles: ["Admin", "Employee", "SalesManager"] },
+    { href: "/projects", icon: FolderKanban, gradient: "from-sky-400 to-cyan-500", title: language === 'es' ? "Tablero de Proyectos" : "Project Board", description: language === 'es' ? "Capa de Ejecución: Supervise flujos de trabajo complejos, asigne miembros del equipo y asegúrese de que cada hito se entregue con precisión." : "Execution Layer: Oversee complex workflows, assign specialized team members, and ensure every milestone is delivered with precision and quality.", roles: ["Admin", "Employee", "Intern"] },
+    { href: "/interns", icon: GraduationCap, gradient: "from-rose-400 to-rose-500", title: language === 'es' ? "Grupo de Talentos" : "Talent Pool", description: language === 'es' ? "Soporte de Escala: Administre a sus pasantes, asigne tareas de aprendizaje y monitoree su contribución." : "Scale Support: Manage your interns, assign learning tasks, and monitor their contribution to the core team's productivity and growth.", roles: ["Admin", "Employee"] },
+    { href: "/admin/services-overview", icon: Briefcase, gradient: "from-fuchsia-500 to-pink-600", title: language === 'es' ? "Resumen de Servicios" : "Services Overview", description: language === 'es' ? "Tablero Principal: Vista de toda la organización de las líneas de servicio activas, clientes consumidores y equipos de ejecución asignados." : "Master Board: Organization-wide view of all active service lines, client consumers, and assigned execution teams.", roles: ["Admin", "Employee"] },
+    { href: "/setup", icon: Globe, gradient: "from-indigo-500 to-indigo-600", title: language === 'es' ? "Configuración Inicial" : "Initial Setup", description: language === 'es' ? "Conecte su sitio web y perfiles de redes sociales para análisis automático multicanal." : "Connect your website and social media profiles for automated cross-channel analysis.", roles: ["Client"] },
+    { href: "/audit", icon: Activity, gradient: "from-emerald-500 to-teal-500", title: language === 'es' ? "Auditoría en 1 Clic" : "One-Click Audit", description: language === 'es' ? "Ejecute escaneos profundos de SEO técnico y compare su rendimiento con el de sus principales competidores." : "Run deep technical SEO scans and compare your performance against top competitors.", roles: ["Client", "Admin", "Employee"] },
+    { href: "/messages", icon: Send, gradient: "from-violet-500 to-purple-600", title: language === 'es' ? "Centro de Comunicación" : "Team Comm Hub", description: language === 'es' ? "Comunicación directa con especialistas SEO, archivos compartidos y colas prioritarias." : "Direct communication with your assigned SEO specialists, shared files, and priority queues.", roles: ["Client", "Admin", "Employee"] },
+    { href: "/monitor", icon: Target, gradient: "from-amber-500 to-orange-600", title: language === 'es' ? "Monitor en Vivo" : "Live Monitor", description: language === 'es' ? "Rastreador de clasificación en tiempo real y análisis de rendimiento sincronizado con GA4 y GSC." : "Real-time ranking tracker and performance analytics synced with GA4 and GSC.", roles: ["Client"] },
+    { href: "/store", icon: Briefcase, gradient: "from-indigo-500 to-violet-600", title: language === 'es' ? "Servicios de Crecimiento" : "Growth Services", description: language === 'es' ? "Explore nuestro catálogo exclusivo de servicios de crecimiento. Solicite cualquier cosa y reciba una cotización personalizada." : "Explore our exclusive catalog of growth services. Request anything and receive a personalized quote from your dedicated team.", roles: ["Client"] },
+  ];
 
   useEffect(() => {
     if (!role) return;
@@ -214,10 +219,10 @@ function Dashboard() {
               </div>
               <div className="flex gap-3 shrink-0 w-full md:w-auto">
                 <Link href="/clients" className="px-5 py-2.5 rounded-xl font-bold text-sm text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-slate-800 hover:border-slate-300 transition-all">
-                  View Clients
+                  {language === 'es' ? 'Ver Clientes' : 'View Clients'}
                 </Link>
                 <Link href="/email-agent" className="btn-glow-indigo px-5 py-2.5 rounded-xl font-bold text-sm text-white flex items-center gap-2">
-                  <Sparkles className="w-4 h-4" /> Launch Agent
+                  <Sparkles className="w-4 h-4" /> {language === 'es' ? 'Lanzar Agente' : 'Launch Agent'}
                 </Link>
               </div>
             </div>
@@ -259,8 +264,8 @@ function Dashboard() {
               <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-100 rounded-full blur-2xl pointer-events-none" />
               <div className="flex items-center justify-between mb-5 relative z-10">
                 <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Activity Logs</p>
-                  <p className="text-3xl font-black text-slate-800 mt-0.5">{adminStats.totalActivities}</p>
+                  <p className="text-[12px] font-black text-slate-600 uppercase tracking-widest">Activity Logs</p>
+                  <p className="text-3xl font-black text-slate-900 mt-0.5">{adminStats.totalActivities}</p>
                 </div>
                 <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600">
                   <Activity className="w-5 h-5" />
@@ -278,8 +283,8 @@ function Dashboard() {
               <div className="absolute top-0 right-0 w-32 h-32 bg-violet-100 rounded-full blur-2xl pointer-events-none" />
               <div className="flex items-center justify-between mb-5 relative z-10">
                 <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Emails Outbound</p>
-                  <p className="text-3xl font-black text-slate-800 mt-0.5">{adminStats.totalEmailsSent}</p>
+                  <p className="text-[12px] font-black text-slate-600 uppercase tracking-widest">Emails Outbound</p>
+                  <p className="text-3xl font-black text-slate-900 mt-0.5">{adminStats.totalEmailsSent}</p>
                 </div>
                 <div className="p-2.5 rounded-xl bg-violet-50 border border-violet-200 text-violet-600">
                   <Mail className="w-5 h-5" />
@@ -297,8 +302,8 @@ function Dashboard() {
               <div className="absolute top-0 right-0 w-32 h-32 bg-amber-50 rounded-full blur-2xl pointer-events-none" />
               <div className="flex items-center justify-between mb-5 relative z-10">
                 <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Call Interactions</p>
-                  <p className="text-3xl font-black text-slate-800 mt-0.5">{adminStats.totalCalls}</p>
+                  <p className="text-[12px] font-black text-slate-600 uppercase tracking-widest">Call Interactions</p>
+                  <p className="text-3xl font-black text-slate-900 mt-0.5">{adminStats.totalCalls}</p>
                 </div>
                 <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-600">
                   <Phone className="w-5 h-5" />
@@ -330,8 +335,8 @@ function Dashboard() {
                 { label: "Emails Deployed", value: adminStats.totalEmailsSent, accent: "border-violet-200 bg-violet-50 text-violet-700" },
               ].map(({ label, value, accent }) => (
                 <div key={label} className={`rounded-2xl border p-5 ${accent}`}>
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-2">{label}</p>
-                  <span className="font-black text-3xl">{value}</span>
+                  <p className="text-[12px] font-black uppercase tracking-widest mb-2 opacity-90">{label}</p>
+                  <span className="font-black text-3xl opacity-100">{value}</span>
                 </div>
               ))}
             </div>
@@ -339,7 +344,7 @@ function Dashboard() {
 
           {/* Row 4: Quick Access navigation cards */}
           <motion.div variants={itemVariants}>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Quick Access</p>
+            <p className="text-[12px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Quick Access</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {visibleNavCards.map((card) => (
                 <Link key={card.href} href={card.href}>
@@ -362,8 +367,8 @@ function Dashboard() {
                         </div>
                         <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-200" />
                       </div>
-                      <h3 className="font-black text-[15px] text-slate-600 mb-1.5 group-hover:text-slate-900 transition-colors">{card.title}</h3>
-                      <p className="text-[12px] text-slate-400 font-medium leading-relaxed group-hover:text-slate-500 transition-colors">{card.description}</p>
+                      <h3 className="font-black text-[15px] text-slate-800 mb-1.5 group-hover:text-slate-900 transition-colors">{card.title}</h3>
+                      <p className="text-[12px] text-slate-500 font-medium leading-relaxed group-hover:text-slate-600 transition-colors">{card.description}</p>
                     </div>
                   </motion.div>
                 </Link>
@@ -386,9 +391,9 @@ function Dashboard() {
               </Link>
             </div>
             {(adminStats.recentActivities?.length ?? 0) === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 text-slate-300 gap-3">
-                <Activity className="w-10 h-10 opacity-30 text-slate-400" />
-                <p className="font-bold text-sm text-slate-400">No activities yet</p>
+              <div className="flex flex-col items-center justify-center h-32 text-slate-400 gap-3">
+                <Activity className="w-10 h-10 opacity-40 text-slate-500" />
+                <p className="font-bold text-sm text-slate-500">No activities yet</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 relative z-10">
@@ -507,7 +512,7 @@ function Dashboard() {
               { key: 'profile', label: 'Complete Company Profile', done: !!(clientStats.companyName && clientStats.website), link: '/clients' },
               { key: 'setup', label: 'Verify Your Domain', done: false, link: '/setup' },
               { key: 'files', label: 'Upload Your First Document', done: (clientStats.files?.length || 0) > 0, link: '/my-files' },
-              { key: 'services', label: 'Explore & Request Services', done: (clientStats.active_services_list?.length || 0) > 0 || clientStats.pending_requests_count > 0, link: '/store' },
+              { key: 'services', label: 'Explore & Request Services', done: (clientStats?.active_services_list?.length || 0) > 0 || (clientStats?.pending_requests_count ?? 0) > 0, link: '/store' },
               { key: 'proposals', label: 'Review Your Proposals', done: (clientStats.proposals?.length || 0) > 0, link: '/proposals' },
             ];
             const completed = checks.filter(c => c.done).length;
@@ -733,7 +738,7 @@ function Dashboard() {
           )}
 
           {/* ═══ CHAPTER 04: PENDING QUOTES — Amber accent section ═══ */}
-          {clientStats?.pending_quotes_list?.length > 0 && (
+          {(clientStats?.pending_quotes_list?.length ?? 0) > 0 && (
             <section className="bg-zinc-950 text-white">
               <div className="max-w-5xl mx-auto px-8 md:px-16 py-24 md:py-32">
                 <motion.div
@@ -752,7 +757,7 @@ function Dashboard() {
                 </motion.div>
 
                 <div className="space-y-6">
-                  {clientStats.pending_quotes_list.map((quote: any, index: number) => (
+                  {clientStats?.pending_quotes_list?.map((quote: any, index: number) => (
                     <motion.div
                       key={quote.id}
                       initial={{ opacity: 0, y: 15 }}
@@ -1240,7 +1245,7 @@ function Dashboard() {
                 transition={{ duration: 0.6 }}
               >
                 <p className="text-amber-700 text-[11px] font-bold tracking-[0.3em] uppercase mb-4">
-                  Chapter {clientStats?.pending_quotes_list?.length > 0 ? '05' : (clientStats?.active_services_list?.length > 0 ? '04' : '03')}
+                  Chapter {(clientStats?.pending_quotes_list?.length ?? 0) > 0 ? '05' : ((clientStats?.active_services_list?.length ?? 0) > 0 ? '04' : '03')}
                 </p>
                 <h2
                   className="text-5xl md:text-7xl font-black text-zinc-900 mb-16 leading-[0.95]"

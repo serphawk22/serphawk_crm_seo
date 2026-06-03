@@ -6,6 +6,9 @@ import { Inter } from "next/font/google";
 import { Chatbot } from "@/components/Chatbot";
 import { AdminTopbar } from "@/components/AdminTopbar";
 import { SidebarProvider, useSidebar } from "@/context/SidebarContext";
+import { RoleProvider, useRole } from "@/context/RoleContext";
+import { LanguageProvider } from "@/context/LanguageContext";
+import I18nProvider from "@/i18n/I18nProvider";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
@@ -33,7 +36,6 @@ function ClientLayout({ children }: { children: React.ReactNode }) {
 }
 import { ClientSidebar } from "@/components/ClientSidebar";
 import { usePathname } from 'next/navigation';
-import { RoleProvider, useRole } from "@/context/RoleContext";
 import { CallNotificationBar } from "@/components/CallNotificationBar";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -42,7 +44,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
   const { role, loading } = useRole();
   const pathname = usePathname();
   const isClient = role === "Client";
-  const isAdminOrEmployee = role === "Admin" || role === "Employee" || role === "Intern";
+  const isAdminOrEmployee = role === "Admin" || role === "Employee" || role === "Intern" || role === "SalesManager";
 
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
@@ -115,9 +117,13 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <RoleProvider>
-          <AppContent>{children}</AppContent>
-        </RoleProvider>
+        <I18nProvider>
+          <LanguageProvider>
+            <RoleProvider>
+              <AppContent>{children}</AppContent>
+            </RoleProvider>
+          </LanguageProvider>
+        </I18nProvider>
       </body>
     </html>
   );

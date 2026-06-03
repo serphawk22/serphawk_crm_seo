@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useRouter, usePathname } from 'next/navigation';
 import { API_BASE_URL } from '@/config';
 
-export type Role = 'Admin' | 'Employee' | 'Client' | 'Intern';
+export type Role = 'Admin' | 'Employee' | 'Client' | 'Intern' | 'SalesManager';
 
 interface User {
   id: number;
@@ -19,7 +19,7 @@ interface RoleContextType {
   email: string;
   isAuthenticated: boolean;
   user: User | null;
-  login: (email: string, pass: string) => Promise<boolean>;
+  login: (email: string, pass: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   loading: boolean;
 }
@@ -47,7 +47,11 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       if (!isAuthenticated && pathname !== '/login' && pathname !== '/') {
         router.replace('/login');
       } else if (isAuthenticated && pathname === '/login') {
-        router.replace('/');
+        if (user?.role === 'SalesManager') {
+          router.replace('/clients');
+        } else {
+          router.replace('/');
+        }
       }
     }
   }, [isAuthenticated, pathname, loading, router]);
@@ -64,12 +68,16 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         setUser(data.user);
         setIsAuthenticated(true);
         localStorage.setItem('crm_user', JSON.stringify(data.user));
-        return true;
+        return { success: true };
       }
-      return false;
+      const data = await res.json().catch(() => ({}));
+      return { success: false, message: data.detail || 'Invalid credentials. Please try again.' };
     } catch (err) {
-      console.error(err);
-      return false;
+      console.error('Login request failed', err);
+      return {
+        success: false,
+        message: `Unable to connect to the CRM API at ${API_BASE_URL}. Please verify that the backend is running and reachable.`,
+      };
     }
   };
 

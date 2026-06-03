@@ -32,12 +32,12 @@ export default function AdminRequestsPage() {
     try {
       const [reqRes, empRes] = await Promise.all([
         fetch(`${API_BASE_URL}/services/requests`),
-        fetch(`${API_BASE_URL}/employees`)
+        fetch(`${API_BASE_URL}/users?role=Employee,SalesManager`)
       ]);
       const reqData = await reqRes.json();
       const empData = await empRes.json();
       setRequests(reqData.requests || []);
-      setEmployees(empData.employees || []);
+      setEmployees(empData.users || []);
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 

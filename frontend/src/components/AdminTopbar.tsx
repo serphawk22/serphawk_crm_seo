@@ -6,21 +6,23 @@ import {
   Search, Bell, Settings, ChevronDown, LogOut, User, X, Sparkles, Clock, Command,
   LayoutDashboard, Users, FolderKanban, CheckSquare, Bot, Phone, MessageCircle,
   FileText, FileSignature, LayoutGrid, Inbox, GraduationCap, UserCog, Briefcase,
-  BarChart2, Activity, Zap
+  BarChart2, Activity, Zap, UserCheck
 } from "lucide-react";
 import { useRole, Role } from "@/context/RoleContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { API_BASE_URL } from "@/config";
 import { cn } from "@/lib/utils";
+import LanguageSelector from "./LanguageSelector";
 
 const PAGE_TITLES: Record<string, string> = {
   "/": "Dashboard", "/clients": "Clients", "/projects": "Projects", "/tasks": "Task Board",
   "/invoices": "Invoices", "/proposals": "Proposals", "/rankings": "Keyword Rankings",
   "/notifications": "Notifications", "/email-agent": "Email Agent", "/calls": "Call Center",
   "/messages": "Messages", "/interns": "Intern Pool", "/employees": "Employees",
-  "/admin/services-overview": "Services Overview", "/admin/requests": "Request Board",
-  "/admin/services": "Services", "/audit": "Audit Center", "/pricing": "Pricing"
+  "/sales-manager": "Sales Manager", "/admin/services-overview": "Services Overview", "/admin/requests": "Request Board",
+  "/admin/sales-team": "Sales Team", "/admin/services": "Services", "/audit": "Audit Center", "/pricing": "Pricing"
 };
 
 const ROLE_BADGE: Record<Role, { label: string; color: string }> = {
@@ -28,56 +30,71 @@ const ROLE_BADGE: Record<Role, { label: string; color: string }> = {
   Employee: { label: "Employee", color: "bg-sky-100 text-sky-700 border border-sky-200" },
   Client: { label: "Client", color: "bg-emerald-100 text-emerald-700 border border-emerald-200" },
   Intern: { label: "Intern", color: "bg-amber-100 text-amber-700 border border-amber-200" },
+  SalesManager: { label: "Sales Manager", color: "bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200" },
 };
 
-const NAV_MENUS = [
+const NAV_MENUS_BASE = [
   {
-    label: "Core",
+    label_key: "navigation.core",
     items: [
-      { name: "Dashboard", icon: LayoutDashboard, href: "/", roles: ["Admin", "Employee", "Intern"] },
-      { name: "Clients", icon: Users, href: "/clients", roles: ["Admin", "Employee"] },
-      { name: "Projects", icon: FolderKanban, href: "/projects", roles: ["Admin", "Employee", "Intern"] },
-      { name: "Tasks", icon: CheckSquare, href: "/tasks", roles: ["Admin", "Employee", "Intern"] },
+      { name_key: "navigation.home", icon: LayoutDashboard, href: "/", roles: ["Admin", "Employee", "Intern"] },
+      { name_key: "navigation.clients", icon: Users, href: "/clients", roles: ["Admin", "Employee"] },
+      { name_key: "navigation.projects", icon: FolderKanban, href: "/projects", roles: ["Admin", "Employee", "Intern"] },
+      { name_key: "navigation.tasks", icon: CheckSquare, href: "/tasks", roles: ["Admin", "Employee", "Intern"] },
     ]
   },
   {
-    label: "Growth Engine",
+    label_key: "navigation.growth_engine",
     items: [
-      { name: "Email Agent", icon: Bot, href: "/email-agent", roles: ["Admin", "Employee"] },
-      { name: "Calls", icon: Phone, href: "/calls", roles: ["Admin", "Employee"] },
-      { name: "Messages", icon: MessageCircle, href: "/messages", roles: ["Admin", "Employee"] },
-      { name: "Notifications", icon: Bell, href: "/notifications", roles: ["Admin", "Employee", "Intern"] },
+      { name_key: "navigation.email_agent", icon: Bot, href: "/email-agent", roles: ["Admin", "Employee", "SalesManager"] },
+      { name_key: "navigation.sales_team", icon: UserCheck, href: "/admin/sales-team", roles: ["Admin"] },
+      { name_key: "navigation.sales_manager", icon: UserCheck, href: "/sales-manager", roles: ["Employee", "SalesManager"] },
+      { name_key: "navigation.calls", icon: Phone, href: "/calls", roles: ["Admin", "Employee", "SalesManager"] },
+      { name_key: "navigation.messages", icon: MessageCircle, href: "/messages", roles: ["Admin", "Employee", "SalesManager"] },
+      { name_key: "navigation.notifications", icon: Bell, href: "/notifications", roles: ["Admin", "Employee", "Intern", "SalesManager"] },
     ]
   },
   {
-    label: "Revenue",
+    label_key: "navigation.revenue",
     items: [
-      { name: "Invoices", icon: FileText, href: "/invoices", roles: ["Admin", "Employee"] },
-      { name: "Proposals", icon: FileSignature, href: "/proposals", roles: ["Admin", "Employee"] },
+      { name_key: "navigation.invoices", icon: FileText, href: "/invoices", roles: ["Admin", "Employee"] },
+      { name_key: "navigation.proposals", icon: FileSignature, href: "/proposals", roles: ["Admin", "Employee"] },
     ]
   },
   {
-    label: "Organization",
+    label_key: "navigation.organization",
     items: [
-      { name: "Services Overview", icon: LayoutGrid, href: "/admin/services-overview", roles: ["Admin", "Employee"] },
-      { name: "Request Board", icon: Inbox, href: "/admin/requests", roles: ["Admin", "Employee"] },
-      { name: "Interns", icon: GraduationCap, href: "/interns", roles: ["Admin", "Employee"] },
-      { name: "Employees", icon: UserCog, href: "/employees", roles: ["Admin"] },
-      { name: "Services", icon: Briefcase, href: "/admin/services", roles: ["Admin"] },
+      { name_key: "navigation.services_overview", icon: LayoutGrid, href: "/admin/services-overview", roles: ["Admin", "Employee"] },
+      { name_key: "navigation.request_board", icon: Inbox, href: "/admin/requests", roles: ["Admin", "Employee"] },
+      { name_key: "navigation.sales_team", icon: UserCheck, href: "/admin/sales-team", roles: ["Admin"] },
+      { name_key: "navigation.interns", icon: GraduationCap, href: "/interns", roles: ["Admin", "Employee"] },
+      { name_key: "navigation.employees", icon: UserCog, href: "/employees", roles: ["Admin"] },
+      { name_key: "navigation.services", icon: Briefcase, href: "/admin/services", roles: ["Admin"] },
     ]
   },
   {
-    label: "Tools",
+    label_key: "navigation.tools",
     items: [
-      { name: "Rankings", icon: BarChart2, href: "/rankings", roles: ["Admin", "Employee"] },
-      { name: "Audit", icon: Activity, href: "/audit", roles: ["Employee"] },
-      { name: "Pricing", icon: Zap, href: "/pricing", roles: ["Employee"] },
+      { name_key: "navigation.rankings", icon: BarChart2, href: "/rankings", roles: ["Admin", "Employee"] },
+      { name_key: "navigation.audit", icon: Activity, href: "/audit", roles: ["Employee"] },
+      { name_key: "navigation.pricing", icon: Zap, href: "/pricing", roles: ["Employee"] },
     ]
   }
 ];
 
+function getTranslatedNavMenus(t: (key: string) => string) {
+  return NAV_MENUS_BASE.map(menu => ({
+    label: t(menu.label_key),
+    items: menu.items.map(item => ({
+      ...item,
+      name: t(item.name_key)
+    }))
+  }));
+}
+
 export function AdminTopbar() {
   const { role, email, logout, user } = useRole();
+  const { t, language } = useLanguage();
   const pathname = usePathname();
   const router = useRouter();
   
@@ -182,7 +199,7 @@ export function AdminTopbar() {
 
         {/* Desktop Nav Items */}
         <nav className="hidden lg:flex items-center gap-1">
-          {NAV_MENUS.map((menu) => {
+          {getTranslatedNavMenus(t).map((menu) => {
             const allowedItems = menu.items.filter(i => i.roles.includes(role as Role));
             if (allowedItems.length === 0) return null;
             
@@ -248,7 +265,7 @@ export function AdminTopbar() {
           className="flex items-center justify-center md:justify-start gap-3 md:px-4 p-2 md:py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all text-[13px] md:min-w-[200px]"
         >
           <Search className="w-4 h-4 md:w-3.5 md:h-3.5" />
-          <span className="hidden md:inline">Search...</span>
+          <span className="hidden md:inline">{t("common.search")}</span>
           <div className="ml-auto hidden md:flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-white rounded-md px-1.5 py-0.5 border border-slate-200 shadow-sm">
             <Command className="w-3 h-3" />K
           </div>
@@ -280,8 +297,8 @@ export function AdminTopbar() {
                 className="absolute right-0 top-full mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50"
               >
                 <div className="px-4 py-3 border-b border-slate-100">
-                  <p className="text-[13px] font-black text-slate-700">Notifications</p>
-                  <p className="text-[10px] text-slate-400">{unreadCount > 0 ? `${unreadCount} unread` : "All caught up!"}</p>
+                  <p className="text-[13px] font-black text-slate-700">{t("navigation.notifications")}</p>
+                  <p className="text-[10px] text-slate-400">{unreadCount > 0 ? `${unreadCount} ${t("notifications.unread")}` : t("notifications.allCaughtUp")}</p>
                 </div>
                 {recentNotifs.length > 0 ? recentNotifs.map((n: any) => (
                   <div key={n.id} className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer">
@@ -298,18 +315,24 @@ export function AdminTopbar() {
                     </div>
                   </div>
                 )) : (
-                  <div className="px-4 py-6 text-center text-[12px] text-slate-400">No new notifications</div>
+                  <div className="px-4 py-6 text-center text-[12px] text-slate-400">{t("notifications.noNotifications")}</div>
                 )}
                 <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50">
                   <Link href="/notifications" onClick={() => setNotifOpen(false)}
                     className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 w-full text-center block transition-colors">
-                    View all notifications
+                    {t("notifications.viewAll")}
                   </Link>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
+
+        {/* Divider */}
+        <div className="w-px h-6 bg-slate-200 mx-1" />
+
+        {/* Language Selector */}
+        <LanguageSelector />
 
         {/* Divider */}
         <div className="w-px h-6 bg-slate-200 mx-1" />
@@ -355,10 +378,10 @@ export function AdminTopbar() {
                 
                 <div className="py-2">
                   <button className="flex items-center gap-3 w-full px-4 py-2 text-[13px] font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
-                    <User className="w-4 h-4" /> Profile
+                    <User className="w-4 h-4" /> {t("common.profile")}
                   </button>
                   <button className="flex items-center gap-3 w-full px-4 py-2 text-[13px] font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
-                    <Settings className="w-4 h-4" /> Settings
+                    <Settings className="w-4 h-4" /> {t("common.settings")}
                   </button>
                 </div>
                 
@@ -367,7 +390,7 @@ export function AdminTopbar() {
                     onClick={() => { logout(); router.push("/login"); }}
                     className="flex items-center gap-3 w-full px-4 py-2 text-[13px] font-medium text-rose-500 hover:text-rose-600 hover:bg-rose-100/50 transition-all"
                   >
-                    <LogOut className="w-4 h-4" /> Sign out
+                    <LogOut className="w-4 h-4" /> {t("auth.logout")}
                   </button>
                 </div>
               </motion.div>
@@ -400,7 +423,7 @@ export function AdminTopbar() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search clients, projects, tasks, invoices..."
+                  placeholder={t("common.searchPlaceholder")}
                   className="flex-1 bg-transparent text-[15px] text-slate-700 placeholder:text-slate-400 outline-none font-medium"
                 />
                 {searching && <div className="w-4 h-4 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin shrink-0" />}
@@ -414,7 +437,7 @@ export function AdminTopbar() {
               <div className="p-3 max-h-80 overflow-y-auto">
                 {searchQuery.trim() && searchResults.length > 0 ? (
                   <>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Results</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">{language === 'es' ? 'Resultados' : 'Results'}</p>
                     {searchResults.map((r: any, i: number) => {
                       const icons: Record<string, string> = { client: '👤', project: '📁', task: '✅', invoice: '💰' };
                       return (
@@ -432,10 +455,10 @@ export function AdminTopbar() {
                     })}
                   </>
                 ) : searchQuery.trim() && !searching ? (
-                  <p className="text-[13px] text-slate-500 text-center py-8 font-medium">No results for &ldquo;{searchQuery}&rdquo;</p>
+                  <p className="text-[13px] text-slate-500 text-center py-8 font-medium">{language === 'es' ? 'No hay resultados para' : 'No results for'} &ldquo;{searchQuery}&rdquo;</p>
                 ) : (
                   <>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Quick Navigation</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">{language === 'es' ? 'Navegación Rápida' : 'Quick Navigation'}</p>
                     {["/", "/clients", "/projects", "/email-agent", "/calls", "/admin/services-overview"].map((href) => (
                       <button key={href}
                         onClick={() => { router.push(href); setSearchOpen(false); }}
@@ -449,9 +472,9 @@ export function AdminTopbar() {
                 )}
               </div>
               <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-                <span className="text-[11px] font-medium text-slate-400">Press <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-slate-500 font-sans mx-1">ESC</kbd> to close</span>
+                <span className="text-[11px] font-medium text-slate-400">{language === 'es' ? 'Presione' : 'Press'} <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-slate-500 font-sans mx-1">ESC</kbd> {language === 'es' ? 'para cerrar' : 'to close'}</span>
                 <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
-                  <Sparkles className="w-3 h-3 text-indigo-400" /> Powered by AI Search
+                  <Sparkles className="w-3 h-3 text-indigo-400" /> {language === 'es' ? 'Impulsado por Búsqueda de IA' : 'Powered by AI Search'}
                 </div>
               </div>
             </motion.div>

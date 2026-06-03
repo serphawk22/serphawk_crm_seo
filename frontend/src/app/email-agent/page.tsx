@@ -5,10 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Sparkles, Mail, Clock, User, Globe, ChevronDown, ChevronUp,
   CheckCircle, Building2, Briefcase, Target, AtSign, FileText, Copy, Check,
-  TrendingUp, Zap, Package, UserPlus
+  TrendingUp, Zap, Package, UserPlus, Phone
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
-import { useRole } from "@/context/RoleContext";
 import PageGuide from "@/components/PageGuide";
 
 interface SentEmail {
@@ -31,12 +30,72 @@ interface ChatMessage {
   content?: string;
 }
 
+type RecommendedService = {
+  service_name?: string;
+  why_relevant?: string;
+  expected_impact?: string;
+};
+
+interface ResearchResultData {
+  company_info?: {
+    company_name?: string;
+    likely_industry?: string;
+    industry?: string;
+    what_they_do?: string;
+    summary?: string;
+    business_model?: string;
+    estimated_size?: string;
+    target_market?: string;
+    geographic_presence?: string;
+    linkedin?: string;
+    best_conversion_opportunity?: string;
+    sales_follow_up_focus?: string;
+    website?: string;
+    extracted_emails?: string;
+    extracted_phone_numbers?: string;
+    extracted_linkedin?: string;
+    extracted_twitter?: string;
+    contacts?: Array<{
+      email?: string;
+      name?: string;
+      role?: string;
+      phone_number?: string;
+    }>;
+  };
+  contact?: {
+    email?: string;
+    name?: string;
+    role?: string;
+    phone_number?: string;
+    whatsapp?: string;
+    linkedin?: string;
+    twitter?: string;
+  };
+  recommended_services?: Array<RecommendedService | string>;
+  email_hook?: string;
+  package_suggestion?: string;
+  draft?: {
+    english_body?: string;
+    spanish_body?: string;
+    body?: string;
+    subject?: string;
+  };
+  assigned_sales_manager?: string;
+  company_url?: string;
+  client_id?: number;
+  id?: string;
+}
+
 interface ResearchResult {
   id: string;
-  resultData: any;
+  resultData: ResearchResultData;
   companyName: string;
   companyUrl: string;
 }
+
+type SendEmailResult = {
+  client_id?: number;
+} | null;
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -49,6 +108,76 @@ function CopyButton({ text }: { text: string }) {
       {copied ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
   );
+}
+
+function buildProspectingPoints(result: ResearchResultData) {
+  const hasServices = (result.recommended_services || []).map((s) => typeof s === 'string' ? s : s.service_name).filter(Boolean) as string[];
+  
+  // Extract contact information with fallbacks
+  const primaryEmail = result.contact?.email || result.company_info?.extracted_emails?.split(",")[0]?.trim() || "No email found.";
+  const allEmails = result.company_info?.extracted_emails ? result.company_info.extracted_emails.split(",").map(e => e.trim()).slice(0, 2).join(", ") : primaryEmail;
+  
+  const primaryPhone = result.contact?.phone_number || result.contact?.whatsapp || result.company_info?.extracted_phone_numbers?.split(",")[0]?.trim() || "No phone available.";
+  const allPhones = result.company_info?.extracted_phone_numbers ? result.company_info.extracted_phone_numbers.split(",").map(p => p.trim()).slice(0, 2).join(", ") : primaryPhone;
+  
+  const linkedinProfile = result.contact?.linkedin || result.company_info?.linkedin || result.company_info?.extracted_linkedin?.split(",")[0]?.trim() || "No LinkedIn profile found.";
+  const allLinkedIn = result.company_info?.extracted_linkedin ? result.company_info.extracted_linkedin.split(",").map(l => l.trim()).slice(0, 2).join(", ") : linkedinProfile;
+  
+  const twitterProfile = result.contact?.twitter || result.company_info?.extracted_twitter?.split(",")[0]?.trim() || "No Twitter/X profile found.";
+  const allTwitter = result.company_info?.extracted_twitter ? result.company_info.extracted_twitter.split(",").map(t => t.trim()).slice(0, 2).join(", ") : twitterProfile;
+  
+  return [
+    {
+      title: "Company Summary",
+      body: result.company_info?.what_they_do || result.company_info?.summary || "Company description not available.",
+      icon: Briefcase,
+    },
+    {
+      title: "Services Offered",
+      body: hasServices.length > 0 ? hasServices.join(", ") : "No service matches available yet.",
+      icon: Package,
+    },
+    {
+      title: "Conversion Priority",
+      body: result.company_info?.best_conversion_opportunity || "Highest value opportunity not yet identified.",
+      icon: Target,
+    },
+    {
+      title: "Primary Contact",
+      body: result.contact?.name || "No contact name found.",
+      icon: AtSign,
+    },
+    {
+      title: "Email ID",
+      body: allEmails,
+      icon: Mail,
+    },
+    {
+      title: "Mobile / WhatsApp",
+      body: allPhones,
+      icon: Phone,
+    },
+    {
+      title: "LinkedIn",
+      body: allLinkedIn,
+      icon: Globe,
+    },
+    {
+      title: "Twitter / X",
+      body: allTwitter,
+      icon: Zap,
+    },
+    {
+      title: "Sales Manager",
+      body: result.assigned_sales_manager || "Assign a salesperson to this lead.",
+      icon: UserPlus,
+    },
+    {
+      title: "Follow-up Focus",
+      body: result.company_info?.sales_follow_up_focus || "Capture next steps as notes and turn them into tasks.",
+      icon: TrendingUp,
+    },
+  ];
 }
 
 function BottomUpFillMail() {
@@ -72,16 +201,61 @@ function BottomUpFillMail() {
   );
 }
 
-function ResultCard({ result, companyName, companyUrl, onSendManually }: { result: any, companyName: string, companyUrl: string, onSendManually: (r: any, name: string, url: string) => void }) {
+function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAutomatically, onSaveFollowUp }: { result: ResearchResultData; companyName: string; companyUrl: string; onSendManually: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSendAutomatically: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSaveFollowUp: (r: ResearchResultData, note: string, title: string) => Promise<boolean>; }) {
   const [activeTab, setActiveTab] = useState<"english" | "spanish">("english");
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
+  const [followUpNote, setFollowUpNote] = useState("");
+  const [followUpTitle, setFollowUpTitle] = useState(`Follow up with ${companyName}`);
+  const [followUpStatus, setFollowUpStatus] = useState<string | null>(null);
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  const extractedEmail = result.company_info?.extracted_emails?.split(",")[0]?.trim();
+  const directContactEmail = Array.isArray((result.company_info as any)?.contacts) ? (result.company_info as any).contacts[0]?.email : (result.company_info as any)?.email;
+  const contactEmail = result.contact?.email || directContactEmail || extractedEmail;
 
   const handleSend = async () => {
     setSending(true);
-    await onSendManually(result, companyName, companyUrl);
-    setSendSuccess("Sent Manually");
+    setSendError(null);
+    try {
+      await onSendManually(result, companyName, companyUrl);
+      setSendSuccess("Sent Manually");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to send email";
+      setSendError(message);
+    }
     setSending(false);
+  };
+
+  const handleSendAutomatically = async () => {
+    setSending(true);
+    setSendError(null);
+    try {
+      await onSendAutomatically(result, companyName, companyUrl);
+      setSendSuccess("Sent Automatically");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to send email";
+      setSendError(message);
+    }
+    setSending(false);
+  };
+
+  const handleSaveFollowUp = async () => {
+    if (!followUpNote.trim()) {
+      setFollowUpStatus("Add a follow-up note first.");
+      return;
+    }
+    setSavingFollowUp(true);
+    setFollowUpStatus(null);
+    const saved = await onSaveFollowUp(result, followUpNote.trim(), followUpTitle);
+    setSavingFollowUp(false);
+    if (saved) {
+      setFollowUpStatus("Follow-up note saved successfully.");
+      setFollowUpNote("");
+    } else {
+      setFollowUpStatus("Unable to save follow-up. Please try again.");
+    }
   };
 
   return (
@@ -180,7 +354,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually }: { resul
       </div>
 
       {/* Recommended Services */}
-      {result.recommended_services?.length > 0 && (
+      {result.recommended_services && result.recommended_services.length > 0 && (
         <div className="bg-black/60 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-xl">
           <div className="flex items-center gap-2 mb-5">
             <div className="p-2 rounded-xl bg-white/10 border border-white/20 text-white">
@@ -194,24 +368,27 @@ function ResultCard({ result, companyName, companyUrl, onSendManually }: { resul
             </p>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {result.recommended_services.map((svc: any, i: number) => (
-              <div key={i} className="p-4 bg-white/5 border border-white/10 rounded-xl hover:border-white/30 hover:bg-white/10 transition-all">
-                <div className="flex items-start gap-3">
-                  <div className="p-1.5 rounded-lg bg-white/10 text-white shrink-0 mt-0.5">
-                    <TrendingUp className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-white text-sm">{svc.service_name}</p>
-                    <p className="text-xs text-gray-300 mt-1">{svc.why_relevant}</p>
-                    {svc.expected_impact && (
-                      <p className="text-[10px] text-green-400 font-bold mt-2 flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" /> {svc.expected_impact}
-                      </p>
-                    )}
+            {result.recommended_services && result.recommended_services.map((svc, i: number) => {
+              const service = typeof svc === 'string' ? { service_name: svc } : svc;
+              return (
+                <div key={i} className="p-4 bg-white/5 border border-white/10 rounded-xl hover:border-white/30 hover:bg-white/10 transition-all">
+                  <div className="flex items-start gap-3">
+                    <div className="p-1.5 rounded-lg bg-white/10 text-white shrink-0 mt-0.5">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-white text-sm">{service.service_name}</p>
+                      <p className="text-xs text-gray-300 mt-1">{service.why_relevant}</p>
+                      {service.expected_impact && (
+                        <p className="text-[10px] text-green-400 font-bold mt-2 flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" /> {service.expected_impact}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -248,9 +425,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually }: { resul
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${
-                  activeTab === tab.key
-                    ? "bg-white text-black border-white"
-                    : "bg-transparent text-gray-300 border-white/20 hover:bg-white/10"
+                  activeTab === tab.key ? "bg-white text-black border-white" : "bg-transparent text-gray-300 border-white/20 hover:bg-white/10"
                 }`}
               >
                 {tab.label}
@@ -264,25 +439,92 @@ function ResultCard({ result, companyName, companyUrl, onSendManually }: { resul
               : (result.draft.spanish_body || "No Spanish draft generated")}
           </div>
 
-          {result.contact?.email && (
-            <div className="mt-4 space-y-3">
-              <div className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-xl">
-                <Send className="w-4 h-4 text-gray-300" />
-                <span className="text-sm font-bold text-white flex-1">Ready to send to: {result.contact.email}</span>
-                <button
-                  onClick={handleSend}
-                  disabled={sending || !!sendSuccess}
-                  className="px-4 py-2 rounded-xl bg-white text-black font-bold text-xs flex items-center gap-2 hover:bg-gray-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                >
-                  {sending ? (
-                    <Clock className="w-3.5 h-3.5 animate-spin" />
-                  ) : sendSuccess ? (
-                    <CheckCircle className="w-3.5 h-3.5" />
-                  ) : (
-                    <UserPlus className="w-3.5 h-3.5" />
+          {contactEmail && (
+            <div className="space-y-6">
+              <div className="grid gap-3 md:grid-cols-3">
+                {buildProspectingPoints(result).map((point, idx) => {
+                  const Icon = point.icon;
+                  return (
+                    <div key={idx} className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-slate-100">
+                      <div className="flex items-center gap-2 mb-3 text-slate-300">
+                        <Icon className="w-4 h-4" />
+                        <span className="font-bold uppercase tracking-[0.18em] text-[10px]">{point.title}</span>
+                      </div>
+                      <p className="leading-snug text-slate-200">{point.body}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-4">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-bold text-white">
+                      <Send className="w-4 h-4 text-gray-300" />
+                      <span>Ready to send to: {contactEmail}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Use your Gmail credentials to send the outreach email instantly.</p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={handleSendAutomatically}
+                      disabled={sending || !!sendSuccess}
+                      className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-emerald-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                    >
+                      {sending ? <Clock className="w-3.5 h-3.5 animate-spin" /> : sendSuccess ? <CheckCircle className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
+                      {sending ? "Sending..." : sendSuccess ? "Sent" : "Send Automatically"}
+                    </button>
+                    <button
+                      onClick={handleSend}
+                      disabled={sending || !!sendSuccess}
+                      className="px-4 py-2 rounded-xl bg-white text-black font-bold text-xs flex items-center gap-2 hover:bg-gray-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      Send Manually
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Next Follow-up Note</label>
+                    <input
+                      type="text"
+                      value={followUpTitle}
+                      onChange={(e) => setFollowUpTitle(e.target.value)}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:border-white"
+                      placeholder="Follow-up title"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Note for the sales team</label>
+                    <textarea
+                      value={followUpNote}
+                      onChange={(e) => setFollowUpNote(e.target.value)}
+                      rows={4}
+                      className="mt-2 w-full rounded-2xl border border-white/10 bg-black/40 px-3 py-3 text-sm text-white focus:outline-none focus:border-white resize-none"
+                      placeholder="Capture the follow-up summary, next steps, or internal action items."
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <button
+                      onClick={handleSaveFollowUp}
+                      disabled={savingFollowUp || !followUpNote.trim()}
+                      className="px-4 py-2 rounded-xl bg-sky-500 text-white font-bold text-xs hover:bg-sky-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {savingFollowUp ? "Saving..." : "Save Follow-Up"}
+                    </button>
+                    {followUpStatus && (
+                      <p className="text-xs text-gray-300">{followUpStatus}</p>
+                    )}
+                  </div>
+                  {sendError && (
+                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+                      {sendError}
+                    </div>
                   )}
-                  {sending ? "Sending..." : sendSuccess ? "Sent" : "Send Manually"}
-                </button>
+                </div>
               </div>
             </div>
           )}
@@ -293,9 +535,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually }: { resul
 }
 
 export default function EmailAgentPage() {
-  const { role } = useRole();
   const [companyName, setCompanyName] = useState("");
-  const [companyUrl, setCompanyUrl] = useState("");
   const [inputValue, setInputValue] = useState("");
   
   const [chatStep, setChatStep] = useState<"company_name" | "website_url" | "loading" | "idle">("company_name");
@@ -323,8 +563,12 @@ export default function EmailAgentPage() {
   useEffect(() => {
     fetch(`${API_BASE_URL}/sent-emails?limit=30`)
       .then((r) => r.json())
-      .then((data) => setSentEmails(Array.isArray(data) ? data : []))
-      .catch(() => {})
+      .then((data) => {
+        if (Array.isArray(data)) return setSentEmails(data);
+        if (data?.emails && Array.isArray(data.emails)) return setSentEmails(data.emails);
+        return setSentEmails([]);
+      })
+      .catch(() => setSentEmails([]))
       .finally(() => setEmailsLoading(false));
   }, []);
 
@@ -344,7 +588,6 @@ export default function EmailAgentPage() {
     } 
     else if (chatStep === "website_url") {
       const url = inputValue.trim();
-      setCompanyUrl(url);
       setInputValue("");
       
       setMessages(prev => [
@@ -397,7 +640,6 @@ export default function EmailAgentPage() {
       
       setChatStep("company_name");
       setCompanyName("");
-      setCompanyUrl("");
       setTimeout(() => {
         setMessages(prev => [
           ...prev,
@@ -405,7 +647,7 @@ export default function EmailAgentPage() {
         ]);
       }, 1000);
 
-    } catch (e: any) {
+    } catch {
       setMessages(prev => {
         const filtered = prev.filter(m => m.type !== "loading");
         return [
@@ -417,33 +659,93 @@ export default function EmailAgentPage() {
     }
   };
 
-  const handleSendManually = async (result: any, name: string, url: string) => {
+  const handleSendManually = async (result: ResearchResultData, name: string, url: string): Promise<SendEmailResult> => {
+    const data = await sendEmail(result, name, url, true);
+    if (data?.client_id) {
+      setResultsHistory(prev => prev.map(item => item.resultData === result ? { ...item, resultData: { ...item.resultData, client_id: data.client_id } } : item));
+    }
+    return data;
+  };
+
+  const handleSendAutomatically = async (result: ResearchResultData, name: string, url: string): Promise<SendEmailResult> => {
+    const data = await sendEmail(result, name, url, false);
+    if (data?.client_id) {
+      setResultsHistory(prev => prev.map(item => item.resultData === result ? { ...item, resultData: { ...item.resultData, client_id: data.client_id } } : item));
+    }
+    return data;
+  };
+
+  const sendEmail = async (result: ResearchResultData, name: string, url: string, manual: boolean): Promise<SendEmailResult> => {
     try {
-      const serviceNames = (result.recommended_services || []).map((s: any) => s.service_name || s).join(", ");
+      const serviceNames = (result.recommended_services || []).map((s) => (typeof s === 'string' ? s : s.service_name || '')).filter(Boolean).join(", ");
+      const fallbackEmail = Array.isArray(result.company_info?.contacts) ? result.company_info.contacts[0]?.email : undefined;
+      const extractedEmail = result.company_info?.extracted_emails?.split(",")[0]?.trim();
+      const emailToSend = result.contact?.email || fallbackEmail || extractedEmail || undefined;
+      if (!emailToSend) {
+        throw new Error("No recipient email available to send.");
+      }
       const res = await fetch(`${API_BASE_URL}/send-manual`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to_email: result.contact.email,
+          to_email: emailToSend,
           company_name: result.company_info?.company_name || name,
-          subject: result.draft.subject || "",
-          english_body: result.draft.english_body || result.draft.body || "",
-          spanish_body: result.draft.spanish_body || "",
+          subject: result.draft?.subject || "",
+          english_body: result.draft?.english_body || result.draft?.body || "",
+          spanish_body: result.draft?.spanish_body || "",
           recommended_services: serviceNames,
-          contact_name: result.contact.name || null,
-          contact_role: result.contact.role || null,
+          contact_name: result.contact?.name || null,
+          contact_role: result.contact?.role || null,
           website_url: result.company_url || result.company_info?.website || url || null,
-          phone_number: result.contact.phone_number || null,
+          phone_number: result.contact?.phone_number || null,
+          manual,
         }),
       });
-      if (!res.ok) throw new Error("Failed to send");
-      
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Failed to send email");
+      }
+
+      const data = await res.json();
       fetch(`${API_BASE_URL}/sent-emails?limit=30`)
         .then((r) => r.json())
-        .then((d) => setSentEmails(Array.isArray(d) ? d : []))
-        .catch(() => {});
-    } catch (e: any) {
-      console.error(e);
+        .then((d) => {
+          if (Array.isArray(d)) return setSentEmails(d);
+          if (d?.emails && Array.isArray(d.emails)) return setSentEmails(d.emails);
+          return setSentEmails([]);
+        })
+        .catch(() => setSentEmails([]));
+      return data;
+    } catch (error: unknown) {
+      console.error(error);
+      throw error instanceof Error ? error : new Error("Email send failed");
+    }
+  };
+
+  const handleSaveFollowUp = async (result: ResearchResultData, note: string, title: string): Promise<boolean> => {
+    try {
+      const clientId = (result as any).client_id || (result.company_info as any)?.client_id || (result as any).id;
+      if (!clientId) {
+        console.error("Cannot save follow-up without client ID");
+        return false;
+      }
+      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/followup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: note,
+          authorId: 1,
+          isInternal: false,
+          task_title: title,
+          task_description: note,
+          due_date: null,
+          assigned_to: null,
+        }),
+      });
+      return response.ok;
+    } catch (error: unknown) {
+      console.error(error);
+      return false;
     }
   };
 
@@ -576,7 +878,7 @@ export default function EmailAgentPage() {
           <div className="w-full mt-8 space-y-8">
             <h3 className="font-black text-xl text-white bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl inline-block shadow-lg border border-white/10">Research Results</h3>
             {resultsHistory.map(res => (
-              <ResultCard key={res.id} result={res.resultData} companyName={res.companyName} companyUrl={res.companyUrl} onSendManually={handleSendManually} />
+              <ResultCard key={res.id} result={res.resultData} companyName={res.companyName} companyUrl={res.companyUrl} onSendManually={handleSendManually} onSendAutomatically={handleSendAutomatically} onSaveFollowUp={handleSaveFollowUp} />
             ))}
           </div>
         )}

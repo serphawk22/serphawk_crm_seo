@@ -20,20 +20,21 @@ import {
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import { useSidebar } from "@/context/SidebarContext";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { icon: Grid3x3, href: "/", label: "Dashboard" },
-  { icon: FileText, href: "/store", label: "Services" },
-  { icon: CheckSquare, href: "/tasks", label: "Tasks" },
-  { icon: Receipt, href: "/invoices", label: "Invoices" },
-  { icon: FileSignature, href: "/proposals", label: "Proposals" },
-  { icon: BarChart2, href: "/rankings", label: "Rankings" },
-  { icon: Menu, href: "/messages", label: "Messages" },
-  { icon: Target, href: "/milestones", label: "Milestones" },
-  { icon: Upload, href: "/my-files", label: "My Files" },
-  { icon: Bell, href: "/notifications", label: "Notifications" },
-  { icon: Settings, href: "/setup", label: "Settings" },
+  { icon: Grid3x3, href: "/", labelKey: "navigation.home" },
+  { icon: FileText, href: "/store", labelKey: "navigation.services" },
+  { icon: CheckSquare, href: "/tasks", labelKey: "navigation.tasks" },
+  { icon: Receipt, href: "/invoices", labelKey: "navigation.invoices" },
+  { icon: FileSignature, href: "/proposals", labelKey: "navigation.proposals" },
+  { icon: BarChart2, href: "/rankings", labelKey: "navigation.rankings" },
+  { icon: Menu, href: "/messages", labelKey: "navigation.messages" },
+  { icon: Target, href: "/milestones", labelKey: "navigation.milestones" },
+  { icon: Upload, href: "/my-files", labelKey: "navigation.my_files" },
+  { icon: Bell, href: "/notifications", labelKey: "navigation.notifications" },
+  { icon: Settings, href: "/setup", labelKey: "common.settings" },
 ];
 
 export function ClientSidebar() {
@@ -41,6 +42,7 @@ export function ClientSidebar() {
   const router = useRouter();
   const { user, logout } = useRole();
   const { collapsed, setCollapsed } = useSidebar();
+  const { t } = useTranslation();
 
   const handleLogout = async () => {
     await logout();
@@ -76,7 +78,7 @@ export function ClientSidebar() {
                 className="flex flex-col overflow-hidden"
               >
                 <span className="font-black text-white text-base leading-tight tracking-tight">SERP Hawk</span>
-                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">Client Portal</span>
+                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">{t("clients.clientPortal", "Client Portal")}</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -117,14 +119,14 @@ export function ClientSidebar() {
                         isActive ? "text-amber-400 font-bold" : "text-stone-400 group-hover:text-stone-200"
                       )}
                     >
-                      {item.label}
+                      {t(item.labelKey)}
                     </motion.span>
                   )}
                 </AnimatePresence>
                 {/* Tooltip only when collapsed */}
                 {collapsed && (
                   <span className="absolute left-full ml-3 px-3 py-1.5 bg-zinc-800 text-white text-xs font-bold rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl border border-white/10">
-                    {item.label}
+                    {t(item.labelKey)}
                   </span>
                 )}
               </Link>
@@ -146,8 +148,8 @@ export function ClientSidebar() {
                   {initial}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-bold text-stone-300 truncate">{user?.name || "Client"}</p>
-                  <p className="text-[10px] font-semibold text-amber-500">Client</p>
+                  <p className="text-[12px] font-bold text-stone-300 truncate">{user?.name || t("clients.client", "Client")}</p>
+                  <p className="text-[10px] font-semibold text-amber-500">{t("clients.client", "Client")}</p>
                 </div>
               </motion.div>
             )}
@@ -169,13 +171,13 @@ export function ClientSidebar() {
                   exit={{ opacity: 0 }}
                   className="text-[13px] font-semibold"
                 >
-                  Logout
+                  {t("auth.logout", "Logout")}
                 </motion.span>
               )}
             </AnimatePresence>
             {collapsed && (
               <span className="absolute left-full ml-3 px-3 py-1.5 bg-zinc-800 text-white text-xs font-bold rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl border border-white/10">
-                Logout
+                {t("auth.logout", "Logout")}
               </span>
             )}
           </button>
