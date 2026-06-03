@@ -630,6 +630,23 @@ class ClientNote(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class Deal(SQLModel, table=True):
+    """Sales Pipeline Deal / Opportunity"""
+    __tablename__ = "deals"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str = Field(max_length=500)
+    value: float = Field(default=0.0)
+    client_id: int = Field(foreign_key="client_profiles.id")
+    assigned_to: Optional[int] = Field(default=None, foreign_key="users.id")
+    stage: str = Field(default="Lead") # Lead, Discovery, Demo, Negotiation, Closed Won, Closed Lost
+    expected_close_date: Optional[str] = Field(default=None, max_length=50)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    client: Optional[ClientProfile] = Relationship(back_populates="deals")
+    assigned_user: Optional["User"] = Relationship(back_populates="deals")
+
+
 class ConversationLog(SQLModel, table=True):
     """Call/meeting/WhatsApp/email/visit conversation logs"""
     __tablename__ = "conversation_logs"
