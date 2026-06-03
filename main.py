@@ -569,6 +569,23 @@ class ClientUpdateRequest(BaseModel):
     next_followup_date: Optional[str] = None
 
 
+class DealCreateRequest(BaseModel):
+    title: str
+    value: float = 0.0
+    client_id: int
+    assigned_to: Optional[int] = None
+    stage: str = "Lead"
+    expected_close_date: Optional[str] = None
+
+
+class DealUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    value: Optional[float] = None
+    assigned_to: Optional[int] = None
+    stage: Optional[str] = None
+    expected_close_date: Optional[str] = None
+
+
 class AssignEmployeeRequest(BaseModel):
     employee_id: int
 
@@ -1387,6 +1404,31 @@ def delete_client_note(client_id: int, note_id: int, session: Session = Depends(
     session.delete(note)
     session.commit()
     return {"ok": True}
+
+
+@app.post("/clients/{client_id}/notes/{note_id}/extract-tasks")
+def extract_tasks_from_client_note(client_id: int, note_id: int, session: Session = Depends(get_session)):
+    note = session.get(ClientNote, note_id)
+    if not note or note.client_id != client_id:
+        raise HTTPException(status_code=404, detail="Note not found")
+        
+    from modules.llm_engine import extract_tasks_from_note
+    tasks_extracted = extract_tasks_from_note(note.content)
+    
+    created_tasks = []
+    for t in tasks_extracted:
+        new_task = Task(
+            title=t.get("title", "Extracted Task"),
+            description=t.get("description", "") + f"\n\n(Extracted from Note #{note_id})",
+            client_id=client_id,
+            status="Todo",
+            priority="Medium"
+        )
+        session.add(new_task)
+        created_tasks.append(new_task)
+        
+    session.commit()
+    return {"ok": True, "extracted_count": len(created_tasks)}
 
 
 # ─── Conversation Logs ────────────────────────────────────────────────────────
@@ -4476,6 +4518,76 @@ def delete_competitor(analysis_id: int, session: Session = Depends(get_session))
     if not ca:
         raise HTTPException(status_code=404, detail="Analysis not found")
     session.delete(ca)
+    session.commit()
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Deals (Visual Sales Pipeline)
+# ─────────────────────────────────────────────────────────────────────────────
+
+from database import Deal
+
+@app.get("/deals")
+def get_deals(user_id: Optional[int] = None, session: Session = Depends(get_session)):
+    q = select(Deal).order_by(Deal.created_at.desc())
+    if user_id:
+        q = q.where(Deal.assigned_to == user_id)
+    deals = session.exec(q).all()
+    
+    # We fetch client names for the UI manually
+    results = []
+    for d in deals:
+        client = session.get(ClientProfile, d.client_id)
+        results.append({
+            "id": d.id,
+            "title": d.title,
+            "value": d.value,
+            "client_id": d.client_id,
+            "client_name": client.companyName or client.email if client else "Unknown",
+            "assigned_to": d.assigned_to,
+            "stage": d.stage,
+            "expected_close_date": d.expected_close_date,
+            "created_at": d.created_at.isoformat()
+        })
+    return {"deals": results}
+
+@app.post("/deals")
+def create_deal(body: DealCreateRequest, session: Session = Depends(get_session)):
+    deal = Deal(
+        title=body.title,
+        value=body.value,
+        client_id=body.client_id,
+        assigned_to=body.assigned_to,
+        stage=body.stage,
+        expected_close_date=body.expected_close_date
+    )
+    session.add(deal)
+    session.commit()
+    session.refresh(deal)
+    return {"ok": True, "id": deal.id}
+
+@app.put("/deals/{deal_id}")
+def update_deal(deal_id: int, body: DealUpdateRequest, session: Session = Depends(get_session)):
+    deal = session.get(Deal, deal_id)
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    if body.title is not None: deal.title = body.title
+    if body.value is not None: deal.value = body.value
+    if body.assigned_to is not None: deal.assigned_to = body.assigned_to
+    if body.stage is not None: deal.stage = body.stage
+    if body.expected_close_date is not None: deal.expected_close_date = body.expected_close_date
+    deal.updated_at = datetime.utcnow()
+    session.add(deal)
+    session.commit()
+    return {"ok": True}
+
+@app.delete("/deals/{deal_id}")
+def delete_deal(deal_id: int, session: Session = Depends(get_session)):
+    deal = session.get(Deal, deal_id)
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    session.delete(deal)
     session.commit()
     return {"ok": True}
 
