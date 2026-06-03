@@ -385,140 +385,95 @@ export default function ClientsPage() {
         </div>
 
         <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            <AnimatePresence>
-              {filteredClients.map(client => (
-                <motion.div
-                  key={client.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.2 }}
-                  className="relative"
-                  onMouseEnter={() => setHoveredId(client.id)}
-                  onMouseLeave={() => setHoveredId(null)}
-                >
-                  <Link 
-                    href={`/admin/clients/${client.id}`}
-                    className="block h-full bg-white/60 backdrop-blur-md border border-white/80 rounded-[2rem] p-6 hover:shadow-[0_12px_40px_rgba(0,0,0,0.08)] hover:-translate-y-1 transition-all duration-300 group relative overflow-hidden"
-                  >
-                    <div className="absolute -right-8 -top-8 w-24 h-24 bg-gradient-to-br from-indigo-500/10 to-cyan-500/10 rounded-full blur-xl group-hover:scale-150 transition-transform"></div>
-                    
-                    <div className="flex justify-between items-start mb-6 relative z-10">
-                      <div>
-                        <h3 className="font-black text-xl text-slate-800 group-hover:text-indigo-600 transition-colors tracking-tight line-clamp-1">
-                          {client.companyName || client.projectName || client.email || 'Unnamed Client'}
-                        </h3>
-                        {client.email && (
-                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-1 flex items-center gap-1 line-clamp-1">
-                            <Mail className="w-3 h-3" /> {client.email}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <StatusBadge statusName={client.status} />
-                        <button onClick={e => { e.preventDefault(); e.stopPropagation(); handleDeleteClient(client.id); }} title="Delete client" className="ml-2 p-1.5 rounded-full bg-red-100 hover:bg-red-200 text-red-600 transition-colors">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                      </div>
-                    </div>
-
-                                <div className="space-y-4 relative z-10">
-                      <div className="flex items-center gap-3 text-sm text-slate-600 bg-white/50 p-3 rounded-2xl border border-white/40">
-                        <div className="p-1.5 bg-indigo-50 text-indigo-500 rounded-lg"><Globe className="w-4 h-4" /></div>
-                        <span className="truncate font-medium">{client.website || (language === 'es' ? 'Sin sitio web' : 'No website')}</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-3">
-                        <div className="flex items-center gap-3 text-sm text-slate-600 bg-white/50 p-3 rounded-2xl border border-white/40">
-                          <div className="p-1.5 bg-cyan-50 text-cyan-500 rounded-lg"><Activity className="w-4 h-4" /></div>
-                          <div className="flex flex-col">
-                            <span className="font-bold text-[10px] uppercase tracking-wider text-slate-400">{language === 'es' ? 'Última Actividad' : 'Last Activity'}</span>
-                            <span className="truncate font-medium">{client.lastActivity || (language === 'es' ? 'Aún sin actividades' : 'No activities yet')}</span>
-                          </div>
-                        </div>
-                        {(client.services_requested || client.services_offered) && (
-                          <div className="flex flex-col gap-2 text-sm text-slate-600 bg-white/50 p-3 rounded-2xl border border-white/40">
-                            {client.services_requested && (
-                              <div className="flex items-center gap-2">
-                                <span className="px-2 py-1 bg-sky-100 text-sky-700 rounded-full text-[11px] font-bold">{language === 'es' ? 'Solicitado' : 'Requested'}</span>
-                                <span className="truncate font-medium">{client.services_requested}</span>
-                              </div>
-                            )}
-                            {client.services_offered && (
-                              <div className="flex items-center gap-2">
-                                <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[11px] font-bold">{language === 'es' ? 'Ofrecido' : 'Offered'}</span>
-                                <span className="truncate font-medium">{client.services_offered}</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mt-6 pt-5 border-t border-white/60 flex justify-between items-center relative z-10">
-                      <div className="flex flex-wrap gap-1.5">
-                        {client.keywords && client.keywords.slice(0, 2).map((kw, i) => (
-                          <span key={i} className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-md text-[10px] font-bold uppercase tracking-wider border border-slate-200">
-                            {kw}
-                          </span>
-                        ))}
-                        {client.keywords && client.keywords.length > 2 && (
-                          <span className="px-2.5 py-1 bg-slate-50 text-slate-500 rounded-md text-[10px] font-bold uppercase tracking-wider">
-                            +{client.keywords.length - 2}
-                          </span>
-                        )}
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
-                    </div>
-                  </Link>
-
-                  {/* Hover Activity Tooltip */}
+          <div className="bg-white/60 backdrop-blur-md rounded-3xl border border-white/80 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200/60 text-[10px] uppercase tracking-widest text-slate-400 bg-slate-50/50">
+                    <th className="px-6 py-4 font-black">{language === 'es' ? 'Cliente' : 'Client'}</th>
+                    <th className="px-6 py-4 font-black">Status</th>
+                    <th className="px-6 py-4 font-black">Website</th>
+                    <th className="px-6 py-4 font-black">{language === 'es' ? 'Última Actividad' : 'Last Activity'}</th>
+                    <th className="px-6 py-4 font-black">Services</th>
+                    <th className="px-6 py-4 font-black text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
                   <AnimatePresence>
-                    {hoveredId === client.id && client.lastActivity && client.lastActivity !== 'No activities yet' && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.97 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.97 }}
-                        transition={{ duration: 0.18, ease: 'easeOut' }}
-                        className="absolute bottom-full left-0 right-0 mb-3 z-50 pointer-events-none px-1"
+                    {filteredClients.map(client => (
+                      <motion.tr 
+                        key={client.id}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="hover:bg-white/80 transition-colors group cursor-pointer"
+                        onClick={() => router.push(`/admin/clients/${client.id}`)}
                       >
-                        <div className="bg-slate-900/90 backdrop-blur-xl text-white rounded-2xl shadow-2xl p-4 border border-white/10">
-                          <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-2">{language === 'es' ? 'Actividad Reciente' : 'Recent Activity'}</p>
-                          <div className="flex items-start gap-3">
-                            <div className="p-1.5 bg-indigo-500/20 rounded-lg shrink-0 mt-0.5">
-                              <Activity className="w-3.5 h-3.5 text-indigo-400" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-bold text-sm text-white leading-snug line-clamp-2">{client.lastActivity}</p>
-                              {client.lastActivityDate && (
-                                <p className="text-[11px] text-slate-400 font-medium mt-1 flex items-center gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  {new Date(client.lastActivityDate).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                </p>
-                              )}
-                            </div>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors line-clamp-1">
+                              {client.companyName || client.projectName || client.email || 'Unnamed Client'}
+                            </span>
+                            {client.email && (
+                              <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1 mt-0.5 line-clamp-1">
+                                <Mail className="w-3 h-3" /> {client.email}
+                              </span>
+                            )}
                           </div>
-                          {/* Arrow pointing down */}
-                          <div className="absolute -bottom-2 left-8 w-4 h-4 bg-slate-900/90 rotate-45 border-r border-b border-white/10"></div>
-                        </div>
-                      </motion.div>
-                    )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <StatusBadge statusName={client.status} />
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+                            <Globe className="w-4 h-4 text-slate-400" />
+                            <span className="truncate max-w-[150px]">{client.website || '-'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="text-sm text-slate-600 font-medium truncate max-w-[200px]">
+                              {client.lastActivity || '-'}
+                            </span>
+                            {client.lastActivityDate && (
+                              <span className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+                                {new Date(client.lastActivityDate).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                           <div className="flex flex-col gap-1">
+                             {client.services_requested && <span className="px-2 py-0.5 bg-sky-50 text-sky-600 rounded text-[10px] font-bold w-max">Req: {client.services_requested}</span>}
+                             {client.services_offered && <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold w-max">Off: {client.services_offered}</span>}
+                           </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button 
+                            onClick={e => { e.preventDefault(); e.stopPropagation(); handleDeleteClient(client.id); }} 
+                            title="Delete client" 
+                            className="p-2 rounded-xl bg-slate-50 hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </td>
+                      </motion.tr>
+                    ))}
                   </AnimatePresence>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-            
-            {filteredClients.length === 0 && (
-              <div className="col-span-1 md:col-span-2 xl:col-span-3 py-20 flex flex-col items-center justify-center text-center">
-                <div className="w-20 h-20 bg-white/60 rounded-full flex items-center justify-center mb-4 shadow-sm">
-                   <Search className="w-10 h-10 text-indigo-300" />
+                </tbody>
+              </table>
+              
+              {filteredClients.length === 0 && (
+                <div className="py-20 flex flex-col items-center justify-center text-center">
+                  <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 shadow-sm">
+                     <Search className="w-8 h-8 text-indigo-300" />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-700">{language === 'es' ? 'No se encontraron clientes' : 'No clients found'}</h3>
+                  <p className="text-slate-500 mt-1 text-sm font-medium max-w-sm">{language === 'es' ? 'Intente ajustar su búsqueda.' : 'Try adjusting your search query or filters.'}</p>
                 </div>
-                <h3 className="text-xl font-bold text-slate-700">{language === 'es' ? 'No se encontraron clientes' : 'No clients found'}</h3>
-                <p className="text-slate-500 mt-2 font-medium max-w-sm">{language === 'es' ? 'Intente ajustar su búsqueda o filtros para encontrar lo que busca.' : 'Try adjusting your search query or filters to find what you\'re looking for.'}</p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </motion.div>
