@@ -65,30 +65,30 @@ function PageSkeleton() {
   );
 }
 
-// ─── Collapsible section ────────────────────────────────────────────────────
-function CollapsibleSection({ title, icon: Icon, count, defaultOpen = true, accentColor = 'bg-indigo-600', children }: {
+// ─── Collapsible section (light only) ──────────────────────────────────────
+function CollapsibleSection({ title, icon: Icon, count, defaultOpen = false, accentColor = 'bg-indigo-600', children }: {
   title: string; icon: any; count?: number; defaultOpen?: boolean; accentColor?: string; children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       <button
         onClick={() => setOpen(p => !p)}
-        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+        className="w-full flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors"
       >
         <div className="flex items-center gap-2.5">
           <div className={`p-1.5 rounded-lg ${accentColor} text-white`}>
             <Icon size={13} />
           </div>
-          <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">{title}</span>
+          <span className="text-xs font-black uppercase tracking-wider text-slate-700">{title}</span>
           {count !== undefined && count > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-[10px] font-black">{count}</span>
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black">{count}</span>
           )}
         </div>
         <ChevronDown size={15} className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="px-5 pb-4 pt-0 border-t border-slate-100 dark:border-slate-800">
+        <div className="px-5 pb-4 pt-0 border-t border-slate-100">
           {children}
         </div>
       )}
@@ -96,142 +96,209 @@ function CollapsibleSection({ title, icon: Icon, count, defaultOpen = true, acce
   );
 }
 
-// ─── Overview Tab (inline) ───────────────────────────────────────────────────
-function OverviewTab({ client, employees, serviceRequests, activities, timeline, research, notes, conversations }: any) {
+// ─── Overview Tab ──────────────────────────────────────────────────────────────
+function OverviewTab({ client, employees, serviceRequests, activities, timeline, research, notes, conversations, clientId, onNotesRefresh, onConversationsRefresh }: any) {
   const { t, language } = useLanguage();
-  const assignedEmp = employees.find((e: any) => e.id === client?.assignedEmployeeId);
   const recentActivities = (activities || []).slice(0, 8);
+
+  // ── Add Note state ─────────────────────────────────────────────────────────
+  const [noteText, setNoteText] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+
+  const submitNote = async () => {
+    const txt = noteText.trim();
+    if (!txt) return;
+    setSavingNote(true);
+    try {
+      await fetch(`${API_BASE_URL}/clients/${clientId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: txt, author_name: 'Admin' }),
+      });
+      setNoteText('');
+      onNotesRefresh?.();
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
+  const handleNoteKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitNote();
+  };
+
+  // ── Log Conversation state ─────────────────────────────────────────────────
+  const CONV_TYPES = ['call', 'email', 'meeting', 'whatsapp', 'chat', 'other'];
+  const [convTitle, setConvTitle] = useState('');
+  const [convType, setConvType] = useState('call');
+  const [convBody, setConvBody] = useState('');
+  const [savingConv, setSavingConv] = useState(false);
+
+  const submitConv = async () => {
+    const title = convTitle.trim();
+    if (!title) return;
+    setSavingConv(true);
+    try {
+      await fetch(`${API_BASE_URL}/clients/${clientId}/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, type: convType, description: convBody.trim(), author_name: 'Admin' }),
+      });
+      setConvTitle('');
+      setConvBody('');
+      setConvType('call');
+      onConversationsRefresh?.();
+    } finally {
+      setSavingConv(false);
+    }
+  };
+
+  const TYPE_COLORS: Record<string, string> = {
+    call: 'bg-blue-100 text-blue-700',
+    email: 'bg-indigo-100 text-indigo-700',
+    meeting: 'bg-violet-100 text-violet-700',
+    whatsapp: 'bg-emerald-100 text-emerald-700',
+    chat: 'bg-sky-100 text-sky-700',
+    other: 'bg-slate-100 text-slate-600',
+  };
 
   return (
     <div className="space-y-4">
-      {/* KPI Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: t('client_tabs.lead_score'),       value: client?.lead_score ? `${client.lead_score}/100` : '—',  icon: Star,      color: 'text-amber-500',   bg: 'bg-amber-50 dark:bg-amber-900/20'   },
-          { label: t('client_tabs.deal_value'),       value: client?.deal_value ? `$${Number(client.deal_value).toLocaleString()}` : '—', icon: DollarSign, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
-          { label: t('client_tabs.active_requests'),  value: serviceRequests.filter((r: any) => !['Delivered'].includes(r.status)).length, icon: Zap, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-          { label: t('client_tabs.total_activities'), value: activities.length, icon: Activity, color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50 dark:bg-violet-900/20' },
-        ].map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-sm">
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-2.5 ${bg}`}>
-              <Icon size={16} className={color} />
-            </div>
-            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</p>
-            <p className={`text-2xl font-black mt-0.5 ${color}`}>{value}</p>
-          </div>
-        ))}
-      </div>
 
-      {/* Company Overview from Pre-Sales Research */}
+      {/* Company Overview */}
       {research?.company_overview && (
-        <CollapsibleSection title="Company Overview" icon={Building2} accentColor="bg-violet-600">
-          <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed pt-3">
-            {research.company_overview}
-          </p>
-        </CollapsibleSection>
+        <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-1.5 rounded-lg bg-violet-600 text-white"><Building2 size={13} /></div>
+            <span className="text-xs font-black uppercase tracking-wider text-violet-700">Company Overview</span>
+          </div>
+          <p className="text-sm text-slate-700 leading-relaxed">{research.company_overview}</p>
+        </div>
       )}
 
-      {/* Assigned Salesperson + Account Info */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-sm">
-          <p className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">{t('client_tabs.assigned_salesperson')}</p>
-          {assignedEmp ? (
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center flex-shrink-0">
-                <span className="text-lg font-black text-white">{assignedEmp.name.charAt(0)}</span>
-              </div>
-              <div>
-                <p className="font-black text-slate-900 dark:text-white">{assignedEmp.name}</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500">{assignedEmp.email}</p>
-                <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400">
-                  {assignedEmp.role}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3 py-2">
-              <div className="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                <Users size={20} className="text-slate-400" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-400 dark:text-slate-500">{t('client_tabs.no_salesperson')}</p>
-                <p className="text-xs text-slate-300 dark:text-slate-600">{t('client_tabs.assign_one')}</p>
-              </div>
-            </div>
-          )}
+      {/* ── Add Note (always visible inline) ─────────────────────────────── */}
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2.5 px-5 py-3 border-b border-slate-100">
+          <div className="p-1.5 rounded-lg bg-emerald-600 text-white"><StickyNote size={13} /></div>
+          <span className="text-xs font-black uppercase tracking-wider text-slate-700">Add Note</span>
         </div>
-
-        <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-sm">
-          <p className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">{t('client_tabs.account_info')}</p>
-          <div className="space-y-2">
-            {[
-              { label: t('client_tabs.status'),       value: client?.status || '—'       },
-              { label: t('client_tabs.industry'),     value: client?.industry || '—'     },
-              { label: t('client_tabs.lead_source'),  value: client?.lead_source || '—'  },
-              { label: t('client_tabs.revenue'),      value: client?.customFields?.total_revenue || '—' },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex items-center justify-between py-1 border-b border-slate-50 dark:border-slate-800 last:border-0">
-                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</span>
-                <span className="text-xs font-black text-slate-800 dark:text-slate-200">{value}</span>
-              </div>
-            ))}
+        <div className="px-5 py-3">
+          <textarea
+            value={noteText}
+            onChange={e => setNoteText(e.target.value)}
+            onKeyDown={handleNoteKey}
+            placeholder="Type your note here… (Ctrl+Enter to save)"
+            rows={3}
+            className="w-full resize-none text-sm text-slate-800 placeholder-slate-400 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent bg-slate-50"
+          />
+          <div className="flex justify-end mt-2">
+            <button
+              onClick={submitNote}
+              disabled={!noteText.trim() || savingNote}
+              className="px-4 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {savingNote ? 'Saving…' : 'Save Note'}
+            </button>
           </div>
         </div>
+
+        {/* Existing notes — collapsed by default */}
+        {notes && notes.length > 0 && (
+          <CollapsibleSection title="Previous Notes" icon={StickyNote} count={notes.length} accentColor="bg-emerald-500" defaultOpen={false}>
+            <div className="space-y-2 pt-3">
+              {notes.slice(0, 10).map((n: any) => (
+                <div key={n.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600">{n.type || 'Note'}</span>
+                    <span className="text-[10px] text-slate-400">{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
+                  </div>
+                  <p className="text-xs text-slate-700 leading-relaxed">{n.content}</p>
+                </div>
+              ))}
+            </div>
+          </CollapsibleSection>
+        )}
       </div>
 
-      {/* Notes inline — collapsible */}
-      <CollapsibleSection title="Notes" icon={StickyNote} count={notes?.length} accentColor="bg-emerald-600">
-        <div className="space-y-2 pt-3">
-          {!notes || notes.length === 0 ? (
-            <p className="text-sm text-slate-400 dark:text-slate-500 italic">No notes yet.</p>
-          ) : (
-            notes.slice(0, 5).map((n: any) => (
-              <div key={n.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/40">
-                <div className="flex justify-between items-start mb-1">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">{n.type || 'Note'}</span>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500">{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
-                </div>
-                <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{n.content}</p>
-              </div>
-            ))
-          )}
+      {/* ── Log Conversation (always visible inline) ──────────────────────── */}
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2.5 px-5 py-3 border-b border-slate-100">
+          <div className="p-1.5 rounded-lg bg-sky-600 text-white"><MessageSquare size={13} /></div>
+          <span className="text-xs font-black uppercase tracking-wider text-slate-700">Log Conversation</span>
         </div>
-      </CollapsibleSection>
-
-      {/* Conversations inline — collapsible */}
-      <CollapsibleSection title="Recent Conversations" icon={MessageSquare} count={conversations?.length} accentColor="bg-sky-600">
-        <div className="space-y-2 pt-3">
-          {!conversations || conversations.length === 0 ? (
-            <p className="text-sm text-slate-400 dark:text-slate-500 italic">No conversations yet.</p>
-          ) : (
-            conversations.slice(0, 5).map((c: any) => (
-              <div key={c.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/40">
-                <div className="flex justify-between items-start mb-1">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-sky-600 dark:text-sky-400">{c.type || c.channel || 'Conversation'}</span>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</span>
-                </div>
-                <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-0.5">{c.subject || c.title || '—'}</p>
-                {c.body && <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2">{c.body}</p>}
-              </div>
-            ))
-          )}
+        <div className="px-5 py-3 space-y-3">
+          {/* Type selector */}
+          <div className="flex flex-wrap gap-1.5">
+            {CONV_TYPES.map(type => (
+              <button
+                key={type}
+                onClick={() => setConvType(type)}
+                className={`px-3 py-1 rounded-full text-[11px] font-bold capitalize transition-all border ${
+                  convType === type
+                    ? 'bg-sky-600 text-white border-sky-600'
+                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:border-sky-300'
+                }`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+          <input
+            value={convTitle}
+            onChange={e => setConvTitle(e.target.value)}
+            placeholder="Summary / Title of conversation…"
+            className="w-full text-sm text-slate-800 placeholder-slate-400 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent bg-slate-50"
+          />
+          <textarea
+            value={convBody}
+            onChange={e => setConvBody(e.target.value)}
+            placeholder="Details, notes from the call / meeting… (optional)"
+            rows={2}
+            className="w-full resize-none text-sm text-slate-800 placeholder-slate-400 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent bg-slate-50"
+          />
+          <div className="flex justify-end">
+            <button
+              onClick={submitConv}
+              disabled={!convTitle.trim() || savingConv}
+              className="px-4 py-1.5 rounded-xl bg-sky-600 text-white text-xs font-bold hover:bg-sky-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {savingConv ? 'Saving…' : 'Log Conversation'}
+            </button>
+          </div>
         </div>
-      </CollapsibleSection>
 
-      {/* Recent Activity */}
-      <CollapsibleSection title={t('client_tabs.recent_activity')} icon={Activity} accentColor="bg-indigo-600" defaultOpen={true}>
+        {/* Existing conversations — collapsed by default */}
+        {conversations && conversations.length > 0 && (
+          <CollapsibleSection title="Previous Conversations" icon={MessageSquare} count={conversations.length} accentColor="bg-sky-500" defaultOpen={false}>
+            <div className="space-y-2 pt-3">
+              {conversations.slice(0, 10).map((c: any) => (
+                <div key={c.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${TYPE_COLORS[c.type] || TYPE_COLORS.other}`}>{c.type || 'Conversation'}</span>
+                    <span className="text-[10px] text-slate-400">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</span>
+                  </div>
+                  <p className="text-xs font-semibold text-slate-700 mb-0.5">{c.subject || c.title || '—'}</p>
+                  {c.body && <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{c.body}</p>}
+                </div>
+              ))}
+            </div>
+          </CollapsibleSection>
+        )}
+      </div>
+
+      {/* Recent Activity — collapsed by default */}
+      <CollapsibleSection title={t('client_tabs.recent_activity')} icon={Activity} accentColor="bg-indigo-600" defaultOpen={false}>
         <div className="space-y-1 pt-2">
           {recentActivities.length === 0 ? (
-            <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">{t('client_tabs.no_activity')}</p>
+            <p className="text-sm text-slate-400 text-center py-4">{t('client_tabs.no_activity')}</p>
           ) : (
             recentActivities.map((a: any) => (
-              <div key={a.id} className="flex items-start gap-3 py-2 border-b border-slate-50 dark:border-slate-800 last:border-0">
+              <div key={a.id} className="flex items-start gap-3 py-2 border-b border-slate-50 last:border-0">
                 <Clock size={13} className="text-slate-400 mt-0.5 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">{a.action}</p>
-                  {a.method && <p className="text-[10px] text-slate-400 dark:text-slate-500">{t('client_tabs.via') || 'via'} {a.method}</p>}
+                  <p className="text-xs font-semibold text-slate-700 truncate">{a.action}</p>
+                  {a.method && <p className="text-[10px] text-slate-400">{t('client_tabs.via') || 'via'} {a.method}</p>}
                 </div>
-                <span className="text-[10px] text-slate-400 dark:text-slate-500 flex-shrink-0">
+                <span className="text-[10px] text-slate-400 flex-shrink-0">
                   {a.createdAt ? new Date(a.createdAt).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' }) : ''}
                 </span>
               </div>
@@ -242,6 +309,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
     </div>
   );
 }
+
 
 // ─── MAIN PAGE ───────────────────────────────────────────────────────────────
 export default function AdminClientDetailPage() {
@@ -271,27 +339,15 @@ export default function AdminClientDetailPage() {
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [newUserForm, setNewUserForm] = useState({ name: '', email: '', role: 'SalesManager', password: 'password123' });
 
-  // Dark mode persisted — fix: properly remove class when toggling back to light
+  // Force light theme always — no dark mode on this page
   useEffect(() => {
-    const saved = localStorage.getItem('crm-dark-mode');
-    if (saved === 'true') {
-      setDarkMode(true);
-      document.documentElement.classList.add('dark');
-    } else {
-      setDarkMode(false);
-      document.documentElement.classList.remove('dark');
-    }
+    document.documentElement.classList.remove('dark');
+    localStorage.setItem('crm-dark-mode', 'false');
+    setDarkMode(false);
   }, []);
 
   const toggleDarkMode = () => {
-    const next = !darkMode;
-    setDarkMode(next);
-    localStorage.setItem('crm-dark-mode', String(next));
-    if (next) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    // Light theme only — toggle is a no-op
   };
 
 
@@ -536,6 +592,9 @@ export default function AdminClientDetailPage() {
                     research={research}
                     notes={notes}
                     conversations={conversations}
+                    clientId={id}
+                    onNotesRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/notes`).then(r => r.json()).then(d => setNotes(d.notes || []))}
+                    onConversationsRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/conversations`).then(r => r.json()).then(d => setConversations(d.conversations || []))}
                   />
                 )}
                 {activeTab === 'timeline' && (
