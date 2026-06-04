@@ -25,10 +25,10 @@ interface ClientHeaderProps {
 }
 
 const STATUS_CONFIG: Record<string, { bg: string; text: string; dot: string }> = {
-  Active:   { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', dot: 'bg-emerald-500' },
-  Hold:     { bg: 'bg-amber-100 dark:bg-amber-900/30',   text: 'text-amber-700 dark:text-amber-400',   dot: 'bg-amber-500'   },
-  Pending:  { bg: 'bg-blue-100 dark:bg-blue-900/30',    text: 'text-blue-700 dark:text-blue-400',    dot: 'bg-blue-500'    },
-  Inactive: { bg: 'bg-slate-100 dark:bg-slate-700',     text: 'text-slate-600 dark:text-slate-400',  dot: 'bg-slate-400'   },
+  Active:   { bg: 'bg-emerald-100 ', text: 'text-emerald-700 ', dot: 'bg-emerald-500' },
+  Hold:     { bg: 'bg-amber-100 ',   text: 'text-amber-700 ',   dot: 'bg-amber-500'   },
+  Pending:  { bg: 'bg-blue-100 ',    text: 'text-blue-700 ',    dot: 'bg-blue-500'    },
+  Inactive: { bg: 'bg-slate-100 ',     text: 'text-slate-600 ',  dot: 'bg-slate-400'   },
 };
 
 function LeadScoreRing({ score }: { score: number }) {
@@ -41,7 +41,7 @@ function LeadScoreRing({ score }: { score: number }) {
   return (
     <div className="relative w-14 h-14 flex items-center justify-center">
       <svg className="absolute inset-0 -rotate-90" width="56" height="56">
-        <circle cx="28" cy="28" r={radius} fill="none" stroke="currentColor" strokeWidth="4" className="text-slate-200 dark:text-slate-700" />
+        <circle cx="28" cy="28" r={radius} fill="none" stroke="currentColor" strokeWidth="4" className="text-slate-200 " />
         <circle cx="28" cy="28" r={radius} fill="none" stroke={color} strokeWidth="4"
           strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" style={{ transition: 'stroke-dasharray 0.8s ease' }} />
       </svg>
@@ -62,13 +62,13 @@ export default function ClientHeader({
   const dealValue = client?.deal_value ? `$${Number(client.deal_value).toLocaleString()}` : '—';
 
   const quickActions = [
-    { icon: MessageSquare, label: language === 'es' ? 'Añadir Nota' : 'Add Note',        onClick: onAddNote,          color: 'text-violet-600 dark:text-violet-400', bg: 'hover:bg-violet-50 dark:hover:bg-violet-900/20' },
-    { icon: Phone,         label: language === 'es' ? 'Registrar Llamada' : 'Log Call',  onClick: onAddConversation,  color: 'text-blue-600 dark:text-blue-400',     bg: 'hover:bg-blue-50 dark:hover:bg-blue-900/20'   },
-    { icon: CheckSquare,   label: language === 'es' ? 'Crear Tarea' : 'Create Task',     onClick: onCreateTask,       color: 'text-emerald-600 dark:text-emerald-400', bg: 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20' },
-    { icon: Calendar,      label: language === 'es' ? 'Agendar' : 'Schedule',            onClick: onScheduleMeeting,  color: 'text-amber-600 dark:text-amber-400',   bg: 'hover:bg-amber-50 dark:hover:bg-amber-900/20' },
-    { icon: Mail,          label: language === 'es' ? 'Enviar Correo' : 'Send Email',    onClick: onSendEmail,        color: 'text-sky-600 dark:text-sky-400',       bg: 'hover:bg-sky-50 dark:hover:bg-sky-900/20'     },
-    { icon: Upload,        label: language === 'es' ? 'Subir Archivo' : 'Upload File',   onClick: onUploadFile,       color: 'text-pink-600 dark:text-pink-400',     bg: 'hover:bg-pink-50 dark:hover:bg-pink-900/20'   },
-    { icon: Target,        label: language === 'es' ? 'Nueva Oportunidad' : 'New Opportunity', onClick: onCreateOpportunity, color: 'text-indigo-600 dark:text-indigo-400', bg: 'hover:bg-indigo-50 dark:hover:bg-indigo-900/20' },
+    { icon: MessageSquare, label: language === 'es' ? 'Añadir Nota' : 'Add Note',        onClick: onAddNote,          color: 'text-violet-600 ', bg: 'hover:bg-violet-50 ' },
+    { icon: Phone,         label: language === 'es' ? 'Registrar Llamada' : 'Log Call',  onClick: onAddConversation,  color: 'text-blue-600 ',     bg: 'hover:bg-blue-50 '   },
+    { icon: CheckSquare,   label: language === 'es' ? 'Crear Tarea' : 'Create Task',     onClick: onCreateTask,       color: 'text-emerald-600 ', bg: 'hover:bg-emerald-50 ' },
+    { icon: Calendar,      label: language === 'es' ? 'Agendar' : 'Schedule',            onClick: onScheduleMeeting,  color: 'text-amber-600 ',   bg: 'hover:bg-amber-50 ' },
+    { icon: Mail,          label: language === 'es' ? 'Enviar Correo' : 'Send Email',    onClick: onSendEmail,        color: 'text-sky-600 ',       bg: 'hover:bg-sky-50 '     },
+    { icon: Upload,        label: language === 'es' ? 'Subir Archivo' : 'Upload File',   onClick: onUploadFile,       color: 'text-pink-600 ',     bg: 'hover:bg-pink-50 '   },
+    { icon: Target,        label: language === 'es' ? 'Nueva Oportunidad' : 'New Opportunity', onClick: onCreateOpportunity, color: 'text-indigo-600 ', bg: 'hover:bg-indigo-50 ' },
   ];
 
   // Contact info pills for display in header
@@ -86,24 +86,24 @@ export default function ClientHeader({
   const description = client?.tagline || client?.seoStrategy || client?.gmbName || null;
 
   return (
-    <div className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-700/60
-                    bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-sm">
+    <div className="sticky top-0 z-40 border-b border-slate-200 
+                    bg-white/95  backdrop-blur-xl shadow-sm">
       <div className="w-full px-6 py-3">
 
         {/* Row 1: Breadcrumb + Controls */}
         <div className="flex items-center justify-between mb-2">
           <button
             onClick={onBack}
-            className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400
-                       hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors font-medium"
+            className="flex items-center gap-1.5 text-sm text-slate-500 
+                       hover:text-indigo-600  transition-colors font-medium"
           >
             <ArrowLeft size={15} /> {language === 'es' ? 'Volver a Clientes' : 'Back to Clients'}
           </button>
           <div className="flex items-center gap-2">
             <button
               onClick={onToggleDarkMode}
-              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300
-                         hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              className="p-2 rounded-xl bg-slate-100  text-slate-600 
+                         hover:bg-slate-200  transition-colors"
             >
               {darkMode ? <Sun size={16} /> : <Moon size={16} />}
             </button>
@@ -121,7 +121,7 @@ export default function ClientHeader({
           {/* Name + Description + Contact Chips */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap mb-1">
-              <h1 className="text-xl font-black text-slate-900 dark:text-white leading-tight">
+              <h1 className="text-xl font-black text-slate-900  leading-tight">
                 {client?.companyName || (language === 'es' ? 'Empresa Desconocida' : 'Unknown Company')}
               </h1>
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${statusCfg.bg} ${statusCfg.text}`}>
@@ -129,7 +129,7 @@ export default function ClientHeader({
                 {client?.status || 'Unknown'}
               </span>
               {client?.industry && (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100  text-slate-600 ">
                   {client.industry}
                 </span>
               )}
@@ -137,7 +137,7 @@ export default function ClientHeader({
 
             {/* Company Description */}
             {description && (
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5 max-w-2xl leading-snug line-clamp-1">
+              <p className="text-xs text-slate-500  mb-1.5 max-w-2xl leading-snug line-clamp-1">
                 {description}
               </p>
             )}
@@ -147,12 +147,12 @@ export default function ClientHeader({
               {contactChips.map(({ icon: Icon, value, href, accent }, i) => {
                 const cls = `flex items-center gap-1 text-[11px] font-medium ${
                   accent
-                    ? 'text-amber-600 dark:text-amber-400'
-                    : 'text-slate-500 dark:text-slate-400'
+                    ? 'text-amber-600 '
+                    : 'text-slate-500 '
                 }`;
                 return href ? (
                   <a key={i} href={href} target="_blank" rel="noopener noreferrer"
-                    className={cls + ' hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors'}>
+                    className={cls + ' hover:text-indigo-600  transition-colors'}>
                     <Icon size={11} />
                     <span className="truncate max-w-[180px]">{value}</span>
                   </a>
@@ -170,21 +170,21 @@ export default function ClientHeader({
           <div className="flex items-center gap-4 shrink-0">
             <div className="text-center">
               <LeadScoreRing score={leadScore} />
-              <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-0.5 uppercase tracking-wider">
+              <p className="text-[9px] font-bold text-slate-400  mt-0.5 uppercase tracking-wider">
                 {language === 'es' ? 'Puntaje' : 'Score'}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 ">
                 {language === 'es' ? 'Valor' : 'Deal Value'}
               </p>
-              <p className="text-xl font-black text-indigo-600 dark:text-indigo-400">{dealValue}</p>
+              <p className="text-xl font-black text-indigo-600 ">{dealValue}</p>
             </div>
           </div>
         </div>
 
         {/* Row 3: Quick Action Bar — centered */}
-        <div className="flex items-center justify-center gap-1 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 overflow-x-auto">
+        <div className="flex items-center justify-center gap-1 mt-3 pt-2.5 border-t border-slate-100  overflow-x-auto">
           {quickActions.map(({ icon: Icon, label, onClick, color, bg }) => (
             <motion.button
               key={label}
@@ -192,7 +192,7 @@ export default function ClientHeader({
               whileTap={{ scale: 0.96 }}
               onClick={onClick}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
-                         transition-all whitespace-nowrap ${color} ${bg} dark:bg-transparent`}
+                         transition-all whitespace-nowrap ${color} ${bg} `}
             >
               <Icon size={14} />
               {label}

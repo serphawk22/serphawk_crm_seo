@@ -12,9 +12,12 @@ import I18nProvider from "@/i18n/I18nProvider";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
+  const pathname = usePathname();
+  const isClientDetail = pathname?.match(/^\/admin\/clients\/\d+$/);
+
   return (
     <main className="relative z-10 pt-16 min-h-screen transition-all duration-300">
-      <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
+      <div className={isClientDetail ? "w-full" : "p-6 md:p-8 max-w-[1600px] mx-auto"}>
         {children}
       </div>
     </main>

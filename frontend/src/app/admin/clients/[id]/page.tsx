@@ -40,13 +40,13 @@ const TABS = [
 
 // ─── Loading Skeleton ────────────────────────────────────────────────────────
 function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-slate-200 dark:bg-slate-700 rounded-xl ${className}`} />;
+  return <div className={`animate-pulse bg-slate-200  rounded-xl ${className}`} />;
 }
 
 function PageSkeleton() {
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-      <div className="h-36 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 animate-pulse" />
+    <div className="min-h-screen bg-slate-50 ">
+      <div className="h-36 bg-white  border-b border-slate-200  animate-pulse" />
       <div className="w-full px-6 py-6 grid grid-cols-[280px_1fr_300px] gap-6">
         <div className="space-y-4">
           <Skeleton className="h-64" />
@@ -440,7 +440,7 @@ export default function AdminClientDetailPage() {
   // Auth guard
   if (role && role !== 'Admin' && role !== 'Employee' && role !== 'SalesManager') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 ">
         <div className="text-center">
           <p className="text-2xl font-black text-red-500 mb-2">{language === 'es' ? 'No autorizado' : 'Unauthorized'}</p>
           <p className="text-slate-500">{language === 'es' ? 'No tienes acceso a esta página.' : 'You do not have access to this page.'}</p>
@@ -452,7 +452,7 @@ export default function AdminClientDetailPage() {
   // Enforce assignment for SalesManager
   if (client && role === 'SalesManager' && String(client.assignedEmployeeId) !== String(user?.id)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 ">
         <div className="text-center">
           <p className="text-2xl font-black text-red-500 mb-2">{language === 'es' ? 'No autorizado' : 'Unauthorized'}</p>
           <p className="text-slate-500">{language === 'es' ? 'Solo puedes ver clientes que te han sido asignados.' : 'You can only view clients assigned to you.'}</p>
@@ -463,7 +463,7 @@ export default function AdminClientDetailPage() {
 
   if (pageLoading) return <PageSkeleton />;
   if (!client) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 ">
       <p className="text-red-500 font-bold">{language === 'es' ? 'Cliente no encontrado.' : 'Client not found.'}</p>
     </div>
   );
@@ -476,7 +476,7 @@ export default function AdminClientDetailPage() {
   };
 
   return (
-    <div className={`min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300`}>
+    <div className={`min-h-screen bg-slate-50  transition-colors duration-300`}>
       <AnimatePresence>
         {isCreateUserOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
@@ -484,11 +484,11 @@ export default function AdminClientDetailPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-800"
+              className="bg-white  rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200 "
             >
-              <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-                <h2 className="font-bold text-slate-800 dark:text-white">{language === 'es' ? 'Crear Nuevo Vendedor' : 'Create New Salesperson'}</h2>
-                <button onClick={() => setIsCreateUserOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              <div className="p-4 border-b border-slate-100  flex justify-between items-center">
+                <h2 className="font-bold text-slate-800 ">{language === 'es' ? 'Crear Nuevo Vendedor' : 'Create New Salesperson'}</h2>
+                <button onClick={() => setIsCreateUserOpen(false)} className="text-slate-400 hover:text-slate-600 ">
                   <Activity size={20} className="opacity-0" /> {/* Spacer */}
                   <span className="text-xl leading-none">&times;</span>
                 </button>
@@ -496,15 +496,15 @@ export default function AdminClientDetailPage() {
               <form onSubmit={handleCreateSalesperson} className="p-6 space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">{language === 'es' ? 'Nombre' : 'Name'}</label>
-                  <input required value={newUserForm.name} onChange={e => setNewUserForm(p => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white" />
+                  <input required value={newUserForm.name} onChange={e => setNewUserForm(p => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200  bg-slate-50  focus:outline-none focus:ring-2 focus:ring-indigo-500 " />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">Email</label>
-                  <input required type="email" value={newUserForm.email} onChange={e => setNewUserForm(p => ({ ...p, email: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white" />
+                  <input required type="email" value={newUserForm.email} onChange={e => setNewUserForm(p => ({ ...p, email: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200  bg-slate-50  focus:outline-none focus:ring-2 focus:ring-indigo-500 " />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">{language === 'es' ? 'Rol' : 'Role'}</label>
-                  <select value={newUserForm.role} onChange={e => setNewUserForm(p => ({ ...p, role: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white">
+                  <select value={newUserForm.role} onChange={e => setNewUserForm(p => ({ ...p, role: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200  bg-slate-50  focus:outline-none focus:ring-2 focus:ring-indigo-500 ">
                     <option value="Employee">{language === 'es' ? 'Empleado' : 'Employee'}</option>
                     <option value="SalesManager">{language === 'es' ? 'Gerente de Ventas' : 'Sales Manager'}</option>
                   </select>
@@ -560,8 +560,8 @@ export default function AdminClientDetailPage() {
                     className={`relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
                                 whitespace-nowrap transition-all flex-shrink-0
                       ${activeTab === key
-                        ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-700'
-                        : 'text-slate-500 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-900/70 hover:text-slate-700 dark:hover:text-slate-300'
+                        ? 'bg-white  text-indigo-600  shadow-sm border border-slate-200 '
+                        : 'text-slate-500  hover:bg-white/70  hover:text-slate-700 '
                       }`}
                   >
                     <Icon size={13} />
@@ -574,7 +574,7 @@ export default function AdminClientDetailPage() {
                     {activeTab === key && (
                       <motion.div
                         layoutId="tab-indicator"
-                        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-full"
+                        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-0.5 bg-indigo-600  rounded-full"
                       />
                     )}
                   </button>
@@ -677,8 +677,8 @@ export default function AdminClientDetailPage() {
 
             {/* Assign Salesperson Card */}
             {role === 'Admin' && (
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 p-4 shadow-sm">
-                <p className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">{language === 'es' ? 'Asignar Vendedor' : 'Assign Salesperson'}</p>
+              <div className="rounded-2xl border border-slate-200  bg-white  p-4 shadow-sm">
+                <p className="text-xs font-black uppercase tracking-wider text-slate-400  mb-3">{language === 'es' ? 'Asignar Vendedor' : 'Assign Salesperson'}</p>
                 <select
                   value={client?.assignedEmployeeId || ''}
                   onChange={async (e) => {
@@ -697,8 +697,8 @@ export default function AdminClientDetailPage() {
                     });
                     fetchClient();
                   }}
-                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700
-                             bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200
+                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 
+                             bg-slate-50  text-slate-800 
                              focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">{language === 'es' ? 'Seleccionar vendedor' : 'Select salesperson'}</option>
@@ -711,18 +711,18 @@ export default function AdminClientDetailPage() {
             )}
 
             {/* Next Follow-up */}
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 p-4 shadow-sm">
-              <p className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">{language === 'es' ? 'Fechas de Seguimiento' : 'Follow-up Dates'}</p>
+            <div className="rounded-2xl border border-slate-200  bg-white  p-4 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-wider text-slate-400  mb-2">{language === 'es' ? 'Fechas de Seguimiento' : 'Follow-up Dates'}</p>
               <div className="space-y-2">
                 <div>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500">{language === 'es' ? 'Último Contacto' : 'Last Contact'}</p>
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                  <p className="text-[10px] text-slate-400 ">{language === 'es' ? 'Último Contacto' : 'Last Contact'}</p>
+                  <p className="text-sm font-bold text-slate-800 ">
                     {client?.last_contact_date ? new Date(client.last_contact_date).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500">{language === 'es' ? 'Próximo Seguimiento' : 'Next Follow-up'}</p>
-                  <p className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                  <p className="text-[10px] text-slate-400 ">{language === 'es' ? 'Próximo Seguimiento' : 'Next Follow-up'}</p>
+                  <p className="text-sm font-bold text-amber-600 ">
                     {client?.next_followup_date ? new Date(client.next_followup_date).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'}
                   </p>
                 </div>
