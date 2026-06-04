@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Activity, MessageSquare, StickyNote, CheckSquare,
+  Activity, MessageSquare, StickyNote, CheckSquare, Building2, ChevronDown,
   Target, FolderOpen, HeartPulse, LayoutDashboard, Users,
   TrendingUp, DollarSign, Zap, Star, Mail, Clock, Ticket
 } from 'lucide-react';
@@ -47,7 +47,7 @@ function PageSkeleton() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <div className="h-36 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 animate-pulse" />
-      <div className="max-w-[1600px] mx-auto px-6 py-6 grid grid-cols-[280px_1fr_300px] gap-6">
+      <div className="w-full px-6 py-6 grid grid-cols-[280px_1fr_300px] gap-6">
         <div className="space-y-4">
           <Skeleton className="h-64" />
           <Skeleton className="h-96" />
@@ -65,14 +65,45 @@ function PageSkeleton() {
   );
 }
 
+// ─── Collapsible section ────────────────────────────────────────────────────
+function CollapsibleSection({ title, icon: Icon, count, defaultOpen = true, accentColor = 'bg-indigo-600', children }: {
+  title: string; icon: any; count?: number; defaultOpen?: boolean; accentColor?: string; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+      <button
+        onClick={() => setOpen(p => !p)}
+        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+      >
+        <div className="flex items-center gap-2.5">
+          <div className={`p-1.5 rounded-lg ${accentColor} text-white`}>
+            <Icon size={13} />
+          </div>
+          <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">{title}</span>
+          {count !== undefined && count > 0 && (
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-[10px] font-black">{count}</span>
+          )}
+        </div>
+        <ChevronDown size={15} className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-5 pb-4 pt-0 border-t border-slate-100 dark:border-slate-800">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Overview Tab (inline) ───────────────────────────────────────────────────
-function OverviewTab({ client, employees, serviceRequests, activities, timeline }: any) {
+function OverviewTab({ client, employees, serviceRequests, activities, timeline, research, notes, conversations }: any) {
   const { t, language } = useLanguage();
   const assignedEmp = employees.find((e: any) => e.id === client?.assignedEmployeeId);
-  const recentActivities = (activities || []).slice(0, 5);
+  const recentActivities = (activities || []).slice(0, 8);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
@@ -91,7 +122,16 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline 
         ))}
       </div>
 
-      {/* Assigned Salesperson + Assignment */}
+      {/* Company Overview from Pre-Sales Research */}
+      {research?.company_overview && (
+        <CollapsibleSection title="Company Overview" icon={Building2} accentColor="bg-violet-600">
+          <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed pt-3">
+            {research.company_overview}
+          </p>
+        </CollapsibleSection>
+      )}
+
+      {/* Assigned Salesperson + Account Info */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-sm">
           <p className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">{t('client_tabs.assigned_salesperson')}</p>
@@ -121,7 +161,6 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline 
           )}
         </div>
 
-        {/* Quick Stats */}
         <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-sm">
           <p className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">{t('client_tabs.account_info')}</p>
           <div className="space-y-2">
@@ -140,29 +179,52 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline 
         </div>
       </div>
 
-      {/* Service Requests Preview */}
-      {serviceRequests.length > 0 && (
-        <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-sm">
-          <p className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">{t('client_tabs.active_service_requests')}</p>
-          <div className="space-y-2">
-            {serviceRequests.slice(0, 5).map((req: any) => (
-              <div key={req.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{req.service_name || 'Service'}</span>
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400">{req.status}</span>
+      {/* Notes inline — collapsible */}
+      <CollapsibleSection title="Notes" icon={StickyNote} count={notes?.length} accentColor="bg-emerald-600">
+        <div className="space-y-2 pt-3">
+          {!notes || notes.length === 0 ? (
+            <p className="text-sm text-slate-400 dark:text-slate-500 italic">No notes yet.</p>
+          ) : (
+            notes.slice(0, 5).map((n: any) => (
+              <div key={n.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/40">
+                <div className="flex justify-between items-start mb-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">{n.type || 'Note'}</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
+                </div>
+                <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{n.content}</p>
               </div>
-            ))}
-          </div>
+            ))
+          )}
         </div>
-      )}
+      </CollapsibleSection>
+
+      {/* Conversations inline — collapsible */}
+      <CollapsibleSection title="Recent Conversations" icon={MessageSquare} count={conversations?.length} accentColor="bg-sky-600">
+        <div className="space-y-2 pt-3">
+          {!conversations || conversations.length === 0 ? (
+            <p className="text-sm text-slate-400 dark:text-slate-500 italic">No conversations yet.</p>
+          ) : (
+            conversations.slice(0, 5).map((c: any) => (
+              <div key={c.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/40">
+                <div className="flex justify-between items-start mb-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-sky-600 dark:text-sky-400">{c.type || c.channel || 'Conversation'}</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</span>
+                </div>
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-0.5">{c.subject || c.title || '—'}</p>
+                {c.body && <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2">{c.body}</p>}
+              </div>
+            ))
+          )}
+        </div>
+      </CollapsibleSection>
 
       {/* Recent Activity */}
-      <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-sm">
-        <p className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">{t('client_tabs.recent_activity')}</p>
-        {recentActivities.length === 0 ? (
-          <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">{t('client_tabs.no_activity')}</p>
-        ) : (
-          <div className="space-y-2">
-            {recentActivities.map((a: any) => (
+      <CollapsibleSection title={t('client_tabs.recent_activity')} icon={Activity} accentColor="bg-indigo-600" defaultOpen={true}>
+        <div className="space-y-1 pt-2">
+          {recentActivities.length === 0 ? (
+            <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">{t('client_tabs.no_activity')}</p>
+          ) : (
+            recentActivities.map((a: any) => (
               <div key={a.id} className="flex items-start gap-3 py-2 border-b border-slate-50 dark:border-slate-800 last:border-0">
                 <Clock size={13} className="text-slate-400 mt-0.5 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
@@ -173,10 +235,10 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline 
                   {a.createdAt ? new Date(a.createdAt).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' }) : ''}
                 </span>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            ))
+          )}
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }
@@ -209,12 +271,15 @@ export default function AdminClientDetailPage() {
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [newUserForm, setNewUserForm] = useState({ name: '', email: '', role: 'SalesManager', password: 'password123' });
 
-  // Dark mode persisted
+  // Dark mode persisted — fix: properly remove class when toggling back to light
   useEffect(() => {
     const saved = localStorage.getItem('crm-dark-mode');
     if (saved === 'true') {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
+    } else {
+      setDarkMode(false);
+      document.documentElement.classList.remove('dark');
     }
   }, []);
 
@@ -222,7 +287,11 @@ export default function AdminClientDetailPage() {
     const next = !darkMode;
     setDarkMode(next);
     localStorage.setItem('crm-dark-mode', String(next));
-    document.documentElement.classList.toggle('dark', next);
+    if (next) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   };
 
 
@@ -398,9 +467,9 @@ export default function AdminClientDetailPage() {
         onToggleDarkMode={toggleDarkMode}
       />
 
-      {/* ── 3-panel grid ─────────────────────────────────────────────── */}
-      <div className="max-w-[1600px] mx-auto px-6 py-6">
-        <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr_300px] gap-6">
+      {/* ── Full-Width layout ──────────────────────────────────────── */}
+      <div className="w-full px-4 py-4">
+        <div className="grid grid-cols-1 xl:grid-cols-[300px_1fr_300px] gap-5">
 
           {/* ── LEFT SIDEBAR ─────────────────────────────────────────── */}
           <aside className="space-y-4">
@@ -464,6 +533,9 @@ export default function AdminClientDetailPage() {
                     serviceRequests={serviceRequests}
                     activities={activities}
                     timeline={timeline}
+                    research={research}
+                    notes={notes}
+                    conversations={conversations}
                   />
                 )}
                 {activeTab === 'timeline' && (

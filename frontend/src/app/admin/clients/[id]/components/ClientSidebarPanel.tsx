@@ -43,6 +43,7 @@ const ResearchField = ({
 }: { label: string; value: string; field: string; onSave: (f: string, v: string) => void; clientId: any }) => {
   const { language } = useLanguage();
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [val, setVal] = useState(value || '');
 
   React.useEffect(() => {
@@ -54,39 +55,74 @@ const ResearchField = ({
     setEditing(false);
   };
 
+  const hasContent = !!val;
+  const preview = val?.length > 80 ? val.slice(0, 80) + '…' : val;
+
   return (
-    <div className="mb-4">
-      <div className="flex items-center justify-between mb-1">
-        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</p>
+    <div className="mb-2 border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden">
+      {/* Field header row — always visible */}
+      <div className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-800/40">
         <button
-          onClick={() => editing ? save() : setEditing(true)}
-          className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+          onClick={() => setExpanded(p => !p)}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left"
         >
-          {editing ? <Save size={12} /> : <Edit3 size={12} />}
+          <ChevronDown
+            size={12}
+            className={`text-slate-400 transition-transform duration-150 shrink-0 ${expanded ? 'rotate-180' : ''}`}
+          />
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">{label}</span>
+          {hasContent && !expanded && (
+            <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate ml-1 max-w-[90px]">{preview}</span>
+          )}
+        </button>
+        <button
+          onClick={() => { setExpanded(true); editing ? save() : setEditing(true); }}
+          className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors shrink-0"
+        >
+          {editing ? <Save size={11} /> : <Edit3 size={11} />}
         </button>
       </div>
-      {editing ? (
-        <div className="relative">
-          <textarea
-            value={val}
-            onChange={e => setVal(e.target.value)}
-            rows={3}
-            className="w-full px-3 py-2 text-xs rounded-xl border border-indigo-300 dark:border-indigo-700
-                       bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200
-                       focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-          />
-          <button onClick={() => setEditing(false)} className="absolute top-1 right-1 p-0.5 text-slate-400 hover:text-red-500">
-            <X size={11} />
-          </button>
+
+      {/* Expandable body */}
+      {expanded && (
+        <div className="px-3 py-2">
+          {editing ? (
+            <div className="relative">
+              <textarea
+                value={val}
+                onChange={e => setVal(e.target.value)}
+                rows={4}
+                autoFocus
+                className="w-full px-3 py-2 text-xs rounded-xl border border-indigo-300 dark:border-indigo-700
+                           bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200
+                           focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              />
+              <div className="flex gap-1.5 mt-1.5">
+                <button
+                  onClick={save}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700"
+                >
+                  <Save size={10} /> Save
+                </button>
+                <button
+                  onClick={() => { setEditing(false); setVal(value || ''); }}
+                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-red-500"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              {val || <span className="italic text-slate-400 dark:text-slate-600">{language === 'es' ? 'Haga clic en editar para añadir...' : 'Click edit to add...'}</span>}
+            </p>
+          )}
         </div>
-      ) : (
-        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-          {val || <span className="italic text-slate-400 dark:text-slate-600">{language === 'es' ? 'Haga clic en editar para añadir...' : 'Click edit to add...'}</span>}
-        </p>
       )}
     </div>
   );
 };
+
 
 export default function ClientSidebarPanel({
   client, research, onClientUpdate, onResearchUpdate, clientId
