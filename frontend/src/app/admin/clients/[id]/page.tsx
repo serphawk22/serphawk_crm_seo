@@ -471,7 +471,7 @@ export default function AdminClientDetailPage() {
       <div className="w-full px-4 py-4">
         <div className="grid grid-cols-1 xl:grid-cols-[300px_1fr_300px] gap-5">
 
-          {/* ── LEFT SIDEBAR ─────────────────────────────────────────── */}
+          {/* ── LEFT: Pre-Sales Research only ────────────────── */}
           <aside className="space-y-4">
             <ClientSidebarPanel
               client={client}
