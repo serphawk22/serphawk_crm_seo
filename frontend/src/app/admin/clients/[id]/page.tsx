@@ -45,20 +45,18 @@ function Skeleton({ className }: { className?: string }) {
 
 function PageSkeleton() {
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-      <div className="h-36 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 animate-pulse" />
-      <div className="max-w-[1600px] mx-auto px-6 py-6 grid grid-cols-[280px_1fr_300px] gap-6">
-        <div className="space-y-4">
-          <Skeleton className="h-64" />
-          <Skeleton className="h-96" />
-        </div>
-        <div className="space-y-4">
-          <Skeleton className="h-12" />
-          <Skeleton className="h-64" />
-          <Skeleton className="h-48" />
-        </div>
-        <div>
-          <Skeleton className="h-[500px]" />
+    <div className="min-h-screen bg-white dark:bg-slate-950">
+      <div className="w-full px-6 py-6">
+        <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-6">
+          <div className="space-y-4">
+            <Skeleton className="h-64" />
+            <Skeleton className="h-96" />
+          </div>
+          <div className="space-y-4">
+            <Skeleton className="h-12" />
+            <Skeleton className="h-64" />
+            <Skeleton className="h-48" />
+          </div>
         </div>
       </div>
     </div>
@@ -398,11 +396,11 @@ export default function AdminClientDetailPage() {
         onToggleDarkMode={toggleDarkMode}
       />
 
-      {/* ── 3-panel grid ─────────────────────────────────────────────── */}
-      <div className="max-w-[1600px] mx-auto px-6 py-6">
-        <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr_300px] gap-6">
+      {/* ── Full-Width content area ─────────────────────────── */}
+      <div className="w-full px-6 py-6">
+        <div className="grid grid-cols-1 xl:grid-cols-[300px_1fr_300px] gap-6">
 
-          {/* ── LEFT SIDEBAR ─────────────────────────────────────────── */}
+          {/* ── LEFT: Pre-Sales Research only ────────────────── */}
           <aside className="space-y-4">
             <ClientSidebarPanel
               client={client}
