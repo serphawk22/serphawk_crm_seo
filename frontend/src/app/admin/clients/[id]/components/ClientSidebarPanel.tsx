@@ -21,18 +21,18 @@ interface ClientSidebarPanelProps {
 
 const InfoRow = ({ icon: Icon, label, value, href }: { icon: any; label: string; value: string; href?: string }) => (
   <div className="flex items-start gap-3 py-2">
-    <div className="mt-0.5 p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 flex-shrink-0">
+    <div className="mt-0.5 p-1.5 rounded-lg bg-indigo-50  text-indigo-600  flex-shrink-0">
       <Icon size={13} />
     </div>
     <div className="min-w-0">
-      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5">{label}</p>
+      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400  mb-0.5">{label}</p>
       {href ? (
         <a href={href} target="_blank" rel="noopener noreferrer"
-          className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline truncate block">
+          className="text-sm font-semibold text-indigo-600  hover:underline truncate block">
           {value}
         </a>
       ) : (
-        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 break-words">{value || '—'}</p>
+        <p className="text-sm font-semibold text-slate-800  break-words">{value || '—'}</p>
       )}
     </div>
   </div>
@@ -59,9 +59,9 @@ const ResearchField = ({
   const preview = val?.length > 80 ? val.slice(0, 80) + '…' : val;
 
   return (
-    <div className="mb-2 border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden">
+    <div className="mb-2 border border-slate-100  rounded-xl overflow-hidden">
       {/* Field header row — always visible */}
-      <div className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-800/40">
+      <div className="flex items-center justify-between px-3 py-2 bg-slate-50 ">
         <button
           onClick={() => setExpanded(p => !p)}
           className="flex items-center gap-2 flex-1 min-w-0 text-left"
@@ -70,14 +70,14 @@ const ResearchField = ({
             size={12}
             className={`text-slate-400 transition-transform duration-150 shrink-0 ${expanded ? 'rotate-180' : ''}`}
           />
-          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">{label}</span>
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500  truncate">{label}</span>
           {hasContent && !expanded && (
-            <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate ml-1 max-w-[90px]">{preview}</span>
+            <span className="text-[10px] text-slate-400  truncate ml-1 max-w-[90px]">{preview}</span>
           )}
         </button>
         <button
           onClick={() => { setExpanded(true); editing ? save() : setEditing(true); }}
-          className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors shrink-0"
+          className="p-1 rounded-md hover:bg-slate-200  text-slate-400 hover:text-indigo-600  transition-colors shrink-0"
         >
           {editing ? <Save size={11} /> : <Edit3 size={11} />}
         </button>
@@ -93,8 +93,8 @@ const ResearchField = ({
                 onChange={e => setVal(e.target.value)}
                 rows={4}
                 autoFocus
-                className="w-full px-3 py-2 text-xs rounded-xl border border-indigo-300 dark:border-indigo-700
-                           bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200
+                className="w-full px-3 py-2 text-xs rounded-xl border border-indigo-300 
+                           bg-white  text-slate-800 
                            focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
               />
               <div className="flex gap-1.5 mt-1.5">
@@ -106,15 +106,15 @@ const ResearchField = ({
                 </button>
                 <button
                   onClick={() => { setEditing(false); setVal(value || ''); }}
-                  className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-red-500"
+                  className="p-1 rounded-lg hover:bg-slate-100  text-slate-400 hover:text-red-500"
                 >
                   <X size={11} />
                 </button>
               </div>
             </div>
           ) : (
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              {val || <span className="italic text-slate-400 dark:text-slate-600">{language === 'es' ? 'Haga clic en editar para añadir...' : 'Click edit to add...'}</span>}
+            <p className="text-xs text-slate-600  leading-relaxed">
+              {val || <span className="italic text-slate-400 ">{language === 'es' ? 'Haga clic en editar para añadir...' : 'Click edit to add...'}</span>}
             </p>
           )}
         </div>
@@ -217,17 +217,17 @@ export default function ClientSidebarPanel({
   return (
     <div className="space-y-4">
       {/* ── Pre-Sales Research Card ─────────────────────── */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-700/60
-                      bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+      <div className="rounded-2xl border border-slate-200 
+                      bg-white  overflow-hidden shadow-sm">
         <button
           onClick={() => setResearchOpen(p => !p)}
-          className="w-full p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+          className="w-full p-4 flex items-center justify-between hover:bg-slate-50  transition-colors"
         >
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-indigo-600 text-white">
               <Wand2 size={14} />
             </div>
-            <span className="font-black text-sm text-slate-800 dark:text-white">{t("client_profile.research")}</span>
+            <span className="font-black text-sm text-slate-800 ">{t("client_profile.research")}</span>
           </div>
           {researchOpen ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
         </button>
@@ -241,12 +241,12 @@ export default function ClientSidebarPanel({
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
-              <div className="px-4 pb-4 border-t border-slate-100 dark:border-slate-800">
+              <div className="px-4 pb-4 border-t border-slate-100 ">
                 <div className="pt-3">
                   <button
                     onClick={handleAutoResearch}
                     disabled={isAutoResearching}
-                    className="w-full mb-4 py-2 px-3 flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 font-semibold text-xs rounded-xl transition-colors disabled:opacity-50"
+                    className="w-full mb-4 py-2 px-3 flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100   text-indigo-600  font-semibold text-xs rounded-xl transition-colors disabled:opacity-50"
                   >
                     {isAutoResearching ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
                     {isAutoResearching ? (language === 'es' ? 'Investigando Empresa...' : 'Researching Company...') : (language === 'es' ? 'Autocompletar con IA' : 'Auto-Fill with AI')}
