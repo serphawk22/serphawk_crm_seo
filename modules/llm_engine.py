@@ -268,3 +268,40 @@ def extract_tasks_from_note(note_content):
         print(f"Error in task extraction: {e}")
         return []
 
+def process_chatbot_command(message: str, client_context: dict = None):
+    """
+    Analyzes user message to determine CRM action intent for the chatbot.
+    """
+    try:
+        client = get_openai_client()
+        context_str = f"Client context: {json.dumps(client_context)}" if client_context else "No specific client context."
+        
+        prompt = f"""
+        You are the SERP Hawk CRM Assistant.
+        The user has sent a message. Detect their intent and draft a professional note or log entry.
+        
+        User message: "{message}"
+        {context_str}
+        
+        Return ONLY a JSON object with:
+        {{
+            "intent": "add_note" | "log_conversation" | "general",
+            "title": "Short title if logging a conversation (e.g. 'Introductory Call')",
+            "type": "call" | "email" | "meeting" | "whatsapp" | "other" (only if intent is log_conversation),
+            "content": "The drafted professional note or conversation details.",
+            "reply": "A friendly confirmation to send back to the user in the chat (e.g. 'I have successfully logged the call regarding pricing.')."
+        }}
+        """
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        return json.loads(response.choices[0].message.content)
+    except Exception as e:
+        print(f"Error in chatbot command processing: {e}")
+        return {
+            "intent": "general",
+            "reply": "I'm sorry, I encountered an error trying to process your request."
+        }
+

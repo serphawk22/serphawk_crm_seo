@@ -403,6 +403,12 @@ export default function AdminClientDetailPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  useEffect(() => {
+    const handleRefresh = () => fetchAll();
+    window.addEventListener('refresh-client-data', handleRefresh);
+    return () => window.removeEventListener('refresh-client-data', handleRefresh);
+  }, [fetchAll]);
+
   // ─── Quick action stubs ───────────────────────────────────────────────────
   const switchTab = (tab: string) => setActiveTab(tab);
 

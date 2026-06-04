@@ -559,6 +559,10 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+class ChatbotRequest(BaseModel):
+    message: str
+    client_id: Optional[int] = None
+
 
 class CreateUserRequest(BaseModel):
     email: str
@@ -4677,3 +4681,69 @@ def update_portal_config(body: Dict[str, Any]):
             else:
                 _portal_config[key] = val
     return {"ok": True, "config": _portal_config}
+# ─── Chatbot endpoint ────────────────────────────────────────────────────────
+@app.post("/chatbot/message")
+def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_session)):
+    from modules.llm_engine import process_chatbot_command
+    from database import ClientProfile, ClientNote, ConversationLog, ActivityLog
+    
+    client_context = None
+    if request.client_id:
+        cp = session.get(ClientProfile, request.client_id)
+        if cp:
+            client_context = {
+                "company_name": cp.companyName,
+                "contact_person": cp.contact_person,
+                "email": cp.email,
+                "industry": cp.industry
+            }
+            
+    result = process_chatbot_command(request.message, client_context)
+    
+    intent = result.get("intent", "general")
+    action_taken = None
+    
+    if request.client_id and intent == "add_note":
+        new_note = ClientNote(
+            client_id=request.client_id,
+            content=result.get("content", ""),
+            author_name="AI Assistant",
+            type="Note"
+        )
+        session.add(new_note)
+        
+        log = ActivityLog(
+            clientId=request.client_id,
+            action="Note Added via AI Assistant",
+            details=result.get("content", "")[:100],
+            method="bot"
+        )
+        session.add(log)
+        session.commit()
+        action_taken = "note_added"
+        
+    elif request.client_id and intent == "log_conversation":
+        new_conv = ConversationLog(
+            client_id=request.client_id,
+            title=result.get("title", "Conversation"),
+            type=result.get("type", "call"),
+            description=result.get("content", ""),
+            author_name="AI Assistant"
+        )
+        session.add(new_conv)
+        
+        log = ActivityLog(
+            clientId=request.client_id,
+            action=f"Logged {new_conv.type} via AI Assistant",
+            details=new_conv.title,
+            method="bot"
+        )
+        session.add(log)
+        session.commit()
+        action_taken = "conversation_logged"
+        
+    return {
+        "reply": result.get("reply", "I processed your request."),
+        "intent": intent,
+        "action_taken": action_taken
+    }
