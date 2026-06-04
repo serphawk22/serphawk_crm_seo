@@ -4694,7 +4694,7 @@ def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_sess
             client_context = {
                 "company_name": cp.companyName,
                 "contact_person": cp.contact_person,
-                "email": cp.email,
+                "email": cp.user.email if cp.user else None,
                 "industry": cp.industry
             }
             
