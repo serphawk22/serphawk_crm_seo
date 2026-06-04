@@ -549,33 +549,28 @@ export default function AdminClientDetailPage() {
 
           {/* ── CENTER MAIN ──────────────────────────────────────────── */}
           <main className="min-w-0">
-            {/* Tab Bar */}
-            <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-5 scrollbar-thin">
+            {/* Tab Bar - Premium Pill Style */}
+            <div className="flex items-center gap-2 overflow-x-auto p-1.5 mb-6 bg-slate-100/80 rounded-2xl border border-slate-200/60 scrollbar-thin w-fit max-w-full">
               {TABS.map(({ key, label, icon: Icon }) => {
                 const badge = tabBadges[key];
                 return (
                   <button
                     key={key}
                     onClick={() => setActiveTab(key)}
-                    className={`relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold
+                    className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-bold
                                 whitespace-nowrap transition-all flex-shrink-0
                       ${activeTab === key
-                        ? 'bg-white  text-indigo-600  shadow-sm border border-slate-200 '
-                        : 'text-slate-500  hover:bg-white/70  hover:text-slate-700 '
+                        ? 'bg-white text-indigo-600 shadow-[0_2px_10px_rgba(0,0,0,0.06)] border border-slate-200/50'
+                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
                       }`}
                   >
-                    <Icon size={13} />
+                    <Icon size={14} className={activeTab === key ? 'text-indigo-500' : 'text-slate-400'} />
                     {(t(`client_tabs.${key}`) as string) || label}
                     {badge !== undefined && badge > 0 && (
-                      <span className="ml-0.5 min-w-[16px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[9px] font-black flex items-center justify-center">
+                      <span className={`ml-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center transition-colors
+                        ${activeTab === key ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-500'}`}>
                         {badge}
                       </span>
-                    )}
-                    {activeTab === key && (
-                      <motion.div
-                        layoutId="tab-indicator"
-                        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-0.5 bg-indigo-600  rounded-full"
-                      />
                     )}
                   </button>
                 );
