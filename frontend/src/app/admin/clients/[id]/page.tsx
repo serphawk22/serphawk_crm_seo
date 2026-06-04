@@ -65,30 +65,32 @@ function PageSkeleton() {
   );
 }
 
-// ─── Collapsible section (light only) ──────────────────────────────────────
-function CollapsibleSection({ title, icon: Icon, count, defaultOpen = false, accentColor = 'bg-indigo-600', children }: {
-  title: string; icon: any; count?: number; defaultOpen?: boolean; accentColor?: string; children: React.ReactNode;
+// ─── Collapsible section — forced light ────────────────────────────────────
+function CollapsibleSection({ title, icon: Icon, count, defaultOpen = false, accentColor = '#6366f1', hexText = '#1e293b', children }: {
+  title: string; icon: any; count?: number; defaultOpen?: boolean; accentColor?: string; hexText?: string; children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, overflow: 'hidden', marginTop: 0 }}>
       <button
         onClick={() => setOpen(p => !p)}
-        className="w-full flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors"
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', background: 'transparent', border: 'none', cursor: 'pointer' }}
+        onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       >
-        <div className="flex items-center gap-2.5">
-          <div className={`p-1.5 rounded-lg ${accentColor} text-white`}>
-            <Icon size={13} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ background: accentColor, borderRadius: 8, padding: '4px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon size={12} color="#fff" />
           </div>
-          <span className="text-xs font-black uppercase tracking-wider text-slate-700">{title}</span>
+          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: hexText }}>{title}</span>
           {count !== undefined && count > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black">{count}</span>
+            <span style={{ background: '#eef2ff', color: '#4f46e5', borderRadius: 999, padding: '1px 7px', fontSize: 10, fontWeight: 800 }}>{count}</span>
           )}
         </div>
-        <ChevronDown size={15} className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={14} color="#94a3b8" style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
       </button>
       {open && (
-        <div className="px-5 pb-4 pt-0 border-t border-slate-100">
+        <div style={{ padding: '0 20px 16px', borderTop: '1px solid #f1f5f9' }}>
           {children}
         </div>
       )}
@@ -96,14 +98,15 @@ function CollapsibleSection({ title, icon: Icon, count, defaultOpen = false, acc
   );
 }
 
-// ─── Overview Tab ──────────────────────────────────────────────────────────────
+// ─── Overview Tab — premium light ──────────────────────────────────────────
 function OverviewTab({ client, employees, serviceRequests, activities, timeline, research, notes, conversations, clientId, onNotesRefresh, onConversationsRefresh }: any) {
   const { t, language } = useLanguage();
   const recentActivities = (activities || []).slice(0, 8);
 
-  // ── Add Note state ─────────────────────────────────────────────────────────
+  // ── Add Note ────────────────────────────────────────────────────────────
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  const [noteFocus, setNoteFocus] = useState(false);
 
   const submitNote = async () => {
     const txt = noteText.trim();
@@ -117,17 +120,18 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
       });
       setNoteText('');
       onNotesRefresh?.();
-    } finally {
-      setSavingNote(false);
-    }
+    } finally { setSavingNote(false); }
   };
 
-  const handleNoteKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitNote();
-  };
-
-  // ── Log Conversation state ─────────────────────────────────────────────────
-  const CONV_TYPES = ['call', 'email', 'meeting', 'whatsapp', 'chat', 'other'];
+  // ── Log Conversation ─────────────────────────────────────────────────────
+  const CONV_TYPES = [
+    { key: 'call', label: '📞 Call', color: '#3b82f6' },
+    { key: 'email', label: '✉️ Email', color: '#6366f1' },
+    { key: 'meeting', label: '🗓 Meeting', color: '#8b5cf6' },
+    { key: 'whatsapp', label: '💬 WhatsApp', color: '#10b981' },
+    { key: 'chat', label: '⚡ Chat', color: '#0ea5e9' },
+    { key: 'other', label: '📝 Other', color: '#64748b' },
+  ];
   const [convTitle, setConvTitle] = useState('');
   const [convType, setConvType] = useState('call');
   const [convBody, setConvBody] = useState('');
@@ -143,162 +147,166 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, type: convType, description: convBody.trim(), author_name: 'Admin' }),
       });
-      setConvTitle('');
-      setConvBody('');
-      setConvType('call');
+      setConvTitle(''); setConvBody(''); setConvType('call');
       onConversationsRefresh?.();
-    } finally {
-      setSavingConv(false);
-    }
+    } finally { setSavingConv(false); }
   };
 
-  const TYPE_COLORS: Record<string, string> = {
-    call: 'bg-blue-100 text-blue-700',
-    email: 'bg-indigo-100 text-indigo-700',
-    meeting: 'bg-violet-100 text-violet-700',
-    whatsapp: 'bg-emerald-100 text-emerald-700',
-    chat: 'bg-sky-100 text-sky-700',
-    other: 'bg-slate-100 text-slate-600',
-  };
+  const activeConvType = CONV_TYPES.find(t => t.key === convType)!;
+
+  const card = { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 18, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', overflow: 'hidden' as const };
+  const input = { width: '100%', background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '11px 14px', fontSize: 13.5, color: '#1e293b', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' as const };
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 14, background: '#f8fafc', minHeight: '100%' }}>
 
       {/* Company Overview */}
       {research?.company_overview && (
-        <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="p-1.5 rounded-lg bg-violet-600 text-white"><Building2 size={13} /></div>
-            <span className="text-xs font-black uppercase tracking-wider text-violet-700">Company Overview</span>
+        <div style={{ background: 'linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%)', border: '1px solid #c7d2fe', borderRadius: 18, padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div style={{ background: '#7c3aed', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Building2 size={13} color="#fff" /></div>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: '#5b21b6' }}>Company Overview</span>
           </div>
-          <p className="text-sm text-slate-700 leading-relaxed">{research.company_overview}</p>
+          <p style={{ fontSize: 13.5, color: '#334155', lineHeight: 1.65, margin: 0 }}>{research.company_overview}</p>
         </div>
       )}
 
-      {/* ── Add Note (always visible inline) ─────────────────────────────── */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-3 border-b border-slate-100">
-          <div className="p-1.5 rounded-lg bg-emerald-600 text-white"><StickyNote size={13} /></div>
-          <span className="text-xs font-black uppercase tracking-wider text-slate-700">Add Note</span>
+      {/* ── Add Note ──────────────────────────────────────────────────────── */}
+      <div style={card}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
+          <div style={{ background: '#059669', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><StickyNote size={13} color="#fff" /></div>
+          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: '#1e293b' }}>Add Note</span>
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>Ctrl+Enter to save</span>
         </div>
-        <div className="px-5 py-3">
+        <div style={{ padding: '14px 20px 16px' }}>
           <textarea
             value={noteText}
             onChange={e => setNoteText(e.target.value)}
-            onKeyDown={handleNoteKey}
-            placeholder="Type your note here… (Ctrl+Enter to save)"
+            onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitNote(); }}
+            onFocus={() => setNoteFocus(true)}
+            onBlur={() => setNoteFocus(false)}
+            placeholder="What happened? Write your note here…"
             rows={3}
-            className="w-full resize-none text-sm text-slate-800 placeholder-slate-400 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent bg-slate-50"
+            style={{ ...input, resize: 'none', border: noteFocus ? '1.5px solid #059669' : '1.5px solid #e2e8f0', transition: 'border 0.15s', display: 'block' }}
           />
-          <div className="flex justify-end mt-2">
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
             <button
               onClick={submitNote}
               disabled={!noteText.trim() || savingNote}
-              className="px-4 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              style={{ background: noteText.trim() ? '#059669' : '#d1fae5', color: noteText.trim() ? '#fff' : '#6ee7b7', border: 'none', borderRadius: 10, padding: '8px 20px', fontSize: 12.5, fontWeight: 700, cursor: noteText.trim() ? 'pointer' : 'default', transition: 'all 0.15s' }}
             >
-              {savingNote ? 'Saving…' : 'Save Note'}
+              {savingNote ? 'Saving…' : '✓ Save Note'}
             </button>
           </div>
         </div>
 
-        {/* Existing notes — collapsed by default */}
+        {/* Previous notes — collapsed */}
         {notes && notes.length > 0 && (
-          <CollapsibleSection title="Previous Notes" icon={StickyNote} count={notes.length} accentColor="bg-emerald-500" defaultOpen={false}>
-            <div className="space-y-2 pt-3">
-              {notes.slice(0, 10).map((n: any) => (
-                <div key={n.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600">{n.type || 'Note'}</span>
-                    <span className="text-[10px] text-slate-400">{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
+          <div style={{ borderTop: '1px solid #f1f5f9' }}>
+            <CollapsibleSection title="Previous Notes" icon={StickyNote} count={notes.length} accentColor="#059669">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10 }}>
+                {notes.slice(0, 10).map((n: any) => (
+                  <div key={n.id} style={{ background: '#f8fafc', border: '1px solid #e8f5e9', borderRadius: 12, padding: '10px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#059669' }}>{n.type || 'Note'}</span>
+                      <span style={{ fontSize: 10, color: '#94a3b8' }}>{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
+                    </div>
+                    <p style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.6, margin: 0 }}>{n.content}</p>
                   </div>
-                  <p className="text-xs text-slate-700 leading-relaxed">{n.content}</p>
-                </div>
-              ))}
-            </div>
-          </CollapsibleSection>
+                ))}
+              </div>
+            </CollapsibleSection>
+          </div>
         )}
       </div>
 
-      {/* ── Log Conversation (always visible inline) ──────────────────────── */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-3 border-b border-slate-100">
-          <div className="p-1.5 rounded-lg bg-sky-600 text-white"><MessageSquare size={13} /></div>
-          <span className="text-xs font-black uppercase tracking-wider text-slate-700">Log Conversation</span>
+      {/* ── Log Conversation ───────────────────────────────────────────────── */}
+      <div style={card}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
+          <div style={{ background: '#0284c7', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><MessageSquare size={13} color="#fff" /></div>
+          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: '#1e293b' }}>Log Conversation</span>
         </div>
-        <div className="px-5 py-3 space-y-3">
-          {/* Type selector */}
-          <div className="flex flex-wrap gap-1.5">
-            {CONV_TYPES.map(type => (
+        <div style={{ padding: '14px 20px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Type pills */}
+          <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 7 }}>
+            {CONV_TYPES.map(tp => (
               <button
-                key={type}
-                onClick={() => setConvType(type)}
-                className={`px-3 py-1 rounded-full text-[11px] font-bold capitalize transition-all border ${
-                  convType === type
-                    ? 'bg-sky-600 text-white border-sky-600'
-                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:border-sky-300'
-                }`}
+                key={tp.key}
+                onClick={() => setConvType(tp.key)}
+                style={{
+                  padding: '6px 14px', borderRadius: 999, fontSize: 12, fontWeight: 700,
+                  border: convType === tp.key ? `2px solid ${tp.color}` : '1.5px solid #e2e8f0',
+                  background: convType === tp.key ? tp.color : '#f8fafc',
+                  color: convType === tp.key ? '#fff' : '#475569',
+                  cursor: 'pointer', transition: 'all 0.15s',
+                }}
               >
-                {type}
+                {tp.label}
               </button>
             ))}
           </div>
           <input
             value={convTitle}
             onChange={e => setConvTitle(e.target.value)}
-            placeholder="Summary / Title of conversation…"
-            className="w-full text-sm text-slate-800 placeholder-slate-400 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent bg-slate-50"
+            placeholder={`${activeConvType.label} summary — what was discussed?`}
+            style={input}
           />
           <textarea
             value={convBody}
             onChange={e => setConvBody(e.target.value)}
-            placeholder="Details, notes from the call / meeting… (optional)"
+            placeholder="Additional details, action items, follow-ups… (optional)"
             rows={2}
-            className="w-full resize-none text-sm text-slate-800 placeholder-slate-400 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent bg-slate-50"
+            style={{ ...input, resize: 'none', display: 'block' }}
           />
-          <div className="flex justify-end">
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button
               onClick={submitConv}
               disabled={!convTitle.trim() || savingConv}
-              className="px-4 py-1.5 rounded-xl bg-sky-600 text-white text-xs font-bold hover:bg-sky-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              style={{ background: convTitle.trim() ? activeConvType.color : '#e2e8f0', color: convTitle.trim() ? '#fff' : '#94a3b8', border: 'none', borderRadius: 10, padding: '8px 20px', fontSize: 12.5, fontWeight: 700, cursor: convTitle.trim() ? 'pointer' : 'default', transition: 'all 0.15s' }}
             >
-              {savingConv ? 'Saving…' : 'Log Conversation'}
+              {savingConv ? 'Saving…' : `✓ Log ${activeConvType.label}`}
             </button>
           </div>
         </div>
 
-        {/* Existing conversations — collapsed by default */}
+        {/* Previous conversations — collapsed */}
         {conversations && conversations.length > 0 && (
-          <CollapsibleSection title="Previous Conversations" icon={MessageSquare} count={conversations.length} accentColor="bg-sky-500" defaultOpen={false}>
-            <div className="space-y-2 pt-3">
-              {conversations.slice(0, 10).map((c: any) => (
-                <div key={c.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${TYPE_COLORS[c.type] || TYPE_COLORS.other}`}>{c.type || 'Conversation'}</span>
-                    <span className="text-[10px] text-slate-400">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</span>
-                  </div>
-                  <p className="text-xs font-semibold text-slate-700 mb-0.5">{c.subject || c.title || '—'}</p>
-                  {c.body && <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{c.body}</p>}
-                </div>
-              ))}
-            </div>
-          </CollapsibleSection>
+          <div style={{ borderTop: '1px solid #f1f5f9' }}>
+            <CollapsibleSection title="Previous Conversations" icon={MessageSquare} count={conversations.length} accentColor="#0284c7">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10 }}>
+                {conversations.slice(0, 10).map((c: any) => {
+                  const ct = CONV_TYPES.find(t => t.key === c.type) || CONV_TYPES[5];
+                  return (
+                    <div key={c.id} style={{ background: '#f8fafc', border: '1px solid #e0f2fe', borderRadius: 12, padding: '10px 14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: ct.color, background: ct.color + '18', borderRadius: 999, padding: '2px 8px' }}>{c.type || 'Conversation'}</span>
+                        <span style={{ fontSize: 10, color: '#94a3b8' }}>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</span>
+                      </div>
+                      <p style={{ fontSize: 12.5, fontWeight: 600, color: '#1e293b', margin: '4px 0 2px' }}>{c.subject || c.title || '—'}</p>
+                      {c.body && <p style={{ fontSize: 12, color: '#64748b', margin: 0, lineHeight: 1.5 }}>{c.body}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            </CollapsibleSection>
+          </div>
         )}
       </div>
 
-      {/* Recent Activity — collapsed by default */}
-      <CollapsibleSection title={t('client_tabs.recent_activity')} icon={Activity} accentColor="bg-indigo-600" defaultOpen={false}>
-        <div className="space-y-1 pt-2">
+      {/* Recent Activity */}
+      <CollapsibleSection title={t('client_tabs.recent_activity')} icon={Activity} accentColor="#6366f1" defaultOpen={false}>
+        <div style={{ paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 0 }}>
           {recentActivities.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-4">{t('client_tabs.no_activity')}</p>
+            <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, padding: '16px 0' }}>{t('client_tabs.no_activity')}</p>
           ) : (
             recentActivities.map((a: any) => (
-              <div key={a.id} className="flex items-start gap-3 py-2 border-b border-slate-50 last:border-0">
-                <Clock size={13} className="text-slate-400 mt-0.5 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-slate-700 truncate">{a.action}</p>
-                  {a.method && <p className="text-[10px] text-slate-400">{t('client_tabs.via') || 'via'} {a.method}</p>}
+              <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
+                <Clock size={12} color="#94a3b8" style={{ marginTop: 2, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 12.5, fontWeight: 600, color: '#334155', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.action}</p>
+                  {a.method && <p style={{ fontSize: 11, color: '#94a3b8', margin: '1px 0 0' }}>via {a.method}</p>}
                 </div>
-                <span className="text-[10px] text-slate-400 flex-shrink-0">
+                <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>
                   {a.createdAt ? new Date(a.createdAt).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' }) : ''}
                 </span>
               </div>
@@ -309,6 +317,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
     </div>
   );
 }
+
 
 
 // ─── MAIN PAGE ───────────────────────────────────────────────────────────────
