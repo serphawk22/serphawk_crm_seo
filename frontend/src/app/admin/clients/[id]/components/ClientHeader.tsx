@@ -86,26 +86,23 @@ export default function ClientHeader({
   const description = client?.tagline || client?.seoStrategy || client?.gmbName || null;
 
   return (
-    <div className="sticky top-0 z-40 border-b border-slate-200 
-                    bg-white/95  backdrop-blur-xl shadow-sm">
-      <div className="w-full px-6 py-3">
+    <div className="sticky top-0 z-40 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.03)] border-b border-slate-200">
+      <div className="w-full px-6 py-4">
 
         {/* Row 1: Breadcrumb + Controls */}
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-3">
           <button
             onClick={onBack}
-            className="flex items-center gap-1.5 text-sm text-slate-500 
-                       hover:text-indigo-600  transition-colors font-medium"
+            className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-indigo-600 transition-colors font-bold tracking-tight"
           >
-            <ArrowLeft size={15} /> {language === 'es' ? 'Volver a Clientes' : 'Back to Clients'}
+            <ArrowLeft size={16} className="text-slate-400" /> {language === 'es' ? 'Volver a Clientes' : 'Back to Clients'}
           </button>
           <div className="flex items-center gap-2">
             <button
               onClick={onToggleDarkMode}
-              className="p-2 rounded-xl bg-slate-100  text-slate-600 
-                         hover:bg-slate-200  transition-colors"
+              className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 hover:border-slate-300 transition-all shadow-sm"
             >
-              {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+              {darkMode ? <Sun size={15} /> : <Moon size={15} />}
             </button>
           </div>
         </div>
