@@ -74,7 +74,43 @@ class User(SQLModel, table=True):
     assigned_requests: List["ServiceRequest"] = Relationship(back_populates="assigned_employee")
     deals: List["Deal"] = Relationship(back_populates="assigned_user")
 
+class MarketplaceService(SQLModel, table=True):
+    """
+    Central B2B Marketplace catalog entry.
+    Can be populated manually by admins or automatically by the customer web scraper.
+    """
+    __tablename__ = "marketplace_services"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # Service identity
+    service_name: str = Field(max_length=255)
+    normalized_name: Optional[str] = Field(default=None, max_length=255)  # AI-standardized
+    category: Optional[str] = Field(default=None, max_length=100, index=True)  # e.g. "Plumbing", "SEO", "Legal"
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+
+    # Pricing
+    estimated_cost: float = Field(default=0.0)
+    cost_is_estimated: bool = Field(default=False)  # True if AI guessed the cost
+
+    # Provider info (linked CRM client)
+    provider_name: Optional[str] = Field(default=None, max_length=255)
+    provider_client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", index=True)
+    provider_industry: Optional[str] = Field(default=None, max_length=200)
+    provider_address: Optional[str] = Field(default=None, max_length=500)
+
+    # Meta
+    source: str = Field(default="manual", max_length=50)  # "manual" or "scraper"
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Relationship back to client profile
+    provider: Optional["ClientProfile"] = Relationship(back_populates="marketplace_services")
+
+
 class ServiceCatalog(SQLModel, table=True):
+
     """
     Admin-defined list of services available for clients to purchase or request.
     """
@@ -248,6 +284,7 @@ class ClientProfile(SQLModel, table=True):
     # New feature relationships
     file_uploads: List["ClientFileUpload"] = Relationship(back_populates="client")
     milestones: List["Milestone"] = Relationship(back_populates="client")
+    marketplace_services: List["MarketplaceService"] = Relationship(back_populates="provider")
     nps_surveys: List["NPSSurvey"] = Relationship(back_populates="client")
     deals: List["Deal"] = Relationship(back_populates="client")
     invoices: List["Invoice"] = Relationship(back_populates="client")
@@ -739,7 +776,10 @@ def create_db_and_tables():
         "ALTER TABLE client_profiles ADD COLUMN linkedin_url VARCHAR(500)",
         "ALTER TABLE client_profiles ADD COLUMN contact_person VARCHAR(255)",
         "ALTER TABLE client_profiles ADD COLUMN last_contact_date VARCHAR(50)",
-        "ALTER TABLE client_profiles ADD COLUMN next_followup_date VARCHAR(50)"
+        "ALTER TABLE client_profiles ADD COLUMN next_followup_date VARCHAR(50)",
+        # Marketplace indexes (table created by SQLModel.metadata.create_all)
+        "CREATE INDEX IF NOT EXISTS ix_marketplace_services_category ON marketplace_services (category)",
+        "CREATE INDEX IF NOT EXISTS ix_marketplace_services_provider ON marketplace_services (provider_client_id)",
     ]
     
     with engine.connect() as conn:
