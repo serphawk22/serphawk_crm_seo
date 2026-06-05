@@ -74,6 +74,7 @@ from database import (
     Project,
     Proposal,
     Remark,
+    MarketplaceService,
     ServiceCatalog,
     ServiceRequest,
     Task,
@@ -165,6 +166,7 @@ async def research_map_company_endpoint(body: ResearchMapRequest, background_tas
 class SmartResearchRequest(BaseModel):
     company_name: str
     company_url: Optional[str] = None
+    client_id: Optional[int] = None  # If set, link extracted services to this CRM client
 
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest):
@@ -332,6 +334,51 @@ Return ONLY valid JSON:
             "spanish_body": f"Hola,\n\nEncontré {company_name} y me impresionó lo que hacen. Me encantaría explorar cómo nuestros servicios de SEO y marketing digital podrían ayudar a acelerar su crecimiento.\n\nSaludos",
         }
 
+    # Step 5: Extract structured services offered by this company
+    extracted_services = []
+    try:
+        if website_content and not website_content.startswith("ERROR"):
+            from modules.llm_engine import extract_client_services
+            extracted_services = extract_client_services(website_content, company_info.get("company_name", company_name))
+        elif company_info.get("key_value_props"):
+            # Fallback: convert key_value_props to minimal service objects
+            extracted_services = [
+                {"name": s, "brief": "", "category": "Other", "approx_cost": 0, "cost_is_estimated": True}
+                for s in company_info["key_value_props"]
+            ]
+    except Exception as _e:
+        print(f"Service extraction warning: {_e}")
+
+    # Step 6: If a client_id is linked, persist services to client + marketplace
+    if body.client_id and extracted_services:
+        try:
+            from sqlmodel import Session as _Session
+            with _Session(engine) as _sess:
+                cp = _sess.get(ClientProfile, body.client_id)
+                if cp:
+                    import json as _json2
+                    cp.services_offered = _json2.dumps(extracted_services)
+                    _sess.add(cp)
+                    # Also upsert into marketplace
+                    for svc in extracted_services:
+                        ms = MarketplaceService(
+                            service_name=svc.get("name", ""),
+                            normalized_name=svc.get("name", ""),
+                            category=svc.get("category"),
+                            description=svc.get("brief"),
+                            estimated_cost=float(svc.get("approx_cost", 0)),
+                            cost_is_estimated=svc.get("cost_is_estimated", True),
+                            provider_name=cp.companyName,
+                            provider_client_id=body.client_id,
+                            provider_industry=cp.industry,
+                            provider_address=cp.address,
+                            source="email_agent",
+                        )
+                        _sess.add(ms)
+                    _sess.commit()
+        except Exception as _e2:
+            print(f"Service persist warning: {_e2}")
+
     return {
         "company_info": company_info,
         "company_url": body.company_url or company_info.get("website") or "",
@@ -347,6 +394,7 @@ Return ONLY valid JSON:
         "email_hook": services_result.get("email_hook", ""),
         "package_suggestion": services_result.get("package_suggestion", ""),
         "draft": draft,
+        "extracted_services": extracted_services,
     }
 
 # --- Send Manual: create client + record email + activity ---
@@ -1644,6 +1692,145 @@ def auto_research_client(client_id: int, session: Session = Depends(get_session)
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
+
+
+# ─── Extract Client Services from Website ─────────────────────────────────────
+
+@app.post("/clients/{client_id}/extract-services")
+async def extract_client_services_endpoint(client_id: int, session: Session = Depends(get_session)):
+    """
+    Scrapes the client's website and uses AI to extract services they offer.
+    Falls back to LLM world-knowledge when website is unreachable (DNS, timeout, bot-block).
+    Stores results in: ClientProfile.services_offered + MarketplaceService table.
+    """
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    website_url = cp.websiteUrl
+    company_name = cp.companyName or "Unknown Company"
+
+    if not website_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Client has no website URL. Add one in the client profile first."
+        )
+
+    # ── Step 1: Try scraping (fail gracefully on any network error) ────────────
+    website_text = ""
+    scrape_method = "website_scrape"
+    try:
+        from modules.scraper import scrape_website
+        website_text = await scrape_website(website_url)
+        if website_text.startswith("ERROR"):
+            print(f"[extract-services] Scrape failed for {website_url}: {website_text[:100]}. Falling back to LLM.")
+            website_text = ""
+            scrape_method = "llm_fallback"
+    except Exception as scrape_err:
+        print(f"[extract-services] Scraper exception ({website_url}): {scrape_err}. Falling back to LLM.")
+        scrape_method = "llm_fallback"
+
+    # ── Step 2: Extract services (from scraped text, or via LLM knowledge) ─────
+    import json as _json
+    from modules.llm_engine import extract_client_services as _extract_services, get_openai_client
+
+    services = []
+
+    if website_text:
+        services = _extract_services(website_text, company_name)
+
+    # If scraping failed or extracted nothing → use LLM world-knowledge fallback
+    if not services:
+        scrape_method = "llm_fallback"
+        try:
+            oai = get_openai_client()
+            fallback_prompt = f"""You are a B2B business intelligence expert.
+
+The company "{company_name}" has website: {website_url}
+Industry: {cp.industry or "unknown"}
+
+We could not access their website. Based on the company name, domain, and industry,
+list the most likely services they offer.
+
+Return ONLY valid JSON:
+{{
+  "services": [
+    {{
+      "name": "Service name",
+      "brief": "1-2 sentence description of this service",
+      "category": "One of: SEO, Web Design, Marketing, Plumbing, Legal, Accounting, Consulting, Construction, Healthcare, Real Estate, IT Services, Landscaping, Cleaning, Electrical, HVAC, Retail, Education, Finance, Transportation, Other",
+      "approx_cost": 1200,
+      "cost_is_estimated": true
+    }}
+  ]
+}}
+
+Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for fallback."""
+            resp = oai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": fallback_prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.3,
+            )
+            services = _json.loads(resp.choices[0].message.content).get("services", [])
+        except Exception as llm_err:
+            print(f"[extract-services] LLM fallback also failed: {llm_err}")
+
+    if not services:
+        return {
+            "ok": False,
+            "services": [],
+            "scrape_method": scrape_method,
+            "message": "Could not extract services. Try adding the Industry field to improve AI fallback accuracy.",
+        }
+
+    # ── Step 3: Save to ClientProfile.services_offered ────────────────────────
+    cp.services_offered = _json.dumps(services)
+    session.add(cp)
+
+    # ── Step 4: Upsert into MarketplaceService (skip exact name duplicates) ───
+    existing = session.exec(
+        select(MarketplaceService).where(
+            MarketplaceService.provider_client_id == client_id,
+            MarketplaceService.is_active == True,
+        )
+    ).all()
+    existing_names = {s.service_name.lower() for s in existing}
+
+    added = 0
+    for svc in services:
+        svc_name = svc.get("name", "").strip()
+        if not svc_name or svc_name.lower() in existing_names:
+            continue
+        ms = MarketplaceService(
+            service_name=svc_name,
+            normalized_name=svc_name,
+            category=svc.get("category"),
+            description=svc.get("brief"),
+            estimated_cost=float(svc.get("approx_cost", 0)),
+            cost_is_estimated=svc.get("cost_is_estimated", True),
+            provider_name=company_name,
+            provider_client_id=client_id,
+            provider_industry=cp.industry,
+            provider_address=cp.address,
+            source=scrape_method,
+        )
+        session.add(ms)
+        existing_names.add(svc_name.lower())
+        added += 1
+
+    session.commit()
+
+    method_label = "live website" if scrape_method == "website_scrape" else "AI knowledge (site unreachable)"
+    return {
+        "ok": True,
+        "services": services,
+        "scrape_method": scrape_method,
+        "marketplace_entries_added": added,
+        "message": f"Extracted {len(services)} services via {method_label}. Added {added} to Marketplace.",
+    }
+
+
 
 # ─── AI Copilot Insights ──────────────────────────────────────────────────────
 
@@ -4747,3 +4934,216 @@ def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_sess
         "intent": intent,
         "action_taken": action_taken
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Marketplace Catalog
+# ─────────────────────────────────────────────────────────────────────────────
+
+class MarketplaceServiceCreate(BaseModel):
+    service_name: str
+    category: Optional[str] = None
+    description: Optional[str] = None
+    estimated_cost: float = 0.0
+    provider_client_id: Optional[int] = None
+    provider_name: Optional[str] = None
+
+class MarketplaceServiceUpdate(BaseModel):
+    service_name: Optional[str] = None
+    normalized_name: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    estimated_cost: Optional[float] = None
+    cost_is_estimated: Optional[bool] = None
+    provider_name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+def _marketplace_row(s: MarketplaceService) -> dict:
+    return {
+        "id": s.id,
+        "service_name": s.service_name,
+        "normalized_name": s.normalized_name,
+        "category": s.category,
+        "description": s.description,
+        "estimated_cost": s.estimated_cost,
+        "cost_is_estimated": s.cost_is_estimated,
+        "provider_name": s.provider_name,
+        "provider_client_id": s.provider_client_id,
+        "provider_industry": s.provider_industry,
+        "provider_address": s.provider_address,
+        "source": s.source,
+        "is_active": s.is_active,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+
+@app.get("/marketplace/services")
+def list_marketplace_services(
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    min_cost: Optional[float] = None,
+    max_cost: Optional[float] = None,
+    provider: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 18,
+    session: Session = Depends(get_session),
+):
+    query = select(MarketplaceService).where(MarketplaceService.is_active == True)
+
+    if search:
+        like = f"%{search}%"
+        query = query.where(
+            or_(
+                MarketplaceService.service_name.ilike(like),
+                MarketplaceService.description.ilike(like),
+                MarketplaceService.provider_name.ilike(like),
+            )
+        )
+    if category:
+        query = query.where(MarketplaceService.category.ilike(f"%{category}%"))
+    if min_cost is not None:
+        query = query.where(MarketplaceService.estimated_cost >= min_cost)
+    if max_cost is not None:
+        query = query.where(MarketplaceService.estimated_cost <= max_cost)
+    if provider:
+        query = query.where(MarketplaceService.provider_name.ilike(f"%{provider}%"))
+
+    total = len(session.exec(query).all())
+    offset = (page - 1) * per_page
+    items = session.exec(query.offset(offset).limit(per_page)).all()
+
+    return {
+        "services": [_marketplace_row(s) for s in items],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page)),
+    }
+
+
+@app.post("/marketplace/services")
+def create_marketplace_service(
+    body: MarketplaceServiceCreate,
+    session: Session = Depends(get_session),
+):
+    # Auto-fill provider info from CRM if client_id given
+    provider_name = body.provider_name
+    provider_industry = None
+    provider_address = None
+    if body.provider_client_id:
+        cp = session.get(ClientProfile, body.provider_client_id)
+        if cp:
+            provider_name = provider_name or cp.companyName
+            provider_industry = cp.industry
+            provider_address = cp.address
+
+    svc = MarketplaceService(
+        service_name=body.service_name,
+        category=body.category,
+        description=body.description,
+        estimated_cost=body.estimated_cost,
+        provider_client_id=body.provider_client_id,
+        provider_name=provider_name,
+        provider_industry=provider_industry,
+        provider_address=provider_address,
+        source="manual",
+    )
+    session.add(svc)
+    session.commit()
+    session.refresh(svc)
+    return {"service": _marketplace_row(svc)}
+
+
+@app.put("/marketplace/services/{service_id}")
+def update_marketplace_service(
+    service_id: int,
+    body: MarketplaceServiceUpdate,
+    session: Session = Depends(get_session),
+):
+    svc = session.get(MarketplaceService, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(svc, field, value)
+    svc.updated_at = datetime.utcnow()
+    session.add(svc)
+    session.commit()
+    session.refresh(svc)
+    return {"service": _marketplace_row(svc)}
+
+
+@app.delete("/marketplace/services/{service_id}")
+def delete_marketplace_service(
+    service_id: int,
+    session: Session = Depends(get_session),
+):
+    svc = session.get(MarketplaceService, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    svc.is_active = False
+    svc.updated_at = datetime.utcnow()
+    session.add(svc)
+    session.commit()
+    return {"success": True}
+
+
+@app.get("/marketplace/categories")
+def list_marketplace_categories(session: Session = Depends(get_session)):
+    rows = session.exec(
+        select(MarketplaceService.category)
+        .where(MarketplaceService.is_active == True)
+        .where(MarketplaceService.category != None)
+        .distinct()
+        .order_by(MarketplaceService.category)
+    ).all()
+    return {"categories": [r for r in rows if r]}
+
+
+@app.post("/marketplace/services/{service_id}/ai-categorize")
+def ai_categorize_marketplace_service(
+    service_id: int,
+    session: Session = Depends(get_session),
+):
+    svc = session.get(MarketplaceService, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    import openai, os
+    client_ai = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    prompt = f"""You are a B2B service categorization expert.
+
+Given this service:
+Name: {svc.service_name}
+Description: {svc.description or 'N/A'}
+Provider Industry: {svc.provider_industry or 'N/A'}
+
+Respond with ONLY valid JSON (no markdown):
+{{
+  "normalized_name": "<clean, professional service name>",
+  "category": "<one of: SEO, Web Design, Plumbing, Legal, Accounting, Marketing, Consulting, Construction, Healthcare, Real Estate, IT Services, Landscaping, Cleaning, Electrical, HVAC, Other>",
+  "estimated_cost_usd": <number or null if truly unknown>,
+  "cost_is_estimated": <true or false>
+}}"""
+
+    try:
+        response = client_ai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+        import json
+        data = json.loads(response.choices[0].message.content.strip())
+        svc.normalized_name = data.get("normalized_name", svc.service_name)
+        svc.category = data.get("category", svc.category)
+        if data.get("estimated_cost_usd") is not None:
+            svc.estimated_cost = float(data["estimated_cost_usd"])
+            svc.cost_is_estimated = data.get("cost_is_estimated", True)
+        svc.updated_at = datetime.utcnow()
+        session.add(svc)
+        session.commit()
+        session.refresh(svc)
+        return {"service": _marketplace_row(svc)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI categorization failed: {e}")

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity, MessageSquare, StickyNote, CheckSquare, Building2, ChevronDown,
   Target, FolderOpen, HeartPulse, LayoutDashboard, Users,
-  TrendingUp, DollarSign, Zap, Star, Mail, Clock, Ticket
+  TrendingUp, DollarSign, Zap, Star, Mail, Clock, Ticket, Store, Tag
 } from 'lucide-react';
 
 import { API_BASE_URL } from '@/config';
@@ -171,7 +171,45 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
         </div>
       )}
 
-      {/* ── Add Note ──────────────────────────────────────────────────────── */}
+      {/* ── Services Offered ──────────────────────────────────────────── */}
+      {(() => {
+        let parsedServices: any[] = [];
+        try {
+          if (client?.services_offered) {
+            parsedServices = typeof client.services_offered === 'string'
+              ? JSON.parse(client.services_offered)
+              : client.services_offered;
+          }
+        } catch {}
+        if (!parsedServices || parsedServices.length === 0) return null;
+        return (
+          <div style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)', border: '1px solid #bbf7d0', borderRadius: 18, padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <div style={{ background: '#059669', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Store size={13} color="#fff" /></div>
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: '#065f46' }}>Services Offered</span>
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: '#6ee7b7', fontWeight: 700 }}>{parsedServices.length} services detected</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+              {parsedServices.map((svc: any, i: number) => (
+                <div key={i} style={{ background: '#fff', border: '1px solid #d1fae5', borderRadius: 12, padding: '10px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: '#059669', background: '#d1fae5', borderRadius: 20, padding: '2px 7px' }}>{svc.category || 'Service'}</span>
+                    {svc.approx_cost > 0 && (
+                      <span style={{ fontSize: 9, fontWeight: 800, color: '#d97706', background: '#fef3c7', borderRadius: 20, padding: '2px 7px', marginLeft: 'auto' }}>
+                        ~${Number(svc.approx_cost).toLocaleString()}{svc.cost_is_estimated ? ' est.' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b', margin: '0 0 4px 0' }}>{svc.name}</p>
+                  {svc.brief && <p style={{ fontSize: 11.5, color: '#475569', margin: 0, lineHeight: 1.5 }}>{svc.brief}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
           <div style={{ background: '#059669', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><StickyNote size={13} color="#fff" /></div>

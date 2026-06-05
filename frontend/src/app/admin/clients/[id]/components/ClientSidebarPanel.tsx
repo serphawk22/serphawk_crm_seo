@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   User, Mail, Phone, Globe, MapPin, Linkedin, Building2,
   Users, DollarSign, Edit3, Save, X, ChevronDown, ChevronUp,
-  Briefcase, Target, Calendar, Zap, Wand2, Loader2, FileText, FileSignature
+  Briefcase, Target, Calendar, Zap, Wand2, Loader2, FileText, FileSignature, Store, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import { API_BASE_URL } from '@/config';
@@ -170,6 +170,10 @@ export default function ClientSidebarPanel({
   };
 
   const [isAutoResearching, setIsAutoResearching] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractResult, setExtractResult] = useState<{ count: number; marketplace: number } | null>(null);
+  const [extractError, setExtractError] = useState<string | null>(null);
+
   const handleAutoResearch = async () => {
     try {
       setIsAutoResearching(true);
@@ -185,6 +189,28 @@ export default function ClientSidebarPanel({
       console.error(e);
     } finally {
       setIsAutoResearching(false);
+    }
+  };
+
+  const handleExtractServices = async () => {
+    setIsExtracting(true);
+    setExtractResult(null);
+    setExtractError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${clientId}/extract-services`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setExtractError(data.detail || 'Failed to extract services');
+      } else {
+        setExtractResult({ count: data.services?.length || 0, marketplace: data.marketplace_entries_added || 0 });
+        // Refresh client to show updated services_offered
+        onClientUpdate({ services_offered: JSON.stringify(data.services) });
+        window.dispatchEvent(new CustomEvent('refresh-client-data'));
+      }
+    } catch (e: any) {
+      setExtractError(e.message || 'Network error');
+    } finally {
+      setIsExtracting(false);
     }
   };
 
@@ -246,11 +272,38 @@ export default function ClientSidebarPanel({
                   <button
                     onClick={handleAutoResearch}
                     disabled={isAutoResearching}
-                    className="w-full mb-4 py-2 px-3 flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100   text-indigo-600  font-semibold text-xs rounded-xl transition-colors disabled:opacity-50"
+                    className="w-full mb-2 py-2 px-3 flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100   text-indigo-600  font-semibold text-xs rounded-xl transition-colors disabled:opacity-50"
                   >
                     {isAutoResearching ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
                     {isAutoResearching ? (language === 'es' ? 'Investigando Empresa...' : 'Researching Company...') : (language === 'es' ? 'Autocompletar con IA' : 'Auto-Fill with AI')}
                   </button>
+
+                  {/* ── Extract Services Button ── */}
+                  <button
+                    onClick={handleExtractServices}
+                    disabled={isExtracting || !client?.websiteUrl}
+                    title={!client?.websiteUrl ? 'Add a website URL first' : 'Extract services from website'}
+                    className="w-full mb-3 py-2 px-3 flex items-center justify-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-xs rounded-xl transition-colors disabled:opacity-40"
+                  >
+                    {isExtracting ? <Loader2 size={14} className="animate-spin" /> : <Store size={14} />}
+                    {isExtracting ? 'Extracting Services…' : 'Extract Services from Website'}
+                  </button>
+
+                  {/* ── Extract Result / Error ── */}
+                  {extractResult && (
+                    <div className="mb-3 flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                      <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                      <p className="text-[10px] font-bold text-emerald-700">
+                        Found {extractResult.count} services · {extractResult.marketplace} added to Marketplace
+                      </p>
+                    </div>
+                  )}
+                  {extractError && (
+                    <div className="mb-3 flex items-start gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-xl">
+                      <AlertCircle size={13} className="text-red-500 shrink-0 mt-0.5" />
+                      <p className="text-[10px] font-bold text-red-600">{extractError}</p>
+                    </div>
+                  )}
                   {researchFields.map(([field, label]) => (
                     <ResearchField
                       key={field}
