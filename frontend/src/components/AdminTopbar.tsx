@@ -6,7 +6,7 @@ import {
   Search, Bell, Settings, ChevronDown, LogOut, User, X, Sparkles, Clock, Command,
   LayoutDashboard, Users, FolderKanban, CheckSquare, Bot, Phone, MessageCircle,
   FileText, FileSignature, LayoutGrid, Inbox, GraduationCap, UserCog, Briefcase,
-  BarChart2, Activity, Zap, UserCheck
+  BarChart2, Activity, Zap, UserCheck, Store
 } from "lucide-react";
 import { useRole, Role } from "@/context/RoleContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -22,7 +22,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/notifications": "Notifications", "/email-agent": "Email Agent", "/calls": "Call Center",
   "/messages": "Messages", "/interns": "Intern Pool", "/employees": "Employees",
   "/sales-manager": "Sales Manager", "/admin/services-overview": "Services Overview", "/admin/requests": "Request Board",
-  "/admin/sales-team": "Sales Team", "/admin/services": "Services", "/audit": "Audit Center", "/pricing": "Pricing"
+  "/admin/sales-team": "Sales Team", "/admin/services": "Services", "/admin/marketplace": "Marketplace", "/audit": "Audit Center", "/pricing": "Pricing"
 };
 
 const ROLE_BADGE: Record<Role, { label: string; color: string }> = {
@@ -66,6 +66,7 @@ const NAV_MENUS_BASE = [
     items: [
       { name_key: "navigation.services_overview", icon: LayoutGrid, href: "/admin/services-overview", roles: ["Admin", "Employee"] },
       { name_key: "navigation.request_board", icon: Inbox, href: "/admin/requests", roles: ["Admin", "Employee"] },
+      { name_key: "navigation.marketplace", icon: Store, href: "/admin/marketplace", roles: ["Admin", "Employee", "SalesManager"] },
       { name_key: "navigation.sales_team", icon: UserCheck, href: "/admin/sales-team", roles: ["Admin"] },
       { name_key: "navigation.interns", icon: GraduationCap, href: "/interns", roles: ["Admin", "Employee"] },
       { name_key: "navigation.employees", icon: UserCog, href: "/employees", roles: ["Admin"] },
@@ -459,7 +460,7 @@ export function AdminTopbar() {
                 ) : (
                   <>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">{language === 'es' ? 'Navegación Rápida' : 'Quick Navigation'}</p>
-                    {["/", "/clients", "/projects", "/email-agent", "/calls", "/admin/services-overview"].map((href) => (
+                    {["/", "/clients", "/projects", "/email-agent", "/calls", "/admin/services-overview", "/admin/marketplace"].map((href) => (
                       <button key={href}
                         onClick={() => { router.push(href); setSearchOpen(false); }}
                         className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-all group">

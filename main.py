@@ -74,6 +74,7 @@ from database import (
     Project,
     Proposal,
     Remark,
+    MarketplaceService,
     ServiceCatalog,
     ServiceRequest,
     Task,
@@ -4747,3 +4748,216 @@ def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_sess
         "intent": intent,
         "action_taken": action_taken
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Marketplace Catalog
+# ─────────────────────────────────────────────────────────────────────────────
+
+class MarketplaceServiceCreate(BaseModel):
+    service_name: str
+    category: Optional[str] = None
+    description: Optional[str] = None
+    estimated_cost: float = 0.0
+    provider_client_id: Optional[int] = None
+    provider_name: Optional[str] = None
+
+class MarketplaceServiceUpdate(BaseModel):
+    service_name: Optional[str] = None
+    normalized_name: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    estimated_cost: Optional[float] = None
+    cost_is_estimated: Optional[bool] = None
+    provider_name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+def _marketplace_row(s: MarketplaceService) -> dict:
+    return {
+        "id": s.id,
+        "service_name": s.service_name,
+        "normalized_name": s.normalized_name,
+        "category": s.category,
+        "description": s.description,
+        "estimated_cost": s.estimated_cost,
+        "cost_is_estimated": s.cost_is_estimated,
+        "provider_name": s.provider_name,
+        "provider_client_id": s.provider_client_id,
+        "provider_industry": s.provider_industry,
+        "provider_address": s.provider_address,
+        "source": s.source,
+        "is_active": s.is_active,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+
+@app.get("/marketplace/services")
+def list_marketplace_services(
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    min_cost: Optional[float] = None,
+    max_cost: Optional[float] = None,
+    provider: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 18,
+    session: Session = Depends(get_session),
+):
+    query = select(MarketplaceService).where(MarketplaceService.is_active == True)
+
+    if search:
+        like = f"%{search}%"
+        query = query.where(
+            or_(
+                MarketplaceService.service_name.ilike(like),
+                MarketplaceService.description.ilike(like),
+                MarketplaceService.provider_name.ilike(like),
+            )
+        )
+    if category:
+        query = query.where(MarketplaceService.category.ilike(f"%{category}%"))
+    if min_cost is not None:
+        query = query.where(MarketplaceService.estimated_cost >= min_cost)
+    if max_cost is not None:
+        query = query.where(MarketplaceService.estimated_cost <= max_cost)
+    if provider:
+        query = query.where(MarketplaceService.provider_name.ilike(f"%{provider}%"))
+
+    total = len(session.exec(query).all())
+    offset = (page - 1) * per_page
+    items = session.exec(query.offset(offset).limit(per_page)).all()
+
+    return {
+        "services": [_marketplace_row(s) for s in items],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page)),
+    }
+
+
+@app.post("/marketplace/services")
+def create_marketplace_service(
+    body: MarketplaceServiceCreate,
+    session: Session = Depends(get_session),
+):
+    # Auto-fill provider info from CRM if client_id given
+    provider_name = body.provider_name
+    provider_industry = None
+    provider_address = None
+    if body.provider_client_id:
+        cp = session.get(ClientProfile, body.provider_client_id)
+        if cp:
+            provider_name = provider_name or cp.companyName
+            provider_industry = cp.industry
+            provider_address = cp.address
+
+    svc = MarketplaceService(
+        service_name=body.service_name,
+        category=body.category,
+        description=body.description,
+        estimated_cost=body.estimated_cost,
+        provider_client_id=body.provider_client_id,
+        provider_name=provider_name,
+        provider_industry=provider_industry,
+        provider_address=provider_address,
+        source="manual",
+    )
+    session.add(svc)
+    session.commit()
+    session.refresh(svc)
+    return {"service": _marketplace_row(svc)}
+
+
+@app.put("/marketplace/services/{service_id}")
+def update_marketplace_service(
+    service_id: int,
+    body: MarketplaceServiceUpdate,
+    session: Session = Depends(get_session),
+):
+    svc = session.get(MarketplaceService, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(svc, field, value)
+    svc.updated_at = datetime.utcnow()
+    session.add(svc)
+    session.commit()
+    session.refresh(svc)
+    return {"service": _marketplace_row(svc)}
+
+
+@app.delete("/marketplace/services/{service_id}")
+def delete_marketplace_service(
+    service_id: int,
+    session: Session = Depends(get_session),
+):
+    svc = session.get(MarketplaceService, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    svc.is_active = False
+    svc.updated_at = datetime.utcnow()
+    session.add(svc)
+    session.commit()
+    return {"success": True}
+
+
+@app.get("/marketplace/categories")
+def list_marketplace_categories(session: Session = Depends(get_session)):
+    rows = session.exec(
+        select(MarketplaceService.category)
+        .where(MarketplaceService.is_active == True)
+        .where(MarketplaceService.category != None)
+        .distinct()
+        .order_by(MarketplaceService.category)
+    ).all()
+    return {"categories": [r for r in rows if r]}
+
+
+@app.post("/marketplace/services/{service_id}/ai-categorize")
+def ai_categorize_marketplace_service(
+    service_id: int,
+    session: Session = Depends(get_session),
+):
+    svc = session.get(MarketplaceService, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    import openai, os
+    client_ai = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    prompt = f"""You are a B2B service categorization expert.
+
+Given this service:
+Name: {svc.service_name}
+Description: {svc.description or 'N/A'}
+Provider Industry: {svc.provider_industry or 'N/A'}
+
+Respond with ONLY valid JSON (no markdown):
+{{
+  "normalized_name": "<clean, professional service name>",
+  "category": "<one of: SEO, Web Design, Plumbing, Legal, Accounting, Marketing, Consulting, Construction, Healthcare, Real Estate, IT Services, Landscaping, Cleaning, Electrical, HVAC, Other>",
+  "estimated_cost_usd": <number or null if truly unknown>,
+  "cost_is_estimated": <true or false>
+}}"""
+
+    try:
+        response = client_ai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+        import json
+        data = json.loads(response.choices[0].message.content.strip())
+        svc.normalized_name = data.get("normalized_name", svc.service_name)
+        svc.category = data.get("category", svc.category)
+        if data.get("estimated_cost_usd") is not None:
+            svc.estimated_cost = float(data["estimated_cost_usd"])
+            svc.cost_is_estimated = data.get("cost_is_estimated", True)
+        svc.updated_at = datetime.utcnow()
+        session.add(svc)
+        session.commit()
+        session.refresh(svc)
+        return {"service": _marketplace_row(svc)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI categorization failed: {e}")
