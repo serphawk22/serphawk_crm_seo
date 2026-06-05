@@ -1,11 +1,11 @@
-# 17. Branch: `feat/marketplace-catalog`
+# 2. Branch: `feat/global-ai-chatbot`
 
-**Feature Description:** Centralized UI displaying all services discovered across all clients.
-**Business Goal:** Create a B2B network effect and service comparison engine.
-**Frontend Tasks:** Marketplace Dashboard, advanced filters (category, location, company).
-**Backend Tasks:** API endpoints to serve aggregated `ClientService` data.
-**Database Tasks:** Ensure rigorous indexing on `ClientService` categories.
-**AI Tasks:** AI background job to standardize disparate service names into fixed categories.
+**Feature Description:** Context-aware floating AI chatbot widget.
+**Business Goal:** Provide immediate AI assistance tied to the user's current screen context.
+**Frontend Tasks:** Implement floating chat widget, capture current route context, handle local UI chat state.
+**Backend Tasks:** Setup basic chatbot intent endpoint.
+**Database Tasks:** N/A
+**AI Tasks:** Basic intent routing logic for the chatbot.
 **Integrations:** N/A
-**Acceptance Criteria:** User can filter the global marketplace to show all companies offering "Plumbing".
-**Dependencies:** `feat/customer-web-scraper`
+**Acceptance Criteria:** Chat button appears on every page and opens an interactive chat window.
+**Dependencies:** `feat/design-system-and-themes`
