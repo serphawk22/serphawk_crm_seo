@@ -166,6 +166,7 @@ async def research_map_company_endpoint(body: ResearchMapRequest, background_tas
 class SmartResearchRequest(BaseModel):
     company_name: str
     company_url: Optional[str] = None
+    client_id: Optional[int] = None  # If set, link extracted services to this CRM client
 
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest):
@@ -333,6 +334,51 @@ Return ONLY valid JSON:
             "spanish_body": f"Hola,\n\nEncontré {company_name} y me impresionó lo que hacen. Me encantaría explorar cómo nuestros servicios de SEO y marketing digital podrían ayudar a acelerar su crecimiento.\n\nSaludos",
         }
 
+    # Step 5: Extract structured services offered by this company
+    extracted_services = []
+    try:
+        if website_content and not website_content.startswith("ERROR"):
+            from modules.llm_engine import extract_client_services
+            extracted_services = extract_client_services(website_content, company_info.get("company_name", company_name))
+        elif company_info.get("key_value_props"):
+            # Fallback: convert key_value_props to minimal service objects
+            extracted_services = [
+                {"name": s, "brief": "", "category": "Other", "approx_cost": 0, "cost_is_estimated": True}
+                for s in company_info["key_value_props"]
+            ]
+    except Exception as _e:
+        print(f"Service extraction warning: {_e}")
+
+    # Step 6: If a client_id is linked, persist services to client + marketplace
+    if body.client_id and extracted_services:
+        try:
+            from sqlmodel import Session as _Session
+            with _Session(engine) as _sess:
+                cp = _sess.get(ClientProfile, body.client_id)
+                if cp:
+                    import json as _json2
+                    cp.services_offered = _json2.dumps(extracted_services)
+                    _sess.add(cp)
+                    # Also upsert into marketplace
+                    for svc in extracted_services:
+                        ms = MarketplaceService(
+                            service_name=svc.get("name", ""),
+                            normalized_name=svc.get("name", ""),
+                            category=svc.get("category"),
+                            description=svc.get("brief"),
+                            estimated_cost=float(svc.get("approx_cost", 0)),
+                            cost_is_estimated=svc.get("cost_is_estimated", True),
+                            provider_name=cp.companyName,
+                            provider_client_id=body.client_id,
+                            provider_industry=cp.industry,
+                            provider_address=cp.address,
+                            source="email_agent",
+                        )
+                        _sess.add(ms)
+                    _sess.commit()
+        except Exception as _e2:
+            print(f"Service persist warning: {_e2}")
+
     return {
         "company_info": company_info,
         "company_url": body.company_url or company_info.get("website") or "",
@@ -348,6 +394,7 @@ Return ONLY valid JSON:
         "email_hook": services_result.get("email_hook", ""),
         "package_suggestion": services_result.get("package_suggestion", ""),
         "draft": draft,
+        "extracted_services": extracted_services,
     }
 
 # --- Send Manual: create client + record email + activity ---
@@ -1645,6 +1692,91 @@ def auto_research_client(client_id: int, session: Session = Depends(get_session)
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
+
+
+# ─── Extract Client Services from Website ─────────────────────────────────────
+
+@app.post("/clients/{client_id}/extract-services")
+async def extract_client_services_endpoint(client_id: int, session: Session = Depends(get_session)):
+    """
+    Scrapes the client's website, uses AI to extract structured services they offer
+    (with brief + approx cost), then stores them in:
+      1. ClientProfile.services_offered (JSON string)
+      2. MarketplaceService table (one row per service)
+    Returns the extracted services list.
+    """
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    website_url = cp.websiteUrl or cp.website_url if hasattr(cp, 'website_url') else cp.websiteUrl
+    if not website_url:
+        raise HTTPException(status_code=400, detail="Client has no website URL configured")
+
+    # Step 1: Scrape website
+    website_text = ""
+    try:
+        from modules.scraper import scrape_website
+        website_text = await scrape_website(website_url)
+        if website_text.startswith("ERROR"):
+            raise HTTPException(status_code=422, detail=f"Could not scrape website: {website_text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Scraper error: {str(e)}")
+
+    # Step 2: AI extract services
+    from modules.llm_engine import extract_client_services as _extract_services
+    services = _extract_services(website_text, cp.companyName or "Unknown Company")
+
+    if not services:
+        return {"ok": True, "services": [], "message": "No services could be extracted from this website."}
+
+    # Step 3: Save to ClientProfile.services_offered
+    import json as _json
+    cp.services_offered = _json.dumps(services)
+    session.add(cp)
+
+    # Step 4: Upsert into MarketplaceService (avoid exact duplicates for same client)
+    existing = session.exec(
+        select(MarketplaceService).where(
+            MarketplaceService.provider_client_id == client_id,
+            MarketplaceService.is_active == True
+        )
+    ).all()
+    existing_names = {s.service_name.lower() for s in existing}
+
+    added = 0
+    for svc in services:
+        svc_name = svc.get("name", "").strip()
+        if not svc_name or svc_name.lower() in existing_names:
+            continue
+        ms = MarketplaceService(
+            service_name=svc_name,
+            normalized_name=svc_name,
+            category=svc.get("category"),
+            description=svc.get("brief"),
+            estimated_cost=float(svc.get("approx_cost", 0)),
+            cost_is_estimated=svc.get("cost_is_estimated", True),
+            provider_name=cp.companyName,
+            provider_client_id=client_id,
+            provider_industry=cp.industry,
+            provider_address=cp.address,
+            source="presales_research",
+        )
+        session.add(ms)
+        existing_names.add(svc_name.lower())
+        added += 1
+
+    session.commit()
+
+    return {
+        "ok": True,
+        "services": services,
+        "marketplace_entries_added": added,
+        "message": f"Extracted {len(services)} services, added {added} new entries to Marketplace."
+    }
+
 
 # ─── AI Copilot Insights ──────────────────────────────────────────────────────
 

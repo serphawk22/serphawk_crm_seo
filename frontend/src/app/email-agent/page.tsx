@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Sparkles, Mail, Clock, User, Globe, ChevronDown, ChevronUp,
   CheckCircle, Building2, Briefcase, Target, AtSign, FileText, Copy, Check,
-  TrendingUp, Zap, Package, UserPlus, Phone
+  TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import PageGuide from "@/components/PageGuide";
@@ -84,6 +84,13 @@ interface ResearchResultData {
   company_url?: string;
   client_id?: number;
   id?: string;
+  extracted_services?: Array<{
+    name: string;
+    brief: string;
+    category: string;
+    approx_cost: number;
+    cost_is_estimated: boolean;
+  }>;
 }
 
 interface ResearchResult {
@@ -393,7 +400,45 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
         </div>
       )}
 
-      {/* Email Draft */}
+      {/* Extracted Client Services */}
+      {result.extracted_services && result.extracted_services.length > 0 && (
+        <div className="bg-black/60 backdrop-blur-md border border-emerald-500/30 rounded-2xl p-6 shadow-xl">
+          <div className="flex items-center gap-2 mb-5">
+            <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">
+              <Store className="w-4 h-4" />
+            </div>
+            <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Services Offered by This Company</p>
+            <span className="ml-auto text-[9px] font-black text-emerald-500/60 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+              {result.extracted_services.length} detected
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {result.extracted_services.map((svc, i) => (
+              <div key={i} className="p-4 bg-white/5 border border-white/10 rounded-xl hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                    {svc.category}
+                  </span>
+                  {svc.approx_cost > 0 && (
+                    <span className="ml-auto text-[9px] font-black text-amber-400 flex items-center gap-0.5">
+                      <DollarSign className="w-2.5 h-2.5" />
+                      {svc.approx_cost.toLocaleString()}
+                      {svc.cost_is_estimated ? ' est.' : ''}
+                    </span>
+                  )}
+                </div>
+                <p className="font-bold text-white text-sm mb-1">{svc.name}</p>
+                {svc.brief && <p className="text-xs text-gray-300 leading-relaxed">{svc.brief}</p>}
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[10px] text-emerald-500/50 font-medium">
+            ✦ These services have been saved to the client profile and Marketplace catalog.
+          </p>
+        </div>
+      )}
+
+
       {result.draft && (
         <div className="bg-black/60 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-xl">
           <div className="flex items-center justify-between mb-5">

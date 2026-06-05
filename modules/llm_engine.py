@@ -305,3 +305,55 @@ def process_chatbot_command(message: str, client_context: dict = None):
             "reply": "I'm sorry, I encountered an error trying to process your request."
         }
 
+
+def extract_client_services(website_text: str, company_name: str) -> list:
+    """
+    Analyzes a company's website text and extracts a structured list of services
+    they OFFER — with a brief description and approximate cost estimate.
+    Returns a list of dicts: [{name, brief, category, approx_cost, cost_is_estimated}]
+    """
+    try:
+        client = get_openai_client()
+        prompt = f"""You are a B2B business intelligence expert.
+
+Analyze the following website content from "{company_name}" and extract ALL services or products this company OFFERS to their customers.
+
+For each service:
+1. Give a clean, professional service name
+2. Write a 1-2 sentence brief describing what it is
+3. Assign a business category from: [SEO, Web Design, Marketing, Plumbing, Legal, Accounting, Consulting, Construction, Healthcare, Real Estate, IT Services, Landscaping, Cleaning, Electrical, HVAC, Retail, Food & Beverage, Education, Finance, Transportation, Other]
+4. Estimate an approximate market cost in USD. If you cannot determine the cost from the website, use your knowledge of typical market rates for this type of service.
+
+Website content:
+{website_text[:12000]}
+
+Return ONLY valid JSON:
+{{
+  "services": [
+    {{
+      "name": "Clean service name",
+      "brief": "1-2 sentence description of this service",
+      "category": "One category from the list above",
+      "approx_cost": 1500,
+      "cost_is_estimated": true
+    }}
+  ]
+}}
+
+Rules:
+- Extract only services/products the COMPANY OFFERS (not what they use internally)
+- Include 3-10 services maximum, only the most clearly defined ones
+- approx_cost should be a number in USD. Use 0 if truly impossible to estimate.
+- cost_is_estimated is true unless the website explicitly states the price
+"""
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        data = json.loads(response.choices[0].message.content)
+        return data.get("services", [])
+    except Exception as e:
+        print(f"Error in extract_client_services: {e}")
+        return []
