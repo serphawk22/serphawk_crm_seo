@@ -1699,49 +1699,100 @@ def auto_research_client(client_id: int, session: Session = Depends(get_session)
 @app.post("/clients/{client_id}/extract-services")
 async def extract_client_services_endpoint(client_id: int, session: Session = Depends(get_session)):
     """
-    Scrapes the client's website, uses AI to extract structured services they offer
-    (with brief + approx cost), then stores them in:
-      1. ClientProfile.services_offered (JSON string)
-      2. MarketplaceService table (one row per service)
-    Returns the extracted services list.
+    Scrapes the client's website and uses AI to extract services they offer.
+    Falls back to LLM world-knowledge when website is unreachable (DNS, timeout, bot-block).
+    Stores results in: ClientProfile.services_offered + MarketplaceService table.
     """
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    website_url = cp.websiteUrl or cp.website_url if hasattr(cp, 'website_url') else cp.websiteUrl
-    if not website_url:
-        raise HTTPException(status_code=400, detail="Client has no website URL configured")
+    website_url = cp.websiteUrl
+    company_name = cp.companyName or "Unknown Company"
 
-    # Step 1: Scrape website
+    if not website_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Client has no website URL. Add one in the client profile first."
+        )
+
+    # ── Step 1: Try scraping (fail gracefully on any network error) ────────────
     website_text = ""
+    scrape_method = "website_scrape"
     try:
         from modules.scraper import scrape_website
         website_text = await scrape_website(website_url)
         if website_text.startswith("ERROR"):
-            raise HTTPException(status_code=422, detail=f"Could not scrape website: {website_text}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Scraper error: {str(e)}")
+            print(f"[extract-services] Scrape failed for {website_url}: {website_text[:100]}. Falling back to LLM.")
+            website_text = ""
+            scrape_method = "llm_fallback"
+    except Exception as scrape_err:
+        print(f"[extract-services] Scraper exception ({website_url}): {scrape_err}. Falling back to LLM.")
+        scrape_method = "llm_fallback"
 
-    # Step 2: AI extract services
-    from modules.llm_engine import extract_client_services as _extract_services
-    services = _extract_services(website_text, cp.companyName or "Unknown Company")
+    # ── Step 2: Extract services (from scraped text, or via LLM knowledge) ─────
+    import json as _json
+    from modules.llm_engine import extract_client_services as _extract_services, get_openai_client
+
+    services = []
+
+    if website_text:
+        services = _extract_services(website_text, company_name)
+
+    # If scraping failed or extracted nothing → use LLM world-knowledge fallback
+    if not services:
+        scrape_method = "llm_fallback"
+        try:
+            oai = get_openai_client()
+            fallback_prompt = f"""You are a B2B business intelligence expert.
+
+The company "{company_name}" has website: {website_url}
+Industry: {cp.industry or "unknown"}
+
+We could not access their website. Based on the company name, domain, and industry,
+list the most likely services they offer.
+
+Return ONLY valid JSON:
+{{
+  "services": [
+    {{
+      "name": "Service name",
+      "brief": "1-2 sentence description of this service",
+      "category": "One of: SEO, Web Design, Marketing, Plumbing, Legal, Accounting, Consulting, Construction, Healthcare, Real Estate, IT Services, Landscaping, Cleaning, Electrical, HVAC, Retail, Education, Finance, Transportation, Other",
+      "approx_cost": 1200,
+      "cost_is_estimated": true
+    }}
+  ]
+}}
+
+Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for fallback."""
+            resp = oai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": fallback_prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.3,
+            )
+            services = _json.loads(resp.choices[0].message.content).get("services", [])
+        except Exception as llm_err:
+            print(f"[extract-services] LLM fallback also failed: {llm_err}")
 
     if not services:
-        return {"ok": True, "services": [], "message": "No services could be extracted from this website."}
+        return {
+            "ok": False,
+            "services": [],
+            "scrape_method": scrape_method,
+            "message": "Could not extract services. Try adding the Industry field to improve AI fallback accuracy.",
+        }
 
-    # Step 3: Save to ClientProfile.services_offered
-    import json as _json
+    # ── Step 3: Save to ClientProfile.services_offered ────────────────────────
     cp.services_offered = _json.dumps(services)
     session.add(cp)
 
-    # Step 4: Upsert into MarketplaceService (avoid exact duplicates for same client)
+    # ── Step 4: Upsert into MarketplaceService (skip exact name duplicates) ───
     existing = session.exec(
         select(MarketplaceService).where(
             MarketplaceService.provider_client_id == client_id,
-            MarketplaceService.is_active == True
+            MarketplaceService.is_active == True,
         )
     ).all()
     existing_names = {s.service_name.lower() for s in existing}
@@ -1758,11 +1809,11 @@ async def extract_client_services_endpoint(client_id: int, session: Session = De
             description=svc.get("brief"),
             estimated_cost=float(svc.get("approx_cost", 0)),
             cost_is_estimated=svc.get("cost_is_estimated", True),
-            provider_name=cp.companyName,
+            provider_name=company_name,
             provider_client_id=client_id,
             provider_industry=cp.industry,
             provider_address=cp.address,
-            source="presales_research",
+            source=scrape_method,
         )
         session.add(ms)
         existing_names.add(svc_name.lower())
@@ -1770,12 +1821,15 @@ async def extract_client_services_endpoint(client_id: int, session: Session = De
 
     session.commit()
 
+    method_label = "live website" if scrape_method == "website_scrape" else "AI knowledge (site unreachable)"
     return {
         "ok": True,
         "services": services,
+        "scrape_method": scrape_method,
         "marketplace_entries_added": added,
-        "message": f"Extracted {len(services)} services, added {added} new entries to Marketplace."
+        "message": f"Extracted {len(services)} services via {method_label}. Added {added} to Marketplace.",
     }
+
 
 
 # ─── AI Copilot Insights ──────────────────────────────────────────────────────
