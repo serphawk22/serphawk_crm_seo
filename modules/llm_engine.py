@@ -294,6 +294,7 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
                 "company_name": "...",
                 "email": "...",
                 "phone": "...",
+                "website": "...",
                 "project_name": "...",
                 "description": "...",
                 "search_query": "...",
@@ -308,7 +309,7 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
         
         Rules:
         - If the user asks to go somewhere or see something, intent is 'navigate'. (route should be things like "/admin", "/admin/clients", "/admin/marketplace", "/admin/projects", "/email-agent")
-        - If the user asks to add a client/company, intent is 'create_client'.
+        - If the user asks to add a client/company, intent is 'create_client'. Extract website if mentioned.
         - If the user asks to search for a service, intent is 'search_marketplace'.
         - If the user asks to draft an email, intent is 'draft_email'.
         - If you don't know the exact intent, use 'general' and just reply naturally.
@@ -378,3 +379,39 @@ Rules:
     except Exception as e:
         print(f"Error in extract_client_services: {e}")
         return []
+
+def extract_client_profile_from_website(website_text: str, website_url: str) -> dict:
+    """
+    Analyzes website text to extract structured client profile fields.
+    """
+    try:
+        import json
+        from modules.llm_engine import get_openai_client
+        client = get_openai_client()
+        prompt = f"""You are a B2B CRM intelligence expert.
+
+Analyze the following website content from "{website_url}" and extract details to populate a Client Profile.
+
+Website content:
+{website_text[:12000]}
+
+Return ONLY valid JSON matching this structure:
+{{
+  "companyName": "The business name (don't use the URL)",
+  "email": "Extract a contact email, or guess a generic one like info@company.com if missing",
+  "tagline": "A short 5-10 word tagline or value proposition",
+  "seoStrategy": "A 1-2 sentence suggested SEO strategy based on their industry",
+  "targetKeywords": "A comma-separated string of 5-8 highly relevant target keywords",
+  "industry": "The specific industry they operate in"
+}}
+"""
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        return json.loads(response.choices[0].message.content)
+    except Exception as e:
+        print(f"Error in extract_client_profile: {e}")
+        return {}
