@@ -4869,6 +4869,25 @@ def update_portal_config(body: Dict[str, Any]):
             else:
                 _portal_config[key] = val
     return {"ok": True, "config": _portal_config}
+# ─── Auto-fill Client Endpoint ───────────────────────────────────────────────
+class AutoFillRequest(BaseModel):
+    website: str
+
+@app.post("/clients/auto-fill")
+def auto_fill_client(request: AutoFillRequest):
+    from modules.scraper import scrape_website
+    from modules.llm_engine import extract_client_profile_from_website
+    
+    try:
+        raw_text = scrape_website(request.website)
+        if not raw_text:
+            return {"ok": False, "error": "Could not extract content from the website."}
+            
+        profile_data = extract_client_profile_from_website(raw_text, request.website)
+        return {"ok": True, "data": profile_data}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 # ─── Chatbot endpoint ────────────────────────────────────────────────────────
 @app.post("/chatbot/message")
 def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_session)):
@@ -4897,15 +4916,50 @@ def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_sess
     
     try:
         if intent == "create_client":
-            # Check if email exists
-            email = params.get("email") or f"bot_{datetime.utcnow().timestamp()}@placeholder.com"
-            existing_user = session.exec(select(User).where(User.email == email)).first() if hasattr(User, 'email') else None
+            from modules.scraper import scrape_website
+            from modules.llm_engine import extract_client_profile_from_website
             
+            # Scrape if website is provided
+            website_url = params.get("website")
+            scraped_data = {}
+            if website_url:
+                try:
+                    raw_text = scrape_website(website_url)
+                    if raw_text:
+                        scraped_data = extract_client_profile_from_website(raw_text, website_url)
+                except Exception as e:
+                    print(f"Scraping failed during auto-fill: {e}")
+
+            # Check if email exists
+            email = params.get("email") or scraped_data.get("email") or f"bot_{datetime.utcnow().timestamp()}@placeholder.com"
+            existing_user = session.exec(select(User).where(User.email == email)).first() if hasattr(User, 'email') else None
+            user = existing_user
+            
+            if not user:
+                user = User(
+                    email=email,
+                    password="changeme",
+                    name=params.get("company_name") or scraped_data.get("companyName") or "Client",
+                    role="Client",
+                )
+                session.add(user)
+                session.commit()
+                session.refresh(user)
+
+            # Map targetKeywords if present
+            keywords = scraped_data.get("targetKeywords", "")
+            if isinstance(keywords, str):
+                keywords = [k.strip() for k in keywords.split(',') if k.strip()]
+
             cp = ClientProfile(
-                companyName=params.get("company_name", "New Client"),
-                email=email,
+                userId=user.id,
+                companyName=params.get("company_name") or scraped_data.get("companyName") or "New Client",
+                websiteUrl=website_url,
                 phone=params.get("phone", ""),
-                status="Active"
+                status="Active",
+                seoStrategy=scraped_data.get("seoStrategy", ""),
+                tagline=scraped_data.get("tagline", ""),
+                targetKeywords=keywords if keywords else None
             )
             session.add(cp)
             session.commit()

@@ -138,6 +138,42 @@ export default function ClientsPage() {
     }
   };
 
+  const [isAutofilling, setIsAutofilling] = useState(false);
+  const handleAutofill = async () => {
+    if (!formData.websiteUrl) {
+      alert(language === 'es' ? 'Ingrese una URL primero' : 'Please enter a Website URL first');
+      return;
+    }
+    setIsAutofilling(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/auto-fill`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ website: formData.websiteUrl })
+      });
+      const result = await res.json();
+      if (result.ok && result.data) {
+        setFormData(prev => ({
+          ...prev,
+          companyName: result.data.companyName || prev.companyName,
+          email: result.data.email || prev.email,
+          tagline: result.data.tagline || prev.tagline,
+          seoStrategy: result.data.seoStrategy || prev.seoStrategy,
+          targetKeywords: result.data.targetKeywords 
+            ? (Array.isArray(result.data.targetKeywords) ? result.data.targetKeywords.join(', ') : result.data.targetKeywords)
+            : prev.targetKeywords
+        }));
+      } else {
+        alert(result.error || 'Failed to auto-fill');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('An error occurred while auto-filling');
+    } finally {
+      setIsAutofilling(false);
+    }
+  };
+
   const [activities, setActivities] = useState<ActivityLogEntry[]>([]);
 
   const fetchActivities = async () => {
@@ -585,7 +621,12 @@ export default function ClientsPage() {
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest pl-1">{language === 'es' ? 'URL del Sitio Web' : 'Website URL'}</label>
-                      <input required className="w-full px-5 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm font-medium" value={formData.websiteUrl} onChange={e => setFormData({...formData, websiteUrl: e.target.value})} />
+                      <div className="flex gap-2">
+                        <input required className="w-full px-5 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm font-medium" value={formData.websiteUrl} onChange={e => setFormData({...formData, websiteUrl: e.target.value})} />
+                        <button type="button" onClick={handleAutofill} disabled={isAutofilling} className="px-4 py-3 bg-indigo-50 text-indigo-600 rounded-2xl font-bold border border-indigo-100 hover:bg-indigo-100 transition-all shadow-sm flex items-center justify-center min-w-[120px] whitespace-nowrap">
+                          {isAutofilling ? <Loader2 className="w-5 h-5 animate-spin" /> : <>🪄 Autofill</>}
+                        </button>
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest pl-1">Email</label>
