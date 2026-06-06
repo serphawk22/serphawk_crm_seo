@@ -16,7 +16,7 @@ interface QuickAction {
 const ADMIN_ACTIONS: QuickAction[] = [
   { label: 'View Customer', icon: <Users className="w-4 h-4 text-blue-500" />, response: 'Taking you to the clients list.', route: '/admin/clients' },
   { label: 'Add Customer', icon: <UserPlus className="w-4 h-4 text-green-500" />, response: 'Navigating to the clients page to add a new customer.', route: '/admin/clients?action=add' },
-  { label: 'Send Email', icon: <Mail className="w-4 h-4 text-purple-500" />, response: 'Opening the Email Agent.', route: '/admin/email-agent' },
+  { label: 'Send Email', icon: <Mail className="w-4 h-4 text-purple-500" />, response: 'Opening the Email Agent.', route: '/email-agent' },
 ];
 
 const CLIENT_ACTIONS: QuickAction[] = [
