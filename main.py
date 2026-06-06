@@ -4874,12 +4874,12 @@ class AutoFillRequest(BaseModel):
     website: str
 
 @app.post("/clients/auto-fill")
-def auto_fill_client(request: AutoFillRequest):
+async def auto_fill_client(request: AutoFillRequest):
     from modules.scraper import scrape_website
     from modules.llm_engine import extract_client_profile_from_website
     
     try:
-        raw_text = scrape_website(request.website)
+        raw_text = await scrape_website(request.website)
         if not raw_text:
             return {"ok": False, "error": "Could not extract content from the website."}
             
@@ -4890,7 +4890,7 @@ def auto_fill_client(request: AutoFillRequest):
 
 # ─── Chatbot endpoint ────────────────────────────────────────────────────────
 @app.post("/chatbot/message")
-def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_session)):
+async def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_session)):
     from modules.llm_engine import process_chatbot_command
     from database import ClientProfile, ClientNote, ConversationLog, ActivityLog, Project, MarketplaceService, User
     
@@ -4924,7 +4924,7 @@ def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_sess
             scraped_data = {}
             if website_url:
                 try:
-                    raw_text = scrape_website(website_url)
+                    raw_text = await scrape_website(website_url)
                     if raw_text:
                         scraped_data = extract_client_profile_from_website(raw_text, website_url)
                 except Exception as e:
