@@ -268,32 +268,53 @@ def extract_tasks_from_note(note_content):
         print(f"Error in task extraction: {e}")
         return []
 
-def process_chatbot_command(message: str, client_context: dict = None):
+def process_chatbot_command(message: str, client_context: dict = None, current_route: str = None):
     """
     Analyzes user message to determine CRM action intent for the chatbot.
     """
+    import json
     try:
         client = get_openai_client()
         context_str = f"Client context: {json.dumps(client_context)}" if client_context else "No specific client context."
+        route_str = f"User's current page route: {current_route}" if current_route else "Unknown route."
         
         prompt = f"""
-        You are the SERP Hawk CRM Assistant.
-        The user has sent a message. Detect their intent and draft a professional note or log entry.
+        You are the highly advanced SERP Hawk CRM Assistant.
+        The user has sent a message. Detect their intent and extract any parameters needed to perform the action.
         
-        User message: "{message}"
+        {route_str}
         {context_str}
         
-        Return ONLY a JSON object with:
+        User message: "{message}"
+        
+        Return ONLY a JSON object with this exact structure:
         {{
-            "intent": "add_note" | "log_conversation" | "general",
-            "title": "Short title if logging a conversation (e.g. 'Introductory Call')",
-            "type": "call" | "email" | "meeting" | "whatsapp" | "other" (only if intent is log_conversation),
-            "content": "The drafted professional note or conversation details.",
-            "reply": "A friendly confirmation to send back to the user in the chat (e.g. 'I have successfully logged the call regarding pricing.')."
+            "intent": "create_client" | "create_project" | "search_marketplace" | "draft_email" | "add_note" | "log_conversation" | "navigate" | "general",
+            "parameters": {{
+                "company_name": "...",
+                "email": "...",
+                "phone": "...",
+                "project_name": "...",
+                "description": "...",
+                "search_query": "...",
+                "route": "...",
+                "client_id": 123,
+                "content": "...",
+                "title": "...",
+                "type": "..."
+            }},
+            "reply": "A friendly confirmation to send back to the user in the chat."
         }}
+        
+        Rules:
+        - If the user asks to go somewhere or see something, intent is 'navigate'. (route should be things like '/admin', '/admin/clients', '/admin/marketplace')
+        - If the user asks to add a client/company, intent is 'create_client'.
+        - If the user asks to search for a service, intent is 'search_marketplace'.
+        - If the user asks to draft an email, intent is 'draft_email'.
+        - If you don't know the exact intent, use 'general' and just reply naturally.
         """
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
