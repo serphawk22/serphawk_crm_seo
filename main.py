@@ -2938,6 +2938,12 @@ def dashboard_stats(
     total_activities = len(session.exec(select(ActivityLog)).all())
     total_calls = len(session.exec(select(CallLog)).all())
 
+    try:
+        from database import MarketplaceService
+        total_marketplace = len(session.exec(select(MarketplaceService)).all())
+    except:
+        total_marketplace = 0
+
     # Build real 7-day chart data from database
     labels = []
     activity_chart = []
@@ -2971,6 +2977,7 @@ def dashboard_stats(
         "totalActivities": total_activities,
         "totalCalls": total_calls,
         "totalEmailsSent": total_emails_sent,
+        "totalMarketplaceServices": total_marketplace,
         "chartLabels": labels,
         "activityChart": activity_chart,
         "emailChart": email_chart,
