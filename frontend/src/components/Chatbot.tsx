@@ -71,16 +71,25 @@ export function Chatbot() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          client_id: currentClientId
+          client_id: currentClientId,
+          current_route: pathname
         })
       });
       const data = await res.json();
       
       setMessages(prev => [...prev, { role: 'bot', text: data.reply || "I've processed your request." }]);
 
-      // If a mutation happened, trigger a global refresh
-      if (data.action_taken) {
+      // Handle navigation actions
+      if (data.action_taken === 'navigate' && data.route) {
+        setTimeout(() => {
+          router.push(data.route);
+        }, 1500); // Small delay to read the message before jumping
+      }
+      
+      // If a database mutation happened, trigger a global refresh
+      else if (data.action_taken) {
         window.dispatchEvent(new Event('refresh-client-data'));
+        window.dispatchEvent(new Event('refresh-marketplace-data'));
       }
     } catch (err) {
       console.error(err);

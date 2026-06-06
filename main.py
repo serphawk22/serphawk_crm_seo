@@ -610,6 +610,7 @@ class LoginRequest(BaseModel):
 class ChatbotRequest(BaseModel):
     message: str
     client_id: Optional[int] = None
+    current_route: Optional[str] = None
 
 
 class CreateUserRequest(BaseModel):
@@ -4872,68 +4873,115 @@ def update_portal_config(body: Dict[str, Any]):
 @app.post("/chatbot/message")
 def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_session)):
     from modules.llm_engine import process_chatbot_command
-    from database import ClientProfile, ClientNote, ConversationLog, ActivityLog
+    from database import ClientProfile, ClientNote, ConversationLog, ActivityLog, Project, MarketplaceService, User
     
     client_context = None
     if request.client_id:
         cp = session.get(ClientProfile, request.client_id)
         if cp:
             client_context = {
+                "client_id": cp.id,
                 "company_name": cp.companyName,
                 "contact_person": cp.contact_person,
                 "email": cp.user.email if cp.user else None,
                 "industry": cp.industry
             }
             
-    result = process_chatbot_command(request.message, client_context)
+    # Advanced AI processing
+    result = process_chatbot_command(request.message, client_context, request.current_route)
     
     intent = result.get("intent", "general")
+    params = result.get("parameters", {})
     action_taken = None
+    route = None
     
-    if request.client_id and intent == "add_note":
-        new_note = ClientNote(
-            client_id=request.client_id,
-            content=result.get("content", ""),
-            author_name="AI Assistant",
-            type="Note"
-        )
-        session.add(new_note)
-        
-        log = ActivityLog(
-            clientId=request.client_id,
-            action="Note Added via AI Assistant",
-            details=result.get("content", "")[:100],
-            method="bot"
-        )
-        session.add(log)
-        session.commit()
-        action_taken = "note_added"
-        
-    elif request.client_id and intent == "log_conversation":
-        new_conv = ConversationLog(
-            client_id=request.client_id,
-            title=result.get("title", "Conversation"),
-            type=result.get("type", "call"),
-            description=result.get("content", ""),
-            author_name="AI Assistant"
-        )
-        session.add(new_conv)
-        
-        log = ActivityLog(
-            clientId=request.client_id,
-            action=f"Logged {new_conv.type} via AI Assistant",
-            details=new_conv.title,
-            method="bot"
-        )
-        session.add(log)
-        session.commit()
-        action_taken = "conversation_logged"
-        
+    try:
+        if intent == "create_client":
+            # Check if email exists
+            email = params.get("email") or f"bot_{datetime.utcnow().timestamp()}@placeholder.com"
+            existing_user = session.exec(select(User).where(User.email == email)).first() if hasattr(User, 'email') else None
+            
+            cp = ClientProfile(
+                companyName=params.get("company_name", "New Client"),
+                email=email,
+                phone=params.get("phone", ""),
+                status="Active"
+            )
+            session.add(cp)
+            session.commit()
+            session.refresh(cp)
+            action_taken = "client_created"
+            route = f"/admin/clients/{cp.id}"
+            
+        elif intent == "create_project":
+            p = Project(
+                name=params.get("project_name", "New Project"),
+                description=params.get("description", ""),
+                status="Active",
+                progress=0
+            )
+            session.add(p)
+            session.commit()
+            session.refresh(p)
+            action_taken = "project_created"
+            route = f"/admin/projects/{p.id}"
+            
+        elif intent == "search_marketplace":
+            query = params.get("search_query", "")
+            action_taken = "navigate"
+            route = f"/admin/marketplace?search={query}"
+            
+        elif intent == "draft_email":
+            # Auto-route to email agent
+            action_taken = "navigate"
+            route = "/admin/email-agent"
+            # We could pre-fill by setting query params if email agent supported it
+            
+        elif intent == "navigate":
+            action_taken = "navigate"
+            route = params.get("route", "/admin")
+            
+        elif intent == "add_note":
+            target_client_id = request.client_id or params.get("client_id")
+            if target_client_id:
+                new_note = ClientNote(
+                    client_id=target_client_id,
+                    content=params.get("content", result.get("content", "")),
+                    author_name="AI Assistant",
+                    type="Note"
+                )
+                session.add(new_note)
+                log = ActivityLog(clientId=target_client_id, action="Note Added via AI Assistant", details=new_note.content[:100], method="bot")
+                session.add(log)
+                session.commit()
+                action_taken = "note_added"
+                
+        elif intent == "log_conversation":
+            target_client_id = request.client_id or params.get("client_id")
+            if target_client_id:
+                new_conv = ConversationLog(
+                    client_id=target_client_id,
+                    title=params.get("title", result.get("title", "Conversation")),
+                    type=params.get("type", result.get("type", "call")),
+                    description=params.get("content", result.get("content", "")),
+                    author_name="AI Assistant"
+                )
+                session.add(new_conv)
+                log = ActivityLog(clientId=target_client_id, action=f"Logged {new_conv.type} via AI Assistant", details=new_conv.title, method="bot")
+                session.add(log)
+                session.commit()
+                action_taken = "conversation_logged"
+                
+    except Exception as e:
+        print(f"Chatbot mutation error: {e}")
+
     return {
         "reply": result.get("reply", "I processed your request."),
         "intent": intent,
-        "action_taken": action_taken
+        "action_taken": action_taken,
+        "route": route
     }
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
