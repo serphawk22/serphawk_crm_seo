@@ -4934,7 +4934,7 @@ def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_sess
         elif intent == "draft_email":
             # Auto-route to email agent
             action_taken = "navigate"
-            route = "/admin/email-agent"
+            route = "/email-agent"
             # We could pre-fill by setting query params if email agent supported it
             
         elif intent == "navigate":

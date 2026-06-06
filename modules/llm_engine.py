@@ -307,7 +307,7 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
         }}
         
         Rules:
-        - If the user asks to go somewhere or see something, intent is 'navigate'. (route should be things like '/admin', '/admin/clients', '/admin/marketplace')
+        - If the user asks to go somewhere or see something, intent is 'navigate'. (route should be things like "/admin", "/admin/clients", "/admin/marketplace", "/admin/projects", "/email-agent")
         - If the user asks to add a client/company, intent is 'create_client'.
         - If the user asks to search for a service, intent is 'search_marketplace'.
         - If the user asks to draft an email, intent is 'draft_email'.
