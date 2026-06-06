@@ -33,6 +33,7 @@ interface AdminStats {
   total: number; active: number; pending: number; hold: number;
   totalProjects: number; totalEmailsSent: number; totalActivities: number;
   totalCalls: number; totalEmployees: number; totalInterns: number;
+  totalMarketplaceServices: number;
   chartLabels: string[]; activityChart: number[]; emailChart: number[]; callChart: number[];
   recentActivities: RecentActivity[];
 }
@@ -247,10 +248,11 @@ function Dashboard() {
           />
 
           {/* Row 1: 4+4 stat pills in dark glass */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-9 gap-3">
             <StatCard title="Clients" value={adminStats.total} sub="Total" icon={Users} gradient="from-indigo-500 to-indigo-600" href="/clients" />
             <StatCard title="Active" value={adminStats.active} sub="Live" icon={Zap} gradient="from-emerald-400 to-emerald-500" href="/clients" />
             <StatCard title="Projects" value={adminStats.totalProjects} sub="Ongoing" icon={FolderKanban} gradient="from-sky-400 to-cyan-500" href="/projects" />
+            <StatCard title="Marketplace" value={adminStats.totalMarketplaceServices || 0} sub="Services" icon={Briefcase} gradient="from-fuchsia-500 to-pink-600" href="/admin/services-overview" />
             <StatCard title="Emails" value={adminStats.totalEmailsSent} sub="Sent" icon={Send} gradient="from-violet-500 to-purple-600" href="/email-agent" />
             <StatCard title="Activities" value={adminStats.totalActivities} sub="Logs" icon={Activity} gradient="from-blue-500 to-indigo-600" href="/email-agent" />
             <StatCard title="Calls" value={adminStats.totalCalls} sub="Logged" icon={Phone} gradient="from-amber-400 to-orange-500" href="/calls" />
