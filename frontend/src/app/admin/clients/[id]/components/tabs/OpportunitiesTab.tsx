@@ -130,8 +130,30 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
   // Milestones from timeline
   const milestoneEvents = timeline.filter(e => e.type === 'milestone').slice(0, 5);
 
+  const [activeSubTab, setActiveSubTab] = React.useState('pipeline');
+
   return (
     <div className="space-y-6">
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-4 overflow-x-auto">
+        {[
+          { id: 'pipeline', label: language === 'es' ? 'Resumen del Pipeline' : 'Pipeline Overview', icon: Target },
+          { id: 'presales', label: language === 'es' ? 'Investigación Pre-Ventas' : 'Pre-Sales Research', icon: Brain },
+          { id: 'emails', label: language === 'es' ? 'Correos Salientes' : 'Outbound Emails', icon: Mail },
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActiveSubTab(t.id)}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+              activeSubTab === t.id ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50 border border-transparent'
+            }`}
+          >
+            <t.icon size={16} /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeSubTab === 'pipeline' && (
+        <div className="space-y-6">
       {/* Active Opportunity Card */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 p-6 shadow-sm">
         <div className="flex items-start justify-between mb-6">
@@ -230,7 +252,12 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
           </div>
         </div>
       )}
-      {/* Pre-Sales Research Section */}
+      </div>
+      )}
+
+      {activeSubTab === 'presales' && (
+        <div className="space-y-6">
+          {/* Pre-Sales Research Section */}
       {research && (
         <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-slate-900 p-6 shadow-sm relative overflow-hidden mt-6">
           <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
@@ -276,9 +303,13 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
           </div>
         </div>
       )}
+      </div>
+      )}
 
-      {/* Outbound Emails / Round 1 */}
-      {emails && emails.length > 0 && (
+      {activeSubTab === 'emails' && (
+        <div className="space-y-6">
+          {/* Outbound Emails / Round 1 */}
+          {emails && emails.length > 0 ? (
         <div className="rounded-2xl border border-blue-100 dark:border-blue-900/40 bg-white dark:bg-slate-900 p-6 shadow-sm mt-6">
           <div className="flex items-center gap-2 mb-4">
             <div className="p-2 bg-blue-500 rounded-xl text-white">
@@ -319,6 +350,12 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
             ))}
           </div>
         </div>
+      ) : (
+        <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 shadow-sm mt-6">
+          <p className="text-slate-500 font-medium">No outbound communications found.</p>
+        </div>
+      )}
+      </div>
       )}
 
     </div>
