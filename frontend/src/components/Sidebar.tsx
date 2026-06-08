@@ -37,6 +37,7 @@ export function Sidebar({ role }: SidebarProps) {
     { name: language === 'es' ? 'Pasantes' : 'Interns', icon: Activity, href: '/interns', roles: ['Admin', 'Employee'] },
     { name: language === 'es' ? 'Equipo de Ventas' : 'Sales Team', icon: UserCheck, href: '/admin/sales-team', roles: ['Admin'] },
     { name: language === 'es' ? 'Agente de Email' : 'Email Agent', icon: Bot, href: '/email-agent', roles: ['Admin', 'Employee'] },
+    { name: language === 'es' ? 'Inteligencia de API' : 'API Intelligence', icon: Activity, href: '/admin/api-intelligence', roles: ['Admin'] },
   ];
 
   const filteredItems = allItems.filter(item => item.roles.includes(role));

@@ -811,6 +811,67 @@ def create_db_and_tables():
 
 
 
+
+# ─── API Intelligence Center Models ──────────────────────────────────────────
+
+class ApiRequest(SQLModel, table=True):
+    """
+    Tracks every AI API call made in the platform.
+    Single source of truth for token usage, cost, and performance.
+    """
+    __tablename__ = "api_requests"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    salesperson_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", index=True)
+    endpoint: Optional[str] = Field(default=None, max_length=255, index=True)
+    model: Optional[str] = Field(default=None, max_length=100)
+    provider: Optional[str] = Field(default=None, max_length=50, index=True)
+    input_tokens: int = Field(default=0)
+    output_tokens: int = Field(default=0)
+    reasoning_tokens: int = Field(default=0)
+    total_tokens: int = Field(default=0)
+    input_cost: float = Field(default=0.0)
+    output_cost: float = Field(default=0.0)
+    total_cost: float = Field(default=0.0)
+    response_time_ms: int = Field(default=0)
+    status_code: int = Field(default=200)
+    success: bool = Field(default=True)
+    content_type: Optional[str] = Field(default=None, max_length=100)
+    request_meta: Optional[dict] = Field(default=None, sa_column=Column("request_meta", JSON))
+    timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class ApiUsageDaily(SQLModel, table=True):
+    """Pre-aggregated daily rollups for fast analytics queries."""
+    __tablename__ = "api_usage_daily"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date: str = Field(index=True)
+    salesperson_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    provider: Optional[str] = Field(default=None, max_length=50)
+    endpoint: Optional[str] = Field(default=None, max_length=255)
+    total_calls: int = Field(default=0)
+    total_tokens: int = Field(default=0)
+    total_cost: float = Field(default=0.0)
+    avg_response_time: float = Field(default=0.0)
+    error_count: int = Field(default=0)
+
+
+class ApiAlert(SQLModel, table=True):
+    """Alert configuration for API cost and usage thresholds."""
+    __tablename__ = "api_alerts"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(max_length=255)
+    alert_type: str = Field(max_length=50)
+    threshold: float = Field(default=0.0)
+    period: str = Field(default="daily", max_length=20)
+    target: Optional[str] = Field(default="global", max_length=100)
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 def get_session():
     """
     Dependency to get database session
