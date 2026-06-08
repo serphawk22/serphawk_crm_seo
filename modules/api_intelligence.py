@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select, func
+from sqlalchemy import Integer
 from database import get_session, User, ClientProfile, ApiRequest
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -68,7 +69,7 @@ def get_providers(session: Session = Depends(get_session)):
         func.sum(ApiRequest.total_tokens).label("tokens"),
         func.sum(ApiRequest.total_cost).label("cost"),
         func.avg(ApiRequest.response_time_ms).label("avg_latency"),
-        func.sum(func.cast(~ApiRequest.success, func.Integer())).label("errors")
+        func.sum(func.cast(~ApiRequest.success, Integer)).label("errors")
     ).group_by(ApiRequest.provider)
     
     results = session.exec(query).all()
@@ -121,7 +122,7 @@ def get_endpoints(session: Session = Depends(get_session)):
         func.avg(ApiRequest.response_time_ms).label("avg_latency"),
         func.sum(ApiRequest.total_tokens).label("tokens"),
         func.sum(ApiRequest.total_cost).label("cost"),
-        func.sum(func.cast(~ApiRequest.success, func.Integer())).label("errors")
+        func.sum(func.cast(~ApiRequest.success, Integer)).label("errors")
     ).group_by(ApiRequest.endpoint)
     
     results = session.exec(query).all()

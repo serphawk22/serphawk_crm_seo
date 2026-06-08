@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRole } from '@/context/RoleContext';
 import { useRouter } from 'next/navigation';
 import { BarChart3, Users, Zap, Activity, DollarSign, BrainCircuit, List, Bell, Download, Clock } from 'lucide-react';
+import { API_BASE_URL } from '@/config';
 
 export default function ApiIntelligencePage() {
   const { role, isAuthenticated } = useRole();
@@ -33,13 +34,13 @@ export default function ApiIntelligencePage() {
     try {
       setLoading(true);
       const [ov, prov, sales, cli, endp, req, trn] = await Promise.all([
-        fetch('/api-intelligence/overview').then(r => r.json()),
-        fetch('/api-intelligence/providers').then(r => r.json()),
-        fetch('/api-intelligence/salespersons').then(r => r.json()),
-        fetch('/api-intelligence/clients').then(r => r.json()),
-        fetch('/api-intelligence/endpoints').then(r => r.json()),
-        fetch('/api-intelligence/requests?limit=100').then(r => r.json()),
-        fetch('/api-intelligence/charts/trend').then(r => r.json())
+        fetch(`${API_BASE_URL}/api-intelligence/overview`).then(r => r.json()),
+        fetch(`${API_BASE_URL}/api-intelligence/providers`).then(r => r.json()),
+        fetch(`${API_BASE_URL}/api-intelligence/salespersons`).then(r => r.json()),
+        fetch(`${API_BASE_URL}/api-intelligence/clients`).then(r => r.json()),
+        fetch(`${API_BASE_URL}/api-intelligence/endpoints`).then(r => r.json()),
+        fetch(`${API_BASE_URL}/api-intelligence/requests?limit=100`).then(r => r.json()),
+        fetch(`${API_BASE_URL}/api-intelligence/charts/trend`).then(r => r.json())
       ]);
       setOverview(ov);
       setProviders(prov);
@@ -60,7 +61,7 @@ export default function ApiIntelligencePage() {
     if (activeTab === 'live') {
       const interval = setInterval(async () => {
         try {
-          const res = await fetch('/api-intelligence/requests?limit=50');
+          const res = await fetch(`${API_BASE_URL}/api-intelligence/requests?limit=50`);
           const data = await res.json();
           setRequests(data);
         } catch (e) { }
