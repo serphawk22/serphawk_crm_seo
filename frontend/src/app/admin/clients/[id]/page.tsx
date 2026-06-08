@@ -29,8 +29,6 @@ import TicketsTab from './components/tabs/TicketsTab';
 const TABS = [
   { key: 'overview',       label: 'Overview',       icon: LayoutDashboard },
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
-  { key: 'conversations',  label: 'Conversations',   icon: MessageSquare   },
-  { key: 'notes',          label: 'Notes',           icon: StickyNote      },
   { key: 'tasks',          label: 'Tasks',           icon: CheckSquare     },
   { key: 'tickets',        label: 'Tickets',         icon: Ticket          },
   { key: 'opportunities',  label: 'Opportunities',   icon: Target          },
@@ -578,18 +576,7 @@ export default function AdminClientDetailPage() {
 
       {/* ── Full-Width layout ──────────────────────────────────────── */}
       <div className="w-full px-4 py-4">
-        <div className="grid grid-cols-1 xl:grid-cols-[300px_1fr_300px] gap-5">
-
-          {/* ── LEFT: Pre-Sales Research only ────────────────── */}
-          <aside className="space-y-4">
-            <ClientSidebarPanel
-              client={client}
-              research={research}
-              onClientUpdate={(u) => setClient((prev: any) => ({ ...prev, ...u }))}
-              onResearchUpdate={setResearch}
-              clientId={id}
-            />
-          </aside>
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-5">
 
           {/* ── CENTER MAIN ──────────────────────────────────────────── */}
           <main className="min-w-0">

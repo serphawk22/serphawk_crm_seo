@@ -520,9 +520,9 @@ export default function ClientsPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                             <div className="flex flex-col gap-1 max-w-[200px]">
-                               {client.services_requested && <span title={client.services_requested} className="px-2 py-0.5 bg-sky-50 text-sky-600 rounded text-[10px] font-bold truncate">Req: {client.services_requested}</span>}
-                               {client.services_offered && <span title={client.services_offered} className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold truncate">Off: {client.services_offered}</span>}
+                             <div className="flex flex-col gap-1 w-[150px]">
+                               {client.services_requested && <span title={client.services_requested} className="px-2 py-0.5 bg-sky-50 text-sky-600 rounded text-[10px] font-bold block truncate w-full">Req: {client.services_requested}</span>}
+                               {client.services_offered && <span title={client.services_offered} className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold block truncate w-full">Off: {client.services_offered}</span>}
                              </div>
                           </td>
                           <td className="px-6 py-4 text-right">
