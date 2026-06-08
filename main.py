@@ -1734,6 +1734,79 @@ def auto_research_client(client_id: int, session: Session = Depends(get_session)
         raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
 
 
+@app.post("/clients/{client_id}/generate-outbound-draft")
+def generate_outbound_draft(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    try:
+        from modules.llm_engine import get_openai_client
+        import json as _json
+        client_ai = get_openai_client()
+        
+        # Get existing research
+        research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+        research_context = ""
+        if research:
+            research_context = f"""
+            Company Overview: {research.company_overview or 'N/A'}
+            Pain Points: {research.pain_points or 'N/A'}
+            Business Goals: {research.business_goals or 'N/A'}
+            """
+            
+        prompt = f"""
+        You are an expert SDR (Sales Development Representative) at an agency. 
+        Write a highly personalized, cold outreach email draft for the following prospect.
+        Company: {cp.companyName or 'Unknown'}
+        Website: {cp.websiteUrl or 'Unknown'}
+        {research_context}
+        
+        Return ONLY valid JSON matching this schema exactly (no markdown formatting):
+        {{
+            "subject": "Email subject",
+            "english_body": "Email body in English",
+            "spanish_body": "Email body translated to Spanish"
+        }}
+        """
+        
+        resp = client_ai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=800,
+        )
+        content = resp.choices[0].message.content.strip()
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+        elif content.startswith("```"):
+            content = content[3:-3].strip()
+            
+        data = _json.loads(content)
+        
+        # Save as a draft in SentEmail
+        from database import SentEmail, User
+        user = session.get(User, cp.userId) if cp.userId else None
+        to_email = user.email if user else "unknown@example.com"
+        
+        draft = SentEmail(
+            client_id=client_id,
+            to_email=to_email,
+            subject=data.get("subject", "Proposal"),
+            english_body=data.get("english_body", ""),
+            spanish_body=data.get("spanish_body", ""),
+            draft_json=_json.dumps(data),
+            manual=True,
+            sent_at=datetime.utcnow()
+        )
+        session.add(draft)
+        session.commit()
+        return {"ok": True, "draft": data, "email_id": draft.id}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate draft: {str(e)}")
+
+
 # ─── Extract Client Services from Website ─────────────────────────────────────
 
 @app.post("/clients/{client_id}/extract-services")
