@@ -9,7 +9,7 @@ def tracked_chat_completion(client, endpoint_name, **kwargs):
     start_time = time.time()
     model_used = kwargs.get("model", "gpt-4o-mini")
     try:
-        response = tracked_chat_completion(client, "tracked_chat_completion", **kwargs)
+        response = client.chat.completions.create(**kwargs)
     except Exception as e:
         track_api_call(
             endpoint=endpoint_name,
