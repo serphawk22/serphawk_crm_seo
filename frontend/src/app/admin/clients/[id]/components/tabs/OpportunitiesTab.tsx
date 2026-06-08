@@ -300,7 +300,6 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
       {activeSubTab === 'presales' && (
         <div className="space-y-6">
           {/* Pre-Sales Research Section */}
-      {research && (
         <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-slate-900 p-6 shadow-sm relative overflow-hidden mt-6">
           <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
             <Brain size={120} />
@@ -347,7 +346,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                 <p className="text-xs font-bold text-red-600">{extractError}</p>
               </div>
             )}
-            
+            {research ? (
             <div className="space-y-4">
               {research.company_overview && (
                 <div>
@@ -377,9 +376,13 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                 )}
               </div>
             </div>
+            ) : (
+              <div className="text-center py-8 bg-white/50 dark:bg-slate-900/50 rounded-xl border border-dashed border-indigo-200 mt-4">
+                <p className="text-sm text-indigo-400 font-medium">{language === 'es' ? 'No se ha realizado investigación. Haz clic en analizar arriba.' : 'No research found. Click analyze above to start.'}</p>
+              </div>
+            )}
           </div>
         </div>
-      )}
       </div>
       )}
 
