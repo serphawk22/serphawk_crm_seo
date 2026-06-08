@@ -1,9 +1,10 @@
 'use client';
 
 import React from 'react';
-import { motion } from 'framer-motion';
-import { TrendingUp, ArrowRight, CheckCircle2, Clock, XCircle, Target, Brain, Mail, Calendar } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { TrendingUp, ArrowRight, CheckCircle2, Clock, XCircle, Target, Brain, Mail, Calendar, Wand2, Loader2, Store, AlertCircle } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import { API_BASE_URL } from '@/config';
 
 interface OpportunitiesTabProps {
   client: any;
@@ -131,6 +132,47 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
   const milestoneEvents = timeline.filter(e => e.type === 'milestone').slice(0, 5);
 
   const [activeSubTab, setActiveSubTab] = React.useState('pipeline');
+
+  const [isAutoResearching, setIsAutoResearching] = React.useState(false);
+  const [isExtracting, setIsExtracting] = React.useState(false);
+  const [extractResult, setExtractResult] = React.useState<{ count: number; marketplace: number } | null>(null);
+  const [extractError, setExtractError] = React.useState<string | null>(null);
+
+  const handleAutoResearch = async () => {
+    try {
+      setIsAutoResearching(true);
+      const res = await fetch(`${API_BASE_URL}/clients/${client?.id}/auto-research`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        window.dispatchEvent(new CustomEvent('refresh-client-data'));
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsAutoResearching(false);
+    }
+  };
+
+  const handleExtractServices = async () => {
+    setIsExtracting(true);
+    setExtractResult(null);
+    setExtractError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${client?.id}/extract-services`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setExtractError(data.detail || 'Failed to extract services');
+      } else {
+        setExtractResult({ count: data.services?.length || 0, marketplace: data.marketplace_entries_added || 0 });
+        window.dispatchEvent(new CustomEvent('refresh-client-data'));
+      }
+    } catch (e: any) {
+      setExtractError(e.message || 'Network error');
+    } finally {
+      setIsExtracting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -270,6 +312,41 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
               </div>
               <h4 className="text-lg font-black text-slate-800 dark:text-white">Pre-Sales Research</h4>
             </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 mb-6">
+              <button
+                onClick={handleAutoResearch}
+                disabled={isAutoResearching}
+                className="flex-1 py-2 px-4 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-colors disabled:opacity-50"
+              >
+                {isAutoResearching ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
+                {isAutoResearching ? (language === 'es' ? 'Investigando Empresa...' : 'Researching Company...') : (language === 'es' ? 'Analizar Cliente con IA' : 'Analyze Client with AI')}
+              </button>
+              <button
+                onClick={handleExtractServices}
+                disabled={isExtracting || !client?.websiteUrl}
+                title={!client?.websiteUrl ? 'Add a website URL first' : 'Extract services from website'}
+                className="flex-1 py-2 px-4 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-colors disabled:opacity-50"
+              >
+                {isExtracting ? <Loader2 size={16} className="animate-spin" /> : <Store size={16} />}
+                {isExtracting ? 'Extracting Services...' : 'Extract Services from Website'}
+              </button>
+            </div>
+
+            {extractResult && (
+              <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                <p className="text-xs font-bold text-emerald-700">
+                  Found {extractResult.count} services · {extractResult.marketplace} added to Marketplace
+                </p>
+              </div>
+            )}
+            {extractError && (
+              <div className="mb-4 flex items-start gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl">
+                <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+                <p className="text-xs font-bold text-red-600">{extractError}</p>
+              </div>
+            )}
             
             <div className="space-y-4">
               {research.company_overview && (
