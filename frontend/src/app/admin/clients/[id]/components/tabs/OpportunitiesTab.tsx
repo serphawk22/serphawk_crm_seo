@@ -2,13 +2,15 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, ArrowRight, CheckCircle2, Clock, XCircle, Target } from 'lucide-react';
+import { TrendingUp, ArrowRight, CheckCircle2, Clock, XCircle, Target, Brain, Mail, Calendar } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 
 interface OpportunitiesTabProps {
   client: any;
   timeline: any[];
   serviceRequests: any[];
+  research?: any;
+  emails?: any[];
 }
 
 const STAGES = ['Lead', 'Qualified', 'Discovery', 'Proposal', 'Negotiation', 'Won', 'Lost'];
@@ -107,7 +109,7 @@ function ProbabilityBar({ stage, language }: { stage: string, language: string }
   );
 }
 
-export default function OpportunitiesTab({ client, timeline, serviceRequests }: OpportunitiesTabProps) {
+export default function OpportunitiesTab({ client, timeline, serviceRequests, research, emails = [] }: OpportunitiesTabProps) {
   const { language } = useLanguage();
   // Derive current stage from client status + service requests
   const hasAcceptedProposal = serviceRequests.some(r => r.status === 'Accepted');
@@ -228,6 +230,97 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests }: 
           </div>
         </div>
       )}
+      {/* Pre-Sales Research Section */}
+      {research && (
+        <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-slate-900 p-6 shadow-sm relative overflow-hidden mt-6">
+          <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+            <Brain size={120} />
+          </div>
+          <div className="relative">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="p-2 bg-indigo-600 rounded-xl text-white">
+                <Brain size={16} />
+              </div>
+              <h4 className="text-lg font-black text-slate-800 dark:text-white">Pre-Sales Research</h4>
+            </div>
+            
+            <div className="space-y-4">
+              {research.company_overview && (
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-indigo-500 mb-1">Company Overview</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{research.company_overview}</p>
+                </div>
+              )}
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {research.pain_points && (
+                  <div className="p-4 bg-white dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-amber-500 mb-1">Pain Points</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-300">{research.pain_points}</p>
+                  </div>
+                )}
+                {research.competitors && (
+                  <div className="p-4 bg-white dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-rose-500 mb-1">Competitors</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-300">{research.competitors}</p>
+                  </div>
+                )}
+                {research.business_goals && (
+                  <div className="p-4 bg-white dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30 md:col-span-2">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-500 mb-1">Business Goals</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-300">{research.business_goals}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Outbound Emails / Round 1 */}
+      {emails && emails.length > 0 && (
+        <div className="rounded-2xl border border-blue-100 dark:border-blue-900/40 bg-white dark:bg-slate-900 p-6 shadow-sm mt-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-blue-500 rounded-xl text-white">
+              <Mail size={16} />
+            </div>
+            <h4 className="text-lg font-black text-slate-800 dark:text-white">Outbound Communications</h4>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 ml-auto">
+              {emails.length} Emails
+            </span>
+          </div>
+          
+          <div className="space-y-3">
+            {emails.map((em: any, idx: number) => (
+              <div key={idx} className="p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 hover:shadow-md transition-shadow">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                      <Mail size={10} className="text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{em.subject || 'No Subject'}</p>
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-white dark:bg-slate-800 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">
+                    <Calendar size={10} />
+                    {em.sent_at ? new Date(em.sent_at).toLocaleDateString() : 'Draft'}
+                  </div>
+                </div>
+                {em.english_body && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed ml-8">
+                    {em.english_body}
+                  </p>
+                )}
+                {em.manual && (
+                  <span className="inline-block ml-8 mt-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-bold uppercase tracking-wider rounded-md">
+                    Manual Draft
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -86,6 +86,8 @@ export default function ClientsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const router = useRouter();
   const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+  const [actionLoading, setActionLoading] = useState<Record<number, string>>({});
   const [formData, setFormData] = useState({
     companyName: '',
     websiteUrl: '',
@@ -310,6 +312,33 @@ export default function ClientsPage() {
     );
   };
 
+  const handleQuickAction = async (clientId: number, actionType: string) => {
+    setActionLoading(p => ({ ...p, [clientId]: actionType }));
+    try {
+      if (actionType === 'analyse') {
+        const res = await fetch(`${API_BASE_URL}/clients/${clientId}/auto-research`, { method: 'POST' });
+        if (!res.ok) throw new Error('Analysis failed');
+        alert(language === 'es' ? 'Análisis completado exitosamente.' : 'Analysis completed successfully.');
+      } else if (actionType === 'extract') {
+        const res = await fetch(`${API_BASE_URL}/clients/${clientId}/extract-services`, { method: 'POST' });
+        if (!res.ok) throw new Error('Extraction failed');
+        alert(language === 'es' ? 'Servicios extraídos exitosamente.' : 'Services extracted successfully.');
+      } else if (actionType === 'email') {
+        const res = await fetch(`${API_BASE_URL}/clients/${clientId}/generate-outbound-draft`, { method: 'POST' });
+        if (!res.ok) throw new Error('Draft generation failed');
+        const data = await res.json();
+        alert(language === 'es' ? 'Borrador generado y guardado en Oportunidades.' : 'Draft generated and saved in Opportunities.');
+      } else if (actionType === 'opportunity') {
+        router.push(`/admin/clients/${clientId}?tab=opportunities`);
+      }
+    } catch (error) {
+      console.error(error);
+      alert(language === 'es' ? 'Error al ejecutar la acción.' : 'Error executing action.');
+    } finally {
+      setActionLoading(p => { const next = { ...p }; delete next[clientId]; return next; });
+    }
+  };
+
   if (loading && clients.length === 0) {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
@@ -438,74 +467,131 @@ export default function ClientsPage() {
                 <tbody className="divide-y divide-slate-100">
                   <AnimatePresence>
                     {filteredClients.map(client => (
-                      <motion.tr 
-                        key={client.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="hover:bg-white/80 transition-colors group cursor-pointer"
-                        onClick={() => router.push(`/admin/clients/${client.id}`)}
-                      >
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col">
-                            <span className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors line-clamp-1">
-                              {client.companyName || client.projectName || client.email || 'Unnamed Client'}
-                            </span>
-                            {client.email && (
-                              <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1 mt-0.5 line-clamp-1">
-                                <Mail className="w-3 h-3" /> {client.email}
+                      <React.Fragment key={client.id}>
+                        <motion.tr 
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="hover:bg-white/80 transition-colors group cursor-pointer"
+                          onClick={() => router.push(`/admin/clients/${client.id}`)}
+                        >
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col">
+                              <span className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors line-clamp-1">
+                                {client.companyName || client.projectName || client.email || 'Unnamed Client'}
                               </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <StatusBadge statusName={client.status} />
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-                              <Users className="w-3 h-3" />
+                              {client.email && (
+                                <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1 mt-0.5 line-clamp-1">
+                                  <Mail className="w-3 h-3" /> {client.email}
+                                </span>
+                              )}
                             </div>
-                            <span className="text-sm font-medium text-slate-700 truncate max-w-[120px]">
-                              {client.assignedEmployeeName || 'Unassigned'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
-                            <Globe className="w-4 h-4 text-slate-400" />
-                            <span className="truncate max-w-[150px]">{client.website || '-'}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col">
-                            <span className="text-sm text-slate-600 font-medium truncate max-w-[200px]">
-                              {client.lastActivity || '-'}
-                            </span>
-                            {client.lastActivityDate && (
-                              <span className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
-                                {new Date(client.lastActivityDate).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4">
+                            <StatusBadge statusName={client.status} />
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                                <Users className="w-3 h-3" />
+                              </div>
+                              <span className="text-sm font-medium text-slate-700 truncate max-w-[120px]">
+                                {client.assignedEmployeeName || 'Unassigned'}
                               </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                           <div className="flex flex-col gap-1">
-                             {client.services_requested && <span className="px-2 py-0.5 bg-sky-50 text-sky-600 rounded text-[10px] font-bold w-max">Req: {client.services_requested}</span>}
-                             {client.services_offered && <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold w-max">Off: {client.services_offered}</span>}
-                           </div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button 
-                            onClick={e => { e.preventDefault(); e.stopPropagation(); handleDeleteClient(client.id); }} 
-                            title="Delete client" 
-                            className="p-2 rounded-xl bg-slate-50 hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                          </button>
-                        </td>
-                      </motion.tr>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+                              <Globe className="w-4 h-4 text-slate-400" />
+                              <span className="truncate max-w-[150px]">{client.website || '-'}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col">
+                              <span className="text-sm text-slate-600 font-medium truncate max-w-[200px]">
+                                {client.lastActivity || '-'}
+                              </span>
+                              {client.lastActivityDate && (
+                                <span className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+                                  {new Date(client.lastActivityDate).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                             <div className="flex flex-col gap-1">
+                               {client.services_requested && <span className="px-2 py-0.5 bg-sky-50 text-sky-600 rounded text-[10px] font-bold w-max">Req: {client.services_requested}</span>}
+                               {client.services_offered && <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold w-max">Off: {client.services_offered}</span>}
+                             </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button 
+                                onClick={e => { e.preventDefault(); e.stopPropagation(); setExpandedRowId(p => p === client.id ? null : client.id); }} 
+                                title="Quick Actions" 
+                                className="p-2 rounded-xl bg-slate-50 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
+                              >
+                                <ChevronRight className={cn("w-4 h-4 transition-transform", expandedRowId === client.id && "rotate-90")} />
+                              </button>
+                              <button 
+                                onClick={e => { e.preventDefault(); e.stopPropagation(); handleDeleteClient(client.id); }} 
+                                title="Delete client" 
+                                className="p-2 rounded-xl bg-slate-50 hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                            </div>
+                          </td>
+                        </motion.tr>
+                        <AnimatePresence>
+                          {expandedRowId === client.id && (
+                            <motion.tr
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="bg-slate-50/80 dark:bg-slate-800/30 overflow-hidden"
+                            >
+                              <td colSpan={7} className="p-0 border-b border-slate-200">
+                                <div className="px-6 py-4 flex items-center gap-3">
+                                  <button
+                                    onClick={() => handleQuickAction(client.id, 'analyse')}
+                                    disabled={!!actionLoading[client.id]}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-100 text-indigo-700 text-sm font-bold hover:bg-indigo-200 transition-colors"
+                                  >
+                                    {actionLoading[client.id] === 'analyse' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
+                                    Analyse Client
+                                  </button>
+                                  <button
+                                    onClick={() => handleQuickAction(client.id, 'extract')}
+                                    disabled={!!actionLoading[client.id]}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 text-sm font-bold hover:bg-emerald-200 transition-colors"
+                                  >
+                                    {actionLoading[client.id] === 'extract' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                                    Extract Services
+                                  </button>
+                                  <button
+                                    onClick={() => handleQuickAction(client.id, 'email')}
+                                    disabled={!!actionLoading[client.id]}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-100 text-blue-700 text-sm font-bold hover:bg-blue-200 transition-colors"
+                                  >
+                                    {actionLoading[client.id] === 'email' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                                    Email Outbound
+                                  </button>
+                                  <button
+                                    onClick={() => handleQuickAction(client.id, 'opportunity')}
+                                    disabled={!!actionLoading[client.id]}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-200 text-slate-700 text-sm font-bold hover:bg-slate-300 transition-colors ml-auto"
+                                  >
+                                    <Briefcase className="w-4 h-4" />
+                                    View Opportunity
+                                  </button>
+                                </div>
+                              </td>
+                            </motion.tr>
+                          )}
+                        </AnimatePresence>
+                      </React.Fragment>
                     ))}
                   </AnimatePresence>
                 </tbody>

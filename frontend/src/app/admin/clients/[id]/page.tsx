@@ -684,6 +684,8 @@ export default function AdminClientDetailPage() {
                     client={client}
                     timeline={timeline}
                     serviceRequests={serviceRequests}
+                    research={research}
+                    emails={emails}
                   />
                 )}
                 {activeTab === 'files' && (
