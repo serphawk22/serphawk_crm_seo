@@ -1,10 +1,13 @@
 import json
+import time
 from datetime import datetime
 from sqlmodel import Session
+from contextvars import ContextVar
+
 from database import engine, ApiRequest
 
 PRICING = {
-    "gpt-4o": {"input": 5.0, "output": 15.0}, # per 1M tokens
+    "gpt-4o": {"input": 5.0, "output": 15.0},
     "gpt-4-turbo": {"input": 10.0, "output": 30.0},
     "gpt-3.5-turbo": {"input": 0.5, "output": 1.5},
     "claude-3-opus": {"input": 15.0, "output": 75.0},
@@ -14,14 +17,14 @@ PRICING = {
     "gemini-1.5-flash": {"input": 0.075, "output": 0.3},
 }
 
+# Context variables to hold current request context
+current_client_id: ContextVar[int] = ContextVar("current_client_id", default=None)
+current_salesperson_id: ContextVar[int] = ContextVar("current_salesperson_id", default=None)
+current_endpoint: ContextVar[str] = ContextVar("current_endpoint", default="background_task")
+
 def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> tuple[float, float, float]:
-    """Calculate input, output and total cost based on the model"""
     model_lower = model.lower()
-    
-    # Try exact match first
     rates = PRICING.get(model_lower)
-    
-    # Fallback substring matching
     if not rates:
         if "gpt-4o" in model_lower:
             rates = PRICING["gpt-4o"]
@@ -38,7 +41,7 @@ def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> tuple[f
         elif "gpt-4" in model_lower:
             rates = PRICING["gpt-4-turbo"]
         else:
-            rates = {"input": 0.0, "output": 0.0} # Free / Unknown
+            rates = {"input": 0.0, "output": 0.0}
 
     in_cost = (input_tokens / 1_000_000) * rates["input"]
     out_cost = (output_tokens / 1_000_000) * rates["output"]
@@ -74,9 +77,6 @@ def track_api_call(
     content_type: str = "general",
     request_meta: dict = None
 ):
-    """
-    Log an API call directly to the DB.
-    """
     in_cost, out_cost, total_cost = calculate_cost(model, input_tokens, output_tokens)
     provider = determine_provider(model)
     total_tokens = input_tokens + output_tokens + reasoning_tokens
@@ -102,6 +102,64 @@ def track_api_call(
         timestamp=datetime.utcnow()
     )
     
-    with Session(engine) as session:
-        session.add(req)
-        session.commit()
+    try:
+        with Session(engine) as session:
+            session.add(req)
+            session.commit()
+    except Exception as e:
+        print(f"Failed to track API call: {e}")
+
+_original_create = None
+
+def _patched_chat_completions_create(*args, **kwargs):
+    global _original_create
+    start_time = time.time()
+    model_used = kwargs.get("model", "gpt-4o-mini")
+    endpoint = current_endpoint.get()
+    client_id = current_client_id.get()
+    salesperson_id = current_salesperson_id.get()
+    
+    success = True
+    status_code = 200
+    try:
+        response = _original_create(*args, **kwargs)
+    except Exception as e:
+        success = False
+        status_code = getattr(e, 'status_code', 500)
+        track_api_call(
+            endpoint=endpoint,
+            model=model_used,
+            input_tokens=0,
+            output_tokens=0,
+            response_time_ms=int((time.time() - start_time) * 1000),
+            salesperson_id=salesperson_id,
+            client_id=client_id,
+            success=False,
+            status_code=status_code
+        )
+        raise e
+        
+    end_time = time.time()
+    
+    if hasattr(response, 'usage') and response.usage:
+        track_api_call(
+            endpoint=endpoint,
+            model=model_used,
+            input_tokens=response.usage.prompt_tokens or 0,
+            output_tokens=response.usage.completion_tokens or 0,
+            response_time_ms=int((end_time - start_time) * 1000),
+            salesperson_id=salesperson_id,
+            client_id=client_id,
+            success=True,
+            status_code=200
+        )
+    return response
+
+def patch_openai():
+    """Monkey-patch the OpenAI client to globally track tokens."""
+    global _original_create
+    import openai.resources.chat.completions
+    if _original_create is None:
+        _original_create = openai.resources.chat.completions.Completions.create
+        openai.resources.chat.completions.Completions.create = _patched_chat_completions_create
+        print("OpenAI client globally patched for API Intelligence Tracking.")

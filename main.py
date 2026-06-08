@@ -93,12 +93,49 @@ def get_session():
     with Session(engine) as session:
         yield session
 
+from modules.api_tracker import current_client_id, current_salesperson_id, current_endpoint, patch_openai
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+class APIIntelligenceMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Reset context for this request
+        current_client_id.set(None)
+        current_salesperson_id.set(None)
+        current_endpoint.set(request.url.path)
+
+        # Try to infer user from JWT token if Authorization header exists
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            try:
+                import jwt
+                from config import SECRET_KEY, ALGORITHM
+                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                user_id = payload.get("sub")
+                if user_id:
+                    current_salesperson_id.set(int(user_id))
+            except:
+                pass
+        
+        # Try to infer client_id from path parameters
+        # Example paths: /clients/123/something or /projects/456 where we might need to lookup client
+        path_parts = request.url.path.strip("/").split("/")
+        if len(path_parts) >= 2 and path_parts[0] == "clients" and path_parts[1].isdigit():
+            current_client_id.set(int(path_parts[1]))
+            
+        response = await call_next(request)
+        return response
+
 app = FastAPI(title="SerpHawk CRM", version="2.0.0")
+app.add_middleware(APIIntelligenceMiddleware)
+
 from modules.api_intelligence import router as api_intelligence_router
 app.include_router(api_intelligence_router)
 
 @app.on_event("startup")
 def on_startup():
+    patch_openai()
     create_db_and_tables()
 
 allowed_origins = [
