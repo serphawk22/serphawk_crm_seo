@@ -2,6 +2,38 @@ import os
 from openai import OpenAI
 import json
 
+import time
+from modules.api_tracker import track_api_call
+
+def tracked_chat_completion(client, endpoint_name, **kwargs):
+    start_time = time.time()
+    model_used = kwargs.get("model", "gpt-4o-mini")
+    try:
+        response = tracked_chat_completion(client, "tracked_chat_completion", **kwargs)
+    except Exception as e:
+        track_api_call(
+            endpoint=endpoint_name,
+            model=model_used,
+            input_tokens=0,
+            output_tokens=0,
+            response_time_ms=int((time.time() - start_time) * 1000),
+            success=False,
+            status_code=500
+        )
+        raise e
+
+    end_time = time.time()
+    
+    if hasattr(response, 'usage') and response.usage:
+        track_api_call(
+            endpoint=endpoint_name,
+            model=model_used,
+            input_tokens=response.usage.prompt_tokens,
+            output_tokens=response.usage.completion_tokens,
+            response_time_ms=int((end_time - start_time) * 1000)
+        )
+    return response
+
 def get_openai_client():
     api_key = os.getenv('OPENAI_API_KEY')
     if not api_key:
@@ -40,7 +72,7 @@ def analyze_content(text):
         {text[:15000]}
         """
 
-        response = client.chat.completions.create(
+        response = tracked_chat_completion(client, "analyze_content", 
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
@@ -128,7 +160,7 @@ def generate_email(analysis, contact=None, recommended_services=None):
         }}
         """
 
-        response = client.chat.completions.create(
+        response = tracked_chat_completion(client, "generate_email", 
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
@@ -186,7 +218,7 @@ def analyze_document(image_bytes):
     for model in ["gpt-4o-mini", "gpt-4o"]:
         try:
             print(f"OCR: Trying model {model}...")
-            response = client.chat.completions.create(
+            response = tracked_chat_completion(client, "analyze_document", 
                 model=model,
                 messages=[
                     {
@@ -256,7 +288,7 @@ def extract_tasks_from_note(note_content):
         If there are no actionable tasks, return {{"tasks": []}}.
         """
 
-        response = client.chat.completions.create(
+        response = tracked_chat_completion(client, "extract_tasks_from_note", 
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
@@ -314,7 +346,7 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
         - If the user asks to draft an email, intent is 'draft_email'.
         - If you don't know the exact intent, use 'general' and just reply naturally.
         """
-        response = client.chat.completions.create(
+        response = tracked_chat_completion(client, "process_chatbot_command", 
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
@@ -368,7 +400,7 @@ Rules:
 - approx_cost should be a number in USD. Use 0 if truly impossible to estimate.
 - cost_is_estimated is true unless the website explicitly states the price
 """
-        response = client.chat.completions.create(
+        response = tracked_chat_completion(client, "extract_client_services", 
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
@@ -405,7 +437,7 @@ Return ONLY valid JSON matching this structure:
   "industry": "The specific industry they operate in"
 }}
 """
-        response = client.chat.completions.create(
+        response = tracked_chat_completion(client, "extract_client_profile_from_website", 
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},

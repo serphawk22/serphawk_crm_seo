@@ -94,6 +94,8 @@ def get_session():
         yield session
 
 app = FastAPI(title="SerpHawk CRM", version="2.0.0")
+from modules.api_intelligence import router as api_intelligence_router
+app.include_router(api_intelligence_router)
 
 @app.on_event("startup")
 def on_startup():
