@@ -449,6 +449,7 @@ class SendManualRequest(BaseModel):
     website_url: Optional[str] = None
     phone_number: Optional[str] = None
     manual: Optional[bool] = True
+    email_agent_data: Optional[str] = None
 
 @app.post("/send-manual")
 def send_manual(body: SendManualRequest, session: Session = Depends(get_session)):
@@ -502,6 +503,22 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
         session.add(client_profile)
         session.commit()
         session.refresh(client_profile)
+
+    # Step 2.5: Find or create ClientResearch to save email_agent_data
+    if body.email_agent_data:
+        client_research = session.exec(
+            select(ClientResearch).where(ClientResearch.client_id == client_profile.id)
+        ).first()
+        if not client_research:
+            client_research = ClientResearch(
+                client_id=client_profile.id,
+                email_agent_data=body.email_agent_data
+            )
+            session.add(client_research)
+        else:
+            client_research.email_agent_data = body.email_agent_data
+            session.add(client_research)
+        session.commit()
 
     # Step 2.5: Normalize and validate recipient email
     to_email = (body.to_email or "").strip()
@@ -1754,13 +1771,33 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
             Pain Points: {research.pain_points or 'N/A'}
             Business Goals: {research.business_goals or 'N/A'}
             """
-            
+            if research.email_agent_data:
+                try:
+                    ea_data = _json.loads(research.email_agent_data)
+                    research_context += f"\nEmail Agent Intel: {_json.dumps(ea_data.get('company_info', {}), indent=2)}"
+                except:
+                    pass
+
+        # Get Notes and Conversations
+        notes = session.exec(select(ClientNote).where(ClientNote.client_id == client_id).order_by(ClientNote.created_at.desc()).limit(10)).all()
+        conversations = session.exec(select(ClientConversation).where(ClientConversation.client_id == client_id).order_by(ClientConversation.date.desc()).limit(5)).all()
+        
+        interaction_context = ""
+        if notes:
+            interaction_context += "Recent Notes:\n" + "\n".join([f"- {n.content}" for n in notes]) + "\n"
+        if conversations:
+            interaction_context += "Recent Conversations:\n" + "\n".join([f"- {c.type} on {c.date}: {c.summary}" for c in conversations]) + "\n"
+
         prompt = f"""
         You are an expert SDR (Sales Development Representative) at an agency. 
         Write a highly personalized, cold outreach email draft for the following prospect.
         Company: {cp.companyName or 'Unknown'}
         Website: {cp.websiteUrl or 'Unknown'}
         {research_context}
+
+        {interaction_context}
+        If there are recent notes or conversations above, make sure the email acknowledges them appropriately as a follow-up. If none exist, write a standard cold outreach email based on the research.
+
         
         Return ONLY valid JSON matching this schema exactly (no markdown formatting):
         {{
