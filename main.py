@@ -1472,8 +1472,8 @@ def get_client_emails(client_id: int, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
-    return {"emails": []}
-
+    emails = session.exec(select(SentEmail).where(SentEmail.client_id == client_id).order_by(SentEmail.sent_at.desc())).all()
+    return {"emails": emails}
 
 # ─── Client Notes ──────────────────────────────────────────────────────────────
 

@@ -196,43 +196,90 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
 
       {activeSubTab === 'pipeline' && (
         <div className="space-y-6">
-      {/* Active Opportunity Card */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 p-6 shadow-sm">
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">{language === 'es' ? 'Oportunidad Activa' : 'Active Opportunity'}</p>
-            <h3 className="text-xl font-black text-slate-900 dark:text-white">{client?.companyName}</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-              {serviceRequests.length} {language === 'es' ? 'solicitudes de servicio activas' : `active service request${serviceRequests.length !== 1 ? 's' : ''}`}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">{language === 'es' ? 'Valor' : 'Deal Value'}</p>
-            <p className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{dealValue}</p>
-          </div>
-        </div>
-
-        {/* Stage Pipeline */}
-        <div className="mb-6">
-          <p className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">{language === 'es' ? 'Etapa del Pipeline' : 'Pipeline Stage'}</p>
-          <StagePipeline current={currentStage} language={language} />
-        </div>
-
-        {/* Probability */}
-        <ProbabilityBar stage={currentStage} language={language} />
-
-        {/* Key Metrics Row */}
-        <div className="grid grid-cols-3 gap-3 mt-5">
-          {[
-            { label: language === 'es' ? 'Etapa Actual' : 'Current Stage', value: getTranslatedStage(currentStage, language), color: STAGE_CFG[currentStage]?.text || 'text-slate-600' },
-            { label: language === 'es' ? 'Puntaje Lead' : 'Lead Score', value: client?.lead_score ? `${client.lead_score}/100` : '—', color: 'text-indigo-600 dark:text-indigo-400' },
-            { label: language === 'es' ? 'Fuente Lead' : 'Lead Source', value: client?.lead_source || '—', color: 'text-slate-700 dark:text-slate-300' },
-          ].map(({ label, value, color }) => (
-            <div key={label} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50">
-              <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</p>
-              <p className={`text-sm font-black mt-0.5 ${color}`}>{value}</p>
+      {/* Premium Active Opportunity Card */}
+      <div className="rounded-3xl border-0 bg-gradient-to-br from-indigo-600 via-violet-700 to-purple-800 p-8 shadow-2xl relative overflow-hidden text-white">
+        {/* Abstract background shapes */}
+        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 rounded-full bg-white opacity-5 blur-3xl pointer-events-none"></div>
+        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-indigo-400 opacity-10 blur-3xl pointer-events-none"></div>
+        
+        <div className="relative z-10">
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="px-2.5 py-1 rounded-full bg-white/10 border border-white/20 text-[10px] font-black uppercase tracking-widest backdrop-blur-sm">
+                  {language === 'es' ? 'Oportunidad Activa' : 'Active Opportunity'}
+                </span>
+                {serviceRequests.length > 0 && (
+                  <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-100 text-[10px] font-black uppercase tracking-widest backdrop-blur-sm">
+                    {serviceRequests.length} {language === 'es' ? 'Solicitudes' : 'Requests'}
+                  </span>
+                )}
+              </div>
+              <h3 className="text-3xl font-black tracking-tight mb-1 drop-shadow-md">{client?.companyName || 'Unknown Client'}</h3>
+              <p className="text-indigo-100/80 text-sm font-medium flex items-center gap-1.5">
+                <Target size={14} className="opacity-70" />
+                {client?.industry || 'General Industry'}
+              </p>
             </div>
-          ))}
+            
+            <div className="text-left md:text-right bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-4 shadow-xl min-w-[160px]">
+              <p className="text-[10px] font-black uppercase tracking-wider text-indigo-200 mb-1 flex items-center md:justify-end gap-1.5">
+                <TrendingUp size={12} />
+                {language === 'es' ? 'Valor Estimado' : 'Est. Deal Value'}
+              </p>
+              <p className="text-3xl font-black drop-shadow-md text-white">{dealValue}</p>
+            </div>
+          </div>
+
+          {/* Glassmorphism Stage Pipeline */}
+          <div className="mb-8 p-6 bg-black/10 backdrop-blur-md rounded-2xl border border-white/10 shadow-inner">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs font-black uppercase tracking-widest text-indigo-100">
+                {language === 'es' ? 'Progreso del Trato' : 'Deal Progress'}
+              </p>
+              <p className="text-xs font-bold text-white bg-white/10 px-2.5 py-1 rounded-lg">
+                {getTranslatedStage(currentStage, language)}
+              </p>
+            </div>
+            <StagePipeline current={currentStage} language={language} />
+            <div className="mt-6">
+              <ProbabilityBar stage={currentStage} language={language} />
+            </div>
+          </div>
+
+          {/* Key Metrics Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              { 
+                label: language === 'es' ? 'Puntaje de Lead' : 'Lead Score', 
+                value: client?.lead_score ? `${client.lead_score}/100` : '—', 
+                icon: Brain,
+                color: 'text-amber-300'
+              },
+              { 
+                label: language === 'es' ? 'Fuente del Lead' : 'Lead Source', 
+                value: client?.lead_source || '—', 
+                icon: ArrowRight,
+                color: 'text-emerald-300'
+              },
+              { 
+                label: language === 'es' ? 'Último Contacto' : 'Last Contact', 
+                value: client?.last_contact_date ? new Date(client.last_contact_date).toLocaleDateString() : '—', 
+                icon: Clock,
+                color: 'text-sky-300'
+              },
+            ].map(({ label, value, icon: Icon, color }) => (
+              <div key={label} className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors backdrop-blur-sm flex items-start gap-3">
+                <div className={`p-2 rounded-lg bg-black/20 shadow-inner ${color}`}>
+                  <Icon size={16} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-indigo-200 mb-0.5">{label}</p>
+                  <p className="text-sm font-bold text-white">{value}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
