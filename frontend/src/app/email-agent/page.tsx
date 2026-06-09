@@ -744,6 +744,7 @@ export default function EmailAgentPage() {
           website_url: result.company_url || result.company_info?.website || url || null,
           phone_number: result.contact?.phone_number || null,
           manual,
+          email_agent_data: JSON.stringify(result),
         }),
       });
       if (!res.ok) {

@@ -131,7 +131,13 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
   // Milestones from timeline
   const milestoneEvents = timeline.filter(e => e.type === 'milestone').slice(0, 5);
 
-  const [activeSubTab, setActiveSubTab] = React.useState('pipeline');
+  const [activeSubTab, setActiveSubTab] = React.useState('email_agent');
+  const [expandedEmailId, setExpandedEmailId] = React.useState<number | null>(null);
+
+  let eaData: any = null;
+  if (research?.email_agent_data) {
+    try { eaData = JSON.parse(research.email_agent_data); } catch (e) {}
+  }
 
   const [isAutoResearching, setIsAutoResearching] = React.useState(false);
   const [isExtracting, setIsExtracting] = React.useState(false);
@@ -178,7 +184,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
     <div className="space-y-6">
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-4 overflow-x-auto">
         {[
-          { id: 'pipeline', label: language === 'es' ? 'Resumen del Pipeline' : 'Pipeline Overview', icon: Target },
+          { id: 'email_agent', label: language === 'es' ? 'Análisis del Agente IA' : 'AI Agent Analysis', icon: Target },
           { id: 'presales', label: language === 'es' ? 'Investigación Pre-Ventas' : 'Pre-Sales Research', icon: Brain },
           { id: 'emails', label: language === 'es' ? 'Correos Salientes' : 'Outbound Emails', icon: Mail },
         ].map(t => (
@@ -194,99 +200,12 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         ))}
       </div>
 
-      {activeSubTab === 'pipeline' && (
+      {activeSubTab === 'email_agent' && (
         <div className="space-y-6">
-      {/* Premium Active Opportunity Card */}
-      <div className="rounded-3xl border-0 bg-gradient-to-br from-indigo-600 via-violet-700 to-purple-800 p-8 shadow-2xl relative overflow-hidden text-white">
-        {/* Abstract background shapes */}
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 rounded-full bg-white opacity-5 blur-3xl pointer-events-none"></div>
-        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-indigo-400 opacity-10 blur-3xl pointer-events-none"></div>
-        
-        <div className="relative z-10">
-          <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="px-2.5 py-1 rounded-full bg-white/10 border border-white/20 text-[10px] font-black uppercase tracking-widest backdrop-blur-sm">
-                  {language === 'es' ? 'Oportunidad Activa' : 'Active Opportunity'}
-                </span>
-                {serviceRequests.length > 0 && (
-                  <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-100 text-[10px] font-black uppercase tracking-widest backdrop-blur-sm">
-                    {serviceRequests.length} {language === 'es' ? 'Solicitudes' : 'Requests'}
-                  </span>
-                )}
-              </div>
-              <h3 className="text-3xl font-black tracking-tight mb-1 drop-shadow-md">{client?.companyName || 'Unknown Client'}</h3>
-              <p className="text-indigo-100/80 text-sm font-medium flex items-center gap-1.5">
-                <Target size={14} className="opacity-70" />
-                {client?.industry || 'General Industry'}
-              </p>
-            </div>
+          <div className="rounded-3xl border-0 bg-gradient-to-br from-indigo-600 via-violet-700 to-purple-800 p-8 shadow-2xl relative overflow-hidden text-white">
+            <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 rounded-full bg-white opacity-5 blur-3xl pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-indigo-400 opacity-10 blur-3xl pointer-events-none"></div>
             
-            <div className="text-left md:text-right bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-4 shadow-xl min-w-[160px]">
-              <p className="text-[10px] font-black uppercase tracking-wider text-indigo-200 mb-1 flex items-center md:justify-end gap-1.5">
-                <TrendingUp size={12} />
-                {language === 'es' ? 'Valor Estimado' : 'Est. Deal Value'}
-              </p>
-              <p className="text-3xl font-black drop-shadow-md text-white">{dealValue}</p>
-            </div>
-          </div>
-
-          {/* Glassmorphism Stage Pipeline */}
-          <div className="mb-8 p-6 bg-black/10 backdrop-blur-md rounded-2xl border border-white/10 shadow-inner">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-xs font-black uppercase tracking-widest text-indigo-100">
-                {language === 'es' ? 'Progreso del Trato' : 'Deal Progress'}
-              </p>
-              <p className="text-xs font-bold text-white bg-white/10 px-2.5 py-1 rounded-lg">
-                {getTranslatedStage(currentStage, language)}
-              </p>
-            </div>
-            <StagePipeline current={currentStage} language={language} />
-            <div className="mt-6">
-              <ProbabilityBar stage={currentStage} language={language} />
-            </div>
-          </div>
-
-          {/* Key Metrics Row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              { 
-                label: language === 'es' ? 'Puntaje de Lead' : 'Lead Score', 
-                value: client?.lead_score ? `${client.lead_score}/100` : '—', 
-                icon: Brain,
-                color: 'text-amber-300'
-              },
-              { 
-                label: language === 'es' ? 'Fuente del Lead' : 'Lead Source', 
-                value: client?.lead_source || '—', 
-                icon: ArrowRight,
-                color: 'text-emerald-300'
-              },
-              { 
-                label: language === 'es' ? 'Último Contacto' : 'Last Contact', 
-                value: client?.last_contact_date ? new Date(client.last_contact_date).toLocaleDateString() : '—', 
-                icon: Clock,
-                color: 'text-sky-300'
-              },
-            ].map(({ label, value, icon: Icon, color }) => (
-              <div key={label} className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors backdrop-blur-sm flex items-start gap-3">
-                <div className={`p-2 rounded-lg bg-black/20 shadow-inner ${color}`}>
-                  <Icon size={16} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-wider text-indigo-200 mb-0.5">{label}</p>
-                  <p className="text-sm font-bold text-white">{value}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Service Requests / Opportunities */}
-      {serviceRequests.length > 0 && (
-        <div>
-          <p className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">{language === 'es' ? 'Solicitudes de Servicio' : 'Service Requests'}</p>
           <div className="space-y-2">
             {serviceRequests.map((req: any) => {
               const statusColor: Record<string, string> = {
@@ -449,8 +368,10 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
           </div>
           
           <div className="space-y-3">
-            {emails.map((em: any, idx: number) => (
-              <div key={idx} className="p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 hover:shadow-md transition-shadow">
+            {emails.map((em: any, idx: number) => {
+              const isExpanded = expandedEmailId === idx;
+              return (
+              <div key={idx} className="p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 hover:shadow-md transition-shadow cursor-pointer" onClick={() => setExpandedEmailId(isExpanded ? null : idx)}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
@@ -464,17 +385,37 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                   </div>
                 </div>
                 {em.english_body && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed ml-8">
-                    {em.english_body}
-                  </p>
+                  <div className="ml-8">
+                    {!isExpanded ? (
+                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                        {em.english_body}
+                      </p>
+                    ) : (
+                      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
+                          <p className="text-[10px] font-black uppercase text-blue-600 mb-2">English</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">{em.english_body}</p>
+                        </div>
+                        {em.spanish_body && (
+                          <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
+                            <p className="text-[10px] font-black uppercase text-blue-600 mb-2">Spanish</p>
+                            <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">{em.spanish_body}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
                 {em.manual && (
                   <span className="inline-block ml-8 mt-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-bold uppercase tracking-wider rounded-md">
                     Manual Draft
                   </span>
                 )}
+                {!isExpanded && (
+                  <p className="ml-8 mt-1 text-[10px] text-indigo-500 font-medium">Click to view full email</p>
+                )}
               </div>
-            ))}
+            )})}
           </div>
         </div>
       ) : (

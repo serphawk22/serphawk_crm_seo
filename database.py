@@ -723,6 +723,7 @@ class ClientResearch(SQLModel, table=True):
     pain_points: Optional[str] = Field(default=None, sa_column=Column(Text))
     business_goals: Optional[str] = Field(default=None, sa_column=Column(Text))
     key_decision_makers: Optional[str] = Field(default=None, sa_column=Column(Text))
+    email_agent_data: Optional[str] = Field(default=None, sa_column=Column(Text))
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
