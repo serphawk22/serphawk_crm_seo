@@ -279,7 +279,6 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                         </div>
                      </div>
                   </div>
-                  </div>
                   
                   {/* Additional Intelligence: Recommended Services, Extracted Services, and Drafts */}
                   {eaData.recommended_services && eaData.recommended_services.length > 0 && (
