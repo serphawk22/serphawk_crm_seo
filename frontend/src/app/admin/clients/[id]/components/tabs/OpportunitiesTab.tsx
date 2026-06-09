@@ -202,65 +202,93 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
 
       {activeSubTab === 'email_agent' && (
         <div className="space-y-6">
+          {/* AI Agent Analysis Card */}
           <div className="rounded-3xl border-0 bg-gradient-to-br from-indigo-600 via-violet-700 to-purple-800 p-8 shadow-2xl relative overflow-hidden text-white">
             <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 rounded-full bg-white opacity-5 blur-3xl pointer-events-none"></div>
             <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-indigo-400 opacity-10 blur-3xl pointer-events-none"></div>
             
-          <div className="space-y-2">
-            {serviceRequests.map((req: any) => {
-              const statusColor: Record<string, string> = {
-                Pending: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
-                Quoted: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
-                Accepted: 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400',
-                'In Progress': 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
-                Delivered: 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400',
-              };
-              const finalStatusColor = statusColor[req.status] || 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400';
-
-              const reqStatusEs: Record<string, string> = { Pending: 'Pendiente', Quoted: 'Cotizado', Accepted: 'Aceptado', 'In Progress': 'En Progreso', Delivered: 'Entregado' };
-              const finalReqStatusEs = reqStatusEs[req.status] || req.status;
-
-              return (
-                <div key={req.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{req.service_name || (language === 'es' ? 'Solicitud de Servicio' : 'Service Request')}</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500">
-                      {language === 'es' ? 'Solicitado el' : 'Requested'} {req.requested_at ? new Date(req.requested_at).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' }) : '—'}
-                    </p>
+            <div className="relative z-10">
+              <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="px-2.5 py-1 rounded-full bg-white/10 border border-white/20 text-[10px] font-black uppercase tracking-widest backdrop-blur-sm">
+                      {language === 'es' ? 'Inteligencia de Negocios' : 'Business Intelligence'}
+                    </span>
+                    <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-100 text-[10px] font-black uppercase tracking-widest backdrop-blur-sm">
+                      {eaData ? 'Agent Data Extracted' : 'No Agent Data'}
+                    </span>
                   </div>
-                  <div className="text-right">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${statusColor}`}>{language === 'es' ? reqStatusEs : req.status}</span>
-                    {req.quoted_amount && (
-                      <p className="text-xs font-bold text-slate-600 dark:text-slate-400 mt-1">${Number(req.quoted_amount).toLocaleString()}</p>
+                  <h3 className="text-3xl font-black tracking-tight mb-1 drop-shadow-md">{eaData?.company_info?.company_name || client?.companyName || 'Unknown Client'}</h3>
+                  <p className="text-indigo-100/80 text-sm font-medium flex items-center gap-1.5">
+                    <Target size={14} className="opacity-70" />
+                    {eaData?.company_info?.likely_industry || eaData?.company_info?.industry || client?.industry || 'General Industry'}
+                  </p>
+                </div>
+              </div>
+
+              {eaData ? (
+                <div className="space-y-6">
+                  {eaData.company_info?.summary && (
+                    <div className="p-5 bg-black/20 backdrop-blur-md rounded-2xl border border-white/10 shadow-inner">
+                      <p className="text-xs font-black uppercase tracking-widest text-indigo-200 mb-2">Company Summary</p>
+                      <p className="text-sm font-medium text-white leading-relaxed">{eaData.company_info.summary}</p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {eaData.company_info?.best_conversion_opportunity && (
+                      <div className="p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-amber-300 mb-1">Conversion Priority</p>
+                        <p className="text-sm font-bold text-white">{eaData.company_info.best_conversion_opportunity}</p>
+                      </div>
+                    )}
+                    {eaData.company_info?.sales_follow_up_focus && (
+                      <div className="p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300 mb-1">Follow Up Focus</p>
+                        <p className="text-sm font-bold text-white">{eaData.company_info.sales_follow_up_focus}</p>
+                      </div>
+                    )}
+                    {eaData.company_info?.business_model && (
+                      <div className="p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-sky-300 mb-1">Business Model</p>
+                        <p className="text-sm font-bold text-white">{eaData.company_info.business_model}</p>
+                      </div>
+                    )}
+                    {eaData.company_info?.target_market && (
+                      <div className="p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-purple-300 mb-1">Target Market</p>
+                        <p className="text-sm font-bold text-white">{eaData.company_info.target_market}</p>
+                      </div>
                     )}
                   </div>
+                  
+                  <div className="p-5 bg-black/20 backdrop-blur-md rounded-2xl border border-white/10 shadow-inner mt-4">
+                     <p className="text-xs font-black uppercase tracking-widest text-indigo-200 mb-3">Extracted Contacts</p>
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                          <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Emails</p>
+                          <p className="text-sm text-white font-mono break-all">{eaData.company_info?.extracted_emails || 'None'}</p>
+                        </div>
+                        <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                          <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Phones</p>
+                          <p className="text-sm text-white font-mono break-all">{eaData.company_info?.extracted_phone_numbers || 'None'}</p>
+                        </div>
+                        <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+                          <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">LinkedIn</p>
+                          <p className="text-sm text-white font-mono break-all">{eaData.company_info?.extracted_linkedin || 'None'}</p>
+                        </div>
+                     </div>
+                  </div>
                 </div>
-              );
-            })}
+              ) : (
+                <div className="text-center py-10 bg-black/10 rounded-2xl border border-white/10 border-dashed backdrop-blur-md">
+                   <p className="text-indigo-200 text-sm font-medium mb-3">No AI Agent data found for this client.</p>
+                   <p className="text-xs text-white/50">Run the AI Email Agent and save a draft to capture deep intelligence.</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      )}
-
-      {/* Stage History */}
-      {milestoneEvents.length > 0 && (
-        <div>
-          <p className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">{language === 'es' ? 'Historial de Etapas' : 'Stage History'}</p>
-          <div className="space-y-2">
-            {milestoneEvents.map((ev: any, i: number) => (
-              <div key={i} className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900">
-                <div className="w-7 h-7 rounded-full bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center text-xs flex-shrink-0">🎯</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{ev.title}</p>
-                </div>
-                <span className="text-xs text-slate-400 dark:text-slate-500">
-                  {ev.date ? new Date(ev.date).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' }) : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      </div>
       )}
 
       {activeSubTab === 'presales' && (
