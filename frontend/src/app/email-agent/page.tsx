@@ -786,6 +786,7 @@ export default function EmailAgentPage() {
           task_description: note,
           due_date: null,
           assigned_to: null,
+          email_agent_data: JSON.stringify(result),
         }),
       });
       return response.ok;

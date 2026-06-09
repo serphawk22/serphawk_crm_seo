@@ -766,6 +766,7 @@ class ClientFollowUpRequest(BaseModel):
     task_description: Optional[str] = None
     assigned_to: Optional[int] = None
     due_date: Optional[str] = None
+    email_agent_data: Optional[str] = None
 
 
 class ProjectCreateRequest(BaseModel):
@@ -1443,6 +1444,21 @@ def add_client_followup(client_id: int, body: ClientFollowUpRequest, session: Se
     session.commit()
     session.refresh(remark)
 
+    if body.email_agent_data:
+        client_research = session.exec(
+            select(ClientResearch).where(ClientResearch.client_id == client_id)
+        ).first()
+        if not client_research:
+            client_research = ClientResearch(
+                client_id=client_id,
+                email_agent_data=body.email_agent_data
+            )
+            session.add(client_research)
+        else:
+            client_research.email_agent_data = body.email_agent_data
+            session.add(client_research)
+        session.commit()
+
     task_response = None
     if body.task_title:
         task = Task(
@@ -1669,6 +1685,7 @@ def get_client_research(client_id: int, session: Session = Depends(get_session))
         "competitors": research.competitors, "tech_stack": research.tech_stack,
         "recent_news": research.recent_news, "pain_points": research.pain_points,
         "business_goals": research.business_goals, "key_decision_makers": research.key_decision_makers,
+        "email_agent_data": research.email_agent_data,
         "updated_at": research.updated_at.isoformat(),
     }}
 
