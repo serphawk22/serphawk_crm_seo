@@ -279,6 +279,77 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                         </div>
                      </div>
                   </div>
+                  </div>
+                  
+                  {/* Additional Intelligence: Recommended Services, Extracted Services, and Drafts */}
+                  {eaData.recommended_services && eaData.recommended_services.length > 0 && (
+                    <div className="p-5 bg-black/20 backdrop-blur-md rounded-2xl border border-white/10 shadow-inner mt-4">
+                      <p className="text-xs font-black uppercase tracking-widest text-emerald-300 mb-3 flex items-center gap-2"><Target size={14} /> Recommended Services</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {eaData.recommended_services.map((rs: any, i: number) => {
+                           const sName = typeof rs === 'string' ? rs : rs.service_name;
+                           const sReason = typeof rs === 'string' ? null : rs.reasoning;
+                           return (
+                             <div key={i} className="bg-white/5 p-4 rounded-xl border border-white/10">
+                               <p className="text-sm font-bold text-white mb-1">{sName}</p>
+                               {sReason && <p className="text-xs text-indigo-200/80 leading-relaxed">{sReason}</p>}
+                             </div>
+                           );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {eaData.extracted_services && eaData.extracted_services.length > 0 && (
+                    <div className="p-5 bg-black/20 backdrop-blur-md rounded-2xl border border-white/10 shadow-inner mt-4">
+                      <p className="text-xs font-black uppercase tracking-widest text-sky-300 mb-3 flex items-center gap-2"><Store size={14} /> Services Offered By This Company</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {eaData.extracted_services.map((es: any, i: number) => (
+                          <div key={i} className="bg-white/5 p-4 rounded-xl border border-white/10">
+                            <div className="flex justify-between items-start mb-2">
+                              <span className="px-2 py-0.5 bg-white/10 text-[9px] font-bold uppercase tracking-widest rounded-md text-sky-200">{es.category || 'Service'}</span>
+                              {es.approx_cost > 0 && (
+                                <span className="text-[10px] font-bold text-emerald-300">${es.approx_cost.toLocaleString()} {es.cost_is_estimated && 'est.'}</span>
+                              )}
+                            </div>
+                            <p className="text-sm font-bold text-white mb-1">{es.name}</p>
+                            <p className="text-xs text-indigo-200/80 leading-relaxed">{es.brief}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {eaData.draft && (
+                    <div className="p-5 bg-black/20 backdrop-blur-md rounded-2xl border border-white/10 shadow-inner mt-4">
+                      <p className="text-xs font-black uppercase tracking-widest text-violet-300 mb-3 flex items-center gap-2"><Mail size={14} /> Generated Email Draft</p>
+                      <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-indigo-300 mb-1">Subject</p>
+                        <p className="text-sm font-bold text-white mb-4">{eaData.draft.subject}</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {eaData.draft.english_body && (
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-wider text-blue-300 mb-2">English</p>
+                              <p className="text-xs text-indigo-100/90 whitespace-pre-wrap font-mono leading-relaxed bg-black/30 p-3 rounded-lg">{eaData.draft.english_body}</p>
+                            </div>
+                          )}
+                          {(eaData.draft.spanish_body || (!eaData.draft.english_body && eaData.draft.body)) && (
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-wider text-blue-300 mb-2">{eaData.draft.spanish_body ? 'Spanish' : 'Body'}</p>
+                              <p className="text-xs text-indigo-100/90 whitespace-pre-wrap font-mono leading-relaxed bg-black/30 p-3 rounded-lg">{eaData.draft.spanish_body || eaData.draft.body}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {eaData.email_hook && (
+                     <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 backdrop-blur-sm mt-4">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-amber-300 mb-1 flex items-center gap-1.5"><ArrowRight size={12} /> Email Hook</p>
+                        <p className="text-sm font-bold text-white">{eaData.email_hook}</p>
+                     </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-10 bg-black/10 rounded-2xl border border-white/10 border-dashed backdrop-blur-md">
