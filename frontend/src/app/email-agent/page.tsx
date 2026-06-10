@@ -109,10 +109,10 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-      className="p-1.5 rounded-lg hover:bg-white/20 text-gray-300 hover:text-white transition-all"
+      className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-all"
       title="Copy"
     >
-      {copied ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+      {copied ? <Check className="w-3.5 h-3.5 text-slate-800" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
   );
 }
@@ -191,7 +191,7 @@ function BottomUpFillMail() {
   return (
     <div className="flex flex-col items-center gap-4 py-6">
       <div className="relative w-12 h-12">
-        <Mail className="absolute inset-0 w-12 h-12 text-gray-400" strokeWidth={1} />
+        <Mail className="absolute inset-0 w-12 h-12 text-slate-400" strokeWidth={1} />
         <motion.div
           className="absolute bottom-0 left-0 right-0 overflow-hidden"
           initial={{ height: "0%" }}
@@ -199,11 +199,11 @@ function BottomUpFillMail() {
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
         >
           <div className="absolute bottom-0 left-0 w-12 h-12">
-            <Mail className="w-12 h-12 text-white" strokeWidth={1} fill="white" />
+            <Mail className="w-12 h-12 text-slate-800" strokeWidth={1} fill="white" />
           </div>
         </motion.div>
       </div>
-      <p className="text-xs font-bold text-gray-300 animate-pulse">Researching & drafting...</p>
+      <p className="text-xs font-bold text-slate-500 animate-pulse">Researching & drafting...</p>
     </div>
   );
 }
@@ -274,27 +274,27 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
       {/* Top row: Company Info + Contact */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Company Info */}
-        <div className="bg-black/60 backdrop-blur-md border border-white/20 rounded-2xl p-6 lg:col-span-2 shadow-xl">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 lg:col-span-2 shadow-sm">
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-white font-black text-lg shadow-inner">
+              <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-800 font-black text-lg shadow-inner">
                 {(result.company_info?.company_name || companyName).charAt(0).toUpperCase()}
               </div>
               <div>
-                <h2 className="text-xl font-black text-white">{result.company_info?.company_name || companyName}</h2>
-                <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">
+                <h2 className="text-xl font-black text-slate-800">{result.company_info?.company_name || companyName}</h2>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                   {result.company_info?.likely_industry || result.company_info?.industry || "Business"}
                 </p>
               </div>
             </div>
             {result.package_suggestion && (
-              <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-white text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
+              <span className="px-3 py-1 rounded-full bg-white border border-slate-200 border border-slate-200 text-slate-800 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
                 <Package className="w-3 h-3" /> {result.package_suggestion}
               </span>
             )}
           </div>
 
-          <p className="text-gray-300 text-sm leading-relaxed mb-5">
+          <p className="text-slate-500 text-sm leading-relaxed mb-5">
             {result.company_info?.summary || result.company_info?.what_they_do || "Company information loading..."}
           </p>
 
@@ -305,54 +305,54 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
               { label: "Market", value: result.company_info?.target_market, icon: Target },
               { label: "Reach", value: result.company_info?.geographic_presence, icon: Globe },
             ].filter(f => f.value).map(({ label, value, icon: Icon }) => (
-              <div key={label} className="p-3 bg-white/5 border border-white/10 rounded-xl">
+              <div key={label} className="p-3 bg-slate-50 border border-slate-100 rounded-xl">
                 <div className="flex items-center gap-1.5 mb-1">
-                  <Icon className="w-3 h-3 text-gray-400" />
-                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{label}</p>
+                  <Icon className="w-3 h-3 text-slate-400" />
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
                 </div>
-                <p className="text-sm font-bold text-white truncate">{value}</p>
+                <p className="text-sm font-bold text-slate-800 truncate">{value}</p>
               </div>
             ))}
           </div>
         </div>
 
         {/* Contact Card */}
-        <div className="bg-black/60 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-xl">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-2 mb-5">
-            <div className="p-2 rounded-xl bg-white/10 border border-white/20 text-white">
+            <div className="p-2 rounded-xl bg-white border border-slate-200 border border-slate-200 text-slate-800">
               <AtSign className="w-4 h-4" />
             </div>
-            <p className="text-[10px] font-black text-white uppercase tracking-widest">Business Contact</p>
+            <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Business Contact</p>
           </div>
 
           {result.contact?.email ? (
             <div className="space-y-4">
-              <div className="p-4 bg-white/5 border border-white/10 rounded-xl flex items-center justify-between">
+              <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between">
                 <div>
-                  <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Email</p>
-                  <p className="text-sm font-black text-white">{result.contact.email}</p>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Email</p>
+                  <p className="text-sm font-black text-slate-800">{result.contact.email}</p>
                 </div>
                 <CopyButton text={result.contact.email} />
               </div>
               {result.contact.phone_number && (
-                <div className="p-4 bg-white/5 border border-white/10 rounded-xl flex items-center justify-between">
+                <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between">
                   <div>
-                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Phone</p>
-                    <p className="text-sm font-black text-white">{result.contact.phone_number}</p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Phone</p>
+                    <p className="text-sm font-black text-slate-800">{result.contact.phone_number}</p>
                   </div>
                   <CopyButton text={result.contact.phone_number} />
                 </div>
               )}
               {result.contact.name && (
                 <div>
-                  <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Contact</p>
-                  <p className="text-sm font-bold text-white">{result.contact.name}</p>
-                  {result.contact.role && <p className="text-xs text-gray-300">{result.contact.role}</p>}
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Contact</p>
+                  <p className="text-sm font-bold text-slate-800">{result.contact.name}</p>
+                  {result.contact.role && <p className="text-xs text-slate-500">{result.contact.role}</p>}
                 </div>
               )}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-24 text-gray-400">
+            <div className="flex flex-col items-center justify-center h-24 text-slate-400">
               <AtSign className="w-8 h-8 opacity-30" />
               <p className="text-xs mt-2">No contact found</p>
             </div>
@@ -362,15 +362,15 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
 
       {/* Recommended Services */}
       {result.recommended_services && result.recommended_services.length > 0 && (
-        <div className="bg-black/60 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-xl">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-2 mb-5">
-            <div className="p-2 rounded-xl bg-white/10 border border-white/20 text-white">
+            <div className="p-2 rounded-xl bg-white border border-slate-200 border border-slate-200 text-slate-800">
               <Zap className="w-4 h-4" />
             </div>
-            <p className="text-[10px] font-black text-white uppercase tracking-widest">Recommended Services</p>
+            <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Recommended Services</p>
           </div>
           {result.email_hook && (
-            <p className="text-sm text-white italic mb-5 bg-white/5 p-4 rounded-xl border border-white/10">
+            <p className="text-sm text-slate-800 italic mb-5 bg-slate-50 p-4 rounded-xl border border-slate-100">
               &ldquo;{result.email_hook}&rdquo;
             </p>
           )}
@@ -378,14 +378,14 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
             {result.recommended_services && result.recommended_services.map((svc, i: number) => {
               const service = typeof svc === 'string' ? { service_name: svc } : svc;
               return (
-                <div key={i} className="p-4 bg-white/5 border border-white/10 rounded-xl hover:border-white/30 hover:bg-white/10 transition-all">
+                <div key={i} className="p-4 bg-slate-50 border border-slate-100 rounded-xl hover:border-slate-300 hover:bg-white border border-slate-200 transition-all">
                   <div className="flex items-start gap-3">
-                    <div className="p-1.5 rounded-lg bg-white/10 text-white shrink-0 mt-0.5">
+                    <div className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-800 shrink-0 mt-0.5">
                       <TrendingUp className="w-3.5 h-3.5" />
                     </div>
                     <div>
-                      <p className="font-bold text-white text-sm">{service.service_name}</p>
-                      <p className="text-xs text-gray-300 mt-1">{service.why_relevant}</p>
+                      <p className="font-bold text-slate-800 text-sm">{service.service_name}</p>
+                      <p className="text-xs text-slate-500 mt-1">{service.why_relevant}</p>
                       {service.expected_impact && (
                         <p className="text-[10px] text-green-400 font-bold mt-2 flex items-center gap-1">
                           <CheckCircle className="w-3 h-3" /> {service.expected_impact}
@@ -402,7 +402,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
 
       {/* Extracted Client Services */}
       {result.extracted_services && result.extracted_services.length > 0 && (
-        <div className="bg-black/60 backdrop-blur-md border border-emerald-500/30 rounded-2xl p-6 shadow-xl">
+        <div className="bg-white border border-emerald-500/30 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-2 mb-5">
             <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">
               <Store className="w-4 h-4" />
@@ -414,7 +414,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {result.extracted_services.map((svc, i) => (
-              <div key={i} className="p-4 bg-white/5 border border-white/10 rounded-xl hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all">
+              <div key={i} className="p-4 bg-slate-50 border border-slate-100 rounded-xl hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                     {svc.category}
@@ -427,8 +427,8 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                     </span>
                   )}
                 </div>
-                <p className="font-bold text-white text-sm mb-1">{svc.name}</p>
-                {svc.brief && <p className="text-xs text-gray-300 leading-relaxed">{svc.brief}</p>}
+                <p className="font-bold text-slate-800 text-sm mb-1">{svc.name}</p>
+                {svc.brief && <p className="text-xs text-slate-500 leading-relaxed">{svc.brief}</p>}
               </div>
             ))}
           </div>
@@ -440,22 +440,22 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
 
 
       {result.draft && (
-        <div className="bg-black/60 backdrop-blur-md border border-white/20 rounded-2xl p-6 shadow-xl">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-white/20 text-white">
+              <div className="p-2 rounded-xl bg-slate-100 text-slate-800">
                 <FileText className="w-4 h-4" />
               </div>
-              <p className="text-[10px] font-black text-white uppercase tracking-widest">Generated Email Draft</p>
+              <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Generated Email Draft</p>
             </div>
             <CopyButton text={activeTab === "english" ? (result.draft.english_body || result.draft.body || "") : (result.draft.spanish_body || "")} />
           </div>
 
           {result.draft.subject && (
-            <div className="mb-4 p-3 bg-white/5 rounded-xl border border-white/10 flex items-center justify-between">
+            <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
               <div>
-                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Subject</p>
-                <p className="text-sm font-bold text-white">{result.draft.subject}</p>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Subject</p>
+                <p className="text-sm font-bold text-slate-800">{result.draft.subject}</p>
               </div>
               <CopyButton text={result.draft.subject} />
             </div>
@@ -470,7 +470,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${
-                  activeTab === tab.key ? "bg-white text-black border-white" : "bg-transparent text-gray-300 border-white/20 hover:bg-white/10"
+                  activeTab === tab.key ? "bg-white text-black border-white" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-white border border-slate-200"
                 }`}
               >
                 {tab.label}
@@ -478,7 +478,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
             ))}
           </div>
 
-          <div className="bg-white/5 border border-white/10 rounded-xl p-5 text-sm text-gray-100 whitespace-pre-wrap leading-relaxed max-h-80 overflow-auto font-mono custom-scrollbar">
+          <div className="bg-slate-50 border border-slate-100 rounded-xl p-5 text-sm text-gray-100 whitespace-pre-wrap leading-relaxed max-h-80 overflow-auto font-mono custom-scrollbar">
             {activeTab === "english"
               ? (result.draft.english_body || result.draft.body || "No English draft generated")
               : (result.draft.spanish_body || "No Spanish draft generated")}
@@ -490,7 +490,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                 {buildProspectingPoints(result).map((point, idx) => {
                   const Icon = point.icon;
                   return (
-                    <div key={idx} className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-slate-100">
+                    <div key={idx} className="rounded-3xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-100">
                       <div className="flex items-center gap-2 mb-3 text-slate-300">
                         <Icon className="w-4 h-4" />
                         <span className="font-bold uppercase tracking-[0.18em] text-[10px]">{point.title}</span>
@@ -501,21 +501,21 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                 })}
               </div>
 
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-4">
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-4">
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-bold text-white">
-                      <Send className="w-4 h-4 text-gray-300" />
+                    <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                      <Send className="w-4 h-4 text-slate-500" />
                       <span>Ready to send to: {contactEmail}</span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">Use your Gmail credentials to send the outreach email instantly.</p>
+                    <p className="text-xs text-slate-400 mt-1">Use your Gmail credentials to send the outreach email instantly.</p>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
                     <button
                       onClick={handleSendAutomatically}
                       disabled={sending || !!sendSuccess}
-                      className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-emerald-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                      className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-800 font-bold text-xs flex items-center gap-2 hover:bg-emerald-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                     >
                       {sending ? <Clock className="w-3.5 h-3.5 animate-spin" /> : sendSuccess ? <CheckCircle className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
                       {sending ? "Sending..." : sendSuccess ? "Sent" : "Send Automatically"}
@@ -533,22 +533,22 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
 
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Next Follow-up Note</label>
+                    <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Next Follow-up Note</label>
                     <input
                       type="text"
                       value={followUpTitle}
                       onChange={(e) => setFollowUpTitle(e.target.value)}
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none focus:border-white"
+                      className="mt-2 w-full rounded-xl border border-slate-100 bg-slate-50 border-slate-200 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-white"
                       placeholder="Follow-up title"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Note for the sales team</label>
+                    <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Note for the sales team</label>
                     <textarea
                       value={followUpNote}
                       onChange={(e) => setFollowUpNote(e.target.value)}
                       rows={4}
-                      className="mt-2 w-full rounded-2xl border border-white/10 bg-black/40 px-3 py-3 text-sm text-white focus:outline-none focus:border-white resize-none"
+                      className="mt-2 w-full rounded-2xl border border-slate-100 bg-slate-50 border-slate-200 px-3 py-3 text-sm text-slate-800 focus:outline-none focus:border-white resize-none"
                       placeholder="Capture the follow-up summary, next steps, or internal action items."
                     />
                   </div>
@@ -556,12 +556,12 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                     <button
                       onClick={handleSaveFollowUp}
                       disabled={savingFollowUp || !followUpNote.trim()}
-                      className="px-4 py-2 rounded-xl bg-sky-500 text-white font-bold text-xs hover:bg-sky-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 rounded-xl bg-sky-500 text-slate-800 font-bold text-xs hover:bg-sky-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {savingFollowUp ? "Saving..." : "Save Follow-Up"}
                     </button>
                     {followUpStatus && (
-                      <p className="text-xs text-gray-300">{followUpStatus}</p>
+                      <p className="text-xs text-slate-500">{followUpStatus}</p>
                     )}
                   </div>
                   {sendError && (
@@ -803,27 +803,20 @@ export default function EmailAgentPage() {
   return (
     <div className="relative min-h-[calc(100vh-4rem)] flex flex-col items-center overflow-hidden rounded-3xl">
       {/* Video Background - NO BLUR OVERLAY FOR FULL CLARITY */}
-      <video 
-        autoPlay 
-        loop 
-        muted 
-        playsInline 
-        className="fixed inset-0 w-full h-full object-cover z-0 pointer-events-none"
-        src="/emailagentanimation.mp4"
-      />
+      
 
       {/* Main Scrolling Container */}
       <div className="relative z-10 w-full max-w-5xl flex flex-col h-full mt-6 px-4 pb-20 overflow-y-auto">
         
         {/* Top Header - completely transparent, NO BLUR, white text */}
-        <div className="bg-transparent rounded-2xl px-6 pt-6 pb-2 flex items-center justify-between mb-2">
+        <div className="bg-slate-50 rounded-2xl px-6 pt-6 pb-2 flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-white/20 shadow-lg backdrop-blur-sm">
-              <Bot className="w-5 h-5 text-white" />
+            <div className="p-2.5 rounded-xl bg-slate-100 shadow-lg backdrop-blur-sm">
+              <Bot className="w-5 h-5 text-slate-800" />
             </div>
             <div>
-              <h1 className="text-xl font-black text-white">Email Agent</h1>
-              <p className="text-gray-300 text-xs font-medium">Research • Match • Draft</p>
+              <h1 className="text-xl font-black text-slate-800">Email Agent</h1>
+              <p className="text-slate-500 text-xs font-medium">Research • Match • Draft</p>
             </div>
           </div>
           <div className="flex gap-4 hidden sm:flex">
@@ -832,7 +825,7 @@ export default function EmailAgentPage() {
               { label: "Auto", value: autoCount },
               { label: "Manual", value: manualCount },
             ].map((s) => (
-              <div key={s.label} className="px-4 py-2 rounded-xl bg-transparent text-white text-center">
+              <div key={s.label} className="px-4 py-2 rounded-xl bg-slate-50 text-slate-800 text-center">
                 <p className="text-[9px] font-black uppercase tracking-widest opacity-80">{s.label}</p>
                 <p className="text-lg font-black">{s.value}</p>
               </div>
@@ -840,18 +833,18 @@ export default function EmailAgentPage() {
           </div>
         </div>
 
-        <div className="bg-transparent p-0 rounded-2xl mb-2">
+        <div className="bg-slate-50 p-0 rounded-2xl mb-2">
           {/* PageGuide components uses white text on dark variants, but we will leave it as is if it handles its own styles, though it floats */}
         </div>
 
         {/* Chatbot Interface Top Box - HAS BLUR and WHITE TEXT */}
-        <div className="relative bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl w-full max-w-4xl mx-auto flex flex-col h-[400px] shadow-2xl">
+        <div className="relative bg-white border border-slate-200 rounded-2xl w-full max-w-4xl mx-auto flex flex-col h-[400px] shadow-sm">
           <PageGuide
             pageKey="email-agent"
             title="How the Email Agent works"
             description="Our AI researches companies, matches them to your services, and drafts personalized outreach emails."
             buttonClassName="absolute top-3 right-3 z-50 group"
-            iconClassName="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-white shadow-lg transition-transform group-hover:scale-110"
+            iconClassName="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-slate-800 shadow-lg transition-transform group-hover:scale-110"
             steps={[
               { icon: <Building2 />, text: 'Enter a company name and URL — the AI will analyze their website and identify opportunities.' },
               { icon: <Bot />, text: 'The agent matches the company\'s needs to your service catalog and crafts a tailored pitch.' },
@@ -859,8 +852,8 @@ export default function EmailAgentPage() {
               { icon: <TrendingUp />, text: 'Track all sent emails above — see counts for auto-sent vs. manually-sent outreach.' },
             ]}
           />
-          <div className="p-4 border-b border-white/10 font-black text-sm text-white flex items-center gap-2">
-            <Bot className="w-4 h-4 text-white" /> AI Research Assistant
+          <div className="p-4 border-b border-slate-100 font-black text-sm text-slate-800 flex items-center gap-2">
+            <Bot className="w-4 h-4 text-slate-800" /> AI Research Assistant
           </div>
           
           <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
@@ -873,13 +866,13 @@ export default function EmailAgentPage() {
                   className={`flex w-full ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div className={`flex items-end gap-2 max-w-[85%] ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === "user" ? "bg-white text-black" : "bg-blue-500 text-white"}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === "user" ? "bg-white text-black" : "bg-blue-500 text-slate-800"}`}>
                       {msg.role === "user" ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                     </div>
                     <div className={`p-4 rounded-2xl ${
                       msg.role === "user" 
-                        ? "bg-white/20 text-white rounded-br-none border border-white/10" 
-                        : "bg-black/40 border border-white/10 shadow-sm rounded-bl-none text-white"
+                        ? "bg-slate-100 text-slate-800 rounded-br-none border border-slate-100" 
+                        : "bg-slate-50 border-slate-200 border border-slate-100 shadow-sm rounded-bl-none text-slate-800"
                     }`}>
                       {msg.type === "text" && <p className="text-sm font-medium">{msg.content}</p>}
                       {msg.type === "loading" && <BottomUpFillMail />}
@@ -891,10 +884,10 @@ export default function EmailAgentPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="p-4 bg-black/20 rounded-b-2xl border-t border-white/10">
-            <div className="flex items-center gap-2 bg-black/40 rounded-xl p-1 border border-white/10">
-              {chatStep === "company_name" && <Building2 className="w-5 h-5 ml-3 text-gray-400" />}
-              {chatStep === "website_url" && <Globe className="w-5 h-5 ml-3 text-gray-400" />}
+          <div className="p-4 bg-black/20 rounded-b-2xl border-t border-slate-100">
+            <div className="flex items-center gap-2 bg-slate-50 border-slate-200 rounded-xl p-1 border border-slate-100">
+              {chatStep === "company_name" && <Building2 className="w-5 h-5 ml-3 text-slate-400" />}
+              {chatStep === "website_url" && <Globe className="w-5 h-5 ml-3 text-slate-400" />}
               
               <input
                 type={chatStep === "website_url" ? "url" : "text"}
@@ -902,7 +895,7 @@ export default function EmailAgentPage() {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={chatStep === "company_name" ? "Type company name..." : "Type website URL (optional)..."}
-                className="flex-1 bg-transparent border-none focus:ring-0 outline-none px-2 text-sm font-bold text-white placeholder-gray-400 h-10"
+                className="flex-1 bg-slate-50 border-none focus:ring-0 outline-none px-2 text-sm font-bold text-slate-800 placeholder-slate-400 h-10"
               />
               
               <button
@@ -923,7 +916,7 @@ export default function EmailAgentPage() {
         {/* Results Section Down Below */}
         {resultsHistory.length > 0 && (
           <div className="w-full mt-8 space-y-8">
-            <h3 className="font-black text-xl text-white bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl inline-block shadow-lg border border-white/10">Research Results</h3>
+            <h3 className="font-black text-xl text-slate-800 bg-slate-50 border-slate-200 backdrop-blur-md px-4 py-2 rounded-xl inline-block shadow-lg border border-slate-100">Research Results</h3>
             {resultsHistory.map(res => (
               <ResultCard key={res.id} result={res.resultData} companyName={res.companyName} companyUrl={res.companyUrl} onSendManually={handleSendManually} onSendAutomatically={handleSendAutomatically} onSaveFollowUp={handleSaveFollowUp} />
             ))}
@@ -931,25 +924,25 @@ export default function EmailAgentPage() {
         )}
 
         {/* Recent Outreach Section Down Below */}
-        <div className="w-full mt-12 bg-black/60 backdrop-blur-md border border-white/20 rounded-2xl p-6 md:p-8 relative overflow-hidden shadow-xl">
+        <div className="w-full mt-12 bg-white border border-slate-200 rounded-2xl p-6 md:p-8 relative overflow-hidden shadow-sm">
           <div className="flex items-center justify-between mb-6 relative z-10">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-white/20 text-white shadow-inner">
+              <div className="p-2 rounded-xl bg-slate-100 text-slate-800 shadow-inner">
                 <Mail className="w-4 h-4" />
               </div>
-              <h3 className="font-black text-[15px] text-white">Recent Email Outreach</h3>
+              <h3 className="font-black text-[15px] text-slate-800">Recent Email Outreach</h3>
             </div>
-            <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
               {totalSent} total
             </span>
           </div>
 
           {emailsLoading ? (
-            <div className="flex justify-center p-8"><Clock className="w-6 h-6 animate-spin text-gray-400" /></div>
+            <div className="flex justify-center p-8"><Clock className="w-6 h-6 animate-spin text-slate-400" /></div>
           ) : sentEmails.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 text-gray-400 gap-3">
+            <div className="flex flex-col items-center justify-center h-32 text-slate-400 gap-3">
               <Mail className="w-10 h-10 opacity-30 text-gray-500" />
-              <p className="font-bold text-sm text-gray-400">No emails sent yet</p>
+              <p className="font-bold text-sm text-slate-400">No emails sent yet</p>
             </div>
           ) : (
             <div className="space-y-2 relative z-10">
@@ -961,22 +954,22 @@ export default function EmailAgentPage() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.03 }}
-                    className="border border-white/10 rounded-2xl overflow-hidden hover:border-white/30 transition-all bg-white/5"
+                    className="border border-slate-100 rounded-2xl overflow-hidden hover:border-slate-300 transition-all bg-slate-50"
                   >
                     <button
                       onClick={() => setExpandedId(isExpanded ? null : email.id)}
-                      className="w-full flex items-center justify-between p-4 hover:bg-white/10 transition-colors text-left"
+                      className="w-full flex items-center justify-between p-4 hover:bg-white border border-slate-200 transition-colors text-left"
                     >
                       <div className="flex items-center gap-4 flex-1 min-w-0">
                         <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                          email.manual ? "bg-white/10 text-white" : "bg-blue-500 text-white"
+                          email.manual ? "bg-white border border-slate-200 text-slate-800" : "bg-blue-500 text-slate-800"
                         }`}>
                           {email.manual ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-bold text-white text-sm truncate">{email.subject || "(No subject)"}</p>
+                          <p className="font-bold text-slate-800 text-sm truncate">{email.subject || "(No subject)"}</p>
                           <div className="flex items-center gap-3 mt-0.5">
-                            <span className="text-xs text-gray-300 truncate flex items-center gap-1">
+                            <span className="text-xs text-slate-500 truncate flex items-center gap-1">
                               <Send className="w-3 h-3 shrink-0" /> {email.to_email}
                             </span>
                           </div>
@@ -984,11 +977,11 @@ export default function EmailAgentPage() {
                       </div>
                       <div className="flex items-center gap-3 shrink-0 ml-4">
                         <span className={`text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full ${
-                          email.manual ? "bg-white/10 text-white" : "bg-blue-500 text-white"
+                          email.manual ? "bg-white border border-slate-200 text-slate-800" : "bg-blue-500 text-slate-800"
                         }`}>
                           {email.manual ? "Manual" : "Auto"}
                         </span>
-                        {isExpanded ? <ChevronUp className="w-4 h-4 text-white" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                        {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-800" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                       </div>
                     </button>
 
@@ -996,16 +989,16 @@ export default function EmailAgentPage() {
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
-                        className="border-t border-white/10 bg-black/40 p-5"
+                        className="border-t border-slate-100 bg-slate-50 border-slate-200 p-5"
                       >
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           {email.english_body && (
                             <div>
                               <div className="flex items-center justify-between mb-2">
-                                <p className="text-[10px] font-black text-white uppercase tracking-widest">English Body</p>
+                                <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">English Body</p>
                                 <CopyButton text={email.english_body} />
                               </div>
-                              <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-sm text-gray-200 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed font-mono custom-scrollbar">
+                              <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 text-sm text-slate-600 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed font-mono custom-scrollbar">
                                 {email.english_body}
                               </div>
                             </div>
@@ -1013,10 +1006,10 @@ export default function EmailAgentPage() {
                           {email.spanish_body && (
                             <div>
                               <div className="flex items-center justify-between mb-2">
-                                <p className="text-[10px] font-black text-white uppercase tracking-widest">Spanish Body</p>
+                                <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Spanish Body</p>
                                 <CopyButton text={email.spanish_body} />
                               </div>
-                              <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-sm text-gray-200 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed font-mono custom-scrollbar">
+                              <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 text-sm text-slate-600 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed font-mono custom-scrollbar">
                                 {email.spanish_body}
                               </div>
                             </div>
