@@ -219,13 +219,33 @@ function Dashboard() {
                   Welcome back, <span className="text-indigo-600 font-bold">{user?.name || role}</span>. Your metrics are synced.
                 </p>
               </div>
-              <div className="flex gap-3 shrink-0 w-full md:w-auto">
-                <Link href="/clients" className="px-5 py-2.5 rounded-xl font-bold text-sm text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-slate-800 hover:border-slate-300 transition-all">
-                  {language === 'es' ? 'Ver Clientes' : 'View Clients'}
-                </Link>
-                <Link href="/email-agent" className="btn-glow-indigo px-5 py-2.5 rounded-xl font-bold text-sm text-white flex items-center gap-2">
-                  <Sparkles className="w-4 h-4" /> {language === 'es' ? 'Lanzar Agente' : 'Launch Agent'}
-                </Link>
+              <div className="flex flex-col md:flex-row items-center gap-4 shrink-0 w-full md:w-auto mt-4 md:mt-0">
+                {/* API Budget Wheel Widget */}
+                <div className="flex items-center gap-3 bg-white/60 border border-indigo-100 p-1.5 pr-3 rounded-2xl shadow-sm">
+                  <div className="relative w-9 h-9 flex items-center justify-center shrink-0">
+                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                      <circle cx="18" cy="18" r="16" fill="none" className="stroke-slate-200" strokeWidth="4" />
+                      <circle cx="18" cy="18" r="16" fill="none" className="stroke-indigo-500" strokeWidth="4" strokeDasharray="100" strokeDashoffset="76" strokeLinecap="round" />
+                    </svg>
+                    <span className="absolute text-[8px] font-black text-indigo-700">24%</span>
+                  </div>
+                  <div className="flex flex-col justify-center">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">API Budget</span>
+                    <span className="text-xs font-bold text-slate-700 leading-none">$1.20 / <span className="text-slate-500">$5.00</span></span>
+                  </div>
+                  <Link href="/api-intelligence" className="ml-1 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors border border-indigo-100/50">
+                    View Usage
+                  </Link>
+                </div>
+
+                <div className="flex gap-3 w-full md:w-auto">
+                  <Link href="/clients" className="flex-1 md:flex-none justify-center px-5 py-2.5 rounded-xl font-bold text-sm text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-slate-800 hover:border-slate-300 transition-all flex items-center">
+                    {language === 'es' ? 'Ver Clientes' : 'View Clients'}
+                  </Link>
+                  <Link href="/email-agent" className="flex-1 md:flex-none justify-center btn-glow-indigo px-5 py-2.5 rounded-xl font-bold text-sm text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 shrink-0" /> {language === 'es' ? 'Lanzar Agente' : 'Launch Agent'}
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
