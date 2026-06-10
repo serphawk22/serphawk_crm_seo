@@ -445,9 +445,10 @@ export default function ClientsPage() {
       {/* Activity Sidebar */}
       <motion.div
         initial="hidden" animate="show" variants={itemVariants}
-        className="w-full xl:w-[450px] shrink-0"
+        className="w-full xl:w-[450px] shrink-0 relative"
       >
-        <div className="bg-white/40 backdrop-blur-2xl rounded-[2.5rem] border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.05)] p-6 h-full flex flex-col min-h-[300px]">
+        <div className="xl:absolute xl:inset-0 w-full h-full">
+          <div className="bg-white/40 backdrop-blur-2xl rounded-[2.5rem] border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.05)] p-6 h-full flex flex-col">
           <div className="flex items-center gap-3 mb-6 shrink-0">
             <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl"><Activity className="w-5 h-5" /></div>
             <h3 className="text-lg font-black text-slate-800">{language === 'es' ? 'Actividad Reciente' : 'Recent Activity'}</h3>
@@ -470,6 +471,7 @@ export default function ClientsPage() {
               ))
             )}
           </div>
+        </div>
         </div>
       </motion.div>
       </div>
