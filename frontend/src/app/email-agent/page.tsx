@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Sparkles, Mail, Clock, User, Globe, ChevronDown, ChevronUp,
   CheckCircle, Building2, Briefcase, Target, AtSign, FileText, Copy, Check,
-  TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign
+  TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign, MessageCircle
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import PageGuide from "@/components/PageGuide";
@@ -464,13 +464,14 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
           <div className="flex gap-2 mb-4">
             {[
               { key: "english" as const, label: "English" },
-              { key: "spanish" as const, label: "Espa\u00f1ol" },
+              { key: "spanish" as const, label: "Español" },
+              ...(result.draft?.whatsapp_draft ? [{ key: "whatsapp" as const, label: "WhatsApp" }] : []),
             ].map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${
-                  activeTab === tab.key ? "bg-white text-black border-white" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-white border border-slate-200"
+                  activeTab === tab.key ? "bg-white text-black border-slate-300 shadow-sm" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-white"
                 }`}
               >
                 {tab.label}
@@ -478,10 +479,12 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
             ))}
           </div>
 
-          <div className="bg-slate-50 border border-slate-100 rounded-xl p-5 text-sm text-gray-100 whitespace-pre-wrap leading-relaxed max-h-80 overflow-auto font-mono custom-scrollbar">
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed max-h-80 overflow-auto font-mono custom-scrollbar">
             {activeTab === "english"
               ? (result.draft.english_body || result.draft.body || "No English draft generated")
-              : (result.draft.spanish_body || "No Spanish draft generated")}
+              : activeTab === "spanish"
+              ? (result.draft.spanish_body || "No Spanish draft generated")
+              : (result.draft.whatsapp_draft || "No WhatsApp draft generated")}
           </div>
 
           {contactEmail && (
@@ -490,12 +493,12 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                 {buildProspectingPoints(result).map((point, idx) => {
                   const Icon = point.icon;
                   return (
-                    <div key={idx} className="rounded-3xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-100">
-                      <div className="flex items-center gap-2 mb-3 text-slate-300">
+                    <div key={idx} className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 shadow-sm">
+                      <div className="flex items-center gap-2 mb-3 text-slate-500">
                         <Icon className="w-4 h-4" />
                         <span className="font-bold uppercase tracking-[0.18em] text-[10px]">{point.title}</span>
                       </div>
-                      <p className="leading-snug text-slate-200">{point.body}</p>
+                      <p className="leading-snug text-slate-600 font-medium">{point.body}</p>
                     </div>
                   );
                 })}
@@ -515,19 +518,29 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                     <button
                       onClick={handleSendAutomatically}
                       disabled={sending || !!sendSuccess}
-                      className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-800 font-bold text-xs flex items-center gap-2 hover:bg-emerald-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                      className="px-4 py-2 rounded-xl bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-indigo-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                     >
                       {sending ? <Clock className="w-3.5 h-3.5 animate-spin" /> : sendSuccess ? <CheckCircle className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
-                      {sending ? "Sending..." : sendSuccess ? "Sent" : "Send Automatically"}
+                      Send Automatically
                     </button>
                     <button
                       onClick={handleSend}
                       disabled={sending || !!sendSuccess}
-                      className="px-4 py-2 rounded-xl bg-white text-black font-bold text-xs flex items-center gap-2 hover:bg-gray-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                      className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 font-bold text-xs flex items-center gap-2 hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                     >
                       <UserPlus className="w-3.5 h-3.5" />
                       Send Manually
                     </button>
+                    {result.draft?.whatsapp_draft && result.contact?.phone_number && (
+                      <a
+                        href={`https://wa.me/${result.contact.phone_number.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(result.draft.whatsapp_draft)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-emerald-600 transition-all shrink-0"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" /> Send via WhatsApp
+                      </a>
+                    )}
                   </div>
                 </div>
 
