@@ -583,10 +583,10 @@ export default function EmailAgentPage() {
   const [companyName, setCompanyName] = useState("");
   const [inputValue, setInputValue] = useState("");
   
-  const [chatStep, setChatStep] = useState<"company_name" | "website_url" | "loading" | "idle">("company_name");
+  const [chatStep, setChatStep] = useState<"website_url" | "loading" | "idle">("website_url");
   
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: "msg-1", role: "ai", type: "text", content: "Hello! What company would you like to research today?" }
+    { id: "msg-1", role: "ai", type: "text", content: "Hello! Enter a company website URL to generate an outreach strategy and email draft." }
   ]);
   
   const [resultsHistory, setResultsHistory] = useState<ResearchResult[]>([]);
@@ -618,31 +618,20 @@ export default function EmailAgentPage() {
   }, []);
 
   const handleSendInput = async () => {
-    if (chatStep === "company_name") {
-      if (!inputValue.trim()) return;
-      const name = inputValue.trim();
-      setCompanyName(name);
-      setInputValue("");
-      
-      setMessages(prev => [
-        ...prev,
-        { id: `msg-${Date.now()}`, role: "user", type: "text", content: name },
-        { id: `msg-${Date.now()+1}`, role: "ai", type: "text", content: `Great! Do you have ${name}'s website URL? (Optional)` }
-      ]);
-      setChatStep("website_url");
-    } 
-    else if (chatStep === "website_url") {
+    if (chatStep === "website_url") {
       const url = inputValue.trim();
+      if (!url) return;
       setInputValue("");
       
       setMessages(prev => [
         ...prev,
-        { id: `msg-${Date.now()}`, role: "user", type: "text", content: url || "(Skipped)" },
+        { id: `msg-${Date.now()}`, role: "user", type: "text", content: url },
         { id: `msg-${Date.now()+1}`, role: "ai", type: "loading" }
       ]);
       setChatStep("loading");
       
-      await performResearch(companyName, url);
+      const derivedName = url.replace(/^(?:https?:\/\/)?(?:www\.)?/i, "").split('/')[0];
+      await performResearch(derivedName, url);
     }
   };
 
@@ -884,30 +873,27 @@ export default function EmailAgentPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="p-4 bg-black/20 rounded-b-2xl border-t border-slate-100">
-            <div className="flex items-center gap-2 bg-slate-50 border-slate-200 rounded-xl p-1 border border-slate-100">
-              {chatStep === "company_name" && <Building2 className="w-5 h-5 ml-3 text-slate-400" />}
-              {chatStep === "website_url" && <Globe className="w-5 h-5 ml-3 text-slate-400" />}
+          <div className="p-5 bg-slate-50/80 rounded-b-2xl border-t border-slate-100 backdrop-blur-md">
+            <div className="flex items-center gap-3 bg-white border-slate-200 rounded-2xl p-2 border shadow-sm focus-within:ring-4 focus-within:ring-indigo-500/20 focus-within:border-indigo-400 transition-all">
+              <div className="p-2 bg-indigo-50 rounded-xl">
+                <Globe className="w-6 h-6 text-indigo-500" />
+              </div>
               
               <input
-                type={chatStep === "website_url" ? "url" : "text"}
+                type="url"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={chatStep === "company_name" ? "Type company name..." : "Type website URL (optional)..."}
-                className="flex-1 bg-slate-50 border-none focus:ring-0 outline-none px-2 text-sm font-bold text-slate-800 placeholder-slate-400 h-10"
+                placeholder="https://example.com"
+                className="flex-1 bg-transparent border-none focus:ring-0 outline-none px-2 text-base font-bold text-slate-800 placeholder-slate-400 h-12"
               />
               
               <button
                 onClick={handleSendInput}
-                disabled={(chatStep === "company_name" && !inputValue.trim()) || chatStep === "loading"}
-                className="px-5 py-2.5 rounded-lg bg-white text-black font-bold text-sm flex items-center gap-2 hover:bg-gray-200 disabled:opacity-50 transition-all"
+                disabled={!inputValue.trim() || chatStep === "loading"}
+                className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm flex items-center gap-2 shadow-lg shadow-indigo-500/30 disabled:opacity-50 transition-all hover:-translate-y-0.5"
               >
-                {chatStep === "website_url" ? (
-                  <><Sparkles className="w-4 h-4" /> Research</>
-                ) : (
-                  <><Send className="w-4 h-4" /> Send</>
-                )}
+                <Sparkles className="w-4 h-4" /> Start AI Agent
               </button>
             </div>
           </div>
