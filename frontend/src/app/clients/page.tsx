@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -99,6 +99,36 @@ export default function ClientsPage() {
     targetKeywords: ''
   });
   
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let isPaused = false;
+    
+    const handleEnter = () => isPaused = true;
+    const handleLeave = () => isPaused = false;
+    
+    el.addEventListener('mouseenter', handleEnter);
+    el.addEventListener('mouseleave', handleLeave);
+    
+    const interval = setInterval(() => {
+      if (!isPaused && el) {
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight) {
+          el.scrollTop = 0; // Reset to top
+        } else {
+          el.scrollTop += 1;
+        }
+      }
+    }, 50);
+    
+    return () => {
+      clearInterval(interval);
+      el.removeEventListener('mouseenter', handleEnter);
+      el.removeEventListener('mouseleave', handleLeave);
+    };
+  }, []);
+
   const [isOCRModalOpen, setIsOCRModalOpen] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   
@@ -352,7 +382,8 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="max-w-[1500px] mx-auto flex flex-col xl:flex-row gap-8">
+    <div className="max-w-[1500px] mx-auto space-y-8">
+      <div className="flex flex-col xl:flex-row gap-8 items-stretch">
       <motion.div 
         initial="hidden" animate="show" variants={containerVariants}
         className="flex-1 space-y-8 min-w-0"
@@ -409,6 +440,39 @@ export default function ClientsPage() {
           </div>
         ))}
       </motion.div>
+      </motion.div>
+
+      {/* Activity Sidebar */}
+      <motion.div
+        initial="hidden" animate="show" variants={itemVariants}
+        className="w-full xl:w-[450px] shrink-0"
+      >
+        <div className="bg-white/40 backdrop-blur-2xl rounded-[2.5rem] border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.05)] p-6 h-full flex flex-col min-h-[300px]">
+          <div className="flex items-center gap-3 mb-6 shrink-0">
+            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl"><Activity className="w-5 h-5" /></div>
+            <h3 className="text-lg font-black text-slate-800">{language === 'es' ? 'Actividad Reciente' : 'Recent Activity'}</h3>
+          </div>
+          <div ref={scrollRef} className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
+            {activities.length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-8">{language === 'es' ? 'No hay actividad.' : 'No activity yet.'}</p>
+            ) : (
+              activities.map(act => (
+                <Link href={act.clientId ? `/admin/clients/${act.clientId}` : '#'} key={act.id} className="block p-4 bg-white/60 hover:bg-white rounded-2xl border border-white/80 shadow-sm hover:shadow-md transition-all group">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-xs font-bold px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg">{act.action}</span>
+                    <span className="text-[10px] text-slate-400 font-medium">{new Date(act.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700 group-hover:text-indigo-600 transition-colors line-clamp-2">{act.content}</p>
+                  {act.details && (
+                    <p className="text-xs text-slate-500 mt-2 line-clamp-1">{act.details}</p>
+                  )}
+                </Link>
+              ))
+            )}
+          </div>
+        </div>
+      </motion.div>
+      </div>
 
       {/* Main Glass Box */}
       <motion.div variants={itemVariants} className="bg-white/40 backdrop-blur-2xl rounded-[2.5rem] border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.05)] overflow-hidden">
@@ -752,36 +816,6 @@ export default function ClientsPage() {
       </AnimatePresence>
       </motion.div>
 
-      {/* Activity Sidebar */}
-      <motion.div
-        initial="hidden" animate="show" variants={itemVariants}
-        className="w-full xl:w-96 shrink-0 space-y-6"
-      >
-        <div className="bg-white/40 backdrop-blur-2xl rounded-[2.5rem] border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.05)] p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl"><Activity className="w-5 h-5" /></div>
-            <h3 className="text-lg font-black text-slate-800">{language === 'es' ? 'Actividad Reciente' : 'Recent Activity'}</h3>
-          </div>
-          <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
-            {activities.length === 0 ? (
-              <p className="text-sm text-slate-500 text-center py-8">{language === 'es' ? 'No hay actividad.' : 'No activity yet.'}</p>
-            ) : (
-              activities.map(act => (
-                <Link href={act.clientId ? `/admin/clients/${act.clientId}` : '#'} key={act.id} className="block p-4 bg-white/60 hover:bg-white rounded-2xl border border-white/80 shadow-sm hover:shadow-md transition-all group">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-bold px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg">{act.action}</span>
-                    <span className="text-[10px] text-slate-400 font-medium">{new Date(act.createdAt).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-sm font-semibold text-slate-700 group-hover:text-indigo-600 transition-colors line-clamp-2">{act.content}</p>
-                  {act.details && (
-                    <p className="text-xs text-slate-500 mt-2 line-clamp-1">{act.details}</p>
-                  )}
-                </Link>
-              ))
-            )}
-          </div>
-        </div>
-      </motion.div>
 
     </div>
   );
