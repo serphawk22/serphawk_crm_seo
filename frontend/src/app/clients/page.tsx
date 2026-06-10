@@ -814,8 +814,6 @@ export default function ClientsPage() {
           </motion.div>
         )}
       </AnimatePresence>
-      </motion.div>
-
 
     </div>
   );
