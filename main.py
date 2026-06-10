@@ -1820,7 +1820,8 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
         {{
             "subject": "Email subject",
             "english_body": "Email body in English",
-            "spanish_body": "Email body translated to Spanish"
+            "spanish_body": "Email body translated to Spanish",
+            "whatsapp_draft": "Short, punchy WhatsApp message (plain text, emojis allowed)"
         }}
         """
         

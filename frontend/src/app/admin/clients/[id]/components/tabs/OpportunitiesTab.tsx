@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, ArrowRight, CheckCircle2, Clock, XCircle, Target, Brain, Mail, Calendar, Wand2, Loader2, Store, AlertCircle } from 'lucide-react';
+import { TrendingUp, ArrowRight, CheckCircle2, Clock, XCircle, Target, Brain, Mail, Calendar, Wand2, Loader2, Store, AlertCircle, MessageCircle } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { API_BASE_URL } from '@/config';
 
@@ -463,16 +463,27 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
           <div className="space-y-3">
             {emails.map((em: any, idx: number) => {
               const isExpanded = expandedEmailId === idx;
+              let whatsappDraft = '';
+              try {
+                if (em.draft_json) {
+                  const draftData = typeof em.draft_json === 'string' ? JSON.parse(em.draft_json) : em.draft_json;
+                  whatsappDraft = draftData.whatsapp_draft || (draftData.outreach && draftData.outreach.whatsapp_draft) || '';
+                }
+              } catch (e) {}
+              
+              const phone = client?.phone || '';
+              const waLink = phone && whatsappDraft ? `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(whatsappDraft)}` : `https://wa.me/?text=${encodeURIComponent(whatsappDraft)}`;
+
               return (
-              <div key={idx} className="p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 hover:shadow-md transition-shadow cursor-pointer" onClick={() => setExpandedEmailId(isExpanded ? null : idx)}>
+              <div key={idx} className="p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 hover:shadow-md transition-shadow cursor-pointer relative" onClick={() => setExpandedEmailId(isExpanded ? null : idx)}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
                       <Mail size={10} className="text-blue-600 dark:text-blue-400" />
                     </div>
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{em.subject || 'No Subject'}</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-200 line-clamp-1">{em.subject || 'No Subject'}</p>
                   </div>
-                  <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-white dark:bg-slate-800 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-white dark:bg-slate-800 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 shrink-0">
                     <Calendar size={10} />
                     {em.sent_at ? new Date(em.sent_at).toLocaleDateString() : 'Draft'}
                   </div>
@@ -484,7 +495,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                         {em.english_body}
                       </p>
                     ) : (
-                      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className={`mt-4 grid grid-cols-1 gap-4 ${whatsappDraft ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
                         <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
                           <p className="text-[10px] font-black uppercase text-blue-600 mb-2">English</p>
                           <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">{em.english_body}</p>
@@ -493,6 +504,15 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                           <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
                             <p className="text-[10px] font-black uppercase text-blue-600 mb-2">Spanish</p>
                             <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">{em.spanish_body}</p>
+                          </div>
+                        )}
+                        {whatsappDraft && (
+                          <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl relative flex flex-col">
+                            <p className="text-[10px] font-black uppercase text-emerald-600 mb-2">WhatsApp Draft</p>
+                            <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed mb-10 flex-1">{whatsappDraft}</p>
+                            <a href={waLink} target="_blank" rel="noopener noreferrer" className="absolute bottom-3 right-3 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold uppercase rounded-lg transition-colors flex items-center gap-1.5" onClick={(e) => { e.stopPropagation(); }}>
+                              <MessageCircle size={12} /> Send
+                            </a>
                           </div>
                         )}
                       </div>
