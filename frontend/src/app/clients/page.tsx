@@ -452,7 +452,7 @@ export default function ClientsPage() {
             <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl"><Activity className="w-5 h-5" /></div>
             <h3 className="text-lg font-black text-slate-800">{language === 'es' ? 'Actividad Reciente' : 'Recent Activity'}</h3>
           </div>
-          <div ref={scrollRef} className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
+          <div ref={scrollRef} className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar">
             {activities.length === 0 ? (
               <p className="text-sm text-slate-500 text-center py-8">{language === 'es' ? 'No hay actividad.' : 'No activity yet.'}</p>
             ) : (
