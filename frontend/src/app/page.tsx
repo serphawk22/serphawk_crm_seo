@@ -233,7 +233,7 @@ function Dashboard() {
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">API Budget</span>
                     <span className="text-xs font-bold text-slate-700 leading-none">$1.20 / <span className="text-slate-500">$5.00</span></span>
                   </div>
-                  <Link href="/api-intelligence" className="ml-1 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors border border-indigo-100/50">
+                  <Link href="/admin/api-intelligence" className="ml-1 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors border border-indigo-100/50">
                     View Usage
                   </Link>
                 </div>
