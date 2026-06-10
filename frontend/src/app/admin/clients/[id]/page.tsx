@@ -97,7 +97,7 @@ function CollapsibleSection({ title, icon: Icon, count, defaultOpen = false, acc
 }
 
 // ─── Overview Tab — premium light ──────────────────────────────────────────
-function OverviewTab({ client, employees, serviceRequests, activities, timeline, research, notes, conversations, clientId, onNotesRefresh, onConversationsRefresh }: any) {
+function OverviewTab({ client, employees, serviceRequests, activities, timeline, research, notes, conversations, clientId, onNotesRefresh, onConversationsRefresh, emails }: any) {
   const { t, language } = useLanguage();
   const recentActivities = (activities || []).slice(0, 8);
 
@@ -348,6 +348,19 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
               </div>
             ))
           )}
+        </div>
+      </CollapsibleSection>
+
+      {/* Opportunities & AI Analysis */}
+      <CollapsibleSection title={language === 'es' ? 'Oportunidades y Análisis de IA' : 'Opportunities & AI Analysis'} icon={Target} accentColor="#8b5cf6" defaultOpen={false}>
+        <div style={{ paddingTop: 16 }}>
+          <OpportunitiesTab
+            client={client}
+            timeline={timeline}
+            serviceRequests={serviceRequests}
+            research={research}
+            emails={emails}
+          />
         </div>
       </CollapsibleSection>
     </div>
@@ -627,6 +640,7 @@ export default function AdminClientDetailPage() {
                     research={research}
                     notes={notes}
                     conversations={conversations}
+                    emails={emails}
                     clientId={id}
                     onNotesRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/notes`).then(r => r.json()).then(d => setNotes(d.notes || []))}
                     onConversationsRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/conversations`).then(r => r.json()).then(d => setConversations(d.conversations || []))}
