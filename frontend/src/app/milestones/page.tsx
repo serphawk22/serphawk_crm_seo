@@ -22,7 +22,7 @@ interface Milestone {
 }
 
 const STATUS_CONFIG: Record<string, { icon: any; color: string; bg: string }> = {
-  Pending:    { icon: Clock,         color: "text-slate-600",   bg: "bg-slate-100" },
+  Pending:    { icon: Clock,         color: "text-slate-600 dark:text-zinc-300",   bg: "bg-slate-100 dark:bg-zinc-800" },
   InProgress: { icon: Zap,           color: "text-blue-600",    bg: "bg-blue-100" },
   Achieved:   { icon: CheckCircle,   color: "text-emerald-600", bg: "bg-emerald-100" },
 };
@@ -114,7 +114,7 @@ export default function MilestonesPage() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight">Milestones</h1>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">Milestones</h1>
           <p className="text-gray-500 font-medium">Track project deliverables and achievements.</p>
         </div>
         {!isClient && (
@@ -138,9 +138,9 @@ export default function MilestonesPage() {
       />
 
       {/* Progress Bar */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-700 shadow-sm p-6">
         <div className="flex items-center justify-between mb-3">
-          <span className="font-bold text-gray-900">Overall Progress</span>
+          <span className="font-bold text-gray-900 dark:text-zinc-50">Overall Progress</span>
           <span className="text-sm font-bold text-gray-500">{achieved}/{total} completed</span>
         </div>
         <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
@@ -152,7 +152,7 @@ export default function MilestonesPage() {
         <div className="flex gap-6 mt-3 text-sm">
           <span className="text-emerald-600 font-semibold">{achieved} achieved</span>
           <span className="text-blue-600 font-semibold">{inProgress} in progress</span>
-          <span className="text-slate-500 font-semibold">{total - achieved - inProgress} pending</span>
+          <span className="text-slate-500 dark:text-zinc-400 font-semibold">{total - achieved - inProgress} pending</span>
         </div>
       </div>
 
@@ -161,7 +161,7 @@ export default function MilestonesPage() {
         {["All", "Pending", "InProgress", "Achieved"].map(f => (
           <button key={f} onClick={() => setFilterStatus(f)}
             className={cn("px-4 py-1.5 rounded-full text-sm font-bold border transition-all",
-              filterStatus === f ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400")}>
+              filterStatus === f ? "bg-gray-900 text-white border-gray-900" : "bg-white dark:bg-zinc-900 text-gray-600 border-gray-200 dark:border-zinc-700 hover:border-gray-400")}>
             {f === "InProgress" ? "In Progress" : f}
           </button>
         ))}
@@ -176,13 +176,13 @@ export default function MilestonesPage() {
           {filtered.map(m => {
             const cfg = STATUS_CONFIG[m.status] || STATUS_CONFIG.Pending;
             return (
-              <div key={m.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 flex items-start gap-4 group hover:shadow-md transition-all">
+              <div key={m.id} className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-700 shadow-sm p-5 flex items-start gap-4 group hover:shadow-md transition-all">
                 <div className={cn("p-2 rounded-xl shrink-0", cfg.bg)}>
                   <cfg.icon className={cn("w-5 h-5", cfg.color)} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-bold text-gray-900">{m.title}</h3>
+                    <h3 className="font-bold text-gray-900 dark:text-zinc-50">{m.title}</h3>
                     <span className={cn("text-xs px-2 py-0.5 rounded-full font-bold shrink-0", cfg.bg, cfg.color)}>
                       {m.status === "InProgress" ? "In Progress" : m.status}
                     </span>
@@ -197,7 +197,7 @@ export default function MilestonesPage() {
                   <div className="flex gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     {Object.keys(STATUS_CONFIG).filter(s => s !== m.status).map(s => (
                       <button key={s} onClick={() => updateStatus(m.id, s)}
-                        className="text-xs px-2 py-1 rounded-lg border font-semibold text-gray-600 hover:bg-gray-50">
+                        className="text-xs px-2 py-1 rounded-lg border font-semibold text-gray-600 hover:bg-gray-50 dark:bg-zinc-950">
                         → {s === "InProgress" ? "In Progress" : s}
                       </button>
                     ))}
@@ -215,7 +215,7 @@ export default function MilestonesPage() {
       {/* Create Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-md p-8">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-black">New Milestone</h2>
               <button onClick={() => setShowModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
@@ -224,19 +224,19 @@ export default function MilestonesPage() {
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Title *</label>
                 <input required value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="Milestone title..." />
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Description</label>
                 <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} rows={2}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none" />
+                  className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Client</label>
                   <select value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                     <option value="">No client</option>
                     {clients.map((c: any) => <option key={c.id} value={c.id}>{c.companyName || c.name || `#${c.id}`}</option>)}
                   </select>
@@ -244,7 +244,7 @@ export default function MilestonesPage() {
                 <div>
                   <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Due Date</label>
                   <input type="date" value={form.due_date} onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               </div>
               <div className="flex gap-3 pt-2">

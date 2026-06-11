@@ -17,7 +17,7 @@ interface OpportunitiesTabProps {
 const STAGES = ['Lead', 'Qualified', 'Discovery', 'Proposal', 'Negotiation', 'Won', 'Lost'];
 
 const STAGE_CFG: Record<string, { bg: string; text: string; border: string }> = {
-  Lead:        { bg: 'bg-slate-100 dark:bg-slate-800',      text: 'text-slate-600 dark:text-slate-400',   border: 'border-slate-300 dark:border-slate-600'   },
+  Lead:        { bg: 'bg-slate-100 dark:bg-zinc-800 dark:bg-slate-800',      text: 'text-slate-600 dark:text-zinc-300 dark:text-slate-400',   border: 'border-slate-300 dark:border-zinc-600 dark:border-slate-600'   },
   Qualified:   { bg: 'bg-blue-100 dark:bg-blue-900/30',     text: 'text-blue-700 dark:text-blue-400',     border: 'border-blue-300 dark:border-blue-700'     },
   Discovery:   { bg: 'bg-violet-100 dark:bg-violet-900/30', text: 'text-violet-700 dark:text-violet-400', border: 'border-violet-300 dark:border-violet-700' },
   Proposal:    { bg: 'bg-amber-100 dark:bg-amber-900/30',   text: 'text-amber-700 dark:text-amber-400',   border: 'border-amber-300 dark:border-amber-700'   },
@@ -58,7 +58,7 @@ function StagePipeline({ current, language }: { current: string, language: strin
                             whitespace-nowrap transition-all flex-shrink-0
                             ${active ? `${cfg.bg} ${cfg.text} ring-2 ring-offset-1 ${cfg.border} shadow-sm` :
                               passed ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-500' :
-                              'bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600'}`}
+                              'bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 dark:text-zinc-300'}`}
               >
                 {passed && <CheckCircle2 size={12} className="mr-1 text-emerald-500" />}
                 {getTranslatedStage(stage, language)}
@@ -67,7 +67,7 @@ function StagePipeline({ current, language }: { current: string, language: strin
                 )}
               </motion.div>
               {idx < STAGES.filter(s => s !== 'Lost').length - 1 && (
-                <ArrowRight size={12} className={`flex-shrink-0 mx-0.5 ${passed || active ? 'text-emerald-400' : 'text-slate-300 dark:text-slate-700'}`} />
+                <ArrowRight size={12} className={`flex-shrink-0 mx-0.5 ${passed || active ? 'text-emerald-400' : 'text-slate-300 dark:text-slate-700 dark:text-zinc-200'}`} />
               )}
             </React.Fragment>
           );
@@ -95,10 +95,10 @@ function ProbabilityBar({ stage, language }: { stage: string, language: string }
   return (
     <div>
       <div className="flex justify-between mb-1.5">
-        <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{language === 'es' ? 'Probabilidad de Ganar' : 'Win Probability'}</span>
-        <span className="text-xs font-black text-slate-800 dark:text-slate-200">{pct}%</span>
+        <span className="text-xs font-bold text-slate-600 dark:text-zinc-300 dark:text-slate-400">{language === 'es' ? 'Probabilidad de Ganar' : 'Win Probability'}</span>
+        <span className="text-xs font-black text-slate-800 dark:text-zinc-100 dark:text-slate-200">{pct}%</span>
       </div>
-      <div className="h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+      <div className="h-2.5 bg-slate-100 dark:bg-zinc-800 dark:bg-slate-800 rounded-full overflow-hidden">
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${pct}%` }}
@@ -182,7 +182,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-4 overflow-x-auto">
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-zinc-700 dark:border-slate-800 pb-4 overflow-x-auto">
         {[
           { id: 'email_agent', label: language === 'es' ? 'Análisis del Agente IA' : 'AI Agent Analysis', icon: Target },
           { id: 'presales', label: language === 'es' ? 'Investigación Pre-Ventas' : 'Pre-Sales Research', icon: Brain },
@@ -192,7 +192,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
             key={t.id}
             onClick={() => setActiveSubTab(t.id)}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
-              activeSubTab === t.id ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50 border border-transparent'
+              activeSubTab === t.id ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800' : 'text-slate-500 dark:text-zinc-400 hover:bg-slate-50 dark:bg-zinc-950 dark:hover:bg-slate-800/50 border border-transparent'
             }`}
           >
             <t.icon size={16} /> {t.label}
@@ -203,19 +203,19 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
       {activeSubTab === 'email_agent' && (
         <div className="space-y-6">
           {/* AI Agent Analysis Card */}
-          <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-slate-900 p-6 md:p-8 shadow-sm">
-            <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8 border-b border-slate-100 dark:border-slate-800 pb-6">
+          <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-zinc-900 dark:bg-slate-900 p-6 md:p-8 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8 border-b border-slate-100 dark:border-zinc-800 dark:border-slate-800 pb-6">
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-[10px] font-bold uppercase tracking-widest">
                     {language === 'es' ? 'Inteligencia de Negocios' : 'Business Intelligence'}
                   </span>
-                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${eaData ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${eaData ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-slate-100 dark:bg-zinc-800 dark:bg-slate-800 text-slate-500 dark:text-zinc-400'}`}>
                     {eaData ? 'Agent Data Extracted' : 'No Agent Data'}
                   </span>
                 </div>
-                <h3 className="text-2xl font-black tracking-tight text-slate-800 dark:text-white mb-1">{eaData?.company_info?.company_name || client?.companyName || 'Unknown Client'}</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-sm font-medium flex items-center gap-1.5">
+                <h3 className="text-2xl font-black tracking-tight text-slate-800 dark:text-zinc-100 dark:text-white mb-1">{eaData?.company_info?.company_name || client?.companyName || 'Unknown Client'}</h3>
+                <p className="text-slate-500 dark:text-zinc-400 dark:text-slate-400 text-sm font-medium flex items-center gap-1.5">
                   <Target size={14} className="text-slate-400" />
                   {eaData?.company_info?.likely_industry || eaData?.company_info?.industry || client?.industry || 'General Industry'}
                 </p>
@@ -225,69 +225,69 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
             {eaData ? (
               <div className="space-y-6">
                 {eaData.company_info?.summary && (
-                  <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/50">
+                  <div className="p-5 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50">
                     <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-2">Company Summary</p>
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300 leading-relaxed">{eaData.company_info.summary}</p>
+                    <p className="text-sm font-medium text-slate-700 dark:text-zinc-200 dark:text-slate-300 leading-relaxed">{eaData.company_info.summary}</p>
                   </div>
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {eaData.company_info?.best_conversion_opportunity && (
-                    <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 shadow-sm">
+                    <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
                       <p className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-500 mb-1">Conversion Priority</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{eaData.company_info.best_conversion_opportunity}</p>
+                      <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200">{eaData.company_info.best_conversion_opportunity}</p>
                     </div>
                   )}
                   {eaData.company_info?.sales_follow_up_focus && (
-                    <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 shadow-sm">
+                    <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
                       <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-500 mb-1">Follow Up Focus</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{eaData.company_info.sales_follow_up_focus}</p>
+                      <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200">{eaData.company_info.sales_follow_up_focus}</p>
                     </div>
                   )}
                   {eaData.company_info?.business_model && (
-                    <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 shadow-sm">
+                    <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
                       <p className="text-[10px] font-black uppercase tracking-wider text-sky-600 dark:text-sky-500 mb-1">Business Model</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{eaData.company_info.business_model}</p>
+                      <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200">{eaData.company_info.business_model}</p>
                     </div>
                   )}
                   {eaData.company_info?.target_market && (
-                    <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 shadow-sm">
+                    <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
                       <p className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-500 mb-1">Target Market</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{eaData.company_info.target_market}</p>
+                      <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200">{eaData.company_info.target_market}</p>
                     </div>
                   )}
                 </div>
                 
-                <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/50 mt-4">
+                <div className="p-5 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 mt-4">
                    <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-3">Extracted Contacts</p>
                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-700/50 shadow-sm">
-                        <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Emails</p>
-                        <p className="text-sm text-slate-800 dark:text-slate-200 font-mono break-all">{eaData.company_info?.extracted_emails || 'None'}</p>
+                      <div className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
+                        <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Emails</p>
+                        <p className="text-sm text-slate-800 dark:text-zinc-100 dark:text-slate-200 font-mono break-all">{eaData.company_info?.extracted_emails || 'None'}</p>
                       </div>
-                      <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-700/50 shadow-sm">
-                        <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Phones</p>
-                        <p className="text-sm text-slate-800 dark:text-slate-200 font-mono break-all">{eaData.company_info?.extracted_phone_numbers || 'None'}</p>
+                      <div className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
+                        <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Phones</p>
+                        <p className="text-sm text-slate-800 dark:text-zinc-100 dark:text-slate-200 font-mono break-all">{eaData.company_info?.extracted_phone_numbers || 'None'}</p>
                       </div>
-                      <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-700/50 shadow-sm">
-                        <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">LinkedIn</p>
-                        <p className="text-sm text-slate-800 dark:text-slate-200 font-mono break-all">{eaData.company_info?.extracted_linkedin || 'None'}</p>
+                      <div className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
+                        <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">LinkedIn</p>
+                        <p className="text-sm text-slate-800 dark:text-zinc-100 dark:text-slate-200 font-mono break-all">{eaData.company_info?.extracted_linkedin || 'None'}</p>
                       </div>
                    </div>
                 </div>
                 
                 {/* Additional Intelligence: Recommended Services, Extracted Services, and Drafts */}
                 {eaData.recommended_services && eaData.recommended_services.length > 0 && (
-                  <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/50 mt-4">
+                  <div className="p-5 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 mt-4">
                     <p className="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-500 mb-3 flex items-center gap-2"><Target size={14} /> Recommended Services</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {eaData.recommended_services.map((rs: any, i: number) => {
                          const sName = typeof rs === 'string' ? rs : rs.service_name;
                          const sReason = typeof rs === 'string' ? null : rs.reasoning;
                          return (
-                           <div key={i} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700/50 shadow-sm">
-                             <p className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">{sName}</p>
-                             {sReason && <p className="text-xs text-slate-500 leading-relaxed">{sReason}</p>}
+                           <div key={i} className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
+                             <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200 mb-1">{sName}</p>
+                             {sReason && <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">{sReason}</p>}
                            </div>
                          );
                       })}
@@ -296,19 +296,19 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                 )}
 
                 {eaData.extracted_services && eaData.extracted_services.length > 0 && (
-                  <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/50 mt-4">
+                  <div className="p-5 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 mt-4">
                     <p className="text-xs font-black uppercase tracking-widest text-sky-600 dark:text-sky-500 mb-3 flex items-center gap-2"><Store size={14} /> Services Offered By This Company</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {eaData.extracted_services.map((es: any, i: number) => (
-                        <div key={i} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700/50 shadow-sm">
+                        <div key={i} className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
                           <div className="flex justify-between items-start mb-2">
-                            <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-[9px] font-bold uppercase tracking-widest rounded-md text-sky-600 dark:text-sky-400">{es.category || 'Service'}</span>
+                            <span className="px-2 py-0.5 bg-slate-100 dark:bg-zinc-800 dark:bg-slate-800 text-[9px] font-bold uppercase tracking-widest rounded-md text-sky-600 dark:text-sky-400">{es.category || 'Service'}</span>
                             {es.approx_cost > 0 && (
                               <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500">${es.approx_cost.toLocaleString()} {es.cost_is_estimated && 'est.'}</span>
                             )}
                           </div>
-                          <p className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">{es.name}</p>
-                          <p className="text-xs text-slate-500 leading-relaxed">{es.brief}</p>
+                          <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200 mb-1">{es.name}</p>
+                          <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">{es.brief}</p>
                         </div>
                       ))}
                     </div>
@@ -316,22 +316,22 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                 )}
 
                 {eaData.draft && (
-                  <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/50 mt-4">
+                  <div className="p-5 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 mt-4">
                     <p className="text-xs font-black uppercase tracking-widest text-violet-600 dark:text-violet-400 mb-3 flex items-center gap-2"><Mail size={14} /> Generated Email Draft</p>
-                    <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700/50 shadow-sm">
+                    <div className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
                       <p className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1">Subject</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-4">{eaData.draft.subject}</p>
+                      <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200 mb-4">{eaData.draft.subject}</p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {eaData.draft.english_body && (
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-2">English</p>
-                            <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap font-mono leading-relaxed bg-slate-50 dark:bg-slate-800/80 p-3 rounded-lg border border-slate-100 dark:border-slate-800">{eaData.draft.english_body}</p>
+                            <p className="text-xs text-slate-600 dark:text-zinc-300 dark:text-slate-400 whitespace-pre-wrap font-mono leading-relaxed bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/80 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 dark:border-slate-800">{eaData.draft.english_body}</p>
                           </div>
                         )}
                         {(eaData.draft.spanish_body || (!eaData.draft.english_body && eaData.draft.body)) && (
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-2">{eaData.draft.spanish_body ? 'Spanish' : 'Body'}</p>
-                            <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap font-mono leading-relaxed bg-slate-50 dark:bg-slate-800/80 p-3 rounded-lg border border-slate-100 dark:border-slate-800">{eaData.draft.spanish_body || eaData.draft.body}</p>
+                            <p className="text-xs text-slate-600 dark:text-zinc-300 dark:text-slate-400 whitespace-pre-wrap font-mono leading-relaxed bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/80 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 dark:border-slate-800">{eaData.draft.spanish_body || eaData.draft.body}</p>
                           </div>
                         )}
                       </div>
@@ -342,14 +342,14 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                 {eaData.email_hook && (
                    <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 mt-4">
                       <p className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-500 mb-1 flex items-center gap-1.5"><ArrowRight size={12} /> Email Hook</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-amber-100">{eaData.email_hook}</p>
+                      <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-amber-100">{eaData.email_hook}</p>
                    </div>
                 )}
               </div>
             ) : (
-              <div className="text-center py-12 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed">
-                 <p className="text-slate-600 dark:text-slate-400 text-sm font-medium mb-3">No AI Agent data found for this client.</p>
-                 <p className="text-xs text-slate-500">Run the AI Email Agent and save a draft to capture deep intelligence.</p>
+              <div className="text-center py-12 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/30 rounded-2xl border border-slate-200 dark:border-zinc-700 dark:border-slate-800 border-dashed">
+                 <p className="text-slate-600 dark:text-zinc-300 dark:text-slate-400 text-sm font-medium mb-3">No AI Agent data found for this client.</p>
+                 <p className="text-xs text-slate-500 dark:text-zinc-400">Run the AI Email Agent and save a draft to capture deep intelligence.</p>
               </div>
             )}
           </div>
@@ -368,7 +368,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
               <div className="p-2 bg-indigo-600 rounded-xl text-white">
                 <Brain size={16} />
               </div>
-              <h4 className="text-lg font-black text-slate-800 dark:text-white">Pre-Sales Research</h4>
+              <h4 className="text-lg font-black text-slate-800 dark:text-zinc-100 dark:text-white">Pre-Sales Research</h4>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -410,33 +410,33 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
               {research.company_overview && (
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-wider text-indigo-500 mb-1">Company Overview</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{research.company_overview}</p>
+                  <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300 leading-relaxed">{research.company_overview}</p>
                 </div>
               )}
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {research.pain_points && (
-                  <div className="p-4 bg-white dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
+                  <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
                     <p className="text-[10px] font-black uppercase tracking-wider text-amber-500 mb-1">Pain Points</p>
-                    <p className="text-sm text-slate-600 dark:text-slate-300">{research.pain_points}</p>
+                    <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300">{research.pain_points}</p>
                   </div>
                 )}
                 {research.competitors && (
-                  <div className="p-4 bg-white dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
+                  <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
                     <p className="text-[10px] font-black uppercase tracking-wider text-rose-500 mb-1">Competitors</p>
-                    <p className="text-sm text-slate-600 dark:text-slate-300">{research.competitors}</p>
+                    <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300">{research.competitors}</p>
                   </div>
                 )}
                 {research.business_goals && (
-                  <div className="p-4 bg-white dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30 md:col-span-2">
+                  <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30 md:col-span-2">
                     <p className="text-[10px] font-black uppercase tracking-wider text-emerald-500 mb-1">Business Goals</p>
-                    <p className="text-sm text-slate-600 dark:text-slate-300">{research.business_goals}</p>
+                    <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300">{research.business_goals}</p>
                   </div>
                 )}
               </div>
             </div>
             ) : (
-              <div className="text-center py-8 bg-white/50 dark:bg-slate-900/50 rounded-xl border border-dashed border-indigo-200 mt-4">
+              <div className="text-center py-8 bg-white dark:bg-zinc-900/50 dark:bg-slate-900/50 rounded-xl border border-dashed border-indigo-200 mt-4">
                 <p className="text-sm text-indigo-400 font-medium">{language === 'es' ? 'No se ha realizado investigación. Haz clic en analizar arriba.' : 'No research found. Click analyze above to start.'}</p>
               </div>
             )}
@@ -449,12 +449,12 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         <div className="space-y-6">
           {/* Outbound Emails / Round 1 */}
           {emails && emails.length > 0 ? (
-        <div className="rounded-2xl border border-blue-100 dark:border-blue-900/40 bg-white dark:bg-slate-900 p-6 shadow-sm mt-6">
+        <div className="rounded-2xl border border-blue-100 dark:border-blue-900/40 bg-white dark:bg-zinc-900 dark:bg-slate-900 p-6 shadow-sm mt-6">
           <div className="flex items-center gap-2 mb-4">
             <div className="p-2 bg-blue-500 rounded-xl text-white">
               <Mail size={16} />
             </div>
-            <h4 className="text-lg font-black text-slate-800 dark:text-white">Outbound Communications</h4>
+            <h4 className="text-lg font-black text-slate-800 dark:text-zinc-100 dark:text-white">Outbound Communications</h4>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 ml-auto">
               {emails.length} Emails
             </span>
@@ -475,15 +475,15 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
               const waLink = phone && whatsappDraft ? `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(whatsappDraft)}` : `https://wa.me/?text=${encodeURIComponent(whatsappDraft)}`;
 
               return (
-              <div key={idx} className="p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 hover:shadow-md transition-shadow cursor-pointer relative" onClick={() => setExpandedEmailId(isExpanded ? null : idx)}>
+              <div key={idx} className="p-4 border border-slate-100 dark:border-zinc-800 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-zinc-950/50 dark:bg-slate-800/30 hover:shadow-md transition-shadow cursor-pointer relative" onClick={() => setExpandedEmailId(isExpanded ? null : idx)}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
                       <Mail size={10} className="text-blue-600 dark:text-blue-400" />
                     </div>
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-200 line-clamp-1">{em.subject || 'No Subject'}</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200 line-clamp-1">{em.subject || 'No Subject'}</p>
                   </div>
-                  <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-white dark:bg-slate-800 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 shrink-0">
+                  <div className="flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-white dark:bg-zinc-900 dark:bg-slate-800 px-2 py-1 rounded-md border border-slate-200 dark:border-zinc-700 dark:border-slate-700 shrink-0">
                     <Calendar size={10} />
                     {em.sent_at ? new Date(em.sent_at).toLocaleDateString() : 'Draft'}
                   </div>
@@ -491,25 +491,25 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                 {em.english_body && (
                   <div className="ml-8">
                     {!isExpanded ? (
-                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                      <p className="text-xs text-slate-500 dark:text-zinc-400 dark:text-slate-400 line-clamp-2 leading-relaxed">
                         {em.english_body}
                       </p>
                     ) : (
                       <div className={`mt-4 grid grid-cols-1 gap-4 ${whatsappDraft ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-                        <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
+                        <div className="p-3 bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700 rounded-xl">
                           <p className="text-[10px] font-black uppercase text-blue-600 mb-2">English</p>
-                          <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">{em.english_body}</p>
+                          <p className="text-xs text-slate-600 dark:text-zinc-300 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">{em.english_body}</p>
                         </div>
                         {em.spanish_body && (
-                          <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
+                          <div className="p-3 bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700 rounded-xl">
                             <p className="text-[10px] font-black uppercase text-blue-600 mb-2">Spanish</p>
-                            <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">{em.spanish_body}</p>
+                            <p className="text-xs text-slate-600 dark:text-zinc-300 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">{em.spanish_body}</p>
                           </div>
                         )}
                         {whatsappDraft && (
-                          <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl relative flex flex-col">
+                          <div className="p-3 bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700 rounded-xl relative flex flex-col">
                             <p className="text-[10px] font-black uppercase text-emerald-600 mb-2">WhatsApp Draft</p>
-                            <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed mb-10 flex-1">{whatsappDraft}</p>
+                            <p className="text-xs text-slate-600 dark:text-zinc-300 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed mb-10 flex-1">{whatsappDraft}</p>
                             <a href={waLink} target="_blank" rel="noopener noreferrer" className="absolute bottom-3 right-3 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold uppercase rounded-lg transition-colors flex items-center gap-1.5" onClick={(e) => { e.stopPropagation(); }}>
                               <MessageCircle size={12} /> Send
                             </a>
@@ -532,8 +532,8 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
           </div>
         </div>
       ) : (
-        <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 shadow-sm mt-6">
-          <p className="text-slate-500 font-medium">No outbound communications found.</p>
+        <div className="text-center py-12 bg-white dark:bg-zinc-900 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-zinc-700 shadow-sm mt-6">
+          <p className="text-slate-500 dark:text-zinc-400 font-medium">No outbound communications found.</p>
         </div>
       )}
       </div>

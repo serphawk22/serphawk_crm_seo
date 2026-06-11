@@ -11,9 +11,9 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   'Quoted':      { label: 'Quote Sent', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
   'Accepted':    { label: 'Running',    color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
   'In Progress': { label: 'Happening',  color: 'bg-blue-100 text-blue-700 border-blue-200' },
-  'Delivered':   { label: 'Done',       color: 'bg-slate-100 text-slate-600 border-slate-200' },
+  'Delivered':   { label: 'Done',       color: 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border-slate-200 dark:border-zinc-700' },
   'Hold':        { label: 'On Hold',    color: 'bg-rose-100 text-rose-700 border-rose-200' },
-  'Cancelled':   { label: 'Cancelled',  color: 'bg-slate-200 text-slate-500 border-slate-300' },
+  'Cancelled':   { label: 'Cancelled',  color: 'bg-slate-200 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400 border-slate-300 dark:border-zinc-600' },
 };
 
 const THREAD_COLORS = [
@@ -308,20 +308,20 @@ export default function MessagesHubPage() {
       />
 
       {/* ── Conversations Container ─────────────────────────────────────── */}
-      <div className="flex-1 flex bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden min-h-0">
+      <div className="flex-1 flex bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 shadow-sm overflow-hidden min-h-0">
 
         {/* ── Left Panel: Threads ──────────────────────────────────────── */}
-        <div className="w-[340px] shrink-0 border-r border-gray-100 flex flex-col bg-gray-50/50">
+        <div className="w-[340px] shrink-0 border-r border-gray-100 dark:border-zinc-800 flex flex-col bg-gray-50 dark:bg-zinc-950/50">
 
           {/* Panel header */}
-          <div className="p-4 border-b border-gray-100">
+          <div className="p-4 border-b border-gray-100 dark:border-zinc-800">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center">
                   <MessageCircle className="w-4.5 h-4.5 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-sm font-black text-gray-900 tracking-tight">Messages</h1>
+                  <h1 className="text-sm font-black text-gray-900 dark:text-zinc-50 tracking-tight">Messages</h1>
                   <p className="text-[11px] text-gray-400 font-medium">
                     {totalUnread > 0 ? `${totalUnread} unread` : `${threads.length} conversation${threads.length !== 1 ? 's' : ''}`}
                   </p>
@@ -344,7 +344,7 @@ export default function MessagesHubPage() {
                 placeholder="Search conversations…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full bg-white border border-gray-200 rounded-xl py-2.5 pl-9 pr-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder:text-gray-400 transition-all"
+                className="w-full bg-white dark:bg-zinc-900 border border-gray-200 rounded-xl py-2.5 pl-9 pr-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder:text-gray-400 transition-all"
               />
             </div>
 
@@ -357,7 +357,7 @@ export default function MessagesHubPage() {
                   className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-bold transition-all ${
                     category === c
                       ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700'
+                      : 'bg-white dark:bg-zinc-900 text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700 dark:text-zinc-200'
                   }`}
                 >
                   {c}
@@ -374,7 +374,7 @@ export default function MessagesHubPage() {
                   className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-bold transition-all ${
                     filter === f
                       ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700'
+                      : 'bg-white dark:bg-zinc-900 text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700 dark:text-zinc-200'
                   }`}
                 >
                   {f}
@@ -424,7 +424,7 @@ export default function MessagesHubPage() {
                       className={`w-full text-left px-3 py-3 rounded-xl transition-all ${
                         isActive
                           ? 'bg-indigo-50 border border-indigo-200'
-                          : 'hover:bg-gray-50 border border-transparent'
+                          : 'hover:bg-gray-50 dark:bg-zinc-950 border border-transparent'
                       }`}
                     >
                       <div className="flex items-center gap-3">
@@ -443,7 +443,7 @@ export default function MessagesHubPage() {
                         {/* Info */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2 mb-0.5">
-                            <h3 className={`text-sm truncate ${unreadCount > 0 ? 'font-black text-gray-900' : 'font-semibold text-gray-800'}`}>
+                            <h3 className={`text-sm truncate ${unreadCount > 0 ? 'font-black text-gray-900 dark:text-zinc-50' : 'font-semibold text-gray-800 dark:text-zinc-100'}`}>
                               {thread.service_name}
                             </h3>
                             {lastMsg && (
@@ -451,7 +451,7 @@ export default function MessagesHubPage() {
                             )}
                           </div>
                           <div className="flex items-center justify-between gap-2">
-                            <p className={`text-xs truncate ${unreadCount > 0 ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>
+                            <p className={`text-xs truncate ${unreadCount > 0 ? 'text-gray-700 dark:text-zinc-200 font-medium' : 'text-gray-400'}`}>
                               {lastMsg
                                 ? `${lastMsg.isMe ? 'You' : lastMsg.sender}: ${lastMsg.content}`
                                 : 'No messages yet'}
@@ -479,16 +479,16 @@ export default function MessagesHubPage() {
 
         {/* ── Right Panel: Chat ───────────────────────────────────────── */}
         {activeThread ? (
-          <div className="flex-1 flex flex-col min-w-0 bg-white">
+          <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-zinc-900">
 
             {/* Chat header */}
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${threadColor(activeThread.thread_id)} flex items-center justify-center text-white text-xs font-black shadow-sm`}>
                   {(activeThread.service_name || 'S').substring(0, 2).toUpperCase()}
                 </div>
                 <div>
-                  <h2 className="font-bold text-sm text-gray-900">{activeThread.service_name}</h2>
+                  <h2 className="font-bold text-sm text-gray-900 dark:text-zinc-50">{activeThread.service_name}</h2>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="flex items-center gap-1 text-[11px] text-gray-500">
                       <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
@@ -570,7 +570,7 @@ export default function MessagesHubPage() {
                           <div className={`rounded-2xl px-4 py-2.5 ${
                             isMe
                               ? 'bg-indigo-600 text-white rounded-tr-sm'
-                              : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm'
+                              : 'bg-white dark:bg-zinc-900 border border-gray-200 text-gray-800 dark:text-zinc-100 rounded-tl-sm shadow-sm'
                           }`}>
                             <p className="text-[13px] leading-relaxed">{msg.content}</p>
                           </div>
@@ -598,7 +598,7 @@ export default function MessagesHubPage() {
                     <span className="text-[10px] font-semibold mb-1 px-1 text-gray-500">
                       {Object.values(typingUsers).join(', ')}
                     </span>
-                    <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm flex items-center gap-1">
+                    <div className="bg-white dark:bg-zinc-900 border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm flex items-center gap-1">
                       <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                       <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                       <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
@@ -610,12 +610,12 @@ export default function MessagesHubPage() {
             </div>
 
             {/* Input area */}
-            <div className="px-5 py-4 border-t border-gray-100 shrink-0 bg-white">
+            <div className="px-5 py-4 border-t border-gray-100 dark:border-zinc-800 shrink-0 bg-white dark:bg-zinc-900">
               <form
                 onSubmit={handleSendMessage}
                 className="flex items-end gap-2"
               >
-                <div className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl flex items-end gap-1 px-2 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 transition-all">
+                <div className="flex-1 bg-gray-50 dark:bg-zinc-950 border border-gray-200 rounded-2xl flex items-end gap-1 px-2 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 transition-all">
                   <button type="button" className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg transition-colors shrink-0">
                     <Paperclip className="w-4 h-4" />
                   </button>
@@ -649,7 +649,7 @@ export default function MessagesHubPage() {
           </div>
         ) : (
           /* ── Empty state ───────────────────────────────────────────── */
-          <div className="flex-1 flex flex-col items-center justify-center p-10 bg-gray-50/30">
+          <div className="flex-1 flex flex-col items-center justify-center p-10 bg-gray-50 dark:bg-zinc-950/30">
             <div className="w-20 h-20 bg-indigo-50 rounded-3xl flex items-center justify-center mb-5">
               <MessageCircle className="w-9 h-9 text-indigo-300" />
             </div>
@@ -657,14 +657,14 @@ export default function MessagesHubPage() {
               <p className="text-sm font-bold text-gray-400 animate-pulse">Loading your threads…</p>
             ) : threads.length > 0 ? (
               <div className="text-center">
-                <h3 className="text-lg font-black text-gray-700">Select a conversation</h3>
+                <h3 className="text-lg font-black text-gray-700 dark:text-zinc-200">Select a conversation</h3>
                 <p className="text-sm font-medium mt-1.5 text-gray-400 max-w-xs">
                   Choose a thread from the left to start messaging.
                 </p>
               </div>
             ) : (
               <div className="text-center">
-                <h3 className="text-lg font-black text-gray-700">No conversations yet</h3>
+                <h3 className="text-lg font-black text-gray-700 dark:text-zinc-200">No conversations yet</h3>
                 <p className="text-sm font-medium mt-1.5 text-gray-400 max-w-xs">
                   A chat thread opens automatically once you place a service request.
                 </p>

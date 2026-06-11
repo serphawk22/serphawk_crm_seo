@@ -75,8 +75,8 @@ export default function EmployeesPage() {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight uppercase tracking-tighter">Core Team</h1>
-          <p className="text-gray-500 font-medium font-poppins">Manage administrators and project managers.</p>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight uppercase tracking-tighter">Core Team</h1>
+          <p className="text-gray-500 dark:text-zinc-400 font-medium font-poppins">Manage administrators and project managers.</p>
         </div>
         <button 
           onClick={() => setShowAddModal(true)}
@@ -98,11 +98,11 @@ export default function EmployeesPage() {
         ]}
       />
 
-      <div className="bg-white rounded-[3rem] border shadow-sm overflow-hidden text-gray-800">
-        <div className="p-8 border-b border-gray-100 flex flex-col md:flex-row justify-between items-center bg-gray-50/50 gap-4">
+      <div className="bg-white dark:bg-zinc-900 rounded-[3rem] border shadow-sm overflow-hidden text-gray-800 dark:text-zinc-100">
+        <div className="p-8 border-b border-gray-100 dark:border-zinc-800 flex flex-col md:flex-row justify-between items-center bg-gray-50 dark:bg-zinc-950/50 gap-4">
            <div className="relative w-full md:w-72">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input type="text" placeholder="Search team..." className="w-full pl-11 pr-4 py-3 bg-white border border-gray-100 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm" />
+              <input type="text" placeholder="Search team..." className="w-full pl-11 pr-4 py-3 bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm" />
            </div>
            <div className="flex gap-2">
               <span className="flex items-center gap-2 px-6 py-2 bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase rounded-full border border-indigo-100 shadow-sm">
@@ -126,7 +126,7 @@ export default function EmployeesPage() {
                    [1, 2, 3].map(i => <tr key={i} className="animate-pulse"><td colSpan={4} className="h-20 px-6"></td></tr>)
                  ) : employees.length > 0 ? (
                    employees.map((member: any) => (
-                     <tr key={member.id} className="hover:bg-gray-50 transition-all duration-300 group">
+                     <tr key={member.id} className="hover:bg-gray-50 dark:bg-zinc-950 transition-all duration-300 group">
                         <td className="px-6 py-6">
                            <div className="flex items-center gap-4">
                               <div className={cn(
@@ -137,7 +137,7 @@ export default function EmployeesPage() {
                                  {member.role === 'Admin' && <Star className="w-3 h-3 absolute -top-1 -right-1 fill-amber-400 text-amber-500" />}
                               </div>
                               <div>
-                                 <p className="font-black text-gray-900 uppercase tracking-tight text-sm">{member.name}</p>
+                                 <p className="font-black text-gray-900 dark:text-zinc-50 uppercase tracking-tight text-sm">{member.name}</p>
                                  <p className="text-[10px] text-gray-300 font-black uppercase tracking-widest">Member Since {new Date().getFullYear()}</p>
                               </div>
                            </div>
@@ -158,10 +158,10 @@ export default function EmployeesPage() {
                            </span>
                         </td>
                         <td className="px-6 py-6 text-right flex justify-end gap-2 pr-10">
-                           <button className="p-3 text-gray-300 hover:text-indigo-600 hover:bg-white hover:shadow-md rounded-2xl transition-all border border-transparent hover:border-indigo-100">
+                           <button className="p-3 text-gray-300 hover:text-indigo-600 hover:bg-white dark:bg-zinc-900 hover:shadow-md rounded-2xl transition-all border border-transparent hover:border-indigo-100">
                               <Mail className="w-5 h-5" />
                            </button>
-                           <button onClick={() => handleDelete(member.id)} className="p-3 text-gray-300 hover:text-red-600 hover:bg-white hover:shadow-md rounded-2xl transition-all border border-transparent hover:border-red-100">
+                           <button onClick={() => handleDelete(member.id)} className="p-3 text-gray-300 hover:text-red-600 hover:bg-white dark:bg-zinc-900 hover:shadow-md rounded-2xl transition-all border border-transparent hover:border-red-100">
                               <Trash2 className="w-5 h-5" />
                            </button>
                         </td>
@@ -170,7 +170,7 @@ export default function EmployeesPage() {
                  ) : (
                    <tr>
                       <td colSpan={4} className="p-20 text-center">
-                         <div className="w-20 h-20 bg-gray-50 rounded-3xl flex items-center justify-center mx-auto mb-6 border-2 border-dashed border-gray-100">
+                         <div className="w-20 h-20 bg-gray-50 dark:bg-zinc-950 rounded-3xl flex items-center justify-center mx-auto mb-6 border-2 border-dashed border-gray-100 dark:border-zinc-800">
                             <Users className="w-10 h-10 text-gray-200" />
                          </div>
                          <p className="text-gray-400 font-black uppercase tracking-widest text-xs">Awaiting team mobilization...</p>
@@ -185,13 +185,13 @@ export default function EmployeesPage() {
       {/* Add Employee Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-lg rounded-[3.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-10 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-[3.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-10 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50 dark:bg-zinc-950/50">
               <div>
-                <h2 className="text-2xl font-black text-gray-900 tracking-tighter uppercase">Team Onboarding</h2>
+                <h2 className="text-2xl font-black text-gray-900 dark:text-zinc-50 tracking-tighter uppercase">Team Onboarding</h2>
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-1">Configure security credentials</p>
               </div>
-              <button onClick={() => setShowAddModal(false)} className="p-4 hover:bg-white border rounded-[1.5rem] transition-all shadow-sm">
+              <button onClick={() => setShowAddModal(false)} className="p-4 hover:bg-white dark:bg-zinc-900 border rounded-[1.5rem] transition-all shadow-sm">
                 <X className="w-6 h-6 text-gray-400" />
               </button>
             </div>
@@ -205,15 +205,15 @@ export default function EmployeesPage() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Official Name" 
-                    className="w-full px-6 py-5 bg-gray-50 border-none rounded-[1.5rem] text-sm font-black focus:ring-2 focus:ring-indigo-500 transition-all outline-none shadow-inner"
+                    className="w-full px-6 py-5 bg-gray-50 dark:bg-zinc-950 border-none rounded-[1.5rem] text-sm font-black focus:ring-2 focus:ring-indigo-500 transition-all outline-none shadow-inner"
                   />
                 </div>
                 <div className="space-y-3">
-                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 text-gray-800">Assign Privilege</label>
+                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 text-gray-800 dark:text-zinc-100">Assign Privilege</label>
                    <select 
                      value={role}
                      onChange={(e) => setRole(e.target.value)}
-                     className="w-full px-6 py-5 bg-gray-50 border-none rounded-[1.5rem] text-sm font-black focus:ring-2 focus:ring-indigo-500 transition-all outline-none appearance-none shadow-inner"
+                     className="w-full px-6 py-5 bg-gray-50 dark:bg-zinc-950 border-none rounded-[1.5rem] text-sm font-black focus:ring-2 focus:ring-indigo-500 transition-all outline-none appearance-none shadow-inner"
                    >
                      <option>Employee</option>
                      <option>Admin</option>
@@ -229,7 +229,7 @@ export default function EmployeesPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="corporate.id@crm.com" 
-                  className="w-full px-6 py-5 bg-gray-50 border-none rounded-[1.5rem] text-sm font-black focus:ring-2 focus:ring-indigo-500 transition-all outline-none shadow-inner"
+                  className="w-full px-6 py-5 bg-gray-50 dark:bg-zinc-950 border-none rounded-[1.5rem] text-sm font-black focus:ring-2 focus:ring-indigo-500 transition-all outline-none shadow-inner"
                 />
               </div>
 
@@ -243,7 +243,7 @@ export default function EmployeesPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Set initial access password" 
-                  className="w-full px-6 py-5 bg-gray-50 border-none rounded-[1.5rem] text-sm font-black focus:ring-2 focus:ring-indigo-500 transition-all outline-none shadow-inner"
+                  className="w-full px-6 py-5 bg-gray-50 dark:bg-zinc-950 border-none rounded-[1.5rem] text-sm font-black focus:ring-2 focus:ring-indigo-500 transition-all outline-none shadow-inner"
                 />
               </div>
 
@@ -251,7 +251,7 @@ export default function EmployeesPage() {
                 <button 
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="flex-1 px-8 py-5 bg-gray-100 text-gray-500 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-gray-200 transition-all"
+                  className="flex-1 px-8 py-5 bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-zinc-400 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-gray-200 transition-all"
                 >
                   Cancel
                 </button>

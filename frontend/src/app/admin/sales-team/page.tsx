@@ -158,8 +158,8 @@ export default function SalesTeamPage() {
               <UserCheck className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-slate-900">{t("sales_team.title")}</h1>
-              <p className="text-slate-500 mt-1">{t("sales_team.subtitle")}</p>
+              <h1 className="text-2xl font-black text-slate-900 dark:text-zinc-50">{t("sales_team.title")}</h1>
+              <p className="text-slate-500 dark:text-zinc-400 mt-1">{t("sales_team.subtitle")}</p>
             </div>
           </div>
           <button
@@ -186,17 +186,17 @@ export default function SalesTeamPage() {
       <div className="glass-card p-6 md:p-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>
-            <p className="text-sm text-slate-500">{t("sales_team.active_managers")}</p>
-            <h2 className="text-3xl font-black text-slate-900">{salesTeam.length}</h2>
+            <p className="text-sm text-slate-500 dark:text-zinc-400">{t("sales_team.active_managers")}</p>
+            <h2 className="text-3xl font-black text-slate-900 dark:text-zinc-50">{salesTeam.length}</h2>
           </div>
           <div className="flex flex-wrap gap-3">
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="rounded-3xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 px-4 py-3">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("sales_team.login_path")}</p>
-              <p className="font-semibold text-slate-800">/sales-manager</p>
+              <p className="font-semibold text-slate-800 dark:text-zinc-100">/sales-manager</p>
             </div>
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="rounded-3xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 px-4 py-3">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{t("sales_team.user_role")}</p>
-              <p className="font-semibold text-slate-800">SalesManager</p>
+              <p className="font-semibold text-slate-800 dark:text-zinc-100">SalesManager</p>
             </div>
           </div>
         </div>
@@ -208,10 +208,10 @@ export default function SalesTeamPage() {
               placeholder={t("sales_team.search_placeholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-11 py-3 text-sm text-slate-700 outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
+              className="w-full rounded-2xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-11 py-3 text-sm text-slate-700 dark:text-zinc-200 outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
             />
           </div>
-          <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          <div className="rounded-3xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 px-4 py-3 text-sm text-slate-600 dark:text-zinc-300">
             {t("sales_team.tip_login")}
           </div>
         </div>
@@ -245,20 +245,20 @@ export default function SalesTeamPage() {
                 <p className="font-bold">{t("sales_team.loading")}</p>
               </div>
             ) : visibleSales.length === 0 ? (
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-10 text-center text-slate-600">
+              <div className="rounded-3xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 p-10 text-center text-slate-600 dark:text-zinc-300">
                 <Smile className="mx-auto mb-4 h-10 w-10 text-teal-500" />
-                <p className="text-lg font-bold text-slate-900">{t("sales_team.no_salespeople")}</p>
-                <p className="mt-2 text-sm text-slate-500">{t("sales_team.create_first")}</p>
+                <p className="text-lg font-bold text-slate-900 dark:text-zinc-50">{t("sales_team.no_salespeople")}</p>
+                <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">{t("sales_team.create_first")}</p>
               </div>
             ) : (
               <div className="space-y-3">
                 {visibleSales.map((user) => (
-                  <div key={user.id} className="group flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm transition hover:-translate-y-0.5">
+                  <div key={user.id} className="group flex flex-col gap-4 rounded-3xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900/90 p-5 shadow-sm transition hover:-translate-y-0.5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex-1">
-                        <p className="text-sm font-semibold text-slate-500 uppercase tracking-[0.2em]">{language === 'es' ? 'Gerente de Ventas' : 'Sales Manager'}</p>
-                        <h3 className="text-xl font-black text-slate-900">{user.name}</h3>
-                        <p className="text-sm text-slate-500 mb-4">{user.email}</p>
+                        <p className="text-sm font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-[0.2em]">{language === 'es' ? 'Gerente de Ventas' : 'Sales Manager'}</p>
+                        <h3 className="text-xl font-black text-slate-900 dark:text-zinc-50">{user.name}</h3>
+                        <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">{user.email}</p>
                         
                         <div>
                           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">{t("sales_team.assigned_clients")}</p>
@@ -277,7 +277,7 @@ export default function SalesTeamPage() {
                       </div>
                       <div className="flex flex-col items-end gap-3 min-w-[200px]">
                         <select 
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
+                          className="w-full rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 px-3 py-2 text-sm text-slate-700 dark:text-zinc-200 outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
                           onChange={(e) => handleAssignClient(user.id, e.target.value)}
                           defaultValue=""
                         >
@@ -307,13 +307,13 @@ export default function SalesTeamPage() {
               <Mail className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-sm text-slate-500">{t("sales_team.onboarding")}</p>
-              <h2 className="text-xl font-black text-slate-900">{t("sales_team.create_accounts")}</h2>
+              <p className="text-sm text-slate-500 dark:text-zinc-400">{t("sales_team.onboarding")}</p>
+              <h2 className="text-xl font-black text-slate-900 dark:text-zinc-50">{t("sales_team.create_accounts")}</h2>
             </div>
           </div>
 
           <div className="space-y-4">
-            <p className="text-sm text-slate-500">{t("sales_team.onboarding_desc")}</p>
+            <p className="text-sm text-slate-500 dark:text-zinc-400">{t("sales_team.onboarding_desc")}</p>
 
             <button
               onClick={() => setShowCreate(true)}
@@ -322,7 +322,7 @@ export default function SalesTeamPage() {
               <Plus className="w-4 h-4" /> {t("sales_team.add_salesperson")}
             </button>
 
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+            <div className="rounded-3xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 p-4 text-sm text-slate-600 dark:text-zinc-300">
               {t("sales_team.tip_assign")}
             </div>
           </div>
@@ -331,13 +331,13 @@ export default function SalesTeamPage() {
 
       <div className="glass-card p-6 md:p-8 mt-6">
         <div className="mb-6">
-          <h2 className="text-xl font-black text-slate-900">{t("sales_team.assignment_matrix")}</h2>
-          <p className="text-sm text-slate-500 mt-1">{t("sales_team.matrix_desc")}</p>
+          <h2 className="text-xl font-black text-slate-900 dark:text-zinc-50">{t("sales_team.assignment_matrix")}</h2>
+          <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">{t("sales_team.matrix_desc")}</p>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-xs">
+            <thead className="bg-slate-50 dark:bg-zinc-950 text-slate-500 dark:text-zinc-400 uppercase tracking-wider text-xs">
               <tr>
                 <th className="px-4 py-3 font-semibold rounded-tl-xl">{t("sales_team.client_company")}</th>
                 <th className="px-4 py-3 font-semibold">{t("sales_team.project_name")}</th>
@@ -352,17 +352,17 @@ export default function SalesTeamPage() {
                 </tr>
               ) : (
                 clients.map(client => (
-                  <tr key={client.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-4 py-3 font-bold text-slate-900">{client.companyName || client.name || (language === 'es' ? `Cliente #${client.id}` : `Client #${client.id}`)}</td>
-                    <td className="px-4 py-3 text-slate-500">{client.projectName || '—'}</td>
+                  <tr key={client.id} className="hover:bg-slate-50 dark:bg-zinc-950/50 transition-colors">
+                    <td className="px-4 py-3 font-bold text-slate-900 dark:text-zinc-50">{client.companyName || client.name || (language === 'es' ? `Cliente #${client.id}` : `Client #${client.id}`)}</td>
+                    <td className="px-4 py-3 text-slate-500 dark:text-zinc-400">{client.projectName || '—'}</td>
                     <td className="px-4 py-3">
-                      <span className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                      <span className="inline-block rounded-full bg-slate-100 dark:bg-zinc-800 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:text-zinc-300">
                         {client.status}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <select 
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100 max-w-[250px]"
+                        className="w-full rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-700 dark:text-zinc-200 outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100 max-w-[250px]"
                         value={client.assignedEmployeeId || ""}
                         onChange={(e) => handleAssignClient(Number(e.target.value), client.id)}
                       >

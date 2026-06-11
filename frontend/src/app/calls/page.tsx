@@ -90,7 +90,7 @@ function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void
             value={form.summary}
             onChange={(e) => setForm({ ...form, summary: e.target.value })}
             placeholder="Brief call summary..."
-            className="w-full px-4 py-2.5 bg-white/80 border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 text-slate-700 resize-none"
+            className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 text-slate-700 dark:text-zinc-200 resize-none"
           />
         </div>
         <div>
@@ -102,7 +102,7 @@ function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             placeholder="What was discussed..."
-            className="w-full px-4 py-2.5 bg-white/80 border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 text-slate-700 resize-none"
+            className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 text-slate-700 dark:text-zinc-200 resize-none"
           />
         </div>
         <div>
@@ -114,7 +114,7 @@ function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void
             value={form.work_done}
             onChange={(e) => setForm({ ...form, work_done: e.target.value })}
             placeholder="Actions completed..."
-            className="w-full px-4 py-2.5 bg-white/80 border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-400/30 focus:border-emerald-400 text-slate-700 resize-none"
+            className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-400/30 focus:border-emerald-400 text-slate-700 dark:text-zinc-200 resize-none"
           />
         </div>
         <div>
@@ -126,7 +126,7 @@ function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void
             value={form.assigned_to}
             onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}
             placeholder="Team member name..."
-            className="w-full px-4 py-2.5 bg-white/80 border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 text-slate-700"
+            className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 text-slate-700 dark:text-zinc-200"
           />
         </div>
       </div>
@@ -137,12 +137,12 @@ function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void
             onClick={() => setForm({ ...form, followup_needed: !form.followup_needed })}
             className={cn(
               "w-11 h-6 rounded-full transition-all relative",
-              form.followup_needed ? "bg-red-500" : "bg-slate-200"
+              form.followup_needed ? "bg-red-500" : "bg-slate-200 dark:bg-zinc-700"
             )}
           >
-            <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all", form.followup_needed ? "left-auto right-1" : "left-1")} />
+            <div className={cn("absolute top-1 w-4 h-4 bg-white dark:bg-zinc-900 rounded-full shadow transition-all", form.followup_needed ? "left-auto right-1" : "left-1")} />
           </div>
-          <span className="text-sm font-bold text-slate-700">🔔 Follow-up Needed</span>
+          <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">🔔 Follow-up Needed</span>
         </label>
         {form.followup_needed && (
           <input
@@ -225,7 +225,7 @@ export default function CallsPage() {
             Call Log
           </h1>
           <div className="flex items-center gap-3 mt-1">
-            <p className="text-slate-500 font-medium">{calls.length} total calls</p>
+            <p className="text-slate-500 dark:text-zinc-400 font-medium">{calls.length} total calls</p>
             {unsummarized.length > 0 && (
               <span className="text-[10px] bg-amber-100 text-amber-700 font-black px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">
                 {unsummarized.length} unsummarized
@@ -264,7 +264,7 @@ export default function CallsPage() {
                 console.error("Simulation failed", e);
               }
             }}
-            className="flex items-center gap-2 px-6 py-3.5 bg-white border border-slate-200 text-slate-700 rounded-2xl font-bold shadow-sm hover:bg-slate-50 transition-all"
+            className="flex items-center gap-2 px-6 py-3.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 rounded-2xl font-bold shadow-sm hover:bg-slate-50 dark:bg-zinc-950 transition-all"
           >
             <Zap className="w-4 h-4 text-amber-500" /> Simulate Call
           </button>
@@ -313,7 +313,7 @@ export default function CallsPage() {
           {calls.map((call) => (
             <motion.div key={call.id} variants={itemVariants}
               className={cn(
-                "bg-white/50 backdrop-blur-2xl border rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] p-6 transition-all",
+                "bg-white dark:bg-zinc-900/50 backdrop-blur-2xl border rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] p-6 transition-all",
                 call.followup_needed ? "border-red-200" : "border-white/80"
               )}
             >
@@ -324,21 +324,21 @@ export default function CallsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap mb-1">
-                    <span className="font-black text-slate-800 text-lg">{call.phone_number}</span>
+                    <span className="font-black text-slate-800 dark:text-zinc-100 text-lg">{call.phone_number}</span>
                     {!call.summary && <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">Needs Summary</span>}
                     {call.followup_needed && <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">🔔 Follow-up</span>}
                     {call.assigned_to && <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2.5 py-1 rounded-full">👤 {call.assigned_to}</span>}
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-slate-500 font-medium">
+                  <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-zinc-400 font-medium">
                     <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDuration(call.duration_seconds)}</span>
                     <span>{new Date(call.received_at).toLocaleString()}</span>
                     {call.followup_date && <span className="text-red-600 font-bold">📅 Due: {call.followup_date}</span>}
                   </div>
-                  {call.summary && <p className="text-sm text-slate-600 font-medium bg-white/60 p-3 rounded-2xl border border-white mt-3">{call.summary}</p>}
+                  {call.summary && <p className="text-sm text-slate-600 dark:text-zinc-300 font-medium bg-white dark:bg-zinc-900/60 p-3 rounded-2xl border border-white mt-3">{call.summary}</p>}
                 </div>
                 <button
                   onClick={() => setExpandedId(expandedId === call.id ? null : call.id)}
-                  className="shrink-0 p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-500"
+                  className="shrink-0 p-2 hover:bg-slate-100 dark:bg-zinc-800 rounded-xl transition-colors text-slate-500 dark:text-zinc-400"
                 >
                   {expandedId === call.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
@@ -370,10 +370,10 @@ export default function CallsPage() {
             className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-50 p-4"
           >
             <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-              className="bg-white/90 backdrop-blur-2xl rounded-[2rem] border border-white shadow-2xl w-full max-w-lg p-8 relative max-h-[90vh] overflow-y-auto"
+              className="bg-white dark:bg-zinc-900/90 backdrop-blur-2xl rounded-[2rem] border border-white shadow-2xl w-full max-w-lg p-8 relative max-h-[90vh] overflow-y-auto"
             >
-              <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
-              <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3">
+              <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700 dark:text-zinc-200"><X className="w-5 h-5" /></button>
+              <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 mb-6 flex items-center gap-3">
                 <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><Phone className="w-5 h-5" /></div>
                 Log New Call
               </h2>
@@ -384,7 +384,7 @@ export default function CallsPage() {
                     <input type="text" required placeholder="+1 (555) 000-0000"
                       value={form.phone_number}
                       onChange={(e) => setForm({ ...form, phone_number: e.target.value })}
-                      className="w-full px-4 py-3 bg-white/60 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
+                      className="w-full px-4 py-3 bg-white dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
                     />
                   </div>
                   <div>
@@ -392,7 +392,7 @@ export default function CallsPage() {
                     <input type="number" placeholder="e.g. 180" min={0}
                       value={form.duration_seconds}
                       onChange={(e) => setForm({ ...form, duration_seconds: e.target.value })}
-                      className="w-full px-4 py-3 bg-white/60 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-amber-400/30"
+                      className="w-full px-4 py-3 bg-white dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30"
                     />
                   </div>
                   <div>
@@ -400,7 +400,7 @@ export default function CallsPage() {
                     <input type="text" placeholder="Team member..."
                       value={form.assigned_to}
                       onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}
-                      className="w-full px-4 py-3 bg-white/60 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400/30"
+                      className="w-full px-4 py-3 bg-white dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-indigo-400/30"
                     />
                   </div>
                 </div>
@@ -410,7 +410,7 @@ export default function CallsPage() {
                   <textarea rows={2} placeholder="Brief overview of the call..."
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    className="w-full px-4 py-3 bg-white/60 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-amber-400/30 resize-none"
+                    className="w-full px-4 py-3 bg-white dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30 resize-none"
                   />
                 </div>
 
@@ -419,7 +419,7 @@ export default function CallsPage() {
                   <textarea rows={2} placeholder="Tasks completed, decisions made..."
                     value={form.work_done}
                     onChange={(e) => setForm({ ...form, work_done: e.target.value })}
-                    className="w-full px-4 py-3 bg-white/60 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-400/30 resize-none"
+                    className="w-full px-4 py-3 bg-white dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-emerald-400/30 resize-none"
                   />
                 </div>
 
@@ -427,11 +427,11 @@ export default function CallsPage() {
                   <label className="flex items-center gap-2.5 cursor-pointer">
                     <div
                       onClick={() => setForm({ ...form, followup_needed: !form.followup_needed })}
-                      className={cn("w-11 h-6 rounded-full transition-all relative cursor-pointer", form.followup_needed ? "bg-red-500" : "bg-slate-200")}
+                      className={cn("w-11 h-6 rounded-full transition-all relative cursor-pointer", form.followup_needed ? "bg-red-500" : "bg-slate-200 dark:bg-zinc-700")}
                     >
-                      <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all", form.followup_needed ? "right-1" : "left-1")} />
+                      <div className={cn("absolute top-1 w-4 h-4 bg-white dark:bg-zinc-900 rounded-full shadow transition-all", form.followup_needed ? "right-1" : "left-1")} />
                     </div>
-                    <span className="text-sm font-bold text-slate-700">🔔 Follow-up Needed</span>
+                    <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">🔔 Follow-up Needed</span>
                   </label>
                   {form.followup_needed && (
                     <input type="date"

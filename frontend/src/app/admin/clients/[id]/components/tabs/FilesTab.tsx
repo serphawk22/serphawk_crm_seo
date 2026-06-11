@@ -36,7 +36,7 @@ const DOC_TYPES: Record<string, { bg: string; text: string; label: string }> = {
 };
 
 function getTypeCfg(mime: string) {
-  return DOC_TYPES[mime] || { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-600 dark:text-slate-400', label: mime?.split('/')[1]?.toUpperCase() || 'FILE' };
+  return DOC_TYPES[mime] || { bg: 'bg-slate-100 dark:bg-zinc-800 dark:bg-slate-800', text: 'text-slate-600 dark:text-zinc-300 dark:text-slate-400', label: mime?.split('/')[1]?.toUpperCase() || 'FILE' };
 }
 
 export default function FilesTab({ clientId, files, onRefresh }: FilesTabProps) {
@@ -87,7 +87,7 @@ export default function FilesTab({ clientId, files, onRefresh }: FilesTabProps) 
         className={`relative rounded-2xl border-2 border-dashed transition-all p-8 text-center cursor-pointer
           ${dragOver
             ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950/20'
-            : 'border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-700 bg-white dark:bg-slate-900'
+            : 'border-slate-200 dark:border-zinc-700 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-700 bg-white dark:bg-zinc-900 dark:bg-slate-900'
           }`}
         onClick={() => fileInputRef.current?.click()}
       >
@@ -105,10 +105,10 @@ export default function FilesTab({ clientId, files, onRefresh }: FilesTabProps) 
             <Upload size={24} />
           )}
         </div>
-        <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+        <p className="text-sm font-bold text-slate-700 dark:text-zinc-200 dark:text-slate-300">
           {uploading ? (language === 'es' ? 'Subiendo…' : 'Uploading…') : (language === 'es' ? 'Arrastre archivos aquí o haga clic para subir' : 'Drop files here or click to upload')}
         </p>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+        <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-zinc-400 mt-1">
           {language === 'es' ? 'Propuestas, Contratos, Facturas, Presentaciones, Documentos de Reunión' : 'Proposals, Contracts, Invoices, Presentations, Meeting Documents'}
         </p>
         {/* Description input */}
@@ -117,8 +117,8 @@ export default function FilesTab({ clientId, files, onRefresh }: FilesTabProps) 
             value={description}
             onChange={e => setDescription(e.target.value)}
             placeholder={language === 'es' ? 'Descripción del archivo (opcional)...' : 'File description (optional)...'}
-            className="w-full max-w-xs px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700
-                       bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200
+            className="w-full max-w-xs px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700
+                       bg-white dark:bg-zinc-900 dark:bg-slate-800 text-slate-800 dark:text-zinc-100 dark:text-slate-200
                        focus:outline-none focus:ring-2 focus:ring-indigo-500 mx-auto block"
           />
         </div>
@@ -126,14 +126,14 @@ export default function FilesTab({ clientId, files, onRefresh }: FilesTabProps) 
 
       {/* Files Grid */}
       {files.length === 0 ? (
-        <div className="text-center py-12 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
-          <FileText size={32} className="mx-auto text-slate-300 dark:text-slate-600 mb-3" />
-          <p className="text-sm font-semibold text-slate-400 dark:text-slate-500">{language === 'es' ? 'Aún no hay archivos subidos' : 'No files uploaded yet'}</p>
-          <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">{language === 'es' ? 'Sube propuestas, contratos y documentos' : 'Upload proposals, contracts, and documents'}</p>
+        <div className="text-center py-12 rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-700 dark:border-slate-700">
+          <FileText size={32} className="mx-auto text-slate-300 dark:text-slate-600 dark:text-zinc-300 mb-3" />
+          <p className="text-sm font-semibold text-slate-400 dark:text-slate-500 dark:text-zinc-400">{language === 'es' ? 'Aún no hay archivos subidos' : 'No files uploaded yet'}</p>
+          <p className="text-xs text-slate-300 dark:text-slate-600 dark:text-zinc-300 mt-1">{language === 'es' ? 'Sube propuestas, contratos y documentos' : 'Upload proposals, contracts, and documents'}</p>
         </div>
       ) : (
         <div>
-          <p className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">
+          <p className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 dark:text-zinc-400 mb-3">
             {files.length} {language === 'es' ? `Documento${files.length !== 1 ? 's' : ''}` : `Document${files.length !== 1 ? 's' : ''}`}
           </p>
           <div className="space-y-2">
@@ -146,29 +146,29 @@ export default function FilesTab({ clientId, files, onRefresh }: FilesTabProps) 
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.04 }}
-                  className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60
-                             bg-white dark:bg-slate-900 hover:shadow-sm transition-shadow group"
+                  className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/60
+                             bg-white dark:bg-zinc-900 dark:bg-slate-900 hover:shadow-sm transition-shadow group"
                 >
                   <div className={`p-2.5 rounded-xl ${typeCfg.bg} flex-shrink-0`}>
                     <Icon size={18} className={typeCfg.text} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
+                    <p className="text-sm font-semibold text-slate-800 dark:text-zinc-100 dark:text-slate-200 truncate">
                       {file.filename || file.fileName}
                     </p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${typeCfg.bg} ${typeCfg.text}`}>
                         {typeCfg.label}
                       </span>
-                      <span className="text-xs text-slate-400 dark:text-slate-500">{formatBytes(file.file_size)}</span>
+                      <span className="text-xs text-slate-400 dark:text-slate-500 dark:text-zinc-400">{formatBytes(file.file_size)}</span>
                       {file.created_at && (
-                        <span className="text-xs text-slate-400 dark:text-slate-500">
+                        <span className="text-xs text-slate-400 dark:text-slate-500 dark:text-zinc-400">
                           {new Date(file.created_at).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </span>
                       )}
                     </div>
                     {file.description && (
-                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 truncate">{file.description}</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-zinc-400 mt-0.5 truncate">{file.description}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -177,7 +177,7 @@ export default function FilesTab({ clientId, files, onRefresh }: FilesTabProps) 
                         href={file.file_url || file.fileUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:bg-zinc-800 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                       >
                         <Download size={14} />
                       </a>

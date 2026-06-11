@@ -110,7 +110,7 @@ export function Chatbot() {
     <div className="fixed bottom-6 right-6 z-50">
       {/* Chat Window */}
       {isOpen && (
-        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-80 lg:w-96 mb-4 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5" style={{ height: '520px' }}>
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-gray-200 w-80 lg:w-96 mb-4 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5" style={{ height: '520px' }}>
           {/* Header */}
           <div className="bg-indigo-600 text-white p-4 flex justify-between items-center shrink-0">
             <div className="flex items-center gap-2">
@@ -136,7 +136,7 @@ export function Chatbot() {
           )}
 
           {/* Messages */}
-          <div className="flex-1 min-h-0 p-4 overflow-y-auto bg-slate-50 flex flex-col gap-3">
+          <div className="flex-1 min-h-0 p-4 overflow-y-auto bg-slate-50 dark:bg-zinc-950 flex flex-col gap-3">
             {messages.map((msg, idx) => (
               <div 
                 key={idx} 
@@ -146,7 +146,7 @@ export function Chatbot() {
                   className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${
                     msg.role === 'user' 
                       ? 'bg-indigo-600 text-white rounded-tr-sm shadow-md' 
-                      : 'bg-white text-slate-800 border border-slate-200 shadow-sm rounded-tl-sm'
+                      : 'bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 border border-slate-200 dark:border-zinc-700 shadow-sm rounded-tl-sm'
                   }`}
                 >
                   {msg.text}
@@ -155,9 +155,9 @@ export function Chatbot() {
             ))}
             {isTyping && (
               <div className="flex justify-start">
-                <div className="max-w-[85%] p-3 rounded-2xl bg-white border border-slate-200 shadow-sm rounded-tl-sm flex items-center gap-2">
+                <div className="max-w-[85%] p-3 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 shadow-sm rounded-tl-sm flex items-center gap-2">
                   <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
-                  <span className="text-sm text-slate-500">Thinking...</span>
+                  <span className="text-sm text-slate-500 dark:text-zinc-400">Thinking...</span>
                 </div>
               </div>
             )}
@@ -165,13 +165,13 @@ export function Chatbot() {
           </div>
 
           {/* Quick Actions */}
-          <div className="p-3 border-t border-slate-100 bg-white space-y-1 shrink-0">
+          <div className="p-3 border-t border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 space-y-1 shrink-0">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 px-1">Quick Actions</p>
             {quickActions.map((action) => (
               <button
                 key={action.label}
                 onClick={() => handleCommand(action.label)}
-                className="w-full flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl text-sm font-semibold text-slate-700 transition-colors border border-transparent hover:border-slate-200"
+                className="w-full flex items-center justify-between p-2 hover:bg-slate-50 dark:bg-zinc-950 rounded-xl text-sm font-semibold text-slate-700 dark:text-zinc-200 transition-colors border border-transparent hover:border-slate-200 dark:border-zinc-700"
               >
                 <span className="flex items-center gap-2.5">{action.icon} {action.label}</span>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -180,13 +180,13 @@ export function Chatbot() {
           </div>
 
           {/* Input Area */}
-          <form onSubmit={handleSubmit} className="p-3 bg-slate-50 border-t border-slate-200 flex gap-2 shrink-0">
+          <form onSubmit={handleSubmit} className="p-3 bg-slate-50 dark:bg-zinc-950 border-t border-slate-200 dark:border-zinc-700 flex gap-2 shrink-0">
             <input 
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={currentClientId ? "e.g., Log a call about pricing..." : "Type a message..."}
-              className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+              className="flex-1 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
               disabled={isTyping}
             />
             <button 

@@ -34,7 +34,7 @@ function HealthGauge({ score }: { score: number }) {
       <div className="relative w-28 h-16 overflow-hidden">
         <svg viewBox="0 0 100 50" className="w-full" style={{ overflow: 'visible' }}>
           <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="currentColor" strokeWidth="8"
-            className="text-slate-200 dark:text-slate-700" strokeLinecap="round" />
+            className="text-slate-200 dark:text-slate-700 dark:text-zinc-200" strokeLinecap="round" />
           <motion.path
             d="M 10 50 A 40 40 0 0 1 90 50"
             fill="none"
@@ -88,7 +88,7 @@ export default function AiCopilotPanel({ clientId, client }: AiCopilotPanelProps
             <Brain size={18} className="text-white" />
             <span className="font-black text-sm text-white">{language === 'es' ? 'Copiloto IA de Ventas' : 'AI Sales Copilot'}</span>
           </div>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/20 text-white">GPT-4o</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white dark:bg-zinc-900/20 text-white">GPT-4o</span>
         </div>
         <p className="text-xs text-violet-200 mt-1">{language === 'es' ? 'Analiza notas, conversaciones y actividad' : 'Analyzes notes, conversations & activity'}</p>
       </div>
@@ -100,8 +100,8 @@ export default function AiCopilotPanel({ clientId, client }: AiCopilotPanelProps
                             flex items-center justify-center mx-auto mb-3">
               <Brain size={32} className="text-violet-600 dark:text-violet-400" />
             </div>
-            <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 mb-1">{language === 'es' ? 'Listo para Analizar' : 'Ready to Analyze'}</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">
+            <p className="text-sm font-semibold text-slate-600 dark:text-zinc-300 dark:text-slate-400 mb-1">{language === 'es' ? 'Listo para Analizar' : 'Ready to Analyze'}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-zinc-400 mb-4">
               {language === 'es' ? 'Obtenga estado de salud, riesgos y próximas acciones por IA' : 'Get AI-powered deal health, risks, and next best actions'}
             </p>
             <button
@@ -121,7 +121,7 @@ export default function AiCopilotPanel({ clientId, client }: AiCopilotPanelProps
               <div className="absolute inset-0 rounded-full border-3 border-violet-200 dark:border-violet-800" />
               <div className="absolute inset-0 rounded-full border-3 border-violet-600 border-t-transparent animate-spin" style={{ borderWidth: 3 }} />
             </div>
-            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 animate-pulse">{language === 'es' ? 'Analizando datos del cliente…' : 'Analyzing client data…'}</p>
+            <p className="text-xs font-bold text-slate-500 dark:text-zinc-400 dark:text-slate-400 animate-pulse">{language === 'es' ? 'Analizando datos del cliente…' : 'Analyzing client data…'}</p>
           </div>
         )}
 
@@ -139,8 +139,8 @@ export default function AiCopilotPanel({ clientId, client }: AiCopilotPanelProps
               className="space-y-4"
             >
               {/* Health Score Gauge */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3 pt-3">{language === 'es' ? 'Salud del Trato' : 'Deal Health'}</p>
+              <div className="rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700 bg-white dark:bg-zinc-900 dark:bg-slate-800 overflow-hidden">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 dark:text-zinc-400 px-3 pt-3">{language === 'es' ? 'Salud del Trato' : 'Deal Health'}</p>
                 <HealthGauge score={insights.deal_health_score ?? 50} />
                 <div className="px-3 pb-3 text-center">
                   <span className="px-3 py-1 rounded-full text-xs font-bold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400">
@@ -151,8 +151,8 @@ export default function AiCopilotPanel({ clientId, client }: AiCopilotPanelProps
 
               {/* Client Summary */}
               <div>
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">{language === 'es' ? 'Resumen del Cliente' : 'Client Summary'}</p>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{insights.client_summary}</p>
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 dark:text-zinc-400 mb-1.5">{language === 'es' ? 'Resumen del Cliente' : 'Client Summary'}</p>
+                <p className="text-xs text-slate-600 dark:text-zinc-300 dark:text-slate-400 leading-relaxed">{insights.client_summary}</p>
               </div>
 
               {/* Risks */}
@@ -194,7 +194,7 @@ export default function AiCopilotPanel({ clientId, client }: AiCopilotPanelProps
                     {insights.follow_up_recommendations.map((rec: string, i: number) => (
                       <div key={i} className="flex items-start gap-2">
                         <ArrowRight size={12} className="text-indigo-400 mt-0.5 flex-shrink-0" />
-                        <p className="text-xs text-slate-600 dark:text-slate-400">{rec}</p>
+                        <p className="text-xs text-slate-600 dark:text-zinc-300 dark:text-slate-400">{rec}</p>
                       </div>
                     ))}
                   </div>

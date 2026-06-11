@@ -43,12 +43,12 @@ export function Sidebar({ role }: SidebarProps) {
   const filteredItems = allItems.filter(item => item.roles.includes(role));
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 h-screen flex flex-col fixed left-0 top-0 text-gray-800">
-      <div className="p-6 border-b border-gray-100 flex items-center gap-3">
+    <div className="w-64 bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-700 h-screen flex flex-col fixed left-0 top-0 text-gray-800 dark:text-zinc-100">
+      <div className="p-6 border-b border-gray-100 dark:border-zinc-800 flex items-center gap-3">
         <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold shadow-sm">
           SH
         </div>
-        <span className="font-bold text-xl tracking-tight text-gray-900">SERP Hawk</span>
+        <span className="font-bold text-xl tracking-tight text-gray-900 dark:text-zinc-50">SERP Hawk</span>
       </div>
 
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
@@ -62,20 +62,20 @@ export function Sidebar({ role }: SidebarProps) {
                 "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200",
                 isActive
                   ? "bg-blue-50 text-blue-600 shadow-sm"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  : "text-gray-600 dark:text-zinc-300 hover:bg-gray-50 dark:bg-zinc-950 hover:text-gray-900 dark:text-zinc-50"
               )}
             >
-              <item.icon className={cn("w-5 h-5", isActive ? "text-blue-600" : "text-gray-400 group-hover:text-gray-600")} />
+              <item.icon className={cn("w-5 h-5", isActive ? "text-blue-600" : "text-gray-400 group-hover:text-gray-600 dark:text-zinc-300")} />
               {item.name}
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t border-gray-100">
+      <div className="p-4 border-t border-gray-100 dark:border-zinc-800">
         <button 
           onClick={logout}
-          className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg w-full transition-colors"
+          className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-500 dark:text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg w-full transition-colors"
         >
           <LogOut className="w-5 h-5" />
           {language === 'es' ? 'Cerrar Sesión' : 'Logout'}

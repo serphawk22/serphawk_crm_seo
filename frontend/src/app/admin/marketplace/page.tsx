@@ -16,7 +16,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string; dot: string }>
   "Web Design":    { bg: "bg-violet-50",   text: "text-violet-700",   dot: "bg-violet-500" },
   "Marketing":     { bg: "bg-pink-50",     text: "text-pink-700",     dot: "bg-pink-500" },
   "Plumbing":      { bg: "bg-blue-50",     text: "text-blue-700",     dot: "bg-blue-500" },
-  "Legal":         { bg: "bg-slate-100",   text: "text-slate-700",    dot: "bg-slate-500" },
+  "Legal":         { bg: "bg-slate-100 dark:bg-zinc-800",   text: "text-slate-700 dark:text-zinc-200",    dot: "bg-slate-50 dark:bg-zinc-9500" },
   "Accounting":    { bg: "bg-emerald-50",  text: "text-emerald-700",  dot: "bg-emerald-500" },
   "Consulting":    { bg: "bg-amber-50",    text: "text-amber-700",    dot: "bg-amber-500" },
   "Construction":  { bg: "bg-orange-50",   text: "text-orange-700",   dot: "bg-orange-500" },
@@ -28,7 +28,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string; dot: string }>
   "Electrical":    { bg: "bg-yellow-50",   text: "text-yellow-700",   dot: "bg-yellow-500" },
   "HVAC":          { bg: "bg-rose-50",     text: "text-rose-700",     dot: "bg-rose-500" },
 };
-const DEFAULT_CAT_COLOR = { bg: "bg-slate-100", text: "text-slate-700", dot: "bg-slate-400" };
+const DEFAULT_CAT_COLOR = { bg: "bg-slate-100 dark:bg-zinc-800", text: "text-slate-700 dark:text-zinc-200", dot: "bg-slate-400" };
 
 function CategoryBadge({ category }: { category: string | null }) {
   if (!category) return null;
@@ -189,7 +189,7 @@ export default function MarketplacePage() {
       {/* ── Hero Header ────────────────────────────────────────────────────── */}
       <div className="bg-gradient-to-r from-slate-900 to-indigo-950 rounded-3xl p-8 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-sm">
+          <div className="p-3 bg-white dark:bg-zinc-900/10 rounded-2xl backdrop-blur-sm">
             <Store className="w-7 h-7 text-indigo-300" />
           </div>
           <div>
@@ -200,7 +200,7 @@ export default function MarketplacePage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="px-3 py-1.5 bg-white/10 rounded-xl text-xs font-bold text-indigo-200 border border-white/10">
+          <span className="px-3 py-1.5 bg-white dark:bg-zinc-900/10 rounded-xl text-xs font-bold text-indigo-200 border border-white/10">
             {total} Services
           </span>
           <motion.button
@@ -222,10 +222,10 @@ export default function MarketplacePage() {
           { icon: DollarSign, label: "Avg. Cost", value: avgCost > 0 ? `$${avgCost.toFixed(0)}` : "—", color: "text-amber-500", bg: "bg-amber-50" },
         ].map(({ icon: Icon, label, value, color, bg }) => (
           <motion.div key={label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-            className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center gap-3">
+            className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm flex items-center gap-3">
             <div className={`p-2.5 ${bg} rounded-xl`}><Icon className={`w-5 h-5 ${color}`} /></div>
             <div>
-              <p className="text-2xl font-black text-slate-800">{value}</p>
+              <p className="text-2xl font-black text-slate-800 dark:text-zinc-100">{value}</p>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>
             </div>
           </motion.div>
@@ -233,18 +233,18 @@ export default function MarketplacePage() {
       </div>
 
       {/* ── Filter Bar ─────────────────────────────────────────────────────── */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-wrap gap-3 items-center">
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm flex flex-wrap gap-3 items-center">
         <div className="flex-1 min-w-[200px] relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
             placeholder="Search services, providers…"
-            className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+            className="w-full pl-9 pr-4 py-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
           />
         </div>
         <select
           value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setPage(1); }}
-          className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium min-w-[160px]"
+          className="px-3 py-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium min-w-[160px]"
         >
           <option value="">All Categories</option>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
@@ -252,13 +252,13 @@ export default function MarketplacePage() {
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-slate-400">Cost:</span>
           <input type="number" value={minCost} onChange={e => { setMinCost(e.target.value); setPage(1); }} placeholder="Min $"
-            className="w-20 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
+            className="w-20 px-3 py-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
           <span className="text-slate-300">–</span>
           <input type="number" value={maxCost} onChange={e => { setMaxCost(e.target.value); setPage(1); }} placeholder="Max $"
-            className="w-20 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
+            className="w-20 px-3 py-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
         </div>
         {hasFilters && (
-          <button onClick={clearFilters} className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-bold text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors border border-slate-200">
+          <button onClick={clearFilters} className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-bold text-slate-500 dark:text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors border border-slate-200 dark:border-zinc-700">
             <X className="w-3.5 h-3.5" /> Clear
           </button>
         )}
@@ -279,10 +279,10 @@ export default function MarketplacePage() {
           <p className="text-sm font-bold text-slate-400">Loading marketplace…</p>
         </div>
       ) : services.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-4 bg-white border border-slate-200 rounded-3xl">
-          <div className="p-4 bg-slate-50 rounded-2xl"><Store className="w-8 h-8 text-slate-300" /></div>
+        <div className="flex flex-col items-center justify-center py-20 gap-4 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl">
+          <div className="p-4 bg-slate-50 dark:bg-zinc-950 rounded-2xl"><Store className="w-8 h-8 text-slate-300" /></div>
           <div className="text-center">
-            <p className="text-lg font-black text-slate-700">No services found</p>
+            <p className="text-lg font-black text-slate-700 dark:text-zinc-200">No services found</p>
             <p className="text-sm text-slate-400 mt-1">{hasFilters ? "Try clearing your filters." : "Add your first marketplace service."}</p>
           </div>
           {!hasFilters && (
@@ -301,7 +301,7 @@ export default function MarketplacePage() {
                 <motion.div
                   key={s.id} layout
                   initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-                  className={`bg-white border rounded-2xl shadow-sm hover:shadow-md transition-all flex flex-col group overflow-hidden ${isCompared ? "border-violet-400 ring-2 ring-violet-200" : "border-slate-200 hover:border-indigo-200"}`}
+                  className={`bg-white dark:bg-zinc-900 border rounded-2xl shadow-sm hover:shadow-md transition-all flex flex-col group overflow-hidden ${isCompared ? "border-violet-400 ring-2 ring-violet-200" : "border-slate-200 dark:border-zinc-700 hover:border-indigo-200"}`}
                 >
                   {/* Card Top */}
                   <div className="p-5 flex-1 space-y-3">
@@ -312,7 +312,7 @@ export default function MarketplacePage() {
                       )}
                     </div>
                     <div>
-                      <h3 className="font-black text-slate-800 text-base leading-tight line-clamp-2 group-hover:text-indigo-700 transition-colors">
+                      <h3 className="font-black text-slate-800 dark:text-zinc-100 text-base leading-tight line-clamp-2 group-hover:text-indigo-700 transition-colors">
                         {s.normalized_name || s.service_name}
                       </h3>
                       {s.normalized_name && s.normalized_name !== s.service_name && (
@@ -320,7 +320,7 @@ export default function MarketplacePage() {
                       )}
                     </div>
                     {s.description && (
-                      <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{s.description}</p>
+                      <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed line-clamp-2">{s.description}</p>
                     )}
                     {/* Provider */}
                     {s.provider_name && (
@@ -334,7 +334,7 @@ export default function MarketplacePage() {
                               {s.provider_name} <ExternalLink className="w-2.5 h-2.5 shrink-0" />
                             </Link>
                           ) : (
-                            <p className="text-xs font-bold text-slate-600 truncate">{s.provider_name}</p>
+                            <p className="text-xs font-bold text-slate-600 dark:text-zinc-300 truncate">{s.provider_name}</p>
                           )}
                           {s.provider_industry && <p className="text-[10px] text-slate-400 truncate">{s.provider_industry}</p>}
                         </div>
@@ -343,11 +343,11 @@ export default function MarketplacePage() {
                   </div>
 
                   {/* Card Footer */}
-                  <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between gap-2">
+                  <div className="px-5 py-3 border-t border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950/50 flex items-center justify-between gap-2">
                     <div>
                       {s.estimated_cost > 0 ? (
                         <div className="flex items-center gap-1.5">
-                          <span className="text-base font-black text-slate-800">${s.estimated_cost.toLocaleString()}</span>
+                          <span className="text-base font-black text-slate-800 dark:text-zinc-100">${s.estimated_cost.toLocaleString()}</span>
                           {s.cost_is_estimated && (
                             <span className="text-[9px] font-black text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Est.</span>
                           )}
@@ -370,7 +370,7 @@ export default function MarketplacePage() {
                       <button
                         onClick={() => toggleCompare(s.id)}
                         title={isCompared ? "Remove from compare" : "Add to compare"}
-                        className={`p-1.5 rounded-lg transition-colors ${isCompared ? "bg-violet-100 text-violet-600" : "hover:bg-slate-100 text-slate-400 hover:text-violet-600"}`}
+                        className={`p-1.5 rounded-lg transition-colors ${isCompared ? "bg-violet-100 text-violet-600" : "hover:bg-slate-100 dark:bg-zinc-800 text-slate-400 hover:text-violet-600"}`}
                       >
                         <GitCompare className="w-3.5 h-3.5" />
                       </button>
@@ -395,12 +395,12 @@ export default function MarketplacePage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-3">
           <button disabled={page <= 1} onClick={() => setPage(p => p - 1)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 transition-colors">
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:bg-zinc-950 disabled:opacity-40 transition-colors">
             <ChevronLeft className="w-4 h-4" /> Previous
           </button>
-          <span className="text-sm font-bold text-slate-600">Page {page} of {totalPages}</span>
+          <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">Page {page} of {totalPages}</span>
           <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 transition-colors">
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:bg-zinc-950 disabled:opacity-40 transition-colors">
             Next <ChevronRight className="w-4 h-4" />
           </button>
         </div>
@@ -414,11 +414,11 @@ export default function MarketplacePage() {
             onClick={e => { if (e.target === e.currentTarget) setShowAddModal(false); }}
           >
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
+              className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
               {/* Modal Header */}
               <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-5 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-white/20 rounded-xl"><Plus className="w-4 h-4 text-white" /></div>
+                  <div className="p-2 bg-white dark:bg-zinc-900/20 rounded-xl"><Plus className="w-4 h-4 text-white" /></div>
                   <div>
                     <h2 className="text-base font-black text-white">Add Marketplace Service</h2>
                     <p className="text-xs text-indigo-200">Manually list a service from a CRM client</p>
@@ -432,51 +432,51 @@ export default function MarketplacePage() {
               <div className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
-                    <label className="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Service Name *</label>
+                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">Service Name *</label>
                     <input value={form.service_name} onChange={e => setForm(f => ({ ...f, service_name: e.target.value }))}
                       placeholder="e.g., Local SEO Optimization"
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
                   </div>
                   <div>
-                    <label className="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Category</label>
+                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">Category</label>
                     <input value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
                       list="categories-list" placeholder="e.g., SEO"
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
                     <datalist id="categories-list">{categories.map(c => <option key={c} value={c} />)}</datalist>
                   </div>
                   <div>
-                    <label className="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Estimated Cost ($)</label>
+                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">Estimated Cost ($)</label>
                     <input type="number" value={form.estimated_cost} onChange={e => setForm(f => ({ ...f, estimated_cost: e.target.value }))}
                       placeholder="0 = on request"
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Description</label>
+                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">Description</label>
                     <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                       placeholder="Brief description of the service…" rows={3}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium resize-none" />
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium resize-none" />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-black text-slate-500 uppercase tracking-wider mb-1.5">Provider (CRM Client)</label>
+                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">Provider (CRM Client)</label>
                     <select value={form.provider_client_id} onChange={e => setForm(f => ({ ...f, provider_client_id: e.target.value }))}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium">
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium">
                       <option value="">— Select a client (optional) —</option>
                       {clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}
                     </select>
                     <p className="text-[10px] text-slate-400 mt-1">Or enter manually:</p>
                     <input value={form.provider_name} onChange={e => setForm(f => ({ ...f, provider_name: e.target.value }))}
                       placeholder="Company name (if not in CRM)"
-                      className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
+                      className="mt-1 w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
                   </div>
                 </div>
-                <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
                   <AlertCircle className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                   <p className="text-[10px] text-slate-400">After saving, click <strong className="text-indigo-600">✦ AI</strong> on the card to auto-assign category and estimate cost.</p>
                 </div>
               </div>
               {/* Modal Footer */}
               <div className="px-6 pb-6 flex items-center justify-end gap-3">
-                <button onClick={() => setShowAddModal(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
+                <button onClick={() => setShowAddModal(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:bg-zinc-800 rounded-xl transition-colors">
                   Cancel
                 </button>
                 <button onClick={handleAdd} disabled={!form.service_name.trim() || saving}
@@ -496,19 +496,19 @@ export default function MarketplacePage() {
           <motion.div
             initial={{ opacity: 0, y: "100%" }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: "100%" }}
             transition={{ type: "spring", damping: 26, stiffness: 280 }}
-            className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 shadow-2xl max-h-[70vh] overflow-y-auto"
+            className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-zinc-900 border-t border-slate-200 dark:border-zinc-700 shadow-2xl max-h-[70vh] overflow-y-auto"
           >
             <div className="max-w-7xl mx-auto p-6">
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-violet-100 rounded-xl"><GitCompare className="w-4 h-4 text-violet-600" /></div>
-                  <h2 className="text-base font-black text-slate-800">Comparing {compareServices.length} Services</h2>
+                  <h2 className="text-base font-black text-slate-800 dark:text-zinc-100">Comparing {compareServices.length} Services</h2>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setCompareIds([])} className="text-xs font-bold text-slate-500 hover:text-red-500 transition-colors px-3 py-1.5 hover:bg-red-50 rounded-lg">
+                  <button onClick={() => setCompareIds([])} className="text-xs font-bold text-slate-500 dark:text-zinc-400 hover:text-red-500 transition-colors px-3 py-1.5 hover:bg-red-50 rounded-lg">
                     Clear All
                   </button>
-                  <button onClick={() => setShowCompareDrawer(false)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                  <button onClick={() => setShowCompareDrawer(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:bg-zinc-800 text-slate-400 hover:text-slate-600 dark:text-zinc-300 transition-colors">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -516,10 +516,10 @@ export default function MarketplacePage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-100">
+                    <tr className="border-b border-slate-100 dark:border-zinc-800">
                       <th className="text-left text-[10px] font-black text-slate-400 uppercase tracking-wider pb-3 pr-4 w-32">Field</th>
                       {compareServices.map(s => (
-                        <th key={s.id} className="text-left pb-3 px-4 font-black text-slate-700 min-w-[200px]">
+                        <th key={s.id} className="text-left pb-3 px-4 font-black text-slate-700 dark:text-zinc-200 min-w-[200px]">
                           <div className="flex items-center gap-2">
                             {s.normalized_name || s.service_name}
                             <button onClick={() => toggleCompare(s.id)} className="text-slate-300 hover:text-red-400 transition-colors">
@@ -537,12 +537,12 @@ export default function MarketplacePage() {
                       { label: "Industry", key: "provider_industry" as const, render: (s: MarketplaceService) => s.provider_industry || "—" },
                       { label: "Cost", key: "estimated_cost" as const, render: (s: MarketplaceService) => s.estimated_cost > 0 ? `$${s.estimated_cost.toLocaleString()}${s.cost_is_estimated ? " (Est.)" : ""}` : "On request" },
                       { label: "Description", key: "description" as const, render: (s: MarketplaceService) => s.description || "—" },
-                      { label: "Source", key: "source" as const, render: (s: MarketplaceService) => <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${s.source === "scraper" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{s.source}</span> },
+                      { label: "Source", key: "source" as const, render: (s: MarketplaceService) => <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${s.source === "scraper" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300"}`}>{s.source}</span> },
                     ].map(row => (
                       <tr key={row.label}>
                         <td className="py-3 pr-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">{row.label}</td>
                         {compareServices.map(s => (
-                          <td key={s.id} className="py-3 px-4 text-sm text-slate-600">{row.render(s)}</td>
+                          <td key={s.id} className="py-3 px-4 text-sm text-slate-600 dark:text-zinc-300">{row.render(s)}</td>
                         ))}
                       </tr>
                     ))}

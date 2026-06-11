@@ -40,20 +40,20 @@ export default function LoginPage() {
           <p className="text-gray-400 font-medium">Elevate your growth strategy</p>
         </div>
 
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2rem] p-10 shadow-2xl">
+        <div className="bg-white dark:bg-zinc-900/5 backdrop-blur-xl border border-white/10 rounded-[2rem] p-10 shadow-2xl">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">Email Address</label>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-gray-500 group-focus-within:text-blue-500 transition-colors" />
+                  <Mail className="h-5 w-5 text-gray-500 dark:text-zinc-400 group-focus-within:text-blue-500 transition-colors" />
                 </div>
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-12 pr-4 py-4 bg-white/5 border border-white/10 rounded-2xl text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+                  className="block w-full pl-12 pr-4 py-4 bg-white dark:bg-zinc-900/5 border border-white/10 rounded-2xl text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
                   placeholder="name@company.com"
                 />
               </div>
@@ -63,14 +63,14 @@ export default function LoginPage() {
               <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">Password</label>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-500 group-focus-within:text-blue-500 transition-colors" />
+                  <Lock className="h-5 w-5 text-gray-500 dark:text-zinc-400 group-focus-within:text-blue-500 transition-colors" />
                 </div>
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-12 pr-4 py-4 bg-white/5 border border-white/10 rounded-2xl text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
+                  className="block w-full pl-12 pr-4 py-4 bg-white dark:bg-zinc-900/5 border border-white/10 rounded-2xl text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
                   placeholder="••••••••"
                 />
               </div>
@@ -100,7 +100,7 @@ export default function LoginPage() {
         </div>
 
         <div className="text-center mt-12">
-          <p className="text-gray-500 text-sm">
+          <p className="text-gray-500 dark:text-zinc-400 text-sm">
             Authorized access only. Need help? <span className="text-blue-400 hover:underline cursor-pointer">Contact Support</span>
           </p>
         </div>

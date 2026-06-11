@@ -28,7 +28,7 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; dot: string }> =
   Active:   { bg: 'bg-emerald-100 ', text: 'text-emerald-700 ', dot: 'bg-emerald-500' },
   Hold:     { bg: 'bg-amber-100 ',   text: 'text-amber-700 ',   dot: 'bg-amber-500'   },
   Pending:  { bg: 'bg-blue-100 ',    text: 'text-blue-700 ',    dot: 'bg-blue-500'    },
-  Inactive: { bg: 'bg-slate-100 ',     text: 'text-slate-600 ',  dot: 'bg-slate-400'   },
+  Inactive: { bg: 'bg-slate-100 dark:bg-zinc-800 ',     text: 'text-slate-600 dark:text-zinc-300 ',  dot: 'bg-slate-400'   },
 };
 
 function LeadScoreRing({ score }: { score: number }) {
@@ -86,14 +86,14 @@ export default function ClientHeader({
   const description = client?.tagline || client?.seoStrategy || client?.gmbName || null;
 
   return (
-    <div className="sticky top-0 z-40 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.03)] border-b border-slate-200">
+    <div className="sticky top-0 z-40 bg-white dark:bg-zinc-900 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border-b border-slate-200 dark:border-zinc-700">
       <div className="w-full px-6 py-4">
 
         {/* Row 1: Breadcrumb + Controls */}
         <div className="flex items-center justify-between mb-3">
           <button
             onClick={onBack}
-            className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-indigo-600 transition-colors font-bold tracking-tight"
+            className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-zinc-400 hover:text-indigo-600 transition-colors font-bold tracking-tight"
           >
             <ArrowLeft size={16} className="text-slate-400" /> {language === 'es' ? 'Volver a Clientes' : 'Back to Clients'}
           </button>
@@ -115,7 +115,7 @@ export default function ClientHeader({
             </div>
             <button
               onClick={onToggleDarkMode}
-              className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 hover:border-slate-300 transition-all shadow-sm"
+              className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 hover:text-indigo-600 hover:bg-slate-100 dark:bg-zinc-800 hover:border-slate-300 dark:border-zinc-600 transition-all shadow-sm"
             >
               {darkMode ? <Sun size={15} /> : <Moon size={15} />}
             </button>
@@ -133,7 +133,7 @@ export default function ClientHeader({
           {/* Name + Description + Contact Chips */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap mb-1">
-              <h1 className="text-xl font-black text-slate-900  leading-tight">
+              <h1 className="text-xl font-black text-slate-900 dark:text-zinc-50  leading-tight">
                 {client?.companyName || (language === 'es' ? 'Empresa Desconocida' : 'Unknown Company')}
               </h1>
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${statusCfg.bg} ${statusCfg.text}`}>
@@ -141,7 +141,7 @@ export default function ClientHeader({
                 {client?.status || 'Unknown'}
               </span>
               {client?.industry && (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100  text-slate-600 ">
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-zinc-800  text-slate-600 dark:text-zinc-300 ">
                   {client.industry}
                 </span>
               )}
@@ -149,7 +149,7 @@ export default function ClientHeader({
 
             {/* Company Description */}
             {description && (
-              <p className="text-xs text-slate-500  mb-1.5 max-w-2xl leading-snug line-clamp-1">
+              <p className="text-xs text-slate-500 dark:text-zinc-400  mb-1.5 max-w-2xl leading-snug line-clamp-1">
                 {description}
               </p>
             )}
@@ -160,7 +160,7 @@ export default function ClientHeader({
                 const cls = `flex items-center gap-1 text-[11px] font-medium ${
                   accent
                     ? 'text-amber-600 '
-                    : 'text-slate-500 '
+                    : 'text-slate-500 dark:text-zinc-400 '
                 }`;
                 return href ? (
                   <a key={i} href={href} target="_blank" rel="noopener noreferrer"

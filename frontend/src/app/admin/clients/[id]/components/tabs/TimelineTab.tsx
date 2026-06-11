@@ -16,7 +16,7 @@ const EVENT_COLORS: Record<string, { bg: string; ring: string; icon: string; lin
   invoice:   { bg: 'bg-emerald-100 dark:bg-emerald-900/30', ring: 'ring-emerald-300 dark:ring-emerald-700', icon: '💰', line: 'border-emerald-200 dark:border-emerald-800' },
   milestone: { bg: 'bg-pink-100 dark:bg-pink-900/30',     ring: 'ring-pink-300 dark:ring-pink-700',     icon: '🎯', line: 'border-pink-200 dark:border-pink-800'     },
   file:      { bg: 'bg-sky-100 dark:bg-sky-900/30',       ring: 'ring-sky-300 dark:ring-sky-700',       icon: '📁', line: 'border-sky-200 dark:border-sky-800'       },
-  activity:  { bg: 'bg-slate-100 dark:bg-slate-800',      ring: 'ring-slate-300 dark:ring-slate-600',   icon: '⚡', line: 'border-slate-200 dark:border-slate-700'   },
+  activity:  { bg: 'bg-slate-100 dark:bg-zinc-800 dark:bg-slate-800',      ring: 'ring-slate-300 dark:ring-slate-600',   icon: '⚡', line: 'border-slate-200 dark:border-zinc-700 dark:border-slate-700'   },
   note:      { bg: 'bg-indigo-100 dark:bg-indigo-900/30', ring: 'ring-indigo-300 dark:ring-indigo-700', icon: '📝', line: 'border-indigo-200 dark:border-indigo-800' },
   meeting:   { bg: 'bg-teal-100 dark:bg-teal-900/30',     ring: 'ring-teal-300 dark:ring-teal-700',     icon: '🤝', line: 'border-teal-200 dark:border-teal-800'     },
 };
@@ -61,7 +61,7 @@ export default function TimelineTab({ timeline, timelineFilter, onFilterChange }
             className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all
               ${timelineFilter === f.key
                 ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/25'
-                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                : 'bg-white dark:bg-zinc-900 dark:bg-slate-800 border border-slate-200 dark:border-zinc-700 dark:border-slate-700 text-slate-500 dark:text-zinc-400 dark:text-slate-400 hover:bg-slate-50 dark:bg-zinc-950 dark:hover:bg-slate-700'
               }`}
           >
             {f.label}
@@ -71,9 +71,9 @@ export default function TimelineTab({ timeline, timelineFilter, onFilterChange }
 
       {/* Timeline */}
       {Object.keys(grouped).length === 0 ? (
-        <div className="text-center py-16 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
-          <p className="text-sm font-semibold text-slate-400 dark:text-slate-500">{t('timeline.no_events')}</p>
-          <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">{t('timeline.no_events_desc')}</p>
+        <div className="text-center py-16 rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-700 dark:border-slate-700">
+          <p className="text-sm font-semibold text-slate-400 dark:text-slate-500 dark:text-zinc-400">{t('timeline.no_events')}</p>
+          <p className="text-xs text-slate-300 dark:text-slate-600 dark:text-zinc-300 mt-1">{t('timeline.no_events_desc')}</p>
         </div>
       ) : (
         <div className="space-y-6">
@@ -81,9 +81,9 @@ export default function TimelineTab({ timeline, timelineFilter, onFilterChange }
             <div key={date}>
               {/* Date Label */}
               <div className="flex items-center gap-3 mb-3">
-                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
-                <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider px-2">{date}</span>
-                <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+                <div className="h-px flex-1 bg-slate-200 dark:bg-zinc-700 dark:bg-slate-700" />
+                <span className="text-xs font-black text-slate-400 dark:text-slate-500 dark:text-zinc-400 uppercase tracking-wider px-2">{date}</span>
+                <div className="h-px flex-1 bg-slate-200 dark:bg-zinc-700 dark:bg-slate-700" />
               </div>
 
               {/* Events */}
@@ -108,25 +108,25 @@ export default function TimelineTab({ timeline, timelineFilter, onFilterChange }
                       </div>
 
                       {/* Card */}
-                      <div className={`flex-1 p-3 rounded-xl border ${c.line} bg-white dark:bg-slate-900
+                      <div className={`flex-1 p-3 rounded-xl border ${c.line} bg-white dark:bg-zinc-900 dark:bg-slate-900
                                        hover:shadow-md transition-shadow`}>
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 mb-0.5">
-                              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 dark:text-zinc-400">
                                 {ev.type}
                               </span>
                               {ev.user && (
-                                <span className="text-[9px] text-slate-400 dark:text-slate-600">• {ev.user}</span>
+                                <span className="text-[9px] text-slate-400 dark:text-slate-600 dark:text-zinc-300">• {ev.user}</span>
                               )}
                             </div>
-                            <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{ev.title}</p>
+                            <p className="text-sm font-semibold text-slate-800 dark:text-zinc-100 dark:text-slate-200 truncate">{ev.title}</p>
                             {ev.detail && (
-                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{ev.detail}</p>
+                              <p className="text-xs text-slate-500 dark:text-zinc-400 dark:text-slate-400 mt-0.5 line-clamp-2">{ev.detail}</p>
                             )}
                           </div>
                           {ev.date && (
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium flex-shrink-0">
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 dark:text-zinc-400 font-medium flex-shrink-0">
                               {new Date(ev.date).toLocaleTimeString(language === 'es' ? 'es-ES' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           )}
