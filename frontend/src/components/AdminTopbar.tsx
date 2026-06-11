@@ -179,7 +179,7 @@ export function AdminTopbar() {
   }, []);
 
   return (
-    <header className="fixed top-0 left-0 right-0 h-16 z-50 flex items-center px-4 md:px-6 justify-between shadow-sm" style={{ background: "var(--topbar-bg)", borderBottom: "1px solid var(--border)" }}>
+    <header className="fixed top-0 left-0 right-0 h-16 z-50 flex items-center px-4 md:px-6 justify-between shadow-sm" style={{ background: "var(--topbar-bg)", borderBottom: "1px solid var(--border)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}>
       
       {/* ── Left: Logo & Nav Menus ── */}
       <div className="flex items-center gap-6" ref={navRef}>

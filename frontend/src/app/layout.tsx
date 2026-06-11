@@ -13,6 +13,7 @@ import I18nProvider from "@/i18n/I18nProvider";
 import { ClientSidebar } from "@/components/ClientSidebar";
 import { usePathname } from "next/navigation";
 import { CallNotificationBar } from "@/components/CallNotificationBar";
+import SpaceAtmosphere from "@/components/SpaceAtmosphere";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
@@ -31,7 +32,7 @@ function AdminMainContent({ children }: { children: React.ReactNode }) {
 function ClientLayout({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
   return (
-    <div className="client-shell relative w-full min-h-screen" style={{ background: "var(--bg-primary)", color: "var(--text-primary)" }}>
+    <div className="client-shell relative w-full min-h-screen bg-transparent text-white" style={{ color: "var(--text-primary)" }}>
       <ClientSidebar />
       <CallNotificationBar />
       <main className={`min-h-screen transition-all duration-300 pt-6 px-4 md:px-6 ${collapsed ? "ml-[72px]" : "ml-[220px]"}`}>
@@ -91,7 +92,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
   if (isAdminOrEmployee) {
     return (
       <SidebarProvider>
-        <div className="admin-shell min-h-screen">
+        <div className="admin-shell min-h-screen bg-transparent">
           <AdminTopbar />
           <AdminMainContent>{children}</AdminMainContent>
           <Chatbot />
@@ -120,6 +121,7 @@ export default function RootLayout({
           <I18nProvider>
             <LanguageProvider>
               <RoleProvider>
+                <SpaceAtmosphere />
                 <AppContent>{children}</AppContent>
               </RoleProvider>
             </LanguageProvider>
