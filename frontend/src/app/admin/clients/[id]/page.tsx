@@ -69,26 +69,26 @@ function CollapsibleSection({ title, icon: Icon, count, defaultOpen = false, acc
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, overflow: 'hidden', marginTop: 0 }}>
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', marginTop: 0 }}>
       <button
         onClick={() => setOpen(p => !p)}
         style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', background: 'transparent', border: 'none', cursor: 'pointer' }}
-        onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ background: accentColor, borderRadius: 8, padding: '4px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Icon size={12} color="#fff" />
           </div>
-          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: hexText }}>{title}</span>
+          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-primary)' }}>{title}</span>
           {count !== undefined && count > 0 && (
-            <span style={{ background: '#eef2ff', color: '#4f46e5', borderRadius: 999, padding: '1px 7px', fontSize: 10, fontWeight: 800 }}>{count}</span>
+            <span style={{ background: 'var(--accent-subtle)', color: 'var(--accent)', borderRadius: 999, padding: '1px 7px', fontSize: 10, fontWeight: 800 }}>{count}</span>
           )}
         </div>
         <ChevronDown size={14} color="#94a3b8" style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
       </button>
       {open && (
-        <div style={{ padding: '0 20px 16px', borderTop: '1px solid #f1f5f9' }}>
+        <div style={{ padding: '0 20px 16px', borderTop: '1px solid var(--border)' }}>
           {children}
         </div>
       )}
@@ -128,7 +128,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
     { key: 'meeting', label: '🗓 Meeting', color: '#8b5cf6' },
     { key: 'whatsapp', label: '💬 WhatsApp', color: '#10b981' },
     { key: 'chat', label: '⚡ Chat', color: '#0ea5e9' },
-    { key: 'other', label: '📝 Other', color: '#64748b' },
+    { key: 'other', label: '📝 Other', color: 'var(--text-secondary)' },
   ];
   const [convTitle, setConvTitle] = useState('');
   const [convType, setConvType] = useState('call');
@@ -152,11 +152,11 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
 
   const activeConvType = CONV_TYPES.find(t => t.key === convType)!;
 
-  const card = { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 18, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', overflow: 'hidden' as const };
-  const input = { width: '100%', background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '11px 14px', fontSize: 13.5, color: '#1e293b', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' as const };
+  const card = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', overflow: 'hidden' as const };
+  const input = { width: '100%', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: 12, padding: '11px 14px', fontSize: 13.5, color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' as const };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 14, background: '#f8fafc', minHeight: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 14, background: 'var(--bg-secondary)', minHeight: '100%' }}>
 
       {/* Company Overview */}
       {research?.company_overview && (
@@ -189,7 +189,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
               {parsedServices.map((svc: any, i: number) => (
-                <div key={i} style={{ background: '#fff', border: '1px solid #d1fae5', borderRadius: 12, padding: '10px 14px' }}>
+                <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid #d1fae5', borderRadius: 12, padding: '10px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                     <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: '#059669', background: '#d1fae5', borderRadius: 20, padding: '2px 7px' }}>{svc.category || 'Service'}</span>
                     {svc.approx_cost > 0 && (
@@ -198,7 +198,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
                       </span>
                     )}
                   </div>
-                  <p style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b', margin: '0 0 4px 0' }}>{svc.name}</p>
+                  <p style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>{svc.name}</p>
                   {svc.brief && <p style={{ fontSize: 11.5, color: '#475569', margin: 0, lineHeight: 1.5 }}>{svc.brief}</p>}
                 </div>
               ))}
@@ -209,10 +209,10 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
 
 
       <div style={card}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid var(--border)', background: '#fafafa' }}>
           <div style={{ background: '#059669', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><StickyNote size={13} color="#fff" /></div>
-          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: '#1e293b' }}>Add Note</span>
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>Ctrl+Enter to save</span>
+          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Add Note</span>
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>Ctrl+Enter to save</span>
         </div>
         <div style={{ padding: '14px 20px 16px' }}>
           <textarea
@@ -238,14 +238,14 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
 
         {/* Previous notes — collapsed */}
         {notes && notes.length > 0 && (
-          <div style={{ borderTop: '1px solid #f1f5f9' }}>
+          <div style={{ borderTop: '1px solid var(--border)' }}>
             <CollapsibleSection title="Previous Notes" icon={StickyNote} count={notes.length} accentColor="#059669">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10 }}>
                 {notes.slice(0, 10).map((n: any) => (
-                  <div key={n.id} style={{ background: '#f8fafc', border: '1px solid #e8f5e9', borderRadius: 12, padding: '10px 14px' }}>
+                  <div key={n.id} style={{ background: 'var(--bg-secondary)', border: '1px solid #e8f5e9', borderRadius: 12, padding: '10px 14px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                       <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#059669' }}>{n.type || 'Note'}</span>
-                      <span style={{ fontSize: 10, color: '#94a3b8' }}>{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
                     </div>
                     <p style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.6, margin: 0 }}>{n.content}</p>
                   </div>
@@ -258,9 +258,9 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
 
       {/* ── Log Conversation ───────────────────────────────────────────────── */}
       <div style={card}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid var(--border)', background: '#fafafa' }}>
           <div style={{ background: '#0284c7', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><MessageSquare size={13} color="#fff" /></div>
-          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: '#1e293b' }}>Log Conversation</span>
+          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Log Conversation</span>
         </div>
         <div style={{ padding: '14px 20px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {/* Type pills */}
@@ -307,19 +307,19 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
 
         {/* Previous conversations — collapsed */}
         {conversations && conversations.length > 0 && (
-          <div style={{ borderTop: '1px solid #f1f5f9' }}>
+          <div style={{ borderTop: '1px solid var(--border)' }}>
             <CollapsibleSection title="Previous Conversations" icon={MessageSquare} count={conversations.length} accentColor="#0284c7">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10 }}>
                 {conversations.slice(0, 10).map((c: any) => {
                   const ct = CONV_TYPES.find(t => t.key === c.type) || CONV_TYPES[5];
                   return (
-                    <div key={c.id} style={{ background: '#f8fafc', border: '1px solid #e0f2fe', borderRadius: 12, padding: '10px 14px' }}>
+                    <div key={c.id} style={{ background: 'var(--bg-secondary)', border: '1px solid #e0f2fe', borderRadius: 12, padding: '10px 14px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                         <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: ct.color, background: ct.color + '18', borderRadius: 999, padding: '2px 8px' }}>{c.type || 'Conversation'}</span>
-                        <span style={{ fontSize: 10, color: '#94a3b8' }}>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</span>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</span>
                       </div>
-                      <p style={{ fontSize: 12.5, fontWeight: 600, color: '#1e293b', margin: '4px 0 2px' }}>{c.subject || c.title || '—'}</p>
-                      {c.body && <p style={{ fontSize: 12, color: '#64748b', margin: 0, lineHeight: 1.5 }}>{c.body}</p>}
+                      <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)', margin: '4px 0 2px' }}>{c.subject || c.title || '—'}</p>
+                      {c.body && <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>{c.body}</p>}
                     </div>
                   );
                 })}
@@ -333,16 +333,16 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
       <CollapsibleSection title={t('client_tabs.recent_activity')} icon={Activity} accentColor="#6366f1" defaultOpen={false}>
         <div style={{ paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 0 }}>
           {recentActivities.length === 0 ? (
-            <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, padding: '16px 0' }}>{t('client_tabs.no_activity')}</p>
+            <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>{t('client_tabs.no_activity')}</p>
           ) : (
             recentActivities.map((a: any) => (
-              <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
+              <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
                 <Clock size={12} color="#94a3b8" style={{ marginTop: 2, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontSize: 12.5, fontWeight: 600, color: '#334155', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.action}</p>
-                  {a.method && <p style={{ fontSize: 11, color: '#94a3b8', margin: '1px 0 0' }}>via {a.method}</p>}
+                  {a.method && <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '1px 0 0' }}>via {a.method}</p>}
                 </div>
-                <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>
                   {a.createdAt ? new Date(a.createdAt).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' }) : ''}
                 </span>
               </div>
