@@ -147,7 +147,7 @@ export default function PipelinePage() {
   if (loading) return <div className="p-8 text-center">Loading pipeline...</div>;
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen bg-slate-50 dark:bg-zinc-950">
       <Sidebar />
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
         <AdminTopbar />
@@ -155,17 +155,17 @@ export default function PipelinePage() {
         <main className="flex-1 overflow-x-auto overflow-y-hidden p-6 relative">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
                 <Kanban className="w-6 h-6 text-indigo-600" />
                 Sales Pipeline
               </h1>
-              <p className="text-sm text-slate-500 mt-1">Manage and track your active deals.</p>
+              <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">Manage and track your active deals.</p>
             </div>
             
             <div className="flex items-center gap-4">
-              <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm flex flex-col items-end">
+              <div className="bg-white dark:bg-zinc-900 px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 shadow-sm flex flex-col items-end">
                 <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Pipeline</span>
-                <span className="text-lg font-bold text-slate-800">${totalValue.toLocaleString()}</span>
+                <span className="text-lg font-bold text-slate-800 dark:text-zinc-100">${totalValue.toLocaleString()}</span>
               </div>
               <button 
                 onClick={() => setShowAddModal(true)}
@@ -184,18 +184,18 @@ export default function PipelinePage() {
             {STAGES.map(stage => (
               <div 
                 key={stage}
-                className="flex-shrink-0 w-80 bg-slate-100/50 rounded-2xl border border-slate-200 flex flex-col snap-start"
+                className="flex-shrink-0 w-80 bg-slate-100 dark:bg-zinc-800/50 rounded-2xl border border-slate-200 dark:border-zinc-700 flex flex-col snap-start"
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, stage)}
               >
-                <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-100/80 rounded-t-2xl">
-                  <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+                <div className="p-4 border-b border-slate-200 dark:border-zinc-700 flex items-center justify-between bg-slate-100 dark:bg-zinc-800/80 rounded-t-2xl">
+                  <h3 className="font-semibold text-slate-700 dark:text-zinc-200 flex items-center gap-2">
                     {stage}
-                    <span className="bg-white text-slate-500 text-xs py-0.5 px-2 rounded-full font-medium border border-slate-200">
+                    <span className="bg-white dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 text-xs py-0.5 px-2 rounded-full font-medium border border-slate-200 dark:border-zinc-700">
                       {dealsByStage[stage].length}
                     </span>
                   </h3>
-                  <span className="text-sm font-medium text-slate-500">
+                  <span className="text-sm font-medium text-slate-500 dark:text-zinc-400">
                     ${dealsByStage[stage].reduce((sum, d) => sum + (d.value || 0), 0).toLocaleString()}
                   </span>
                 </div>
@@ -206,21 +206,21 @@ export default function PipelinePage() {
                       key={deal.id}
                       draggable
                       onDragStart={(e) => handleDragStart(e, deal)}
-                      className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm cursor-grab active:cursor-grabbing hover:border-indigo-300 hover:shadow-md transition-all group"
+                      className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 shadow-sm cursor-grab active:cursor-grabbing hover:border-indigo-300 hover:shadow-md transition-all group"
                     >
                       <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-semibold text-slate-800 line-clamp-1" title={deal.title}>{deal.title}</h4>
-                        <button className="text-slate-400 hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <h4 className="font-semibold text-slate-800 dark:text-zinc-100 line-clamp-1" title={deal.title}>{deal.title}</h4>
+                        <button className="text-slate-400 hover:text-slate-600 dark:text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity">
                           <MoreVertical className="w-4 h-4" />
                         </button>
                       </div>
                       
-                      <div className="text-sm text-slate-500 mb-3 flex items-center gap-1.5 line-clamp-1">
+                      <div className="text-sm text-slate-500 dark:text-zinc-400 mb-3 flex items-center gap-1.5 line-clamp-1">
                         <MapPin className="w-3.5 h-3.5" />
                         {deal.client_name}
                       </div>
                       
-                      <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                      <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-zinc-800">
                         <div className="flex items-center gap-1 text-emerald-600 font-semibold text-sm">
                           <DollarSign className="w-4 h-4" />
                           {deal.value.toLocaleString()}
@@ -243,18 +243,18 @@ export default function PipelinePage() {
         {/* Add Deal Modal */}
         {showAddModal && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-              <div className="p-6 border-b border-slate-100">
-                <h2 className="text-xl font-bold text-slate-800">Create New Deal</h2>
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+              <div className="p-6 border-b border-slate-100 dark:border-zinc-800">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">Create New Deal</h2>
               </div>
               <form onSubmit={handleAddDeal} className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Deal Title</label>
-                  <input required type="text" value={newDeal.title} onChange={e => setNewDeal({...newDeal, title: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" placeholder="e.g. Website Redesign" />
+                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">Deal Title</label>
+                  <input required type="text" value={newDeal.title} onChange={e => setNewDeal({...newDeal, title: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" placeholder="e.g. Website Redesign" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Client</label>
-                  <select required value={newDeal.client_id} onChange={e => setNewDeal({...newDeal, client_id: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">Client</label>
+                  <select required value={newDeal.client_id} onChange={e => setNewDeal({...newDeal, client_id: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none">
                     <option value="">Select a client...</option>
                     {clients.map(c => (
                       <option key={c.id} value={c.id}>{c.companyName || c.email}</option>
@@ -263,23 +263,23 @@ export default function PipelinePage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Value ($)</label>
-                    <input type="number" step="0.01" value={newDeal.value} onChange={e => setNewDeal({...newDeal, value: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" placeholder="0.00" />
+                    <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">Value ($)</label>
+                    <input type="number" step="0.01" value={newDeal.value} onChange={e => setNewDeal({...newDeal, value: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" placeholder="0.00" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Close Date</label>
-                    <input type="date" value={newDeal.expected_close_date} onChange={e => setNewDeal({...newDeal, expected_close_date: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" />
+                    <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">Close Date</label>
+                    <input type="date" value={newDeal.expected_close_date} onChange={e => setNewDeal({...newDeal, expected_close_date: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Starting Stage</label>
-                  <select value={newDeal.stage} onChange={e => setNewDeal({...newDeal, stage: e.target.value})} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">Starting Stage</label>
+                  <select value={newDeal.stage} onChange={e => setNewDeal({...newDeal, stage: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none">
                     {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 
-                <div className="flex gap-3 pt-4 border-t border-slate-100">
-                  <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-600 font-medium rounded-xl hover:bg-slate-50 transition-colors">Cancel</button>
+                <div className="flex gap-3 pt-4 border-t border-slate-100 dark:border-zinc-800">
+                  <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 font-medium rounded-xl hover:bg-slate-50 dark:bg-zinc-950 transition-colors">Cancel</button>
                   <button type="submit" className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors shadow-sm">Create Deal</button>
                 </div>
               </form>

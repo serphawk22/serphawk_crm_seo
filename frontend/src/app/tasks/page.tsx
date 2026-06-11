@@ -36,7 +36,7 @@ const COLUMNS: { key: Task["status"]; label: string; color: string; bg: string; 
 ];
 
 const PRIORITY_STYLES: Record<string, string> = {
-  Low: "bg-slate-100 text-slate-600",
+  Low: "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300",
   Medium: "bg-amber-100 text-amber-700",
   High: "bg-orange-100 text-orange-700",
   Urgent: "bg-red-100 text-red-700",
@@ -146,8 +146,8 @@ export default function TasksPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight">{isClient ? "My Tasks" : "Task Board"}</h1>
-          <p className="text-gray-500 font-medium">{isClient ? "Tasks related to your projects and services." : "Kanban-style task management across all clients & projects."}</p>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">{isClient ? "My Tasks" : "Task Board"}</h1>
+          <p className="text-gray-500 dark:text-zinc-400 font-medium">{isClient ? "Tasks related to your projects and services." : "Kanban-style task management across all clients & projects."}</p>
         </div>
         {!isClient && (
           <button
@@ -199,7 +199,7 @@ export default function TasksPage() {
           {COLUMNS.map(col => (
             <div
               key={col.key}
-              className="rounded-2xl bg-gray-50 border border-gray-200 p-4 min-h-[400px]"
+              className="rounded-2xl bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-700 p-4 min-h-[400px]"
               onDragOver={e => e.preventDefault()}
               onDrop={e => {
                 e.preventDefault();
@@ -210,7 +210,7 @@ export default function TasksPage() {
               <div className="flex items-center gap-2 mb-4">
                 <col.icon className={cn("w-4 h-4", col.color)} />
                 <h3 className={cn("font-bold text-sm uppercase tracking-wide", col.color)}>{col.label}</h3>
-                <span className="ml-auto bg-white border text-gray-500 text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                <span className="ml-auto bg-white dark:bg-zinc-900 border text-gray-500 dark:text-zinc-400 text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                   {columnTasks(col.key).length}
                 </span>
               </div>
@@ -223,25 +223,25 @@ export default function TasksPage() {
                     onDragStart={() => setDragging(task.id)}
                     onDragEnd={() => setDragging(null)}
                     onClick={() => openDetail(task)}
-                    className="bg-white rounded-2xl border border-gray-100 p-4 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all group"
+                    className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-100 dark:border-zinc-800 p-4 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all group"
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <p className="font-semibold text-gray-900 text-sm leading-snug">{task.title}</p>
+                      <p className="font-semibold text-gray-900 dark:text-zinc-50 text-sm leading-snug">{task.title}</p>
                       <span className={cn("text-xs px-2 py-0.5 rounded-full font-bold shrink-0", PRIORITY_STYLES[task.priority])}>
                         {task.priority}
                       </span>
                     </div>
                     {task.description && (
-                      <p className="text-xs text-gray-500 line-clamp-2 mb-3">{task.description}</p>
+                      <p className="text-xs text-gray-500 dark:text-zinc-400 line-clamp-2 mb-3">{task.description}</p>
                     )}
                     <div className="flex items-center gap-3 flex-wrap">
                       {task.assignee_name && (
-                        <span className="flex items-center gap-1 text-xs text-gray-500">
+                        <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-zinc-400">
                           <User className="w-3 h-3" />{task.assignee_name}
                         </span>
                       )}
                       {task.due_date && (
-                        <span className="flex items-center gap-1 text-xs text-gray-500">
+                        <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-zinc-400">
                           <Calendar className="w-3 h-3" />{task.due_date}
                         </span>
                       )}
@@ -265,55 +265,55 @@ export default function TasksPage() {
       {/* Create Task Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-8">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-lg p-8">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-black text-gray-900">Create Task</h2>
+              <h2 className="text-xl font-black text-gray-900 dark:text-zinc-50">Create Task</h2>
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={createTask} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Title *</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Title *</label>
                 <input
                   required value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="Task title..."
                 />
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Description</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Description</label>
                 <textarea
                   value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
-                  rows={3} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                  rows={3} className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                   placeholder="Optional details..."
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Priority</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Priority</label>
                   <select value={form.priority} onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                     {["Low", "Medium", "High", "Urgent"].map(p => <option key={p}>{p}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Due Date</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Due Date</label>
                   <input type="date" value={form.due_date} onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Assign To</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Assign To</label>
                   <select value={form.assigned_to} onChange={e => setForm(p => ({ ...p, assigned_to: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                     <option value="">Unassigned</option>
                     {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Client</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Client</label>
                   <select value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                     <option value="">No Client</option>
                     {clients.map((c: any) => <option key={c.id} value={c.id}>{c.companyName || c.name || `Client #${c.id}`}</option>)}
                   </select>
@@ -321,7 +321,7 @@ export default function TasksPage() {
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
-                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600 hover:bg-gray-50 dark:bg-zinc-950">Cancel</button>
                 <button type="submit" disabled={submitting}
                   className="flex-1 py-2.5 bg-gray-900 text-white rounded-xl font-bold text-sm hover:bg-black flex items-center justify-center gap-2">
                   {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Task"}
@@ -335,22 +335,22 @@ export default function TasksPage() {
       {/* Task Detail Modal */}
       {showDetailModal && selectedTask && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl p-8 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-xl p-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <span className={cn("text-xs px-2 py-0.5 rounded-full font-bold", PRIORITY_STYLES[selectedTask.priority])}>
                     {selectedTask.priority}
                   </span>
-                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full font-semibold">{selectedTask.status}</span>
+                  <span className="text-xs text-gray-500 dark:text-zinc-400 bg-gray-100 px-2 py-0.5 rounded-full font-semibold">{selectedTask.status}</span>
                 </div>
-                <h2 className="text-xl font-black text-gray-900">{selectedTask.title}</h2>
+                <h2 className="text-xl font-black text-gray-900 dark:text-zinc-50">{selectedTask.title}</h2>
               </div>
               <button onClick={() => setShowDetailModal(false)} className="text-gray-400 ml-4"><X className="w-5 h-5" /></button>
             </div>
 
             {selectedTask.description && (
-              <p className="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-xl">{selectedTask.description}</p>
+              <p className="text-sm text-gray-600 mb-4 bg-gray-50 dark:bg-zinc-950 p-3 rounded-xl">{selectedTask.description}</p>
             )}
 
             <div className="grid grid-cols-2 gap-3 mb-6 text-sm">
@@ -379,17 +379,17 @@ export default function TasksPage() {
 
             {/* Comments */}
             <div>
-              <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <h3 className="font-bold text-gray-900 dark:text-zinc-50 mb-3 flex items-center gap-2">
                 <MessageSquare className="w-4 h-4" /> Comments ({taskComments.length})
               </h3>
               <div className="space-y-3 mb-4 max-h-48 overflow-y-auto">
                 {taskComments.map((c: any) => (
-                  <div key={c.id} className="bg-gray-50 rounded-xl p-3">
-                    <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <div key={c.id} className="bg-gray-50 dark:bg-zinc-950 rounded-xl p-3">
+                    <div className="flex justify-between text-xs text-gray-500 dark:text-zinc-400 mb-1">
                       <span className="font-bold">{c.author_name}</span>
                       <span>{new Date(c.created_at).toLocaleString()}</span>
                     </div>
-                    <p className="text-sm text-gray-800">{c.content}</p>
+                    <p className="text-sm text-gray-800 dark:text-zinc-100">{c.content}</p>
                   </div>
                 ))}
                 {taskComments.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No comments yet</p>}
@@ -397,7 +397,7 @@ export default function TasksPage() {
               <div className="flex gap-2">
                 <input value={newComment} onChange={e => setNewComment(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && addComment()}
-                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="flex-1 border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="Add a comment..." />
                 <button onClick={addComment} className="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm font-bold">Post</button>
               </div>

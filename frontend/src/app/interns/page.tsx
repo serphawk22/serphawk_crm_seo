@@ -73,8 +73,8 @@ export default function InternsPage() {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight uppercase">Intern Management</h1>
-          <p className="text-gray-500 font-medium">Provision and manage supporting talent accounts.</p>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight uppercase">Intern Management</h1>
+          <p className="text-gray-500 dark:text-zinc-400 font-medium">Provision and manage supporting talent accounts.</p>
         </div>
         <button 
           onClick={() => setShowAddModal(true)}
@@ -96,11 +96,11 @@ export default function InternsPage() {
         ]}
       />
 
-      <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
-        <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+      <div className="bg-white dark:bg-zinc-900 rounded-[2.5rem] border shadow-sm overflow-hidden">
+        <div className="p-8 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50 dark:bg-zinc-950/50">
            <div className="relative w-72">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input type="text" placeholder="Search interns..." className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+              <input type="text" placeholder="Search interns..." className="w-full pl-11 pr-4 py-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
            </div>
            <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest leading-none">{interns.length} ACCESS TOKENS ACTIVE</p>
         </div>
@@ -120,13 +120,13 @@ export default function InternsPage() {
                    [1, 2, 3].map(i => <tr key={i} className="animate-pulse"><td colSpan={4} className="h-16 px-6"></td></tr>)
                  ) : interns.length > 0 ? (
                    interns.map((intern: any) => (
-                     <tr key={intern.id} className="hover:bg-gray-50 transition-colors">
+                     <tr key={intern.id} className="hover:bg-gray-50 dark:bg-zinc-950 transition-colors">
                         <td className="px-6 py-4">
                            <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-black text-xs">
                                  {intern.name?.charAt(0)}
                               </div>
-                              <span className="font-bold text-gray-900">{intern.name}</span>
+                              <span className="font-bold text-gray-900 dark:text-zinc-50">{intern.name}</span>
                            </div>
                         </td>
                         <td className="px-6 py-4 text-sm font-medium text-gray-400 italic">{intern.email}</td>
@@ -148,10 +148,10 @@ export default function InternsPage() {
                  ) : (
                    <tr>
                       <td colSpan={4} className="p-20 text-center">
-                         <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border-2 border-dashed border-gray-200">
+                         <div className="w-16 h-16 bg-gray-50 dark:bg-zinc-950 rounded-2xl flex items-center justify-center mx-auto mb-4 border-2 border-dashed border-gray-200 dark:border-zinc-700">
                             <Activity className="w-8 h-8 text-gray-300" />
                          </div>
-                         <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px]">No active intern protocols found.</p>
+                         <p className="text-gray-500 dark:text-zinc-400 font-bold uppercase tracking-widest text-[10px]">No active intern protocols found.</p>
                       </td>
                    </tr>
                  )}
@@ -163,13 +163,13 @@ export default function InternsPage() {
       {/* Add Intern Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50 dark:bg-zinc-950/50">
               <div>
-                <h2 className="text-xl font-black text-gray-900 tracking-tight uppercase tracking-tighter">Add New Intern</h2>
+                <h2 className="text-xl font-black text-gray-900 dark:text-zinc-50 tracking-tight uppercase tracking-tighter">Add New Intern</h2>
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Provision system access</p>
               </div>
-              <button onClick={() => setShowAddModal(false)} className="p-3 hover:bg-white rounded-2xl transition-all shadow-sm">
+              <button onClick={() => setShowAddModal(false)} className="p-3 hover:bg-white dark:bg-zinc-900 rounded-2xl transition-all shadow-sm">
                 <X className="w-5 h-5 text-gray-400" />
               </button>
             </div>
@@ -182,7 +182,7 @@ export default function InternsPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Alex Johnson" 
-                  className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                  className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                 />
               </div>
 
@@ -194,7 +194,7 @@ export default function InternsPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="alex@company.com" 
-                  className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                  className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                 />
               </div>
 
@@ -208,7 +208,7 @@ export default function InternsPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Create a secure password" 
-                  className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                  className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                 />
               </div>
 
@@ -216,7 +216,7 @@ export default function InternsPage() {
                 <button 
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="flex-1 px-6 py-4 bg-gray-100 text-gray-500 rounded-2xl font-bold text-sm hover:bg-gray-200 transition-all uppercase tracking-widest"
+                  className="flex-1 px-6 py-4 bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-zinc-400 rounded-2xl font-bold text-sm hover:bg-gray-200 transition-all uppercase tracking-widest"
                 >
                   Cancel
                 </button>

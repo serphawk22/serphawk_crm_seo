@@ -84,18 +84,18 @@ export default function ApiIntelligencePage() {
   ];
 
   return (
-    <div className="p-8 bg-gray-50 min-h-screen text-gray-900 font-sans">
+    <div className="p-8 bg-gray-50 dark:bg-zinc-950 min-h-screen text-gray-900 dark:text-zinc-50 font-sans">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">API Intelligence Center</h1>
-          <p className="text-gray-500 mt-1">Enterprise Token Analytics & Observability</p>
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-zinc-50">API Intelligence Center</h1>
+          <p className="text-gray-500 dark:text-zinc-400 mt-1">Enterprise Token Analytics & Observability</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm text-gray-700">
+        <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg text-sm font-medium hover:bg-gray-50 dark:bg-zinc-950 transition-colors shadow-sm text-gray-700 dark:text-zinc-200">
           <Download className="w-4 h-4" /> Export Report
         </button>
       </div>
 
-      <div className="flex space-x-1 mb-6 bg-white p-1 rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+      <div className="flex space-x-1 mb-6 bg-white dark:bg-zinc-900 p-1 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-800 overflow-x-auto">
         {tabs.map(t => (
           <button
             key={t.id}
@@ -103,7 +103,7 @@ export default function ApiIntelligencePage() {
             className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
               activeTab === t.id 
                 ? 'bg-blue-50 text-blue-700 shadow-sm' 
-                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                : 'text-gray-600 dark:text-zinc-300 hover:bg-gray-50 dark:bg-zinc-950 hover:text-gray-900 dark:text-zinc-50'
             }`}
           >
             <t.icon className="w-4 h-4" /> {t.name}
@@ -132,8 +132,8 @@ export default function ApiIntelligencePage() {
               {/* Trend Charts */}
               {trend && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <h3 className="font-semibold text-gray-900 mb-6">Token Consumption (Last 7 Days)</h3>
+                  <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800">
+                    <h3 className="font-semibold text-gray-900 dark:text-zinc-50 mb-6">Token Consumption (Last 7 Days)</h3>
                     <div className="h-64 flex items-end gap-2">
                       {trend.tokens.map((val: number, i: number) => {
                         const max = Math.max(...trend.tokens, 1);
@@ -145,15 +145,15 @@ export default function ApiIntelligencePage() {
                                 {val.toLocaleString()} tokens
                               </div>
                             </div>
-                            <div className="text-xs text-center mt-2 text-gray-500">{trend.labels[i]}</div>
+                            <div className="text-xs text-center mt-2 text-gray-500 dark:text-zinc-400">{trend.labels[i]}</div>
                           </div>
                         );
                       })}
                     </div>
                   </div>
                   
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <h3 className="font-semibold text-gray-900 mb-6">Cost Trend (Last 7 Days)</h3>
+                  <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800">
+                    <h3 className="font-semibold text-gray-900 dark:text-zinc-50 mb-6">Cost Trend (Last 7 Days)</h3>
                     <div className="h-64 flex items-end gap-2">
                       {trend.costs.map((val: number, i: number) => {
                         const max = Math.max(...trend.costs, 0.01);
@@ -165,7 +165,7 @@ export default function ApiIntelligencePage() {
                                 ${val.toFixed(3)}
                               </div>
                             </div>
-                            <div className="text-xs text-center mt-2 text-gray-500">{trend.labels[i]}</div>
+                            <div className="text-xs text-center mt-2 text-gray-500 dark:text-zinc-400">{trend.labels[i]}</div>
                           </div>
                         );
                       })}
@@ -180,14 +180,14 @@ export default function ApiIntelligencePage() {
           {activeTab === 'providers' && (
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
               {providers.map((p, i) => (
-                <div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
-                  <h3 className="font-semibold text-gray-900 text-lg capitalize mb-4">{p.provider}</h3>
+                <div key={i} className="bg-white dark:bg-zinc-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 flex flex-col">
+                  <h3 className="font-semibold text-gray-900 dark:text-zinc-50 text-lg capitalize mb-4">{p.provider}</h3>
                   <div className="space-y-3 flex-1">
-                    <div className="flex justify-between text-sm"><span className="text-gray-500">Calls</span><span className="font-medium text-gray-900">{p.calls}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-gray-500">Tokens</span><span className="font-medium text-gray-900">{p.tokens.toLocaleString()}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-gray-500">Cost</span><span className="font-medium text-emerald-600">${p.cost.toFixed(4)}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-gray-500">Avg Latency</span><span className="font-medium text-gray-900">{p.avg_response_time.toFixed(0)}ms</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-gray-500">Error Rate</span><span className={p.error_rate > 0 ? "font-medium text-red-500" : "font-medium text-emerald-500"}>{p.error_rate.toFixed(1)}%</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-zinc-400">Calls</span><span className="font-medium text-gray-900 dark:text-zinc-50">{p.calls}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-zinc-400">Tokens</span><span className="font-medium text-gray-900 dark:text-zinc-50">{p.tokens.toLocaleString()}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-zinc-400">Cost</span><span className="font-medium text-emerald-600">${p.cost.toFixed(4)}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-zinc-400">Avg Latency</span><span className="font-medium text-gray-900 dark:text-zinc-50">{p.avg_response_time.toFixed(0)}ms</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-zinc-400">Error Rate</span><span className={p.error_rate > 0 ? "font-medium text-red-500" : "font-medium text-emerald-500"}>{p.error_rate.toFixed(1)}%</span></div>
                   </div>
                 </div>
               ))}
@@ -196,9 +196,9 @@ export default function ApiIntelligencePage() {
 
           {/* SALES TEAM TAB */}
           {activeTab === 'sales' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 overflow-hidden">
               <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 text-gray-500 border-b border-gray-100">
+                <thead className="bg-gray-50 dark:bg-zinc-950 text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800">
                   <tr>
                     <th className="px-6 py-4 font-medium">Salesperson</th>
                     <th className="px-6 py-4 font-medium">API Calls</th>
@@ -208,10 +208,10 @@ export default function ApiIntelligencePage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {salespersons.map((s, i) => (
-                    <tr key={i} className="hover:bg-gray-50/50 cursor-pointer transition-colors">
-                      <td className="px-6 py-4 font-medium text-gray-900">{s.name}</td>
-                      <td className="px-6 py-4 text-gray-600">{s.calls}</td>
-                      <td className="px-6 py-4 text-gray-600">{s.tokens.toLocaleString()}</td>
+                    <tr key={i} className="hover:bg-gray-50 dark:bg-zinc-950/50 cursor-pointer transition-colors">
+                      <td className="px-6 py-4 font-medium text-gray-900 dark:text-zinc-50">{s.name}</td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-zinc-300">{s.calls}</td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-zinc-300">{s.tokens.toLocaleString()}</td>
                       <td className="px-6 py-4 text-emerald-600 font-medium">${s.cost.toFixed(4)}</td>
                     </tr>
                   ))}
@@ -222,9 +222,9 @@ export default function ApiIntelligencePage() {
 
           {/* CLIENTS TAB */}
           {activeTab === 'clients' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 overflow-hidden">
               <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 text-gray-500 border-b border-gray-100">
+                <thead className="bg-gray-50 dark:bg-zinc-950 text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800">
                   <tr>
                     <th className="px-6 py-4 font-medium">Client</th>
                     <th className="px-6 py-4 font-medium">API Calls</th>
@@ -234,10 +234,10 @@ export default function ApiIntelligencePage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {clients.map((c, i) => (
-                    <tr key={i} className="hover:bg-gray-50/50 cursor-pointer transition-colors">
-                      <td className="px-6 py-4 font-medium text-gray-900">{c.companyName}</td>
-                      <td className="px-6 py-4 text-gray-600">{c.calls}</td>
-                      <td className="px-6 py-4 text-gray-600">{c.tokens.toLocaleString()}</td>
+                    <tr key={i} className="hover:bg-gray-50 dark:bg-zinc-950/50 cursor-pointer transition-colors">
+                      <td className="px-6 py-4 font-medium text-gray-900 dark:text-zinc-50">{c.companyName}</td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-zinc-300">{c.calls}</td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-zinc-300">{c.tokens.toLocaleString()}</td>
                       <td className="px-6 py-4 text-emerald-600 font-medium">${c.cost.toFixed(4)}</td>
                     </tr>
                   ))}
@@ -248,9 +248,9 @@ export default function ApiIntelligencePage() {
 
           {/* REQUESTS LOG TAB */}
           {activeTab === 'requests' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 overflow-hidden">
               <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 text-gray-500 border-b border-gray-100">
+                <thead className="bg-gray-50 dark:bg-zinc-950 text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800">
                   <tr>
                     <th className="px-6 py-4 font-medium">Time</th>
                     <th className="px-6 py-4 font-medium">Endpoint</th>
@@ -263,14 +263,14 @@ export default function ApiIntelligencePage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {requests.map((r, i) => (
-                    <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="px-6 py-4 text-gray-500">{new Date(r.timestamp).toLocaleTimeString()}</td>
-                      <td className="px-6 py-4 font-medium text-gray-900">{r.endpoint}</td>
-                      <td className="px-6 py-4 text-gray-600">{r.salesperson}</td>
-                      <td className="px-6 py-4 text-gray-600"><span className="px-2 py-1 bg-gray-100 rounded text-xs">{r.model}</span></td>
-                      <td className="px-6 py-4 text-gray-600">{r.total_tokens.toLocaleString()}</td>
+                    <tr key={i} className="hover:bg-gray-50 dark:bg-zinc-950/50 transition-colors">
+                      <td className="px-6 py-4 text-gray-500 dark:text-zinc-400">{new Date(r.timestamp).toLocaleTimeString()}</td>
+                      <td className="px-6 py-4 font-medium text-gray-900 dark:text-zinc-50">{r.endpoint}</td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-zinc-300">{r.salesperson}</td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-zinc-300"><span className="px-2 py-1 bg-gray-100 dark:bg-zinc-800 rounded text-xs">{r.model}</span></td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-zinc-300">{r.total_tokens.toLocaleString()}</td>
                       <td className="px-6 py-4 text-emerald-600">${r.total_cost.toFixed(4)}</td>
-                      <td className="px-6 py-4 text-gray-600 flex items-center gap-1"><Clock className="w-3 h-3"/> {r.response_time_ms}ms</td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-zinc-300 flex items-center gap-1"><Clock className="w-3 h-3"/> {r.response_time_ms}ms</td>
                     </tr>
                   ))}
                 </tbody>
@@ -292,7 +292,7 @@ export default function ApiIntelligencePage() {
                 <div className="p-4 max-h-[600px] overflow-y-auto space-y-2">
                   {requests.map((r, i) => (
                     <div key={i} className="flex gap-4 hover:bg-gray-800/50 p-2 rounded transition-colors">
-                      <span className="text-gray-500 w-24 flex-shrink-0">{new Date(r.timestamp).toLocaleTimeString()}</span>
+                      <span className="text-gray-500 dark:text-zinc-400 w-24 flex-shrink-0">{new Date(r.timestamp).toLocaleTimeString()}</span>
                       <span className="text-blue-400 w-32 flex-shrink-0 truncate">{r.salesperson}</span>
                       <span className="text-emerald-400 w-40 flex-shrink-0">{r.endpoint}</span>
                       <span className="text-purple-400 w-32 flex-shrink-0">{r.model}</span>
@@ -307,10 +307,10 @@ export default function ApiIntelligencePage() {
 
           {/* ALERTS TAB */}
           {activeTab === 'alerts' && (
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center">
+            <div className="bg-white dark:bg-zinc-900 p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 text-center">
               <Bell className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900">Alert Configuration</h3>
-              <p className="text-gray-500 mt-2 mb-6">Set up automated notifications for cost overruns and error spikes.</p>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-zinc-50">Alert Configuration</h3>
+              <p className="text-gray-500 dark:text-zinc-400 mt-2 mb-6">Set up automated notifications for cost overruns and error spikes.</p>
               <button className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
                 Create New Alert
               </button>
@@ -319,9 +319,9 @@ export default function ApiIntelligencePage() {
 
           {/* ENDPOINTS TAB */}
           {activeTab === 'endpoints' && (
-             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+             <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 overflow-hidden">
              <table className="w-full text-left text-sm">
-               <thead className="bg-gray-50 text-gray-500 border-b border-gray-100">
+               <thead className="bg-gray-50 dark:bg-zinc-950 text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800">
                  <tr>
                    <th className="px-6 py-4 font-medium">Endpoint</th>
                    <th className="px-6 py-4 font-medium">Hits</th>
@@ -332,12 +332,12 @@ export default function ApiIntelligencePage() {
                </thead>
                <tbody className="divide-y divide-gray-50">
                  {endpoints.map((e, i) => (
-                   <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                     <td className="px-6 py-4 font-medium text-gray-900">{e.endpoint}</td>
-                     <td className="px-6 py-4 text-gray-600">{e.hits}</td>
-                     <td className="px-6 py-4 text-gray-600">{e.tokens.toLocaleString()}</td>
+                   <tr key={i} className="hover:bg-gray-50 dark:bg-zinc-950/50 transition-colors">
+                     <td className="px-6 py-4 font-medium text-gray-900 dark:text-zinc-50">{e.endpoint}</td>
+                     <td className="px-6 py-4 text-gray-600 dark:text-zinc-300">{e.hits}</td>
+                     <td className="px-6 py-4 text-gray-600 dark:text-zinc-300">{e.tokens.toLocaleString()}</td>
                      <td className="px-6 py-4 text-emerald-600 font-medium">${e.cost.toFixed(4)}</td>
-                     <td className="px-6 py-4 text-gray-600">{e.avg_latency.toFixed(0)}ms</td>
+                     <td className="px-6 py-4 text-gray-600 dark:text-zinc-300">{e.avg_latency.toFixed(0)}ms</td>
                    </tr>
                  ))}
                </tbody>
@@ -353,12 +353,12 @@ export default function ApiIntelligencePage() {
 
 function MetricCard({ title, value, sub }: { title: string, value: string | number, sub: string }) {
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-full">
-      <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">{title}</h3>
+    <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 flex flex-col justify-between h-full">
+      <h3 className="text-sm font-medium text-gray-500 dark:text-zinc-400 uppercase tracking-wider">{title}</h3>
       <div className="mt-2">
-        <span className="text-3xl font-bold text-gray-900">{value}</span>
+        <span className="text-3xl font-bold text-gray-900 dark:text-zinc-50">{value}</span>
       </div>
-      <p className="text-sm text-gray-500 mt-2">{sub}</p>
+      <p className="text-sm text-gray-500 dark:text-zinc-400 mt-2">{sub}</p>
     </div>
   );
 }

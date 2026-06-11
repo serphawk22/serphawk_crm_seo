@@ -35,8 +35,8 @@ export default function SurveyPage() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-white">
         <div className="text-center">
           <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-black text-gray-900 mb-2">Thank you!</h1>
-          <p className="text-gray-500">Your feedback helps us improve our services.</p>
+          <h1 className="text-2xl font-black text-gray-900 dark:text-zinc-50 mb-2">Thank you!</h1>
+          <p className="text-gray-500 dark:text-zinc-400">Your feedback helps us improve our services.</p>
         </div>
       </div>
     );
@@ -44,9 +44,9 @@ export default function SurveyPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-white p-4">
-      <div className="bg-white rounded-3xl shadow-2xl p-10 w-full max-w-lg">
-        <h1 className="text-2xl font-black text-gray-900 mb-2">How are we doing?</h1>
-        <p className="text-gray-500 mb-8">
+      <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-10 w-full max-w-lg">
+        <h1 className="text-2xl font-black text-gray-900 dark:text-zinc-50 mb-2">How are we doing?</h1>
+        <p className="text-gray-500 dark:text-zinc-400 mb-8">
           On a scale of 0–10, how likely are you to recommend SerpHawk to a friend or colleague?
         </p>
 
@@ -63,25 +63,25 @@ export default function SurveyPage() {
                     ? i <= 6 ? "bg-red-500 text-white border-red-500"
                       : i <= 8 ? "bg-amber-500 text-white border-amber-500"
                       : "bg-emerald-500 text-white border-emerald-500"
-                    : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
+                    : "bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-200 border-gray-200 dark:border-zinc-700 hover:border-gray-400"
                 )}
               >{i}</button>
             ))}
           </div>
 
           {score !== null && (
-            <p className="text-center text-sm font-semibold text-gray-600">{getLabel(score)}</p>
+            <p className="text-center text-sm font-semibold text-gray-600 dark:text-zinc-300">{getLabel(score)}</p>
           )}
 
           <div>
-            <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">
+            <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">
               What's the main reason for your score?
             </label>
             <textarea
               value={feedback}
               onChange={e => setFeedback(e.target.value)}
               rows={3}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
               placeholder="Your feedback (optional)..."
             />
           </div>

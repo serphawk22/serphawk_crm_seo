@@ -79,17 +79,17 @@ export default function TicketsTab({ clientId }: TicketsTabProps) {
   };
 
   if (loading) {
-    return <div className="p-8 text-center text-slate-500 animate-pulse">{language === 'es' ? 'Cargando tickets...' : 'Loading tickets...'}</div>;
+    return <div className="p-8 text-center text-slate-500 dark:text-zinc-400 animate-pulse">{language === 'es' ? 'Cargando tickets...' : 'Loading tickets...'}</div>;
   }
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+          <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100 dark:text-white flex items-center gap-2">
             <Ticket className="w-5 h-5 text-indigo-500" /> {language === 'es' ? 'Solicitudes de Acción' : 'Action Requests'}
           </h2>
-          <p className="text-sm text-slate-500 mt-1">{language === 'es' ? 'Crear tickets de soporte o acción para el Administrador' : 'Raise support or action tickets to Admin'}</p>
+          <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">{language === 'es' ? 'Crear tickets de soporte o acción para el Administrador' : 'Raise support or action tickets to Admin'}</p>
         </div>
         <button
           onClick={() => setIsRaising(!isRaising)}
@@ -107,7 +107,7 @@ export default function TicketsTab({ clientId }: TicketsTabProps) {
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <form onSubmit={handleRaiseTicket} className="p-5 bg-white dark:bg-slate-900 border border-indigo-100 dark:border-indigo-900 rounded-2xl shadow-sm mb-6">
+            <form onSubmit={handleRaiseTicket} className="p-5 bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-indigo-100 dark:border-indigo-900 rounded-2xl shadow-sm mb-6">
               <div className="space-y-4">
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">{language === 'es' ? 'Título del Problema / Acción' : 'Issue / Action Title'}</label>
@@ -115,7 +115,7 @@ export default function TicketsTab({ clientId }: TicketsTabProps) {
                     required
                     value={newTicket.title}
                     onChange={e => setNewTicket(prev => ({ ...prev, title: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
                     placeholder={language === 'es' ? 'ej. Necesita revisión de facturación de inmediato' : 'e.g., Needs immediate billing review'}
                   />
                 </div>
@@ -125,7 +125,7 @@ export default function TicketsTab({ clientId }: TicketsTabProps) {
                     rows={3}
                     value={newTicket.description}
                     onChange={e => setNewTicket(prev => ({ ...prev, description: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white resize-none"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white resize-none"
                     placeholder={language === 'es' ? 'Proporcionar contexto para el administrador...' : 'Provide context for the admin...'}
                   />
                 </div>
@@ -142,14 +142,14 @@ export default function TicketsTab({ clientId }: TicketsTabProps) {
 
       <div className="space-y-4">
         {tickets.length === 0 ? (
-          <div className="p-12 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl text-center text-slate-500">
-            <Ticket className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-4" />
+          <div className="p-12 border-2 border-dashed border-slate-200 dark:border-zinc-700 dark:border-slate-800 rounded-3xl text-center text-slate-500 dark:text-zinc-400">
+            <Ticket className="w-12 h-12 text-slate-300 dark:text-slate-700 dark:text-zinc-200 mx-auto mb-4" />
             <p className="font-bold">{language === 'es' ? 'No hay tickets activos.' : 'No active tickets.'}</p>
             <p className="text-sm">{language === 'es' ? 'Todo está funcionando sin problemas.' : 'Everything is running smoothly.'}</p>
           </div>
         ) : (
           tickets.map(ticket => (
-            <div key={ticket.id} className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+            <div key={ticket.id} className="p-5 bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700 rounded-2xl shadow-sm flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
               <div>
                 <div className="flex items-center gap-3 mb-1">
                   {ticket.status === 'Done' ? (
@@ -159,9 +159,9 @@ export default function TicketsTab({ clientId }: TicketsTabProps) {
                   ) : (
                     <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold"><Clock size={12} /> {language === 'es' ? 'Pendiente' : 'Pending'}</span>
                   )}
-                  <h3 className="font-bold text-slate-800 dark:text-white text-lg">{ticket.title}</h3>
+                  <h3 className="font-bold text-slate-800 dark:text-zinc-100 dark:text-white text-lg">{ticket.title}</h3>
                 </div>
-                {ticket.description && <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">{ticket.description}</p>}
+                {ticket.description && <p className="text-sm text-slate-500 dark:text-zinc-400 dark:text-slate-400 mt-2">{ticket.description}</p>}
                 <p className="text-[11px] text-slate-400 mt-3 font-medium uppercase tracking-wider">
                   {new Date(ticket.created_at).toLocaleString(language === 'es' ? 'es-ES' : 'en-US')}
                 </p>
@@ -169,22 +169,22 @@ export default function TicketsTab({ clientId }: TicketsTabProps) {
 
               {/* Admin Toggle Actions */}
               {role === 'Admin' && (
-                <div className="flex items-center gap-2 mt-4 md:mt-0 shrink-0 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-2 mt-4 md:mt-0 shrink-0 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700">
                   <button
                     onClick={() => handleUpdateStatus(ticket.id, 'Done')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors ${ticket.status === 'Done' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors ${ticket.status === 'Done' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:bg-zinc-700 dark:hover:bg-slate-700'}`}
                   >
                     <CheckCircle size={14} /> {language === 'es' ? 'Marcar Completado' : 'Mark Done'}
                   </button>
                   <button
                     onClick={() => handleUpdateStatus(ticket.id, 'Not Done')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors ${ticket.status === 'Not Done' ? 'bg-red-500 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors ${ticket.status === 'Not Done' ? 'bg-red-500 text-white shadow-sm' : 'text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:bg-zinc-700 dark:hover:bg-slate-700'}`}
                   >
                     <XCircle size={14} /> {language === 'es' ? 'Marcar No Completado' : 'Flag Not Done'}
                   </button>
                   <button
                     onClick={() => handleUpdateStatus(ticket.id, 'Pending')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors ${ticket.status === 'Pending' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors ${ticket.status === 'Pending' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:bg-zinc-700 dark:hover:bg-slate-700'}`}
                   >
                     <Clock size={14} /> {language === 'es' ? 'Pendiente' : 'Pending'}
                   </button>

@@ -175,7 +175,7 @@ export default function ClientStorePage() {
                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 </div>
 
-                <div className="h-px bg-white/5" />
+                <div className="h-px bg-white dark:bg-zinc-900/5" />
 
                 <div className="space-y-4">
                   {[
@@ -190,7 +190,7 @@ export default function ClientStorePage() {
                   ))}
                 </div>
 
-                <div className="h-px bg-white/5" />
+                <div className="h-px bg-white dark:bg-zinc-900/5" />
 
                 <button onClick={() => setTab('requests')}
                   className="w-full py-3.5 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all
@@ -218,7 +218,7 @@ export default function ClientStorePage() {
 
           {/* ── Tabs ── */}
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-            className="mt-14 flex items-center gap-1.5 p-1.5 rounded-xl w-fit bg-white/[0.03] border border-white/5">
+            className="mt-14 flex items-center gap-1.5 p-1.5 rounded-xl w-fit bg-white dark:bg-zinc-900/[0.03] border border-white/5">
             {[
               { key: 'store', label: 'Service Catalog', icon: ShoppingBag },
               { key: 'requests', label: `My Requests${quotedCount > 0 ? ` · ${quotedCount} new` : ''}`, icon: FileText },
@@ -227,11 +227,11 @@ export default function ClientStorePage() {
                 className={`relative flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-bold transition-all duration-300 ${
                   tab === key
                     ? 'bg-amber-600 text-white'
-                    : 'text-stone-500 hover:text-stone-300 hover:bg-white/5'
+                    : 'text-stone-500 hover:text-stone-300 hover:bg-white dark:bg-zinc-900/5'
                 }`}>
                 <Icon className="w-4 h-4" /> {label}
                 {key === 'requests' && quotedCount > 0 && tab !== 'requests' && (
-                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-amber-500 rounded-full text-[9px] font-black flex items-center justify-center text-black">{quotedCount}</span>
+                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-amber-500 rounded-full text-[9px] font-black flex items-center justify-center text-black dark:text-white">{quotedCount}</span>
                 )}
               </button>
             ))}
@@ -394,7 +394,7 @@ export default function ClientStorePage() {
                         </div>
 
                         {/* status pill */}
-                        <div className={`shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-black bg-white/[0.03] ${cfg.border} ${cfg.color}`}>
+                        <div className={`shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-black bg-white dark:bg-zinc-900/[0.03] ${cfg.border} ${cfg.color}`}>
                           <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
                           {cfg.label}
                         </div>

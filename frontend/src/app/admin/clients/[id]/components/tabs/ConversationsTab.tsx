@@ -20,7 +20,7 @@ const TYPE_CONFIG: Record<string, { icon: any; label: string; bg: string; text: 
   email:    { icon: Mail,         label: 'Email Summary',   bg: 'bg-blue-100 dark:bg-blue-900/30',     text: 'text-blue-700 dark:text-blue-400',     border: 'border-blue-200 dark:border-blue-800/50' },
   whatsapp: { icon: MessageSquare,label: 'WhatsApp Notes',  bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-200 dark:border-emerald-800/50' },
   visit:    { icon: MapPin,       label: 'Visit Report',    bg: 'bg-rose-100 dark:bg-rose-900/30',     text: 'text-rose-700 dark:text-rose-400',     border: 'border-rose-200 dark:border-rose-800/50' },
-  other:    { icon: Globe,        label: 'Other',           bg: 'bg-slate-100 dark:bg-slate-800',      text: 'text-slate-600 dark:text-slate-400',   border: 'border-slate-200 dark:border-slate-700' },
+  other:    { icon: Globe,        label: 'Other',           bg: 'bg-slate-100 dark:bg-zinc-800 dark:bg-slate-800',      text: 'text-slate-600 dark:text-zinc-300 dark:text-slate-400',   border: 'border-slate-200 dark:border-zinc-700 dark:border-slate-700' },
 };
 
 function getTranslatedTypeConfig(type: string, t: (k: string) => string, language: string) {
@@ -63,8 +63,8 @@ function ConversationCard({ conv, clientId, onRefresh }: { conv: any; clientId: 
       layout
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl border border-slate-200 dark:border-slate-700/60
-                 bg-white dark:bg-slate-900 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+      className="rounded-2xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/60
+                 bg-white dark:bg-zinc-900 dark:bg-slate-900 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
     >
       {/* Card Header */}
       <div className={`px-4 pt-4 pb-3 border-l-4 ${cfg.border}`}>
@@ -74,30 +74,30 @@ function ConversationCard({ conv, clientId, onRefresh }: { conv: any; clientId: 
               <Icon size={14} className={cfg.text} />
             </div>
             <div>
-              <h4 className="font-bold text-sm text-slate-800 dark:text-white">{conv.title}</h4>
+              <h4 className="font-bold text-sm text-slate-800 dark:text-zinc-100 dark:text-white">{conv.title}</h4>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>
                   {cfg.label}
                 </span>
-                <span className="text-xs text-slate-400 dark:text-slate-500">
+                <span className="text-xs text-slate-400 dark:text-slate-500 dark:text-zinc-400">
                   {new Date(conv.created_at).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
                 {conv.author_name && (
-                  <span className="text-xs text-slate-400 dark:text-slate-500">• {conv.author_name}</span>
+                  <span className="text-xs text-slate-400 dark:text-slate-500 dark:text-zinc-400">• {conv.author_name}</span>
                 )}
               </div>
             </div>
           </div>
           <button
             onClick={() => setExpanded(p => !p)}
-            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+            className="p-1 rounded-lg hover:bg-slate-100 dark:bg-zinc-800 dark:hover:bg-slate-800 text-slate-400 transition-colors"
           >
             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
         </div>
 
         {conv.description && (
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 ml-9 leading-relaxed">
+          <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-400 mt-2 ml-9 leading-relaxed">
             {expanded ? conv.description : conv.description.slice(0, 120) + (conv.description.length > 120 ? '…' : '')}
           </p>
         )}
@@ -112,7 +112,7 @@ function ConversationCard({ conv, clientId, onRefresh }: { conv: any; clientId: 
             exit={{ height: 0 }}
             className="overflow-hidden"
           >
-            <div className="px-4 pb-4 border-t border-slate-100 dark:border-slate-800">
+            <div className="px-4 pb-4 border-t border-slate-100 dark:border-zinc-800 dark:border-slate-800">
               {/* Existing Replies */}
               {conv.replies?.length > 0 && (
                 <div className="mt-3 space-y-2">
@@ -124,17 +124,17 @@ function ConversationCard({ conv, clientId, onRefresh }: { conv: any; clientId: 
                           {(reply.author_name || 'A').charAt(0).toUpperCase()}
                         </span>
                       </div>
-                      <div className="flex-1 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60
-                                      border border-slate-100 dark:border-slate-700">
+                      <div className="flex-1 px-3 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/60
+                                      border border-slate-100 dark:border-zinc-800 dark:border-slate-700">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          <span className="text-xs font-bold text-slate-700 dark:text-zinc-200 dark:text-slate-300">
                             {reply.author_name || 'Admin'}
                           </span>
                           <span className="text-[10px] text-slate-400">
                             {new Date(reply.created_at).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' })}
                           </span>
                         </div>
-                        <p className="text-xs text-slate-600 dark:text-slate-400">{reply.content}</p>
+                        <p className="text-xs text-slate-600 dark:text-zinc-300 dark:text-slate-400">{reply.content}</p>
                       </div>
                     </div>
                   ))}
@@ -148,8 +148,8 @@ function ConversationCard({ conv, clientId, onRefresh }: { conv: any; clientId: 
                   onChange={e => setReplyText(e.target.value)}
                   placeholder={language === 'es' ? 'Añadir una respuesta...' : 'Add a reply...'}
                   rows={2}
-                  className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700
-                             bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200
+                  className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700
+                             bg-white dark:bg-zinc-900 dark:bg-slate-800 text-slate-800 dark:text-zinc-100 dark:text-slate-200
                              focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                 />
                 <button
@@ -206,7 +206,7 @@ export default function ConversationsTab({ clientId, conversations, employees, c
                 className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all
                   ${filterType === type
                     ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                    : 'bg-white dark:bg-zinc-900 dark:bg-slate-800 text-slate-500 dark:text-zinc-400 dark:text-slate-400 border border-slate-200 dark:border-zinc-700 dark:border-slate-700 hover:bg-slate-50 dark:bg-zinc-950 dark:hover:bg-slate-700'
                   }`}
               >
                 {type === 'all' ? (language === 'es' ? 'Todo' : 'All') : (cfg?.label || type)}
@@ -234,7 +234,7 @@ export default function ConversationsTab({ clientId, conversations, employees, c
           >
             <div className="p-5 rounded-2xl border border-indigo-200 dark:border-indigo-800/50
                             bg-indigo-50/50 dark:bg-indigo-950/20 space-y-3">
-              <h4 className="font-black text-sm text-slate-800 dark:text-white">{language === 'es' ? 'Registrar Nueva Conversación' : 'Log New Conversation'}</h4>
+              <h4 className="font-black text-sm text-slate-800 dark:text-zinc-100 dark:text-white">{language === 'es' ? 'Registrar Nueva Conversación' : 'Log New Conversation'}</h4>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -242,8 +242,8 @@ export default function ConversationsTab({ clientId, conversations, employees, c
                   <select
                     value={form.type}
                     onChange={e => setForm(p => ({ ...p, type: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700
-                               bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700
+                               bg-white dark:bg-zinc-900 dark:bg-slate-800 text-slate-800 dark:text-zinc-100 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="call">{language === 'es' ? 'Notas de Llamada' : 'Call Notes'}</option>
                     <option value="meeting">{language === 'es' ? 'Notas de Reunión' : 'Meeting Notes'}</option>
@@ -258,8 +258,8 @@ export default function ConversationsTab({ clientId, conversations, employees, c
                   <input
                     value={form.author_name}
                     onChange={e => setForm(p => ({ ...p, author_name: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700
-                               bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700
+                               bg-white dark:bg-zinc-900 dark:bg-slate-800 text-slate-800 dark:text-zinc-100 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
               </div>
@@ -270,8 +270,8 @@ export default function ConversationsTab({ clientId, conversations, employees, c
                   value={form.title}
                   onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
                   placeholder={language === 'es' ? 'ej. Llamada con CEO' : 'e.g. Discovery call with CEO'}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700
-                             bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700
+                             bg-white dark:bg-zinc-900 dark:bg-slate-800 text-slate-800 dark:text-zinc-100 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
@@ -282,16 +282,16 @@ export default function ConversationsTab({ clientId, conversations, employees, c
                   onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
                   placeholder={language === 'es' ? 'Puntos clave, decisiones...' : 'Key discussion points, decisions made, action items...'}
                   rows={4}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700
-                             bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700
+                             bg-white dark:bg-zinc-900 dark:bg-slate-800 text-slate-800 dark:text-zinc-100 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                 />
               </div>
 
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => setShowForm(false)}
-                  className="flex-1 py-2 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700
-                             text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 transition-colors"
+                  className="flex-1 py-2 rounded-xl text-xs font-bold border border-slate-200 dark:border-zinc-700 dark:border-slate-700
+                             text-slate-600 dark:text-zinc-300 dark:text-slate-400 hover:bg-white dark:bg-zinc-900 dark:hover:bg-slate-800 transition-colors"
                 >{language === 'es' ? 'Cancelar' : 'Cancel'}</button>
                 <button
                   onClick={handleSubmit}
@@ -309,10 +309,10 @@ export default function ConversationsTab({ clientId, conversations, employees, c
 
       {/* Conversation Cards */}
       {filtered.length === 0 ? (
-        <div className="text-center py-16 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
-          <MessageSquare size={32} className="mx-auto text-slate-300 dark:text-slate-600 mb-3" />
-          <p className="text-sm font-semibold text-slate-400 dark:text-slate-500">{language === 'es' ? 'Aún no hay conversaciones' : 'No conversations yet'}</p>
-          <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">{language === 'es' ? 'Registre su primera llamada, reunión o correo' : 'Log your first call, meeting, or email'}</p>
+        <div className="text-center py-16 rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-700 dark:border-slate-700">
+          <MessageSquare size={32} className="mx-auto text-slate-300 dark:text-slate-600 dark:text-zinc-300 mb-3" />
+          <p className="text-sm font-semibold text-slate-400 dark:text-slate-500 dark:text-zinc-400">{language === 'es' ? 'Aún no hay conversaciones' : 'No conversations yet'}</p>
+          <p className="text-xs text-slate-300 dark:text-slate-600 dark:text-zinc-300 mt-1">{language === 'es' ? 'Registre su primera llamada, reunión o correo' : 'Log your first call, meeting, or email'}</p>
         </div>
       ) : (
         <div className="space-y-3">

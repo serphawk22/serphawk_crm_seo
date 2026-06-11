@@ -89,8 +89,8 @@ export default function SetupPage() {
   return (
     <div className="max-w-4xl mx-auto py-10 px-4 space-y-10">
       <div className="space-y-2">
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Onboarding & Setup</h1>
-        <p className="text-slate-500 font-medium">Connect your assets so we can launch your SEO campaign.</p>
+        <h1 className="text-3xl font-black text-slate-900 dark:text-zinc-50 tracking-tight">Onboarding & Setup</h1>
+        <p className="text-slate-500 dark:text-zinc-400 font-medium">Connect your assets so we can launch your SEO campaign.</p>
       </div>
 
       <PageGuide
@@ -110,28 +110,28 @@ export default function SetupPage() {
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm"
+          className="bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-slate-200 dark:border-zinc-700 shadow-sm"
         >
           <div className="flex items-center gap-3 mb-6">
             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
               <Globe className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-800">Add Website</h2>
-              <p className="text-sm text-slate-500">Verify your primary domain</p>
+              <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">Add Website</h2>
+              <p className="text-sm text-slate-500 dark:text-zinc-400">Verify your primary domain</p>
             </div>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Website URL</label>
+              <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">Website URL</label>
               <div className="flex gap-2">
                 <input
                   type="url"
                   placeholder="https://example.com"
                   value={websiteUrl}
                   onChange={(e) => setWebsiteUrl(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
                 <button
                   onClick={handleVerifyDomain}
@@ -185,15 +185,15 @@ export default function SetupPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm"
+          className="bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-slate-200 dark:border-zinc-700 shadow-sm"
         >
           <div className="flex items-center gap-3 mb-6">
             <div className="p-3 bg-fuchsia-50 text-fuchsia-600 rounded-xl">
               <Share2 className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-800">Add Social Media</h2>
-              <p className="text-sm text-slate-500">Cross-channel presence analysis</p>
+              <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">Add Social Media</h2>
+              <p className="text-sm text-slate-500 dark:text-zinc-400">Cross-channel presence analysis</p>
             </div>
           </div>
 
@@ -205,12 +205,12 @@ export default function SetupPage() {
             ].map(social => {
               const connected = connectedSocials.includes(social.id);
               return (
-                <div key={social.id} className="flex items-center justify-between p-4 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors">
+                <div key={social.id} className="flex items-center justify-between p-4 border border-slate-100 dark:border-zinc-800 rounded-xl hover:bg-slate-50 dark:bg-zinc-950 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className={`p-2 rounded-lg ${social.bg} ${social.color}`}>
                       <social.icon className="w-5 h-5" />
                     </div>
-                    <span className="font-semibold text-slate-700">{social.name}</span>
+                    <span className="font-semibold text-slate-700 dark:text-zinc-200">{social.name}</span>
                   </div>
                   <button
                     onClick={() => connectSocial(social.id)}
@@ -219,8 +219,8 @@ export default function SetupPage() {
                       ${connected 
                         ? 'bg-emerald-100 text-emerald-700 pointer-events-none' 
                         : !websiteUrl 
-                          ? 'bg-slate-100 text-slate-400 opacity-50 cursor-not-allowed'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                          ? 'bg-slate-100 dark:bg-zinc-800 text-slate-400 opacity-50 cursor-not-allowed'
+                          : 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 hover:bg-slate-200 dark:bg-zinc-700'}`}
                   >
                     {connected ? 'Connected' : 'Connect'}
                   </button>
@@ -229,7 +229,7 @@ export default function SetupPage() {
             })}
           </div>
           
-          <div className="mt-6 pt-6 border-t border-slate-100">
+          <div className="mt-6 pt-6 border-t border-slate-100 dark:border-zinc-800">
              <button 
                 disabled={domainStatus !== 'success'}
                 className="w-full py-4 bg-gradient-to-r from-slate-800 to-slate-900 text-white font-bold rounded-xl flex justify-center items-center gap-2 hover:shadow-lg disabled:opacity-50 disabled:hover:shadow-none transition-all"
@@ -245,15 +245,15 @@ export default function SetupPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm"
+        className="bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-slate-200 dark:border-zinc-700 shadow-sm"
       >
         <div className="flex items-center gap-3 mb-6">
           <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
             <KeyRound className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-slate-800">Change Password</h2>
-            <p className="text-sm text-slate-500">Update your login password. Changes take effect immediately.</p>
+            <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">Change Password</h2>
+            <p className="text-sm text-slate-500 dark:text-zinc-400">Update your login password. Changes take effect immediately.</p>
           </div>
         </div>
 
@@ -285,19 +285,19 @@ export default function SetupPage() {
         <div className="grid md:grid-cols-3 gap-4">
           {/* Current Password */}
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Current Password</label>
+            <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">Current Password</label>
             <div className="relative">
               <input
                 type={showCurrent ? 'text' : 'password'}
                 value={currentPassword}
                 onChange={e => setCurrentPassword(e.target.value)}
                 placeholder="Enter current password"
-                className="w-full px-4 py-3 pr-11 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-medium"
+                className="w-full px-4 py-3 pr-11 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-medium"
               />
               <button
                 type="button"
                 onClick={() => setShowCurrent(!showCurrent)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:text-zinc-300 transition-colors"
               >
                 {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -306,19 +306,19 @@ export default function SetupPage() {
 
           {/* New Password */}
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">New Password</label>
+            <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">New Password</label>
             <div className="relative">
               <input
                 type={showNew ? 'text' : 'password'}
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
                 placeholder="Min 6 characters"
-                className="w-full px-4 py-3 pr-11 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-medium"
+                className="w-full px-4 py-3 pr-11 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-medium"
               />
               <button
                 type="button"
                 onClick={() => setShowNew(!showNew)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:text-zinc-300 transition-colors"
               >
                 {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -327,18 +327,18 @@ export default function SetupPage() {
 
           {/* Confirm New Password */}
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Confirm New Password</label>
+            <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">Confirm New Password</label>
             <input
               type="password"
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
               placeholder="Re-enter new password"
-              className={`w-full px-4 py-3 bg-slate-50 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-medium ${
+              className={`w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-medium ${
                 confirmPassword && confirmPassword !== newPassword
                   ? 'border-red-300 bg-red-50/30'
                   : confirmPassword && confirmPassword === newPassword
                     ? 'border-emerald-300 bg-emerald-50/30'
-                    : 'border-slate-200'
+                    : 'border-slate-200 dark:border-zinc-700'
               }`}
             />
           </div>
