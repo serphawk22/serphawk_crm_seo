@@ -44,25 +44,20 @@ const SpaceAtmosphere = memo(() => {
             transition={{ duration: 0.8 }}
             className="absolute inset-0"
           >
-            {/* Deep Cosmic Cyan/Blue Glows */}
-            <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full opacity-20 blur-[120px] bg-cyan-600 mix-blend-screen" />
-            <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full opacity-15 blur-[140px] bg-blue-700 mix-blend-screen" />
-            <div className="absolute top-[40%] left-[60%] w-[30%] h-[30%] rounded-full opacity-10 blur-[100px] bg-indigo-500 mix-blend-screen" />
-            
             {/* Twinkling Stars */}
             {darkStars.map((star) => (
               <motion.div
                 key={`dark-star-${star.id}`}
-                className="absolute rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]"
+                className="absolute rounded-full bg-white shadow-[0_0_4px_rgba(255,255,255,0.5)]"
                 style={{
                   left: star.left,
                   top: star.top,
-                  width: star.size,
-                  height: star.size,
+                  width: star.size * 0.8,
+                  height: star.size * 0.8,
                 }}
                 animate={{
-                  opacity: [0.2, 1, 0.2],
-                  scale: [0.8, 1.2, 0.8]
+                  opacity: [0.1, 0.8, 0.1],
+                  scale: [0.8, 1.1, 0.8]
                 }}
                 transition={{
                   duration: star.duration,
