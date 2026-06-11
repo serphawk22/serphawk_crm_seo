@@ -58,7 +58,7 @@ export function ClientSidebar() {
         animate={{ width: collapsed ? 72 : 220 }}
         transition={{ type: "spring", stiffness: 300, damping: 35 }}
         className="fixed left-0 top-0 bottom-0 z-50 flex flex-col py-6 overflow-hidden"
-        style={{ background: "var(--sidebar-bg)", borderRight: "1px solid var(--border)" }}
+        style={{ background: "var(--sidebar-bg)", borderRight: "1px solid var(--border)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}
       >
         {/* Company Logo */}
         <div className={cn("flex items-center gap-3 mb-8 shrink-0", collapsed ? "justify-center px-0" : "px-5")}>
