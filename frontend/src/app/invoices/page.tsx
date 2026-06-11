@@ -29,12 +29,12 @@ interface Invoice {
 }
 
 const STATUS_CONFIG: Record<string, { icon: any; color: string; bg: string }> = {
-  Draft:     { icon: FileText,       color: "text-slate-600", bg: "bg-slate-100" },
+  Draft:     { icon: FileText,       color: "text-slate-600 dark:text-zinc-300", bg: "bg-slate-100 dark:bg-zinc-800" },
   Sent:      { icon: Send,           color: "text-blue-600",  bg: "bg-blue-100" },
   Paid:      { icon: CheckCircle,    color: "text-emerald-600", bg: "bg-emerald-100" },
   Overdue:   { icon: AlertTriangle,  color: "text-red-600",   bg: "bg-red-100" },
   Partial:   { icon: Clock,          color: "text-amber-600", bg: "bg-amber-100" },
-  Cancelled: { icon: X,              color: "text-gray-500",  bg: "bg-gray-100" },
+  Cancelled: { icon: X,              color: "text-gray-500 dark:text-zinc-400",  bg: "bg-gray-100" },
 };
 
 export default function InvoicesPage() {
@@ -134,8 +134,8 @@ export default function InvoicesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight">{isClient ? "My Invoices" : "Invoices"}</h1>
-          <p className="text-gray-500 font-medium">{isClient ? "View and download your invoices." : "Track payments, generate invoices, manage billing."}</p>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">{isClient ? "My Invoices" : "Invoices"}</h1>
+          <p className="text-gray-500 dark:text-zinc-400 font-medium">{isClient ? "View and download your invoices." : "Track payments, generate invoices, manage billing."}</p>
         </div>
         {!isClient && (
           <button onClick={() => setShowModal(true)}
@@ -173,7 +173,7 @@ export default function InvoicesPage() {
           <div key={s.label} className={cn("rounded-2xl p-4 flex items-center gap-3", s.bg)}>
             <s.icon className={cn("w-6 h-6", s.color)} />
             <div>
-              <p className="text-xs text-gray-500 font-semibold">{s.label}</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-400 font-semibold">{s.label}</p>
               <p className={cn("text-xl font-black", s.color)}>{s.value}</p>
             </div>
           </div>
@@ -185,7 +185,7 @@ export default function InvoicesPage() {
         {["All", "Draft", "Sent", "Paid", "Overdue", "Partial", "Cancelled"].map(f => (
           <button key={f} onClick={() => setFilterStatus(f)}
             className={cn("px-4 py-1.5 rounded-full text-sm font-bold border transition-all",
-              filterStatus === f ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400")}>
+              filterStatus === f ? "bg-gray-900 text-white border-gray-900" : "bg-white dark:bg-zinc-900 text-gray-600 border-gray-200 dark:border-zinc-700 hover:border-gray-400")}>
             {f}
           </button>
         ))}
@@ -195,12 +195,12 @@ export default function InvoicesPage() {
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-700 shadow-sm overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-gray-50 dark:bg-zinc-950 border-b">
               <tr>
                 {["Invoice #", "Client", "Amount", "Status", "Due Date", "Actions"].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -210,22 +210,22 @@ export default function InvoicesPage() {
               ) : filtered.map(inv => {
                 const cfg = STATUS_CONFIG[inv.status] || STATUS_CONFIG.Draft;
                 return (
-                  <tr key={inv.id} className="hover:bg-gray-50 transition-colors group">
-                    <td className="px-4 py-4 font-bold text-gray-900">{inv.invoice_number}</td>
-                    <td className="px-4 py-4 text-gray-700">{inv.client_name || "—"}</td>
-                    <td className="px-4 py-4 font-bold text-gray-900">${inv.total.toFixed(2)}</td>
+                  <tr key={inv.id} className="hover:bg-gray-50 dark:bg-zinc-950 transition-colors group">
+                    <td className="px-4 py-4 font-bold text-gray-900 dark:text-zinc-50">{inv.invoice_number}</td>
+                    <td className="px-4 py-4 text-gray-700 dark:text-zinc-200">{inv.client_name || "—"}</td>
+                    <td className="px-4 py-4 font-bold text-gray-900 dark:text-zinc-50">${inv.total.toFixed(2)}</td>
                     <td className="px-4 py-4">
                       <span className={cn("flex items-center gap-1.5 w-fit px-3 py-1 rounded-full text-xs font-bold", cfg.bg, cfg.color)}>
                         <cfg.icon className="w-3 h-3" />{inv.status}
                       </span>
                     </td>
-                    <td className="px-4 py-4 text-gray-500">{inv.due_date || "—"}</td>
+                    <td className="px-4 py-4 text-gray-500 dark:text-zinc-400">{inv.due_date || "—"}</td>
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2">
                         <button onClick={() => { setSelectedInvoice(inv); setShowDetailModal(true); }}
                           className="text-indigo-600 font-semibold text-xs hover:underline">View</button>
                         <button onClick={() => downloadInvoice(inv)}
-                          className="text-gray-500 hover:text-gray-800 transition-colors" title="Download">
+                          className="text-gray-500 dark:text-zinc-400 hover:text-gray-800 dark:text-zinc-100 transition-colors" title="Download">
                           <Download className="w-4 h-4" />
                         </button>
                       </div>
@@ -241,28 +241,28 @@ export default function InvoicesPage() {
       {/* Create Invoice Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-8 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-lg p-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-black">New Invoice</h2>
               <button onClick={() => setShowModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <form onSubmit={createInvoice} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Client *</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Client *</label>
                 <select required value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                   <option value="">Select client...</option>
                   {clients.map((c: any) => <option key={c.id} value={c.id}>{c.companyName || c.name || `Client #${c.id}`}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Line Items</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Line Items</label>
                 {lineItems.map((item, idx) => (
                   <div key={idx} className="flex gap-2 mb-2">
                     <input value={item.description} onChange={e => setLineItems(p => p.map((l, i) => i === idx ? { ...l, description: e.target.value } : l))}
-                      className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Description..." />
+                      className="flex-1 border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Description..." />
                     <input type="number" value={item.amount} onChange={e => setLineItems(p => p.map((l, i) => i === idx ? { ...l, amount: e.target.value } : l))}
-                      className="w-24 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="$0" />
+                      className="w-24 border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="$0" />
                     {lineItems.length > 1 && (
                       <button type="button" onClick={() => setLineItems(p => p.filter((_, i) => i !== idx))}
                         className="text-red-400 hover:text-red-600"><X className="w-4 h-4" /></button>
@@ -274,25 +274,25 @@ export default function InvoicesPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Tax ($)</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Tax ($)</label>
                   <input type="number" value={form.tax} onChange={e => setForm(p => ({ ...p, tax: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Due Date</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Due Date</label>
                   <input type="date" value={form.due_date} onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Notes</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Notes</label>
                 <textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                  className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                   placeholder="Payment terms, notes..." />
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
-                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600 hover:bg-gray-50 dark:bg-zinc-950">Cancel</button>
                 <button type="submit" disabled={submitting}
                   className="flex-1 py-2.5 bg-gray-900 text-white rounded-xl font-bold text-sm hover:bg-black flex items-center justify-center gap-2">
                   {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Invoice"}
@@ -306,20 +306,20 @@ export default function InvoicesPage() {
       {/* Invoice Detail Modal */}
       {showDetailModal && selectedInvoice && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-8">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-lg p-8">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <p className="text-xs text-gray-500 font-semibold">{selectedInvoice.invoice_number}</p>
+                <p className="text-xs text-gray-500 dark:text-zinc-400 font-semibold">{selectedInvoice.invoice_number}</p>
                 <h2 className="text-xl font-black">{selectedInvoice.client_name}</h2>
               </div>
               <button onClick={() => setShowDetailModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
 
             {/* Line items */}
-            <div className="bg-gray-50 rounded-2xl p-4 mb-4 space-y-2">
+            <div className="bg-gray-50 dark:bg-zinc-950 rounded-2xl p-4 mb-4 space-y-2">
               {selectedInvoice.line_items?.map((item: any, i: number) => (
                 <div key={i} className="flex justify-between text-sm">
-                  <span className="text-gray-700">{item.description}</span>
+                  <span className="text-gray-700 dark:text-zinc-200">{item.description}</span>
                   <span className="font-bold">${Number(item.amount).toFixed(2)}</span>
                 </div>
               ))}
@@ -347,7 +347,7 @@ export default function InvoicesPage() {
                   className={cn("px-4 py-2 text-sm font-bold rounded-xl border transition-all",
                     s === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" :
                     s === "Overdue" ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100" :
-                    "bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100")}>
+                    "bg-gray-50 dark:bg-zinc-950 text-gray-700 dark:text-zinc-200 border-gray-200 dark:border-zinc-700 hover:bg-gray-100")}>
                   Mark {s}
                 </button>
               ))}

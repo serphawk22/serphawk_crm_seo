@@ -160,7 +160,7 @@ export default function SalesManagerPage() {
   if (!canAccess) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-zinc-950 px-6 py-20 text-center transition-colors">
-        <div className="max-w-xl rounded-3xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 p-10 text-slate-800 dark:text-white shadow-xl">
+        <div className="max-w-xl rounded-3xl border border-slate-200 dark:border-zinc-700 dark:border-white/10 bg-white dark:bg-zinc-900 dark:bg-white dark:bg-zinc-900/5 p-10 text-slate-800 dark:text-zinc-100 dark:text-white shadow-xl">
           <h1 className="text-3xl font-bold mb-4">Access Denied</h1>
         </div>
       </div>
@@ -175,53 +175,53 @@ export default function SalesManagerPage() {
             <UserCheck className="w-4 h-4" /> {t("sales_manager.workspace")}
           </div>
           <div>
-            <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">{t("sales_manager.title")}</h1>
-            <p className="mt-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400 max-w-2xl font-medium">
+            <h1 className="text-4xl font-black text-slate-900 dark:text-zinc-50 dark:text-white tracking-tight">{t("sales_manager.title")}</h1>
+            <p className="mt-3 text-sm leading-relaxed text-slate-500 dark:text-zinc-400 dark:text-slate-400 max-w-2xl font-medium">
               {t("sales_manager.subtitle")}
             </p>
           </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3 w-full lg:w-auto">
-          <div className="rounded-3xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 p-5 shadow-sm transition-transform hover:-translate-y-1">
+          <div className="rounded-3xl border border-slate-200 dark:border-zinc-700 dark:border-white/10 bg-white dark:bg-zinc-900 dark:bg-white dark:bg-zinc-900/5 p-5 shadow-sm transition-transform hover:-translate-y-1">
             <div className="flex items-center gap-3 mb-3">
               <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400">
                 <Briefcase size={18} />
               </div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t("sales_manager.assigned")}</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 dark:text-slate-400">{t("sales_manager.assigned")}</p>
             </div>
-            <p className="text-3xl font-black text-slate-900 dark:text-white">{clients.length}</p>
+            <p className="text-3xl font-black text-slate-900 dark:text-zinc-50 dark:text-white">{clients.length}</p>
           </div>
-          <div className="rounded-3xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 p-5 shadow-sm transition-transform hover:-translate-y-1">
+          <div className="rounded-3xl border border-slate-200 dark:border-zinc-700 dark:border-white/10 bg-white dark:bg-zinc-900 dark:bg-white dark:bg-zinc-900/5 p-5 shadow-sm transition-transform hover:-translate-y-1">
             <div className="flex items-center gap-3 mb-3">
               <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
                 <ShieldAlert size={18} />
               </div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t("sales_manager.active")}</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 dark:text-slate-400">{t("sales_manager.active")}</p>
             </div>
-            <p className="text-3xl font-black text-slate-900 dark:text-white">{clients.filter((c) => ["Active", "Accepted", "In Progress"].includes(c.status)).length}</p>
+            <p className="text-3xl font-black text-slate-900 dark:text-zinc-50 dark:text-white">{clients.filter((c) => ["Active", "Accepted", "In Progress"].includes(c.status)).length}</p>
           </div>
-          <div className="rounded-3xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 p-5 shadow-sm transition-transform hover:-translate-y-1">
+          <div className="rounded-3xl border border-slate-200 dark:border-zinc-700 dark:border-white/10 bg-white dark:bg-zinc-900 dark:bg-white dark:bg-zinc-900/5 p-5 shadow-sm transition-transform hover:-translate-y-1">
             <div className="flex items-center gap-3 mb-3">
               <div className="p-2 rounded-xl bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400">
                 <Clock size={18} />
               </div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t("sales_manager.inactive")}</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 dark:text-slate-400">{t("sales_manager.inactive")}</p>
             </div>
-            <p className="text-3xl font-black text-slate-900 dark:text-white">{clients.filter((c) => !c.lastActivityDate).length}</p>
+            <p className="text-3xl font-black text-slate-900 dark:text-zinc-50 dark:text-white">{clients.filter((c) => !c.lastActivityDate).length}</p>
           </div>
         </div>
       </div>
 
       <div className="px-6 grid gap-6 xl:grid-cols-[400px_1fr]">
         
-        <section className="flex flex-col space-y-4 rounded-[2rem] border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/50 p-6 shadow-sm">
+        <section className="flex flex-col space-y-4 rounded-[2rem] border border-slate-200 dark:border-zinc-700 dark:border-white/10 bg-white dark:bg-zinc-900 dark:bg-slate-900/50 p-6 shadow-sm">
           <div className="flex items-center justify-between gap-3 mb-2">
             <div>
-              <h2 className="text-lg font-black text-slate-900 dark:text-white">{t("sales_manager.assigned_accounts")}</h2>
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{t("sales_manager.select_account_prompt")}</p>
+              <h2 className="text-lg font-black text-slate-900 dark:text-zinc-50 dark:text-white">{t("sales_manager.assigned_accounts")}</h2>
+              <p className="text-xs font-medium text-slate-500 dark:text-zinc-400 dark:text-slate-400">{t("sales_manager.select_account_prompt")}</p>
             </div>
-            <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+            <span className="rounded-full bg-slate-100 dark:bg-zinc-800 dark:bg-slate-800 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400 dark:text-slate-400">
               {filteredClients.length} visible
             </span>
           </div>
@@ -233,17 +233,17 @@ export default function SalesManagerPage() {
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder={t("sales_manager.search_placeholder")}
-              className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-10 py-3 text-sm text-slate-800 dark:text-white outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+              className="w-full rounded-2xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-10 py-3 text-sm text-slate-800 dark:text-zinc-100 dark:text-white outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
             />
           </div>
 
           <div className="space-y-3 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
             {loading ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-8 text-center text-sm font-semibold text-slate-400">
+              <div className="rounded-2xl border border-dashed border-slate-300 dark:border-zinc-600 dark:border-slate-700 p-8 text-center text-sm font-semibold text-slate-400">
                 {t("sales_manager.loading_accounts")}
               </div>
             ) : filteredClients.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-8 text-center text-sm font-semibold text-slate-400">
+              <div className="rounded-2xl border border-dashed border-slate-300 dark:border-zinc-600 dark:border-slate-700 p-8 text-center text-sm font-semibold text-slate-400">
                 {t("sales_manager.no_accounts")}
               </div>
             ) : (
@@ -257,7 +257,7 @@ export default function SalesManagerPage() {
                       "w-full text-left rounded-2xl border p-4 transition-all duration-200",
                       isSelected 
                         ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 shadow-md shadow-indigo-500/5 scale-[1.02]" 
-                        : "border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 hover:border-indigo-300 dark:hover:border-indigo-500/50 hover:bg-slate-50 dark:hover:bg-slate-800/80"
+                        : "border-slate-200 dark:border-zinc-700 dark:border-white/10 bg-white dark:bg-zinc-900 dark:bg-slate-900 hover:border-indigo-300 dark:hover:border-indigo-500/50 hover:bg-slate-50 dark:hover:bg-slate-800/80"
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -266,13 +266,13 @@ export default function SalesManagerPage() {
                           "inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider mb-2",
                           client.status === "Active" || client.status === "Accepted" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" :
                           client.status === "Pending" ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400" :
-                          "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                          "bg-slate-200 dark:bg-zinc-700 text-slate-700 dark:text-zinc-200 dark:bg-slate-800 dark:text-slate-400"
                         )}>
                           {formatClientStatus(client.status)}
                         </span>
                         <h3 className={cn(
                           "text-base font-black truncate", 
-                          isSelected ? "text-indigo-900 dark:text-indigo-100" : "text-slate-900 dark:text-white"
+                          isSelected ? "text-indigo-900 dark:text-indigo-100" : "text-slate-900 dark:text-zinc-50 dark:text-white"
                         )}>
                           {client.companyName || client.name || "Client account"}
                         </h3>
@@ -290,22 +290,22 @@ export default function SalesManagerPage() {
 
         <section className="flex flex-col space-y-6">
           {!selectedClient ? (
-            <div className="h-full flex flex-col items-center justify-center rounded-[2rem] border border-dashed border-slate-300 dark:border-slate-700 bg-white/50 dark:bg-slate-900/30 p-12 text-center">
+            <div className="h-full flex flex-col items-center justify-center rounded-[2rem] border border-dashed border-slate-300 dark:border-zinc-600 dark:border-slate-700 bg-white dark:bg-zinc-900/50 dark:bg-slate-900/30 p-12 text-center">
               <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/20 rounded-full flex items-center justify-center mb-6">
                 <Briefcase size={32} className="text-indigo-300 dark:text-indigo-700" />
               </div>
-              <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-2">{t("sales_manager.select_account")}</h3>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400 max-w-md">
+              <h3 className="text-2xl font-black text-slate-800 dark:text-zinc-100 dark:text-white mb-2">{t("sales_manager.select_account")}</h3>
+              <p className="text-sm font-medium text-slate-500 dark:text-zinc-400 dark:text-slate-400 max-w-md">
                 {t("sales_manager.select_account_desc")}
               </p>
             </div>
           ) : (
             <>
-              <div className="rounded-[2rem] border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-6 shadow-sm">
+              <div className="rounded-[2rem] border border-slate-200 dark:border-zinc-700 dark:border-white/10 bg-white dark:bg-zinc-900 dark:bg-slate-900 p-6 shadow-sm">
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-1">{t("sales_manager.operating_on")}</p>
-                    <h3 className="text-3xl font-black text-slate-900 dark:text-white mb-2">{selectedClient.companyName || selectedClient.name}</h3>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 dark:text-zinc-400 mb-1">{t("sales_manager.operating_on")}</p>
+                    <h3 className="text-3xl font-black text-slate-900 dark:text-zinc-50 dark:text-white mb-2">{selectedClient.companyName || selectedClient.name}</h3>
                   </div>
                   <div className="flex flex-wrap gap-3">
                     <Link href={`/admin/clients/${selectedClient.id}`} className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 text-sm font-bold shadow-md shadow-indigo-600/20 transition-all hover:-translate-y-0.5">
@@ -315,13 +315,13 @@ export default function SalesManagerPage() {
                 </div>
               </div>
 
-              <div className="flex-1 rounded-[2rem] border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 shadow-sm overflow-hidden flex flex-col">
-                <div className="flex border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950 overflow-x-auto custom-scrollbar">
+              <div className="flex-1 rounded-[2rem] border border-slate-200 dark:border-zinc-700 dark:border-white/10 bg-white dark:bg-zinc-900 dark:bg-slate-900 shadow-sm overflow-hidden flex flex-col">
+                <div className="flex border-b border-slate-200 dark:border-zinc-700 dark:border-white/10 bg-slate-50 dark:bg-slate-950 overflow-x-auto custom-scrollbar">
                   <button 
                     onClick={() => setActiveTab("note")} 
                     className={cn(
                       "flex-1 whitespace-nowrap px-6 py-4 text-sm font-bold flex items-center justify-center gap-2 transition-colors",
-                      activeTab === "note" ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                      activeTab === "note" ? "bg-white dark:bg-zinc-900 dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" : "text-slate-500 dark:text-zinc-400 dark:text-slate-400 hover:text-slate-700 dark:text-zinc-200 dark:hover:text-slate-200"
                     )}
                   >
                     <FileSignature size={16} /> {t("sales_manager.client_note")}
@@ -330,7 +330,7 @@ export default function SalesManagerPage() {
                     onClick={() => setActiveTab("activity")} 
                     className={cn(
                       "flex-1 whitespace-nowrap px-6 py-4 text-sm font-bold flex items-center justify-center gap-2 transition-colors",
-                      activeTab === "activity" ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                      activeTab === "activity" ? "bg-white dark:bg-zinc-900 dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" : "text-slate-500 dark:text-zinc-400 dark:text-slate-400 hover:text-slate-700 dark:text-zinc-200 dark:hover:text-slate-200"
                     )}
                   >
                     <Clock size={16} /> {t("sales_manager.log_activity")}
@@ -339,7 +339,7 @@ export default function SalesManagerPage() {
                     onClick={() => setActiveTab("ticket")} 
                     className={cn(
                       "flex-1 whitespace-nowrap px-6 py-4 text-sm font-bold flex items-center justify-center gap-2 transition-colors",
-                      activeTab === "ticket" ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                      activeTab === "ticket" ? "bg-white dark:bg-zinc-900 dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400" : "text-slate-500 dark:text-zinc-400 dark:text-slate-400 hover:text-slate-700 dark:text-zinc-200 dark:hover:text-slate-200"
                     )}
                   >
                     <ShieldAlert size={16} /> {t("sales_manager.admin_ticket")}
@@ -356,14 +356,14 @@ export default function SalesManagerPage() {
                         exit={{ opacity: 0, y: -10 }}
                         transition={{ duration: 0.2 }}
                       >
-                        <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">{t("sales_manager.log_outreach_note")}</h3>
-                        <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-6">{t("sales_manager.log_outreach_desc")}</p>
+                        <h3 className="text-xl font-black text-slate-900 dark:text-zinc-50 dark:text-white mb-2">{t("sales_manager.log_outreach_note")}</h3>
+                        <p className="text-sm font-medium text-slate-500 dark:text-zinc-400 dark:text-slate-400 mb-6">{t("sales_manager.log_outreach_desc")}</p>
                         
                         <textarea
                           value={remarkBody}
                           onChange={(e) => setRemarkBody(e.target.value)}
                           rows={6}
-                          className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-3 text-sm text-slate-800 dark:text-white outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 resize-none"
+                          className="w-full rounded-2xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 dark:text-white outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 resize-none"
                           placeholder={t("sales_manager.note_placeholder")}
                         />
                         <div className="mt-4 flex justify-end">
@@ -386,14 +386,14 @@ export default function SalesManagerPage() {
                         exit={{ opacity: 0, y: -10 }}
                         transition={{ duration: 0.2 }}
                       >
-                        <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">{t("sales_manager.record_activity")}</h3>
-                        <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-6">{t("sales_manager.record_activity_desc")}</p>
+                        <h3 className="text-xl font-black text-slate-900 dark:text-zinc-50 dark:text-white mb-2">{t("sales_manager.record_activity")}</h3>
+                        <p className="text-sm font-medium text-slate-500 dark:text-zinc-400 dark:text-slate-400 mb-6">{t("sales_manager.record_activity_desc")}</p>
                         
                         <textarea
                           value={activityBody}
                           onChange={(e) => setActivityBody(e.target.value)}
                           rows={6}
-                          className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-3 text-sm text-slate-800 dark:text-white outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 resize-none"
+                          className="w-full rounded-2xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 dark:text-white outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 resize-none"
                           placeholder={t("sales_manager.activity_placeholder")}
                         />
                         <div className="mt-4 flex justify-end">
@@ -416,14 +416,14 @@ export default function SalesManagerPage() {
                         exit={{ opacity: 0, y: -10 }}
                         transition={{ duration: 0.2 }}
                       >
-                        <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">{t("sales_manager.escalate_admin")}</h3>
-                        <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-6">{t("sales_manager.escalate_desc")}</p>
+                        <h3 className="text-xl font-black text-slate-900 dark:text-zinc-50 dark:text-white mb-2">{t("sales_manager.escalate_admin")}</h3>
+                        <p className="text-sm font-medium text-slate-500 dark:text-zinc-400 dark:text-slate-400 mb-6">{t("sales_manager.escalate_desc")}</p>
                         
                         <textarea
                           value={ticketBody}
                           onChange={(e) => setTicketBody(e.target.value)}
                           rows={6}
-                          className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-3 text-sm text-slate-800 dark:text-white outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-500/20 resize-none"
+                          className="w-full rounded-2xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-3 text-sm text-slate-800 dark:text-zinc-100 dark:text-white outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-500/20 resize-none"
                           placeholder={t("sales_manager.ticket_placeholder")}
                         />
                         <div className="mt-4 flex justify-end">
@@ -446,20 +446,20 @@ export default function SalesManagerPage() {
       </div>
 
       <div className="px-6">
-        <section className="rounded-[2rem] border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-6 shadow-sm">
+        <section className="rounded-[2rem] border border-slate-200 dark:border-zinc-700 dark:border-white/10 bg-white dark:bg-zinc-900 dark:bg-slate-900 p-6 shadow-sm">
           <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="text-lg font-black text-slate-900 dark:text-white">{t("sales_manager.quick_tools")}</h2>
-              <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">{t("sales_manager.quick_tools_desc")}</p>
+              <h2 className="text-lg font-black text-slate-900 dark:text-zinc-50 dark:text-white">{t("sales_manager.quick_tools")}</h2>
+              <p className="mt-1 text-sm font-medium text-slate-500 dark:text-zinc-400 dark:text-slate-400">{t("sales_manager.quick_tools_desc")}</p>
             </div>
             <div className="flex flex-wrap gap-3">
               <Link href="/email-agent" className="inline-flex items-center gap-2 rounded-xl bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-500/20 dark:hover:bg-indigo-500/30 px-5 py-2.5 text-sm font-bold text-indigo-700 dark:text-indigo-300 transition-colors">
                 <Mail size={16} /> {t("sales_manager.draft_outreach")}
               </Link>
-              <Link href="/invoices" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-5 py-2.5 text-sm font-bold text-slate-700 dark:text-slate-300 transition hover:bg-slate-50 dark:hover:bg-slate-700">
+              <Link href="/invoices" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700 bg-white dark:bg-zinc-900 dark:bg-slate-800 px-5 py-2.5 text-sm font-bold text-slate-700 dark:text-zinc-200 dark:text-slate-300 transition hover:bg-slate-50 dark:hover:bg-slate-700">
                 <FileText size={16} /> {t("sales_manager.issue_invoice")}
               </Link>
-              <Link href="/admin/requests" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-5 py-2.5 text-sm font-bold text-slate-700 dark:text-slate-300 transition hover:bg-slate-50 dark:hover:bg-slate-700">
+              <Link href="/admin/requests" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700 bg-white dark:bg-zinc-900 dark:bg-slate-800 px-5 py-2.5 text-sm font-bold text-slate-700 dark:text-zinc-200 dark:text-slate-300 transition hover:bg-slate-50 dark:hover:bg-slate-700">
                 <MessageCircle size={16} /> {t("sales_manager.admin_tickets")}
               </Link>
             </div>
@@ -475,7 +475,7 @@ export default function SalesManagerPage() {
             exit={{ opacity: 0, y: 20, scale: 0.9 }}
             className="fixed inset-x-0 bottom-8 z-50 flex justify-center px-4"
           >
-            <div className="rounded-2xl bg-slate-900 dark:bg-white px-6 py-3.5 text-sm font-bold text-white dark:text-slate-900 shadow-2xl flex items-center gap-2">
+            <div className="rounded-2xl bg-slate-900 dark:bg-white dark:bg-zinc-900 px-6 py-3.5 text-sm font-bold text-white dark:text-slate-900 dark:text-zinc-50 shadow-2xl flex items-center gap-2">
               <Bell size={16} />
               {toast}
             </div>

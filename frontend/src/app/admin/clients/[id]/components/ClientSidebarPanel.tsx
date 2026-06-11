@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   User, Mail, Phone, Globe, MapPin, Linkedin, Building2,
   Users, DollarSign, Edit3, Save, X, ChevronDown, ChevronUp,
-  Briefcase, Target, Calendar, Zap, Wand2, Loader2, FileText, FileSignature
+  Briefcase, Target, Calendar, Zap, Wand2, Loader2, FileText, FileSignature, Store, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import { API_BASE_URL } from '@/config';
@@ -32,7 +32,7 @@ const InfoRow = ({ icon: Icon, label, value, href }: { icon: any; label: string;
           {value}
         </a>
       ) : (
-        <p className="text-sm font-semibold text-slate-800  break-words">{value || '—'}</p>
+        <p className="text-sm font-semibold text-slate-800 dark:text-zinc-100  break-words">{value || '—'}</p>
       )}
     </div>
   </div>
@@ -59,9 +59,9 @@ const ResearchField = ({
   const preview = val?.length > 80 ? val.slice(0, 80) + '…' : val;
 
   return (
-    <div className="mb-2 border border-slate-100  rounded-xl overflow-hidden">
+    <div className="mb-2 border border-slate-100 dark:border-zinc-800  rounded-xl overflow-hidden">
       {/* Field header row — always visible */}
-      <div className="flex items-center justify-between px-3 py-2 bg-slate-50 ">
+      <div className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-zinc-950 ">
         <button
           onClick={() => setExpanded(p => !p)}
           className="flex items-center gap-2 flex-1 min-w-0 text-left"
@@ -70,14 +70,14 @@ const ResearchField = ({
             size={12}
             className={`text-slate-400 transition-transform duration-150 shrink-0 ${expanded ? 'rotate-180' : ''}`}
           />
-          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500  truncate">{label}</span>
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-zinc-400  truncate">{label}</span>
           {hasContent && !expanded && (
             <span className="text-[10px] text-slate-400  truncate ml-1 max-w-[90px]">{preview}</span>
           )}
         </button>
         <button
           onClick={() => { setExpanded(true); editing ? save() : setEditing(true); }}
-          className="p-1 rounded-md hover:bg-slate-200  text-slate-400 hover:text-indigo-600  transition-colors shrink-0"
+          className="p-1 rounded-md hover:bg-slate-200 dark:bg-zinc-700  text-slate-400 hover:text-indigo-600  transition-colors shrink-0"
         >
           {editing ? <Save size={11} /> : <Edit3 size={11} />}
         </button>
@@ -94,7 +94,7 @@ const ResearchField = ({
                 rows={4}
                 autoFocus
                 className="w-full px-3 py-2 text-xs rounded-xl border border-indigo-300 
-                           bg-white  text-slate-800 
+                           bg-white dark:bg-zinc-900  text-slate-800 dark:text-zinc-100 
                            focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
               />
               <div className="flex gap-1.5 mt-1.5">
@@ -106,14 +106,14 @@ const ResearchField = ({
                 </button>
                 <button
                   onClick={() => { setEditing(false); setVal(value || ''); }}
-                  className="p-1 rounded-lg hover:bg-slate-100  text-slate-400 hover:text-red-500"
+                  className="p-1 rounded-lg hover:bg-slate-100 dark:bg-zinc-800  text-slate-400 hover:text-red-500"
                 >
                   <X size={11} />
                 </button>
               </div>
             </div>
           ) : (
-            <p className="text-xs text-slate-600  leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-zinc-300  leading-relaxed">
               {val || <span className="italic text-slate-400 ">{language === 'es' ? 'Haga clic en editar para añadir...' : 'Click edit to add...'}</span>}
             </p>
           )}
@@ -170,6 +170,10 @@ export default function ClientSidebarPanel({
   };
 
   const [isAutoResearching, setIsAutoResearching] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractResult, setExtractResult] = useState<{ count: number; marketplace: number } | null>(null);
+  const [extractError, setExtractError] = useState<string | null>(null);
+
   const handleAutoResearch = async () => {
     try {
       setIsAutoResearching(true);
@@ -185,6 +189,28 @@ export default function ClientSidebarPanel({
       console.error(e);
     } finally {
       setIsAutoResearching(false);
+    }
+  };
+
+  const handleExtractServices = async () => {
+    setIsExtracting(true);
+    setExtractResult(null);
+    setExtractError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${clientId}/extract-services`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setExtractError(data.detail || 'Failed to extract services');
+      } else {
+        setExtractResult({ count: data.services?.length || 0, marketplace: data.marketplace_entries_added || 0 });
+        // Refresh client to show updated services_offered
+        onClientUpdate({ services_offered: JSON.stringify(data.services) });
+        window.dispatchEvent(new CustomEvent('refresh-client-data'));
+      }
+    } catch (e: any) {
+      setExtractError(e.message || 'Network error');
+    } finally {
+      setIsExtracting(false);
     }
   };
 
@@ -217,17 +243,17 @@ export default function ClientSidebarPanel({
   return (
     <div className="space-y-4">
       {/* ── Pre-Sales Research Card ─────────────────────── */}
-      <div className="rounded-2xl border border-slate-200 
-                      bg-white  overflow-hidden shadow-sm">
+      <div className="rounded-2xl border border-slate-200 dark:border-zinc-700 
+                      bg-white dark:bg-zinc-900  overflow-hidden shadow-sm">
         <button
           onClick={() => setResearchOpen(p => !p)}
-          className="w-full p-4 flex items-center justify-between hover:bg-slate-50  transition-colors"
+          className="w-full p-4 flex items-center justify-between hover:bg-slate-50 dark:bg-zinc-950  transition-colors"
         >
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-indigo-600 text-white">
               <Wand2 size={14} />
             </div>
-            <span className="font-black text-sm text-slate-800 ">{t("client_profile.research")}</span>
+            <span className="font-black text-sm text-slate-800 dark:text-zinc-100 ">{t("client_profile.research")}</span>
           </div>
           {researchOpen ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
         </button>
@@ -241,16 +267,43 @@ export default function ClientSidebarPanel({
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
-              <div className="px-4 pb-4 border-t border-slate-100 ">
+              <div className="px-4 pb-4 border-t border-slate-100 dark:border-zinc-800 ">
                 <div className="pt-3">
                   <button
                     onClick={handleAutoResearch}
                     disabled={isAutoResearching}
-                    className="w-full mb-4 py-2 px-3 flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100   text-indigo-600  font-semibold text-xs rounded-xl transition-colors disabled:opacity-50"
+                    className="w-full mb-2 py-2 px-3 flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100   text-indigo-600  font-semibold text-xs rounded-xl transition-colors disabled:opacity-50"
                   >
                     {isAutoResearching ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
                     {isAutoResearching ? (language === 'es' ? 'Investigando Empresa...' : 'Researching Company...') : (language === 'es' ? 'Autocompletar con IA' : 'Auto-Fill with AI')}
                   </button>
+
+                  {/* ── Extract Services Button ── */}
+                  <button
+                    onClick={handleExtractServices}
+                    disabled={isExtracting || !client?.websiteUrl}
+                    title={!client?.websiteUrl ? 'Add a website URL first' : 'Extract services from website'}
+                    className="w-full mb-3 py-2 px-3 flex items-center justify-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-xs rounded-xl transition-colors disabled:opacity-40"
+                  >
+                    {isExtracting ? <Loader2 size={14} className="animate-spin" /> : <Store size={14} />}
+                    {isExtracting ? 'Extracting Services…' : 'Extract Services from Website'}
+                  </button>
+
+                  {/* ── Extract Result / Error ── */}
+                  {extractResult && (
+                    <div className="mb-3 flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                      <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                      <p className="text-[10px] font-bold text-emerald-700">
+                        Found {extractResult.count} services · {extractResult.marketplace} added to Marketplace
+                      </p>
+                    </div>
+                  )}
+                  {extractError && (
+                    <div className="mb-3 flex items-start gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-xl">
+                      <AlertCircle size={13} className="text-red-500 shrink-0 mt-0.5" />
+                      <p className="text-[10px] font-bold text-red-600">{extractError}</p>
+                    </div>
+                  )}
                   {researchFields.map(([field, label]) => (
                     <ResearchField
                       key={field}

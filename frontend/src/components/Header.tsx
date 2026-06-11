@@ -25,7 +25,7 @@ export function Header({ currentRole, setRole }: HeaderProps) {
   const profile = getProfile();
 
   return (
-    <header className="h-20 bg-white border-b border-gray-200 fixed top-0 right-0 left-64 z-10 px-8">
+    <header className="h-20 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-700 fixed top-0 right-0 left-64 z-10 px-8">
       <div className="h-full flex items-center justify-between">
         <div className="flex-1 max-w-xl">
           <div className="relative">
@@ -33,20 +33,20 @@ export function Header({ currentRole, setRole }: HeaderProps) {
             <input
               type="text"
               placeholder="Search anything..."
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
+              className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
             />
           </div>
         </div>
 
         <div className="flex items-center gap-6">
-          <div className="flex bg-gray-100 p-1 rounded-lg">
+          <div className="flex bg-gray-100 dark:bg-zinc-800 p-1 rounded-lg">
             {(['Admin', 'Employee', 'Client', 'Intern'] as Role[]).map((role) => (
               <button
                 key={role}
                 onClick={() => setRole(role)}
                 className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${currentRole === role
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-900'
+                  ? 'bg-white dark:bg-zinc-900 text-blue-600 shadow-sm'
+                  : 'text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:text-zinc-50'
                   }`}
               >
                 {role}
@@ -56,17 +56,17 @@ export function Header({ currentRole, setRole }: HeaderProps) {
 
           <div className="h-8 w-px bg-gray-200" />
 
-          <button className="relative p-2 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors">
+          <button className="relative p-2 text-gray-500 dark:text-zinc-400 hover:bg-gray-50 dark:bg-zinc-950 rounded-lg transition-colors">
             <Bell className="w-5 h-5" />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
           </button>
 
-          <div className="flex items-center gap-3 pl-2 border-l border-gray-200">
+          <div className="flex items-center gap-3 pl-2 border-l border-gray-200 dark:border-zinc-700">
             <div className="text-right hidden sm:block">
-              <span className="text-sm font-bold text-gray-900 text-right block w-48">
+              <span className="text-sm font-bold text-gray-900 dark:text-zinc-50 text-right block w-48">
                 {email || 'Guest'}
               </span>
-              <p className="text-xs text-gray-500 font-medium">{currentRole}</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-400 font-medium">{currentRole}</p>
             </div>
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold shadow-md shadow-blue-200">
               {(email && email[0]) ? email[0].toUpperCase() : 'G'}

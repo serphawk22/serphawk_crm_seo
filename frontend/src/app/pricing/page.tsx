@@ -85,7 +85,7 @@ export default function PricingPage() {
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 mb-6 backdrop-blur-sm"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white dark:bg-zinc-900/5 border border-white/10 mb-6 backdrop-blur-sm"
           >
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <span className="text-sm font-medium text-gray-300">Secure Payment Gateway</span>
@@ -130,7 +130,7 @@ export default function PricingPage() {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 * idx + 0.3 }}
-              className={`relative rounded-3xl backdrop-blur-sm p-8 flex flex-col h-full bg-white/5 border
+              className={`relative rounded-3xl backdrop-blur-sm p-8 flex flex-col h-full bg-white dark:bg-zinc-900/5 border
                 ${pkg.popular 
                   ? 'border-fuchsia-500/50 shadow-[0_0_30px_rgba(217,70,239,0.15)] md:scale-105 z-10' 
                   : 'border-white/10'}`}
@@ -156,7 +156,7 @@ export default function PricingPage() {
               <div className="mb-8">
                 <div className="flex items-baseline">
                   <span className="text-5xl font-bold tracking-tight">{pkg.price}</span>
-                  <span className="text-gray-500 ml-2">{pkg.period}</span>
+                  <span className="text-gray-500 dark:text-zinc-400 ml-2">{pkg.period}</span>
                 </div>
               </div>
 
@@ -176,8 +176,8 @@ export default function PricingPage() {
                 disabled={loading !== null}
                 className={`w-full py-4 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2
                   ${pkg.popular 
-                    ? 'bg-white text-black hover:bg-gray-100 shadow-xl' 
-                    : 'bg-white/10 text-white hover:bg-white/20'}`}
+                    ? 'bg-white dark:bg-zinc-900 text-black dark:text-white hover:bg-gray-100 dark:bg-zinc-800 shadow-xl' 
+                    : 'bg-white dark:bg-zinc-900/10 text-white hover:bg-white dark:bg-zinc-900/20'}`}
               >
                 {loading === pkg.id ? (
                   <motion.div

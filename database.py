@@ -74,7 +74,43 @@ class User(SQLModel, table=True):
     assigned_requests: List["ServiceRequest"] = Relationship(back_populates="assigned_employee")
     deals: List["Deal"] = Relationship(back_populates="assigned_user")
 
+class MarketplaceService(SQLModel, table=True):
+    """
+    Central B2B Marketplace catalog entry.
+    Can be populated manually by admins or automatically by the customer web scraper.
+    """
+    __tablename__ = "marketplace_services"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # Service identity
+    service_name: str = Field(max_length=255)
+    normalized_name: Optional[str] = Field(default=None, max_length=255)  # AI-standardized
+    category: Optional[str] = Field(default=None, max_length=100, index=True)  # e.g. "Plumbing", "SEO", "Legal"
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+
+    # Pricing
+    estimated_cost: float = Field(default=0.0)
+    cost_is_estimated: bool = Field(default=False)  # True if AI guessed the cost
+
+    # Provider info (linked CRM client)
+    provider_name: Optional[str] = Field(default=None, max_length=255)
+    provider_client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", index=True)
+    provider_industry: Optional[str] = Field(default=None, max_length=200)
+    provider_address: Optional[str] = Field(default=None, max_length=500)
+
+    # Meta
+    source: str = Field(default="manual", max_length=50)  # "manual" or "scraper"
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Relationship back to client profile
+    provider: Optional["ClientProfile"] = Relationship(back_populates="marketplace_services")
+
+
 class ServiceCatalog(SQLModel, table=True):
+
     """
     Admin-defined list of services available for clients to purchase or request.
     """
@@ -248,6 +284,7 @@ class ClientProfile(SQLModel, table=True):
     # New feature relationships
     file_uploads: List["ClientFileUpload"] = Relationship(back_populates="client")
     milestones: List["Milestone"] = Relationship(back_populates="client")
+    marketplace_services: List["MarketplaceService"] = Relationship(back_populates="provider")
     nps_surveys: List["NPSSurvey"] = Relationship(back_populates="client")
     deals: List["Deal"] = Relationship(back_populates="client")
     invoices: List["Invoice"] = Relationship(back_populates="client")
@@ -686,6 +723,7 @@ class ClientResearch(SQLModel, table=True):
     pain_points: Optional[str] = Field(default=None, sa_column=Column(Text))
     business_goals: Optional[str] = Field(default=None, sa_column=Column(Text))
     key_decision_makers: Optional[str] = Field(default=None, sa_column=Column(Text))
+    email_agent_data: Optional[str] = Field(default=None, sa_column=Column(Text))
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -739,7 +777,10 @@ def create_db_and_tables():
         "ALTER TABLE client_profiles ADD COLUMN linkedin_url VARCHAR(500)",
         "ALTER TABLE client_profiles ADD COLUMN contact_person VARCHAR(255)",
         "ALTER TABLE client_profiles ADD COLUMN last_contact_date VARCHAR(50)",
-        "ALTER TABLE client_profiles ADD COLUMN next_followup_date VARCHAR(50)"
+        "ALTER TABLE client_profiles ADD COLUMN next_followup_date VARCHAR(50)",
+        # Marketplace indexes (table created by SQLModel.metadata.create_all)
+        "CREATE INDEX IF NOT EXISTS ix_marketplace_services_category ON marketplace_services (category)",
+        "CREATE INDEX IF NOT EXISTS ix_marketplace_services_provider ON marketplace_services (provider_client_id)",
     ]
     
     with engine.connect() as conn:
@@ -769,6 +810,67 @@ def create_db_and_tables():
 
 
 
+
+
+
+# ─── API Intelligence Center Models ──────────────────────────────────────────
+
+class ApiRequest(SQLModel, table=True):
+    """
+    Tracks every AI API call made in the platform.
+    Single source of truth for token usage, cost, and performance.
+    """
+    __tablename__ = "api_requests"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    salesperson_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", index=True)
+    endpoint: Optional[str] = Field(default=None, max_length=255, index=True)
+    model: Optional[str] = Field(default=None, max_length=100)
+    provider: Optional[str] = Field(default=None, max_length=50, index=True)
+    input_tokens: int = Field(default=0)
+    output_tokens: int = Field(default=0)
+    reasoning_tokens: int = Field(default=0)
+    total_tokens: int = Field(default=0)
+    input_cost: float = Field(default=0.0)
+    output_cost: float = Field(default=0.0)
+    total_cost: float = Field(default=0.0)
+    response_time_ms: int = Field(default=0)
+    status_code: int = Field(default=200)
+    success: bool = Field(default=True)
+    content_type: Optional[str] = Field(default=None, max_length=100)
+    request_meta: Optional[dict] = Field(default=None, sa_column=Column("request_meta", JSON))
+    timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class ApiUsageDaily(SQLModel, table=True):
+    """Pre-aggregated daily rollups for fast analytics queries."""
+    __tablename__ = "api_usage_daily"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date: str = Field(index=True)
+    salesperson_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    provider: Optional[str] = Field(default=None, max_length=50)
+    endpoint: Optional[str] = Field(default=None, max_length=255)
+    total_calls: int = Field(default=0)
+    total_tokens: int = Field(default=0)
+    total_cost: float = Field(default=0.0)
+    avg_response_time: float = Field(default=0.0)
+    error_count: int = Field(default=0)
+
+
+class ApiAlert(SQLModel, table=True):
+    """Alert configuration for API cost and usage thresholds."""
+    __tablename__ = "api_alerts"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(max_length=255)
+    alert_type: str = Field(max_length=50)
+    threshold: float = Field(default=0.0)
+    period: str = Field(default="daily", max_length=20)
+    target: Optional[str] = Field(default="global", max_length=100)
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 def get_session():

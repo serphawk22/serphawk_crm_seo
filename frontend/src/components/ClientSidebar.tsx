@@ -57,7 +57,8 @@ export function ClientSidebar() {
         initial={false}
         animate={{ width: collapsed ? 72 : 220 }}
         transition={{ type: "spring", stiffness: 300, damping: 35 }}
-        className="fixed left-0 top-0 bottom-0 z-50 flex flex-col py-6 overflow-hidden bg-zinc-950"
+        className="fixed left-0 top-0 bottom-0 z-50 flex flex-col py-6 overflow-hidden"
+        style={{ background: "var(--sidebar-bg)", borderRight: "1px solid var(--border)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}
       >
         {/* Company Logo */}
         <div className={cn("flex items-center gap-3 mb-8 shrink-0", collapsed ? "justify-center px-0" : "px-5")}>
@@ -77,7 +78,7 @@ export function ClientSidebar() {
                 transition={{ duration: 0.18 }}
                 className="flex flex-col overflow-hidden"
               >
-                <span className="font-black text-white text-base leading-tight tracking-tight">SERP Hawk</span>
+                <span className="font-black text-base leading-tight tracking-tight" style={{ color: "var(--text-primary)" }}>SERP Hawk</span>
                 <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">{t("clients.clientPortal", "Client Portal")}</span>
               </motion.div>
             )}
@@ -95,15 +96,18 @@ export function ClientSidebar() {
                 className={cn(
                   "relative rounded-lg flex items-center transition-all group shrink-0",
                   collapsed ? "w-11 h-11 justify-center" : "gap-3 px-3 py-2.5",
-                  isActive
-                    ? "bg-amber-600/20 text-amber-500"
-                    : "text-stone-500 hover:text-stone-300 hover:bg-white/5"
+                  isActive ? "text-amber-500" : ""
                 )}
+                style={isActive
+                  ? { background: "rgba(217,119,6,0.15)" }
+                  : { color: "var(--text-secondary)" }
+                }
               >
                 {isActive && (
                   <motion.div
                     layoutId="sidebar-active"
-                    className="absolute inset-0 bg-amber-600/15 border border-amber-600/30 rounded-lg"
+                    className="absolute inset-0 rounded-lg border border-amber-600/30"
+                    style={{ background: "rgba(217,119,6,0.12)" }}
                   />
                 )}
                 <item.icon className="w-5 h-5 relative z-10 shrink-0" />
@@ -116,8 +120,9 @@ export function ClientSidebar() {
                       transition={{ duration: 0.15 }}
                       className={cn(
                         "text-[13px] font-semibold relative z-10 truncate",
-                        isActive ? "text-amber-400 font-bold" : "text-stone-400 group-hover:text-stone-200"
+                        isActive ? "font-bold text-amber-500" : ""
                       )}
+                      style={!isActive ? { color: "var(--text-secondary)" } : {}}
                     >
                       {t(item.labelKey)}
                     </motion.span>
@@ -125,7 +130,10 @@ export function ClientSidebar() {
                 </AnimatePresence>
                 {/* Tooltip only when collapsed */}
                 {collapsed && (
-                  <span className="absolute left-full ml-3 px-3 py-1.5 bg-zinc-800 text-white text-xs font-bold rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl border border-white/10">
+                  <span
+                    className="absolute left-full ml-3 px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl"
+                    style={{ background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+                  >
                     {t(item.labelKey)}
                   </span>
                 )}
@@ -135,20 +143,24 @@ export function ClientSidebar() {
         </nav>
 
         {/* User + Logout at bottom */}
-        <div className={cn("shrink-0 border-t border-white/5 pt-3", collapsed ? "px-0 flex flex-col items-center" : "px-3")}>
+        <div
+          className={cn("shrink-0 pt-3", collapsed ? "px-0 flex flex-col items-center" : "px-3")}
+          style={{ borderTop: "1px solid var(--border)" }}
+        >
           <AnimatePresence>
             {!collapsed && (
               <motion.div
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 6 }}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 mb-2"
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border mb-2"
+                style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
               >
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white font-black text-sm shrink-0 shadow-lg">
                   {initial}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-bold text-stone-300 truncate">{user?.name || t("clients.client", "Client")}</p>
+                  <p className="text-[12px] font-bold truncate" style={{ color: "var(--text-primary)" }}>{user?.name || t("clients.client", "Client")}</p>
                   <p className="text-[10px] font-semibold text-amber-500">{t("clients.client", "Client")}</p>
                 </div>
               </motion.div>
@@ -157,10 +169,10 @@ export function ClientSidebar() {
           <button
             onClick={handleLogout}
             className={cn(
-              "rounded-lg flex items-center transition-all group",
-              collapsed ? "w-11 h-11 justify-center" : "gap-3 px-3 py-2.5 w-full",
-              "text-stone-600 hover:text-red-400 hover:bg-white/5"
+              "relative rounded-lg flex items-center transition-all group hover:text-red-400",
+              collapsed ? "w-11 h-11 justify-center" : "gap-3 px-3 py-2.5 w-full"
             )}
+            style={{ color: "var(--text-muted)" }}
           >
             <LogOut className="w-5 h-5 shrink-0" />
             <AnimatePresence>
@@ -176,7 +188,10 @@ export function ClientSidebar() {
               )}
             </AnimatePresence>
             {collapsed && (
-              <span className="absolute left-full ml-3 px-3 py-1.5 bg-zinc-800 text-white text-xs font-bold rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl border border-white/10">
+              <span
+                className="absolute left-full ml-3 px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl"
+                style={{ background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+              >
                 {t("auth.logout", "Logout")}
               </span>
             )}

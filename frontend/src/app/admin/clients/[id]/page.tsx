@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity, MessageSquare, StickyNote, CheckSquare, Building2, ChevronDown,
   Target, FolderOpen, HeartPulse, LayoutDashboard, Users,
-  TrendingUp, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation
+  TrendingUp, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag
 } from 'lucide-react';
 
 import { API_BASE_URL } from '@/config';
@@ -29,8 +29,6 @@ import TicketsTab from './components/tabs/TicketsTab';
 const TABS = [
   { key: 'overview',       label: 'Overview',       icon: LayoutDashboard },
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
-  { key: 'conversations',  label: 'Conversations',   icon: MessageSquare   },
-  { key: 'notes',          label: 'Notes',           icon: StickyNote      },
   { key: 'tasks',          label: 'Tasks',           icon: CheckSquare     },
   { key: 'tickets',        label: 'Tickets',         icon: Ticket          },
   { key: 'opportunities',  label: 'Opportunities',   icon: Target          },
@@ -40,13 +38,13 @@ const TABS = [
 
 // ─── Loading Skeleton ────────────────────────────────────────────────────────
 function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-slate-200  rounded-xl ${className}`} />;
+  return <div className={`animate-pulse bg-slate-200 dark:bg-zinc-700  rounded-xl ${className}`} />;
 }
 
 function PageSkeleton() {
   return (
-    <div className="min-h-screen bg-slate-50 ">
-      <div className="h-36 bg-white  border-b border-slate-200  animate-pulse" />
+    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 ">
+      <div className="h-36 bg-white dark:bg-zinc-900  border-b border-slate-200 dark:border-zinc-700  animate-pulse" />
       <div className="w-full px-6 py-6 grid grid-cols-[280px_1fr_300px] gap-6">
         <div className="space-y-4">
           <Skeleton className="h-64" />
@@ -71,26 +69,26 @@ function CollapsibleSection({ title, icon: Icon, count, defaultOpen = false, acc
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, overflow: 'hidden', marginTop: 0 }}>
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', marginTop: 0 }}>
       <button
         onClick={() => setOpen(p => !p)}
         style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', background: 'transparent', border: 'none', cursor: 'pointer' }}
-        onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ background: accentColor, borderRadius: 8, padding: '4px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Icon size={12} color="#fff" />
           </div>
-          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: hexText }}>{title}</span>
+          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-primary)' }}>{title}</span>
           {count !== undefined && count > 0 && (
-            <span style={{ background: '#eef2ff', color: '#4f46e5', borderRadius: 999, padding: '1px 7px', fontSize: 10, fontWeight: 800 }}>{count}</span>
+            <span style={{ background: 'var(--accent-subtle)', color: 'var(--accent)', borderRadius: 999, padding: '1px 7px', fontSize: 10, fontWeight: 800 }}>{count}</span>
           )}
         </div>
         <ChevronDown size={14} color="#94a3b8" style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
       </button>
       {open && (
-        <div style={{ padding: '0 20px 16px', borderTop: '1px solid #f1f5f9' }}>
+        <div style={{ padding: '0 20px 16px', borderTop: '1px solid var(--border)' }}>
           {children}
         </div>
       )}
@@ -99,7 +97,7 @@ function CollapsibleSection({ title, icon: Icon, count, defaultOpen = false, acc
 }
 
 // ─── Overview Tab — premium light ──────────────────────────────────────────
-function OverviewTab({ client, employees, serviceRequests, activities, timeline, research, notes, conversations, clientId, onNotesRefresh, onConversationsRefresh }: any) {
+function OverviewTab({ client, employees, serviceRequests, activities, timeline, research, notes, conversations, clientId, onNotesRefresh, onConversationsRefresh, emails }: any) {
   const { t, language } = useLanguage();
   const recentActivities = (activities || []).slice(0, 8);
 
@@ -130,7 +128,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
     { key: 'meeting', label: '🗓 Meeting', color: '#8b5cf6' },
     { key: 'whatsapp', label: '💬 WhatsApp', color: '#10b981' },
     { key: 'chat', label: '⚡ Chat', color: '#0ea5e9' },
-    { key: 'other', label: '📝 Other', color: '#64748b' },
+    { key: 'other', label: '📝 Other', color: 'var(--text-secondary)' },
   ];
   const [convTitle, setConvTitle] = useState('');
   const [convType, setConvType] = useState('call');
@@ -154,29 +152,67 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
 
   const activeConvType = CONV_TYPES.find(t => t.key === convType)!;
 
-  const card = { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 18, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', overflow: 'hidden' as const };
-  const input = { width: '100%', background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '11px 14px', fontSize: 13.5, color: '#1e293b', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' as const };
+  const card = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', overflow: 'hidden' as const };
+  const input = { width: '100%', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: 12, padding: '11px 14px', fontSize: 13.5, color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' as const };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 14, background: '#f8fafc', minHeight: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 14, background: 'var(--bg-secondary)', minHeight: '100%' }}>
 
       {/* Company Overview */}
       {research?.company_overview && (
-        <div style={{ background: 'linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%)', border: '1px solid #c7d2fe', borderRadius: 18, padding: '16px 20px' }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px 20px', backdropFilter: 'blur(16px)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <div style={{ background: '#7c3aed', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Building2 size={13} color="#fff" /></div>
-            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: '#5b21b6' }}>Company Overview</span>
+            <div style={{ background: 'var(--accent)', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Building2 size={13} color="#fff" /></div>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Company Overview</span>
           </div>
-          <p style={{ fontSize: 13.5, color: '#334155', lineHeight: 1.65, margin: 0 }}>{research.company_overview}</p>
+          <p style={{ fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{research.company_overview}</p>
         </div>
       )}
 
-      {/* ── Add Note ──────────────────────────────────────────────────────── */}
+      {/* ── Services Offered ──────────────────────────────────────────── */}
+      {(() => {
+        let parsedServices: any[] = [];
+        try {
+          if (client?.services_offered) {
+            parsedServices = typeof client.services_offered === 'string'
+              ? JSON.parse(client.services_offered)
+              : client.services_offered;
+          }
+        } catch {}
+        if (!parsedServices || parsedServices.length === 0) return null;
+        return (
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px 20px', backdropFilter: 'blur(16px)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <div style={{ background: 'var(--accent)', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Store size={13} color="#fff" /></div>
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Services Offered</span>
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>{parsedServices.length} services detected</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+              {parsedServices.map((svc: any, i: number) => (
+                <div key={i} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: 'var(--text-primary)', background: 'var(--bg-hover)', borderRadius: 20, padding: '2px 7px' }}>{svc.category || 'Service'}</span>
+                    {svc.approx_cost > 0 && (
+                      <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-primary)', background: 'var(--bg-hover)', borderRadius: 20, padding: '2px 7px', marginLeft: 'auto' }}>
+                        ~${Number(svc.approx_cost).toLocaleString()}{svc.cost_is_estimated ? ' est.' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>{svc.name}</p>
+                  {svc.brief && <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>{svc.brief}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+
       <div style={card}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
-          <div style={{ background: '#059669', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><StickyNote size={13} color="#fff" /></div>
-          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: '#1e293b' }}>Add Note</span>
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>Ctrl+Enter to save</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
+          <div style={{ background: 'var(--accent)', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><StickyNote size={13} color="#fff" /></div>
+          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Add Note</span>
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>Ctrl+Enter to save</span>
         </div>
         <div style={{ padding: '14px 20px 16px' }}>
           <textarea
@@ -193,7 +229,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
             <button
               onClick={submitNote}
               disabled={!noteText.trim() || savingNote}
-              style={{ background: noteText.trim() ? '#059669' : '#d1fae5', color: noteText.trim() ? '#fff' : '#6ee7b7', border: 'none', borderRadius: 10, padding: '8px 20px', fontSize: 12.5, fontWeight: 700, cursor: noteText.trim() ? 'pointer' : 'default', transition: 'all 0.15s' }}
+              style={{ background: noteText.trim() ? 'var(--accent)' : 'var(--bg-hover)', color: noteText.trim() ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 10, padding: '8px 20px', fontSize: 12.5, fontWeight: 700, cursor: noteText.trim() ? 'pointer' : 'default', transition: 'all 0.15s' }}
             >
               {savingNote ? 'Saving…' : '✓ Save Note'}
             </button>
@@ -202,16 +238,16 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
 
         {/* Previous notes — collapsed */}
         {notes && notes.length > 0 && (
-          <div style={{ borderTop: '1px solid #f1f5f9' }}>
+          <div style={{ borderTop: '1px solid var(--border)' }}>
             <CollapsibleSection title="Previous Notes" icon={StickyNote} count={notes.length} accentColor="#059669">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10 }}>
                 {notes.slice(0, 10).map((n: any) => (
-                  <div key={n.id} style={{ background: '#f8fafc', border: '1px solid #e8f5e9', borderRadius: 12, padding: '10px 14px' }}>
+                  <div key={n.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 14px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#059669' }}>{n.type || 'Note'}</span>
-                      <span style={{ fontSize: 10, color: '#94a3b8' }}>{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
+                      <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--accent)' }}>{n.type || 'Note'}</span>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
                     </div>
-                    <p style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.6, margin: 0 }}>{n.content}</p>
+                    <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{n.content}</p>
                   </div>
                 ))}
               </div>
@@ -222,9 +258,9 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
 
       {/* ── Log Conversation ───────────────────────────────────────────────── */}
       <div style={card}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
-          <div style={{ background: '#0284c7', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><MessageSquare size={13} color="#fff" /></div>
-          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: '#1e293b' }}>Log Conversation</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
+          <div style={{ background: 'var(--accent)', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><MessageSquare size={13} color="#fff" /></div>
+          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Log Conversation</span>
         </div>
         <div style={{ padding: '14px 20px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {/* Type pills */}
@@ -235,9 +271,9 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
                 onClick={() => setConvType(tp.key)}
                 style={{
                   padding: '6px 14px', borderRadius: 999, fontSize: 12, fontWeight: 700,
-                  border: convType === tp.key ? `2px solid ${tp.color}` : '1.5px solid #e2e8f0',
-                  background: convType === tp.key ? tp.color : '#f8fafc',
-                  color: convType === tp.key ? '#fff' : '#475569',
+                  border: convType === tp.key ? `2px solid ${tp.color}` : '1.5px solid var(--border)',
+                  background: convType === tp.key ? tp.color : 'var(--bg-secondary)',
+                  color: convType === tp.key ? '#fff' : 'var(--text-secondary)',
                   cursor: 'pointer', transition: 'all 0.15s',
                 }}
               >
@@ -262,7 +298,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
             <button
               onClick={submitConv}
               disabled={!convTitle.trim() || savingConv}
-              style={{ background: convTitle.trim() ? activeConvType.color : '#e2e8f0', color: convTitle.trim() ? '#fff' : '#94a3b8', border: 'none', borderRadius: 10, padding: '8px 20px', fontSize: 12.5, fontWeight: 700, cursor: convTitle.trim() ? 'pointer' : 'default', transition: 'all 0.15s' }}
+              style={{ background: convTitle.trim() ? activeConvType.color : 'var(--bg-hover)', color: convTitle.trim() ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 10, padding: '8px 20px', fontSize: 12.5, fontWeight: 700, cursor: convTitle.trim() ? 'pointer' : 'default', transition: 'all 0.15s' }}
             >
               {savingConv ? 'Saving…' : `✓ Log ${activeConvType.label}`}
             </button>
@@ -271,19 +307,19 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
 
         {/* Previous conversations — collapsed */}
         {conversations && conversations.length > 0 && (
-          <div style={{ borderTop: '1px solid #f1f5f9' }}>
+          <div style={{ borderTop: '1px solid var(--border)' }}>
             <CollapsibleSection title="Previous Conversations" icon={MessageSquare} count={conversations.length} accentColor="#0284c7">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10 }}>
                 {conversations.slice(0, 10).map((c: any) => {
                   const ct = CONV_TYPES.find(t => t.key === c.type) || CONV_TYPES[5];
                   return (
-                    <div key={c.id} style={{ background: '#f8fafc', border: '1px solid #e0f2fe', borderRadius: 12, padding: '10px 14px' }}>
+                    <div key={c.id} style={{ background: 'var(--bg-secondary)', border: '1px solid #e0f2fe', borderRadius: 12, padding: '10px 14px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                         <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: ct.color, background: ct.color + '18', borderRadius: 999, padding: '2px 8px' }}>{c.type || 'Conversation'}</span>
-                        <span style={{ fontSize: 10, color: '#94a3b8' }}>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</span>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</span>
                       </div>
-                      <p style={{ fontSize: 12.5, fontWeight: 600, color: '#1e293b', margin: '4px 0 2px' }}>{c.subject || c.title || '—'}</p>
-                      {c.body && <p style={{ fontSize: 12, color: '#64748b', margin: 0, lineHeight: 1.5 }}>{c.body}</p>}
+                      <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)', margin: '4px 0 2px' }}>{c.subject || c.title || '—'}</p>
+                      {c.body && <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>{c.body}</p>}
                     </div>
                   );
                 })}
@@ -297,21 +333,34 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
       <CollapsibleSection title={t('client_tabs.recent_activity')} icon={Activity} accentColor="#6366f1" defaultOpen={false}>
         <div style={{ paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 0 }}>
           {recentActivities.length === 0 ? (
-            <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, padding: '16px 0' }}>{t('client_tabs.no_activity')}</p>
+            <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>{t('client_tabs.no_activity')}</p>
           ) : (
             recentActivities.map((a: any) => (
-              <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
+              <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
                 <Clock size={12} color="#94a3b8" style={{ marginTop: 2, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontSize: 12.5, fontWeight: 600, color: '#334155', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.action}</p>
-                  {a.method && <p style={{ fontSize: 11, color: '#94a3b8', margin: '1px 0 0' }}>via {a.method}</p>}
+                  {a.method && <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '1px 0 0' }}>via {a.method}</p>}
                 </div>
-                <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>
                   {a.createdAt ? new Date(a.createdAt).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' }) : ''}
                 </span>
               </div>
             ))
           )}
+        </div>
+      </CollapsibleSection>
+
+      {/* Opportunities & AI Analysis */}
+      <CollapsibleSection title={language === 'es' ? 'Oportunidades y Análisis de IA' : 'Opportunities & AI Analysis'} icon={Target} accentColor="#8b5cf6" defaultOpen={false}>
+        <div style={{ paddingTop: 16 }}>
+          <OpportunitiesTab
+            client={client}
+            timeline={timeline}
+            serviceRequests={serviceRequests}
+            research={research}
+            emails={emails}
+          />
         </div>
       </CollapsibleSection>
     </div>
@@ -446,10 +495,10 @@ export default function AdminClientDetailPage() {
   // Auth guard
   if (role && role !== 'Admin' && role !== 'Employee' && role !== 'SalesManager') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 ">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-zinc-950 ">
         <div className="text-center">
           <p className="text-2xl font-black text-red-500 mb-2">{language === 'es' ? 'No autorizado' : 'Unauthorized'}</p>
-          <p className="text-slate-500">{language === 'es' ? 'No tienes acceso a esta página.' : 'You do not have access to this page.'}</p>
+          <p className="text-slate-500 dark:text-zinc-400">{language === 'es' ? 'No tienes acceso a esta página.' : 'You do not have access to this page.'}</p>
         </div>
       </div>
     );
@@ -458,10 +507,10 @@ export default function AdminClientDetailPage() {
   // Enforce assignment for SalesManager
   if (client && role === 'SalesManager' && String(client.assignedEmployeeId) !== String(user?.id)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 ">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-zinc-950 ">
         <div className="text-center">
           <p className="text-2xl font-black text-red-500 mb-2">{language === 'es' ? 'No autorizado' : 'Unauthorized'}</p>
-          <p className="text-slate-500">{language === 'es' ? 'Solo puedes ver clientes que te han sido asignados.' : 'You can only view clients assigned to you.'}</p>
+          <p className="text-slate-500 dark:text-zinc-400">{language === 'es' ? 'Solo puedes ver clientes que te han sido asignados.' : 'You can only view clients assigned to you.'}</p>
         </div>
       </div>
     );
@@ -469,7 +518,7 @@ export default function AdminClientDetailPage() {
 
   if (pageLoading) return <PageSkeleton />;
   if (!client) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 ">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-zinc-950 ">
       <p className="text-red-500 font-bold">{language === 'es' ? 'Cliente no encontrado.' : 'Client not found.'}</p>
     </div>
   );
@@ -482,7 +531,7 @@ export default function AdminClientDetailPage() {
   };
 
   return (
-    <div className={`min-h-screen bg-slate-50  transition-colors duration-300`}>
+    <div className={`min-h-screen bg-slate-50 dark:bg-zinc-950  transition-colors duration-300`}>
       <AnimatePresence>
         {isCreateUserOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
@@ -490,27 +539,27 @@ export default function AdminClientDetailPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white  rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200 "
+              className="bg-white dark:bg-zinc-900  rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-zinc-700 "
             >
-              <div className="p-4 border-b border-slate-100  flex justify-between items-center">
-                <h2 className="font-bold text-slate-800 ">{language === 'es' ? 'Crear Nuevo Vendedor' : 'Create New Salesperson'}</h2>
-                <button onClick={() => setIsCreateUserOpen(false)} className="text-slate-400 hover:text-slate-600 ">
+              <div className="p-4 border-b border-slate-100 dark:border-zinc-800  flex justify-between items-center">
+                <h2 className="font-bold text-slate-800 dark:text-zinc-100 ">{language === 'es' ? 'Crear Nuevo Vendedor' : 'Create New Salesperson'}</h2>
+                <button onClick={() => setIsCreateUserOpen(false)} className="text-slate-400 hover:text-slate-600 dark:text-zinc-300 ">
                   <Activity size={20} className="opacity-0" /> {/* Spacer */}
                   <span className="text-xl leading-none">&times;</span>
                 </button>
               </div>
               <form onSubmit={handleCreateSalesperson} className="p-6 space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">{language === 'es' ? 'Nombre' : 'Name'}</label>
-                  <input required value={newUserForm.name} onChange={e => setNewUserForm(p => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200  bg-slate-50  focus:outline-none focus:ring-2 focus:ring-indigo-500 " />
+                  <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 mb-1">{language === 'es' ? 'Nombre' : 'Name'}</label>
+                  <input required value={newUserForm.name} onChange={e => setNewUserForm(p => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700  bg-slate-50 dark:bg-zinc-950  focus:outline-none focus:ring-2 focus:ring-indigo-500 " />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">Email</label>
-                  <input required type="email" value={newUserForm.email} onChange={e => setNewUserForm(p => ({ ...p, email: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200  bg-slate-50  focus:outline-none focus:ring-2 focus:ring-indigo-500 " />
+                  <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 mb-1">Email</label>
+                  <input required type="email" value={newUserForm.email} onChange={e => setNewUserForm(p => ({ ...p, email: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700  bg-slate-50 dark:bg-zinc-950  focus:outline-none focus:ring-2 focus:ring-indigo-500 " />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">{language === 'es' ? 'Rol' : 'Role'}</label>
-                  <select value={newUserForm.role} onChange={e => setNewUserForm(p => ({ ...p, role: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200  bg-slate-50  focus:outline-none focus:ring-2 focus:ring-indigo-500 ">
+                  <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 mb-1">{language === 'es' ? 'Rol' : 'Role'}</label>
+                  <select value={newUserForm.role} onChange={e => setNewUserForm(p => ({ ...p, role: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700  bg-slate-50 dark:bg-zinc-950  focus:outline-none focus:ring-2 focus:ring-indigo-500 ">
                     <option value="Employee">{language === 'es' ? 'Empleado' : 'Employee'}</option>
                     <option value="SalesManager">{language === 'es' ? 'Gerente de Ventas' : 'Sales Manager'}</option>
                   </select>
@@ -540,23 +589,12 @@ export default function AdminClientDetailPage() {
 
       {/* ── Full-Width layout ──────────────────────────────────────── */}
       <div className="w-full px-4 py-4">
-        <div className="grid grid-cols-1 xl:grid-cols-[300px_1fr_300px] gap-5">
-
-          {/* ── LEFT: Pre-Sales Research only ────────────────── */}
-          <aside className="space-y-4">
-            <ClientSidebarPanel
-              client={client}
-              research={research}
-              onClientUpdate={(u) => setClient((prev: any) => ({ ...prev, ...u }))}
-              onResearchUpdate={setResearch}
-              clientId={id}
-            />
-          </aside>
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-5">
 
           {/* ── CENTER MAIN ──────────────────────────────────────────── */}
           <main className="min-w-0">
             {/* Tab Bar - Premium Pill Style */}
-            <div className="flex items-center gap-2 overflow-x-auto p-1.5 mb-6 bg-slate-100/80 rounded-2xl border border-slate-200/60 scrollbar-thin w-fit max-w-full">
+            <div className="flex items-center gap-2 overflow-x-auto p-1.5 mb-6 bg-slate-100 dark:bg-zinc-800/80 rounded-2xl border border-slate-200 dark:border-zinc-700/60 scrollbar-thin w-fit max-w-full">
               {TABS.map(({ key, label, icon: Icon }) => {
                 const badge = tabBadges[key];
                 return (
@@ -566,15 +604,15 @@ export default function AdminClientDetailPage() {
                     className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-bold
                                 whitespace-nowrap transition-all flex-shrink-0
                       ${activeTab === key
-                        ? 'bg-white text-indigo-600 shadow-[0_2px_10px_rgba(0,0,0,0.06)] border border-slate-200/50'
-                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                        ? 'bg-white dark:bg-zinc-900 text-indigo-600 shadow-[0_2px_10px_rgba(0,0,0,0.06)] border border-slate-200 dark:border-zinc-700/50'
+                        : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:text-zinc-200 hover:bg-slate-200 dark:bg-zinc-700/50'
                       }`}
                   >
                     <Icon size={14} className={activeTab === key ? 'text-indigo-500' : 'text-slate-400'} />
                     {(t(`client_tabs.${key}`) as string) || label}
                     {badge !== undefined && badge > 0 && (
                       <span className={`ml-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center transition-colors
-                        ${activeTab === key ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-500'}`}>
+                        ${activeTab === key ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400'}`}>
                         {badge}
                       </span>
                     )}
@@ -602,6 +640,7 @@ export default function AdminClientDetailPage() {
                     research={research}
                     notes={notes}
                     conversations={conversations}
+                    emails={emails}
                     clientId={id}
                     onNotesRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/notes`).then(r => r.json()).then(d => setNotes(d.notes || []))}
                     onConversationsRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/conversations`).then(r => r.json()).then(d => setConversations(d.conversations || []))}
@@ -646,6 +685,8 @@ export default function AdminClientDetailPage() {
                     client={client}
                     timeline={timeline}
                     serviceRequests={serviceRequests}
+                    research={research}
+                    emails={emails}
                   />
                 )}
                 {activeTab === 'files' && (
@@ -678,7 +719,7 @@ export default function AdminClientDetailPage() {
 
             {/* Assign Salesperson Card */}
             {role === 'Admin' && (
-              <div className="rounded-2xl border border-slate-200  bg-white  p-4 shadow-sm">
+              <div className="rounded-2xl border border-slate-200 dark:border-zinc-700  bg-white dark:bg-zinc-900  p-4 shadow-sm">
                 <p className="text-xs font-black uppercase tracking-wider text-slate-400  mb-3">{language === 'es' ? 'Asignar Vendedor' : 'Assign Salesperson'}</p>
                 <select
                   value={client?.assignedEmployeeId || ''}
@@ -698,8 +739,8 @@ export default function AdminClientDetailPage() {
                     });
                     fetchClient();
                   }}
-                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 
-                             bg-slate-50  text-slate-800 
+                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-zinc-700 
+                             bg-slate-50 dark:bg-zinc-950  text-slate-800 dark:text-zinc-100 
                              focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">{language === 'es' ? 'Seleccionar vendedor' : 'Select salesperson'}</option>
@@ -712,7 +753,7 @@ export default function AdminClientDetailPage() {
             )}
 
             {/* Next Follow-up */}
-            <div className="rounded-2xl border border-slate-200  bg-white  p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 dark:border-zinc-700  bg-white dark:bg-zinc-900 p-4 shadow-sm">
               <div className="flex gap-2 mb-4">
                 {client?.website && (
                   <a href={client.website} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">
@@ -730,7 +771,7 @@ export default function AdminClientDetailPage() {
               <div className="space-y-2">
                 <div>
                   <p className="text-[10px] text-slate-400 ">{language === 'es' ? 'Último Contacto' : 'Last Contact'}</p>
-                  <p className="text-sm font-bold text-slate-800 ">
+                  <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 ">
                     {client?.last_contact_date ? new Date(client.last_contact_date).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'}
                   </p>
                 </div>

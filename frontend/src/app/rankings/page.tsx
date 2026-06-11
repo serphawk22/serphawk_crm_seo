@@ -116,8 +116,8 @@ export default function RankingsPage() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight">{isClient ? "My SEO Rankings" : "Keyword Rankings"}</h1>
-          <p className="text-gray-500 font-medium">{isClient ? "Track your keyword positions and search visibility." : "Track keyword positions and monitor SEO performance."}</p>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">{isClient ? "My SEO Rankings" : "Keyword Rankings"}</h1>
+          <p className="text-gray-500 dark:text-zinc-400 font-medium">{isClient ? "Track your keyword positions and search visibility." : "Track keyword positions and monitor SEO performance."}</p>
         </div>
         {!isClient && (
           <button onClick={() => setShowModal(true)}
@@ -155,7 +155,7 @@ export default function RankingsPage() {
           <div key={s.label} className={cn("rounded-2xl p-4 flex items-center gap-3", s.bg)}>
             <s.icon className={cn("w-6 h-6", s.color)} />
             <div>
-              <p className="text-xs text-gray-500 font-semibold">{s.label}</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-400 font-semibold">{s.label}</p>
               <p className={cn("text-xl font-black", s.color)}>{s.value}</p>
             </div>
           </div>
@@ -167,12 +167,12 @@ export default function RankingsPage() {
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={searchKw} onChange={e => setSearchKw(e.target.value)}
-            className="pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="pl-9 pr-4 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             placeholder="Search keywords..." />
         </div>
         {!isClient && (
           <select value={filterClient} onChange={e => setFilterClient(e.target.value)}
-            className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            className="border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <option value="all">All Clients</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.companyName || c.name || `Client #${c.id}`}</option>)}
           </select>
@@ -183,12 +183,12 @@ export default function RankingsPage() {
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-700 shadow-sm overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-gray-50 dark:bg-zinc-950 border-b">
               <tr>
                 {["Keyword", "Client", "Position", "Search Engine", "URL", "Date", ""].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -196,11 +196,11 @@ export default function RankingsPage() {
               {filtered.length === 0 ? (
                 <tr><td colSpan={7} className="text-center py-16 text-gray-400">No rankings logged yet</td></tr>
               ) : filtered.map(r => (
-                <tr key={r.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-4 font-semibold text-gray-900">{r.keyword}</td>
-                  <td className="px-4 py-4 text-gray-600">{clientName(r.client_id)}</td>
+                <tr key={r.id} className="hover:bg-gray-50 dark:bg-zinc-950 transition-colors">
+                  <td className="px-4 py-4 font-semibold text-gray-900 dark:text-zinc-50">{r.keyword}</td>
+                  <td className="px-4 py-4 text-gray-600 dark:text-zinc-300">{clientName(r.client_id)}</td>
                   <td className="px-4 py-4">{positionBadge(r.position)}</td>
-                  <td className="px-4 py-4 text-gray-500">{r.search_engine}</td>
+                  <td className="px-4 py-4 text-gray-500 dark:text-zinc-400">{r.search_engine}</td>
                   <td className="px-4 py-4">
                     {r.url ? (
                       <a href={r.url} target="_blank" rel="noopener noreferrer"
@@ -227,57 +227,57 @@ export default function RankingsPage() {
       {/* Add Ranking Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-md p-8">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-black">Log Keyword Ranking</h2>
               <button onClick={() => setShowModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <form onSubmit={addRanking} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Client *</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Client *</label>
                 <select required value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                   <option value="">Select client...</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.companyName || c.name || `Client #${c.id}`}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Keyword *</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Keyword *</label>
                   <input required value={form.keyword} onChange={e => setForm(p => ({ ...p, keyword: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="e.g. plumber near me" />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Position #</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Position #</label>
                   <input type="number" min="1" max="200" value={form.position}
                     onChange={e => setForm(p => ({ ...p, position: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="e.g. 5" />
                 </div>
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Ranking URL</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Ranking URL</label>
                 <input value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="https://clientsite.com/page" />
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Search Engine</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Search Engine</label>
                 <select value={form.search_engine} onChange={e => setForm(p => ({ ...p, search_engine: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                   {["Google", "Bing", "Yahoo", "DuckDuckGo"].map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Notes</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Notes</label>
                 <input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="Optional notes..." />
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
-                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600">Cancel</button>
+                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600 dark:text-zinc-300">Cancel</button>
                 <button type="submit" disabled={submitting}
                   className="flex-1 py-2.5 bg-gray-900 text-white rounded-xl font-bold text-sm hover:bg-black flex items-center justify-center gap-2">
                   {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}

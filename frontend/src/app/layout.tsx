@@ -8,7 +8,12 @@ import { AdminTopbar } from "@/components/AdminTopbar";
 import { SidebarProvider, useSidebar } from "@/context/SidebarContext";
 import { RoleProvider, useRole } from "@/context/RoleContext";
 import { LanguageProvider } from "@/context/LanguageContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 import I18nProvider from "@/i18n/I18nProvider";
+import { ClientSidebar } from "@/components/ClientSidebar";
+import { usePathname } from "next/navigation";
+import { CallNotificationBar } from "@/components/CallNotificationBar";
+import SpaceAtmosphere from "@/components/SpaceAtmosphere";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
@@ -27,7 +32,7 @@ function AdminMainContent({ children }: { children: React.ReactNode }) {
 function ClientLayout({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
   return (
-    <div className="client-shell relative w-full min-h-screen bg-zinc-950">
+    <div className="client-shell relative w-full min-h-screen bg-transparent text-white" style={{ color: "var(--text-primary)" }}>
       <ClientSidebar />
       <CallNotificationBar />
       <main className={`min-h-screen transition-all duration-300 pt-6 px-4 md:px-6 ${collapsed ? "ml-[72px]" : "ml-[220px]"}`}>
@@ -37,9 +42,6 @@ function ClientLayout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-import { ClientSidebar } from "@/components/ClientSidebar";
-import { usePathname } from 'next/navigation';
-import { CallNotificationBar } from "@/components/CallNotificationBar";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -62,18 +64,18 @@ function AppContent({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center admin-shell">
+      <div className="h-screen w-full flex items-center justify-center" style={{ background: "var(--bg-primary)" }}>
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-black text-lg animate-pulse">
             SH
           </div>
-          <p className="text-slate-400 text-sm font-semibold animate-pulse">Loading...</p>
+          <p className="text-sm font-semibold animate-pulse" style={{ color: "var(--text-secondary)" }}>Loading...</p>
         </div>
       </div>
     );
   }
 
-  if (pathname === '/login') {
+  if (pathname === "/login") {
     return <main className="h-screen w-full">{children}</main>;
   }
 
@@ -86,27 +88,22 @@ function AppContent({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // ── Admin / Employee / Intern — Premium Light Layout ──
+  // ── Admin / Employee / Intern layout ──
   if (isAdminOrEmployee) {
     return (
       <SidebarProvider>
-      <div className="admin-shell min-h-screen">
-
-        {/* Topbar */}
-        <AdminTopbar />
-
-        {/* Main Content */}
-        <AdminMainContent>{children}</AdminMainContent>
-
-        <Chatbot />
-      </div>
+        <div className="admin-shell min-h-screen bg-transparent">
+          <AdminTopbar />
+          <AdminMainContent>{children}</AdminMainContent>
+          <Chatbot />
+        </div>
       </SidebarProvider>
     );
   }
 
   // Fallback
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen" style={{ background: "var(--bg-secondary)" }}>
       <main className="p-6">{children}</main>
     </div>
   );
@@ -120,16 +117,19 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <I18nProvider>
-          <LanguageProvider>
-            <RoleProvider>
-              <AppContent>{children}</AppContent>
-            </RoleProvider>
-          </LanguageProvider>
-        </I18nProvider>
-        
+        <ThemeProvider>
+          <I18nProvider>
+            <LanguageProvider>
+              <RoleProvider>
+                <SpaceAtmosphere />
+                <AppContent>{children}</AppContent>
+              </RoleProvider>
+            </LanguageProvider>
+          </I18nProvider>
+        </ThemeProvider>
+
         {/* Global WhatsApp Widget */}
-        <a 
+        <a
           href="https://wa.me/8519990425?text=Hi,%20I'd%20like%20to%20book%20a%20demo%20or%20catch%20up%20for%20a%20meeting"
           target="_blank"
           rel="noopener noreferrer"

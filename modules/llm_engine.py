@@ -2,6 +2,8 @@ import os
 from openai import OpenAI
 import json
 
+
+
 def get_openai_client():
     api_key = os.getenv('OPENAI_API_KEY')
     if not api_key:
@@ -120,11 +122,14 @@ def generate_email(analysis, contact=None, recommended_services=None):
 
         Then provide the FULL Spanish translation with identical structure, signed as "Equipo DaPros de México | SERP Hawk Digital Agency".
 
+        Then provide a short, punchy WhatsApp message (English only) to send to them. Keep it under 50 words. It should be casual but professional, mention the opportunity, and ask for a quick chat.
+
         Return a JSON object with exactly these fields:
         {{
             "subject": "Short benefit-focused subject (under 8 words, mention company or sector)",
             "english_body": "Full English email (short paragraphs separated by \\n\\n, plain text, no HTML)",
-            "spanish_body": "Full Spanish translation (same structure, plain text, no HTML)"
+            "spanish_body": "Full Spanish translation (same structure, plain text, no HTML)",
+            "whatsapp_draft": "Short, punchy WhatsApp message (plain text, emojis allowed)"
         }}
         """
 
@@ -268,32 +273,54 @@ def extract_tasks_from_note(note_content):
         print(f"Error in task extraction: {e}")
         return []
 
-def process_chatbot_command(message: str, client_context: dict = None):
+def process_chatbot_command(message: str, client_context: dict = None, current_route: str = None):
     """
     Analyzes user message to determine CRM action intent for the chatbot.
     """
+    import json
     try:
         client = get_openai_client()
         context_str = f"Client context: {json.dumps(client_context)}" if client_context else "No specific client context."
+        route_str = f"User's current page route: {current_route}" if current_route else "Unknown route."
         
         prompt = f"""
-        You are the SERP Hawk CRM Assistant.
-        The user has sent a message. Detect their intent and draft a professional note or log entry.
+        You are the highly advanced SERP Hawk CRM Assistant.
+        The user has sent a message. Detect their intent and extract any parameters needed to perform the action.
         
-        User message: "{message}"
+        {route_str}
         {context_str}
         
-        Return ONLY a JSON object with:
+        User message: "{message}"
+        
+        Return ONLY a JSON object with this exact structure:
         {{
-            "intent": "add_note" | "log_conversation" | "general",
-            "title": "Short title if logging a conversation (e.g. 'Introductory Call')",
-            "type": "call" | "email" | "meeting" | "whatsapp" | "other" (only if intent is log_conversation),
-            "content": "The drafted professional note or conversation details.",
-            "reply": "A friendly confirmation to send back to the user in the chat (e.g. 'I have successfully logged the call regarding pricing.')."
+            "intent": "create_client" | "create_project" | "search_marketplace" | "draft_email" | "add_note" | "log_conversation" | "navigate" | "general",
+            "parameters": {{
+                "company_name": "...",
+                "email": "...",
+                "phone": "...",
+                "website": "...",
+                "project_name": "...",
+                "description": "...",
+                "search_query": "...",
+                "route": "...",
+                "client_id": 123,
+                "content": "...",
+                "title": "...",
+                "type": "..."
+            }},
+            "reply": "A friendly confirmation to send back to the user in the chat."
         }}
+        
+        Rules:
+        - If the user asks to go somewhere or see something, intent is 'navigate'. (route should be things like "/admin", "/admin/clients", "/admin/marketplace", "/admin/projects", "/email-agent")
+        - If the user asks to add a client/company, intent is 'create_client'. Extract website if mentioned.
+        - If the user asks to search for a service, intent is 'search_marketplace'.
+        - If the user asks to draft an email, intent is 'draft_email'.
+        - If you don't know the exact intent, use 'general' and just reply naturally.
         """
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
@@ -305,3 +332,91 @@ def process_chatbot_command(message: str, client_context: dict = None):
             "reply": "I'm sorry, I encountered an error trying to process your request."
         }
 
+
+def extract_client_services(website_text: str, company_name: str) -> list:
+    """
+    Analyzes a company's website text and extracts a structured list of services
+    they OFFER — with a brief description and approximate cost estimate.
+    Returns a list of dicts: [{name, brief, category, approx_cost, cost_is_estimated}]
+    """
+    try:
+        client = get_openai_client()
+        prompt = f"""You are a B2B business intelligence expert.
+
+Analyze the following website content from "{company_name}" and extract ALL services or products this company OFFERS to their customers.
+
+For each service:
+1. Give a clean, professional service name
+2. Write a 1-2 sentence brief describing what it is
+3. Assign a business category from: [SEO, Web Design, Marketing, Plumbing, Legal, Accounting, Consulting, Construction, Healthcare, Real Estate, IT Services, Landscaping, Cleaning, Electrical, HVAC, Retail, Food & Beverage, Education, Finance, Transportation, Other]
+4. Estimate an approximate market cost in USD. If you cannot determine the cost from the website, use your knowledge of typical market rates for this type of service.
+
+Website content:
+{website_text[:12000]}
+
+Return ONLY valid JSON:
+{{
+  "services": [
+    {{
+      "name": "Clean service name",
+      "brief": "1-2 sentence description of this service",
+      "category": "One category from the list above",
+      "approx_cost": 1500,
+      "cost_is_estimated": true
+    }}
+  ]
+}}
+
+Rules:
+- Extract only services/products the COMPANY OFFERS (not what they use internally)
+- Include 3-10 services maximum, only the most clearly defined ones
+- approx_cost should be a number in USD. Use 0 if truly impossible to estimate.
+- cost_is_estimated is true unless the website explicitly states the price
+"""
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        data = json.loads(response.choices[0].message.content)
+        return data.get("services", [])
+    except Exception as e:
+        print(f"Error in extract_client_services: {e}")
+        return []
+
+def extract_client_profile_from_website(website_text: str, website_url: str) -> dict:
+    """
+    Analyzes website text to extract structured client profile fields.
+    """
+    try:
+        import json
+        from modules.llm_engine import get_openai_client
+        client = get_openai_client()
+        prompt = f"""You are a B2B CRM intelligence expert.
+
+Analyze the following website content from "{website_url}" and extract details to populate a Client Profile.
+
+Website content:
+{website_text[:12000]}
+
+Return ONLY valid JSON matching this structure:
+{{
+  "companyName": "The business name (don't use the URL)",
+  "email": "Extract a contact email, or guess a generic one like info@company.com if missing",
+  "tagline": "A short 5-10 word tagline or value proposition",
+  "seoStrategy": "A 1-2 sentence suggested SEO strategy based on their industry",
+  "targetKeywords": "A comma-separated string of 5-8 highly relevant target keywords",
+  "industry": "The specific industry they operate in"
+}}
+"""
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        return json.loads(response.choices[0].message.content)
+    except Exception as e:
+        print(f"Error in extract_client_profile: {e}")
+        return {}

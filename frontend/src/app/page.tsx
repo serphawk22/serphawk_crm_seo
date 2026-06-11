@@ -33,6 +33,7 @@ interface AdminStats {
   total: number; active: number; pending: number; hold: number;
   totalProjects: number; totalEmailsSent: number; totalActivities: number;
   totalCalls: number; totalEmployees: number; totalInterns: number;
+  totalMarketplaceServices: number;
   chartLabels: string[]; activityChart: number[]; emailChart: number[]; callChart: number[];
   recentActivities: RecentActivity[];
 }
@@ -92,13 +93,13 @@ function StatCard({ title, value, sub, icon: Icon, gradient, href }: {
           <div className={cn("p-2.5 rounded-xl bg-gradient-to-br shadow-lg", gradient)}>
             <Icon className="w-4 h-4 text-white" />
           </div>
-          {href && <ArrowUpRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 transition-colors" />}
+          {href && <ArrowUpRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 dark:text-zinc-400 transition-colors" />}
         </div>
-        <p className="text-[11px] font-black text-slate-600 uppercase tracking-widest mb-0.5">{title}</p>
-        <h3 className="text-2xl font-black text-slate-900 tracking-tight">{value}</h3>
+        <p className="text-[11px] font-black text-slate-600 dark:text-zinc-300 uppercase tracking-widest mb-0.5">{title}</p>
+        <h3 className="text-2xl font-black text-slate-900 dark:text-zinc-50 tracking-tight">{value}</h3>
         <div className="mt-2 inline-flex items-center gap-1.5">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
-          <p className="text-[12px] font-bold text-slate-500">{sub}</p>
+          <p className="text-[12px] font-bold text-slate-500 dark:text-zinc-400">{sub}</p>
         </div>
       </div>
     </motion.div>
@@ -178,7 +179,7 @@ function Dashboard() {
       <motion.div initial="hidden" animate="show" variants={containerVariants}>
         <motion.div variants={itemVariants} className="glass-card p-10 text-center">
           <span className="text-[10px] tracking-widest font-black text-amber-600 uppercase">Warning</span>
-          <h1 className="text-3xl font-black text-slate-800 mt-1 mb-3">Session Error</h1>
+          <h1 className="text-3xl font-black text-slate-800 dark:text-zinc-100 mt-1 mb-3">Session Error</h1>
           <p className="text-slate-400 font-medium">Unable to load your profile. Please refresh or log in again.</p>
         </motion.div>
       </motion.div>
@@ -196,11 +197,8 @@ function Dashboard() {
         <motion.div variants={itemVariants} className="relative overflow-hidden rounded-3xl">
           {/* Glass card */}
           <div className="glass-card relative p-8 md:p-10 overflow-hidden">
-            {/* Glow blobs */}
-            <div className="absolute -top-16 -right-16 w-64 h-64 bg-indigo-100 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-10 left-1/3 w-48 h-48 bg-violet-100 rounded-full blur-3xl pointer-events-none" />
             {/* Top border */}
-            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-indigo-300 to-transparent" />
+            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-indigo-500/20 to-transparent" />
 
             <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div className="space-y-2">
@@ -208,23 +206,43 @@ function Dashboard() {
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
                   <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.25em]">Live Operations</span>
                 </div>
-                <h1 className="text-4xl md:text-5xl font-black text-slate-800 leading-tight tracking-tight">
+                <h1 className="text-4xl md:text-5xl font-black text-slate-800 dark:text-zinc-100 leading-tight tracking-tight">
                   Operations{" "}
                   <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-500 bg-clip-text text-transparent animate-gradient">
                     Center
                   </span>
                 </h1>
-                <p className="text-slate-500 font-medium text-base">
+                <p className="text-slate-500 dark:text-zinc-400 font-medium text-base">
                   Welcome back, <span className="text-indigo-600 font-bold">{user?.name || role}</span>. Your metrics are synced.
                 </p>
               </div>
-              <div className="flex gap-3 shrink-0 w-full md:w-auto">
-                <Link href="/clients" className="px-5 py-2.5 rounded-xl font-bold text-sm text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-slate-800 hover:border-slate-300 transition-all">
-                  {language === 'es' ? 'Ver Clientes' : 'View Clients'}
-                </Link>
-                <Link href="/email-agent" className="btn-glow-indigo px-5 py-2.5 rounded-xl font-bold text-sm text-white flex items-center gap-2">
-                  <Sparkles className="w-4 h-4" /> {language === 'es' ? 'Lanzar Agente' : 'Launch Agent'}
-                </Link>
+              <div className="flex flex-col md:flex-row items-center gap-4 shrink-0 w-full md:w-auto mt-4 md:mt-0">
+                {/* API Budget Wheel Widget */}
+                <div className="flex items-center gap-3 bg-white dark:bg-zinc-900/60 border border-indigo-100 p-1.5 pr-3 rounded-2xl shadow-sm">
+                  <div className="relative w-9 h-9 flex items-center justify-center shrink-0">
+                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                      <circle cx="18" cy="18" r="16" fill="none" className="stroke-slate-200" strokeWidth="4" />
+                      <circle cx="18" cy="18" r="16" fill="none" className="stroke-indigo-500" strokeWidth="4" strokeDasharray="100" strokeDashoffset="76" strokeLinecap="round" />
+                    </svg>
+                    <span className="absolute text-[8px] font-black text-indigo-700">24%</span>
+                  </div>
+                  <div className="flex flex-col justify-center">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">API Budget</span>
+                    <span className="text-xs font-bold text-slate-700 dark:text-zinc-200 leading-none">$1.20 / <span className="text-slate-500 dark:text-zinc-400">$5.00</span></span>
+                  </div>
+                  <Link href="/admin/api-intelligence" className="ml-1 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors border border-indigo-100/50">
+                    View Usage
+                  </Link>
+                </div>
+
+                <div className="flex gap-3 w-full md:w-auto">
+                  <Link href="/clients" className="flex-1 md:flex-none justify-center px-5 py-2.5 rounded-xl font-bold text-sm text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700 hover:bg-slate-100 dark:bg-zinc-800 hover:text-slate-800 dark:text-zinc-100 hover:border-slate-300 dark:border-zinc-600 transition-all flex items-center">
+                    {language === 'es' ? 'Ver Clientes' : 'View Clients'}
+                  </Link>
+                  <Link href="/email-agent" className="flex-1 md:flex-none justify-center btn-glow-indigo px-5 py-2.5 rounded-xl font-bold text-sm text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 shrink-0" /> {language === 'es' ? 'Lanzar Agente' : 'Launch Agent'}
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
@@ -247,10 +265,11 @@ function Dashboard() {
           />
 
           {/* Row 1: 4+4 stat pills in dark glass */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-9 gap-3">
             <StatCard title="Clients" value={adminStats.total} sub="Total" icon={Users} gradient="from-indigo-500 to-indigo-600" href="/clients" />
             <StatCard title="Active" value={adminStats.active} sub="Live" icon={Zap} gradient="from-emerald-400 to-emerald-500" href="/clients" />
             <StatCard title="Projects" value={adminStats.totalProjects} sub="Ongoing" icon={FolderKanban} gradient="from-sky-400 to-cyan-500" href="/projects" />
+            <StatCard title="Marketplace" value={adminStats.totalMarketplaceServices || 0} sub="Services" icon={Briefcase} gradient="from-fuchsia-500 to-pink-600" href="/admin/services-overview" />
             <StatCard title="Emails" value={adminStats.totalEmailsSent} sub="Sent" icon={Send} gradient="from-violet-500 to-purple-600" href="/email-agent" />
             <StatCard title="Activities" value={adminStats.totalActivities} sub="Logs" icon={Activity} gradient="from-blue-500 to-indigo-600" href="/email-agent" />
             <StatCard title="Calls" value={adminStats.totalCalls} sub="Logged" icon={Phone} gradient="from-amber-400 to-orange-500" href="/calls" />
@@ -262,11 +281,10 @@ function Dashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Activity chart */}
             <motion.div variants={itemVariants} className="glass-card glass-card-hover p-6 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-100 rounded-full blur-2xl pointer-events-none" />
               <div className="flex items-center justify-between mb-5 relative z-10">
                 <div>
-                  <p className="text-[12px] font-black text-slate-600 uppercase tracking-widest">Activity Logs</p>
-                  <p className="text-3xl font-black text-slate-900 mt-0.5">{adminStats.totalActivities}</p>
+                  <p className="text-[12px] font-black text-slate-600 dark:text-zinc-300 uppercase tracking-widest">Activity Logs</p>
+                  <p className="text-3xl font-black text-slate-900 dark:text-zinc-50 mt-0.5">{adminStats.totalActivities}</p>
                 </div>
                 <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600">
                   <Activity className="w-5 h-5" />
@@ -281,11 +299,10 @@ function Dashboard() {
 
             {/* Email chart */}
             <motion.div variants={itemVariants} className="glass-card glass-card-hover p-6 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-100 rounded-full blur-2xl pointer-events-none" />
               <div className="flex items-center justify-between mb-5 relative z-10">
                 <div>
-                  <p className="text-[12px] font-black text-slate-600 uppercase tracking-widest">Emails Outbound</p>
-                  <p className="text-3xl font-black text-slate-900 mt-0.5">{adminStats.totalEmailsSent}</p>
+                  <p className="text-[12px] font-black text-slate-600 dark:text-zinc-300 uppercase tracking-widest">Emails Outbound</p>
+                  <p className="text-3xl font-black text-slate-900 dark:text-zinc-50 mt-0.5">{adminStats.totalEmailsSent}</p>
                 </div>
                 <div className="p-2.5 rounded-xl bg-violet-50 border border-violet-200 text-violet-600">
                   <Mail className="w-5 h-5" />
@@ -300,11 +317,10 @@ function Dashboard() {
 
             {/* Call chart */}
             <motion.div variants={itemVariants} className="glass-card glass-card-hover p-6 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-50 rounded-full blur-2xl pointer-events-none" />
               <div className="flex items-center justify-between mb-5 relative z-10">
                 <div>
-                  <p className="text-[12px] font-black text-slate-600 uppercase tracking-widest">Call Interactions</p>
-                  <p className="text-3xl font-black text-slate-900 mt-0.5">{adminStats.totalCalls}</p>
+                  <p className="text-[12px] font-black text-slate-600 dark:text-zinc-300 uppercase tracking-widest">Call Interactions</p>
+                  <p className="text-3xl font-black text-slate-900 dark:text-zinc-50 mt-0.5">{adminStats.totalCalls}</p>
                 </div>
                 <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-600">
                   <Phone className="w-5 h-5" />
@@ -320,22 +336,21 @@ function Dashboard() {
 
           {/* Row 3: Pipeline overview (dark glass wide card) */}
           <motion.div variants={itemVariants} className="glass-card p-6 md:p-8 relative overflow-hidden">
-            <div className="absolute -bottom-10 left-1/2 w-64 h-32 bg-indigo-50 rounded-full blur-3xl pointer-events-none" />
             <div className="flex items-center gap-3 mb-6 relative z-10">
               <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600">
                 <Target className="w-4 h-4" />
               </div>
-              <h3 className="font-black text-[15px] text-slate-700">Operational Pipeline</h3>
+              <h3 className="font-black text-[15px] text-slate-700 dark:text-zinc-200">Operational Pipeline</h3>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 relative z-10">
               {[
-                { label: "Pending Setup", value: adminStats.pending, accent: "border-amber-200 bg-amber-50 text-amber-700" },
-                { label: "On Hold", value: adminStats.hold, accent: "border-rose-200 bg-rose-50 text-rose-700" },
-                { label: "Total Activities", value: adminStats.totalActivities, accent: "border-indigo-200 bg-indigo-50 text-indigo-700" },
-                { label: "Calls Logged", value: adminStats.totalCalls, accent: "border-orange-200 bg-orange-50 text-orange-700" },
-                { label: "Emails Deployed", value: adminStats.totalEmailsSent, accent: "border-violet-200 bg-violet-50 text-violet-700" },
+                { label: "Pending Setup", value: adminStats.pending, accent: "border-amber-200/50 text-amber-500" },
+                { label: "On Hold", value: adminStats.hold, accent: "border-rose-200/50 text-rose-500" },
+                { label: "Total Activities", value: adminStats.totalActivities, accent: "border-indigo-200/50 text-indigo-500" },
+                { label: "Calls Logged", value: adminStats.totalCalls, accent: "border-orange-200/50 text-orange-500" },
+                { label: "Emails Deployed", value: adminStats.totalEmailsSent, accent: "border-violet-200/50 text-violet-500" },
               ].map(({ label, value, accent }) => (
-                <div key={label} className={`rounded-2xl border p-5 ${accent}`}>
+                <div key={label} className={`rounded-2xl border bg-black/10 dark:bg-black/40 backdrop-blur-md p-5 ${accent}`}>
                   <p className="text-[12px] font-black uppercase tracking-widest mb-2 opacity-90">{label}</p>
                   <span className="font-black text-3xl opacity-100">{value}</span>
                 </div>
@@ -345,7 +360,7 @@ function Dashboard() {
 
           {/* Row 4: Quick Access navigation cards */}
           <motion.div variants={itemVariants}>
-            <p className="text-[12px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Quick Access</p>
+            <p className="text-[12px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-[0.2em] mb-4">Quick Access</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {visibleNavCards.map((card) => (
                 <Link key={card.href} href={card.href}>
@@ -357,8 +372,6 @@ function Dashboard() {
                     className="group relative overflow-hidden glass-card cursor-pointer p-6 transition-all hover:border-indigo-200"
                     style={{ borderRadius: "1.25rem" }}
                   >
-                    {/* Gradient glow on hover */}
-                    <div className={cn("absolute -top-10 -right-10 w-36 h-36 rounded-full blur-3xl opacity-0 group-hover:opacity-20 transition-opacity duration-500 bg-gradient-to-br", card.gradient)} />
                     {/* Top border accent */}
                     <div className={cn("absolute top-0 left-6 right-6 h-px opacity-0 group-hover:opacity-60 transition-opacity bg-gradient-to-r from-transparent to-transparent", card.gradient.replace("from-", "via-"))} />
                     <div className="relative z-10">
@@ -366,10 +379,10 @@ function Dashboard() {
                         <div className={cn("p-3 rounded-2xl bg-gradient-to-br shadow-lg", card.gradient)}>
                           <card.icon className="w-5 h-5 text-white" />
                         </div>
-                        <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-200" />
+                        <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 dark:text-zinc-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-200" />
                       </div>
-                      <h3 className="font-black text-[15px] text-slate-800 mb-1.5 group-hover:text-slate-900 transition-colors">{card.title}</h3>
-                      <p className="text-[12px] text-slate-500 font-medium leading-relaxed group-hover:text-slate-600 transition-colors">{card.description}</p>
+                      <h3 className="font-black text-[15px] text-slate-800 dark:text-zinc-100 mb-1.5 group-hover:text-slate-900 dark:text-zinc-50 transition-colors">{card.title}</h3>
+                      <p className="text-[12px] text-slate-500 dark:text-zinc-400 font-medium leading-relaxed group-hover:text-slate-600 dark:text-zinc-300 transition-colors">{card.description}</p>
                     </div>
                   </motion.div>
                 </Link>
@@ -379,13 +392,12 @@ function Dashboard() {
 
           {/* Row 5: Recent Activity */}
           <motion.div variants={itemVariants} className="glass-card p-6 md:p-8 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-50 rounded-full blur-3xl pointer-events-none" />
             <div className="flex items-center justify-between mb-6 relative z-10">
               <div className="flex items-center gap-3">
               <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600">
                 <Activity className="w-4 h-4" />
               </div>
-              <h3 className="font-black text-[15px] text-slate-700">Recent Activity</h3>
+              <h3 className="font-black text-[15px] text-slate-700 dark:text-zinc-200">Recent Activity</h3>
               </div>
               <Link href="/email-agent" className="text-[10px] font-black text-indigo-500 hover:text-indigo-700 uppercase tracking-widest transition-colors">
                 View All
@@ -393,18 +405,18 @@ function Dashboard() {
             </div>
             {(adminStats.recentActivities?.length ?? 0) === 0 ? (
               <div className="flex flex-col items-center justify-center h-32 text-slate-400 gap-3">
-                <Activity className="w-10 h-10 opacity-40 text-slate-500" />
-                <p className="font-bold text-sm text-slate-500">No activities yet</p>
+                <Activity className="w-10 h-10 opacity-40 text-slate-500 dark:text-zinc-400" />
+                <p className="font-bold text-sm text-slate-500 dark:text-zinc-400">No activities yet</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 relative z-10">
                 {adminStats.recentActivities.map((act) => (
-                  <div key={act.id} className="flex items-start gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-slate-100 hover:border-slate-200 transition-all group">
+                  <div key={act.id} className="flex items-start gap-3 p-4 rounded-2xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 hover:bg-slate-100 dark:bg-zinc-800 hover:border-slate-200 dark:border-zinc-700 transition-all group">
                     <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 shrink-0 group-hover:bg-indigo-100 transition-colors">
                       <Mail className="w-3.5 h-3.5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-slate-700 text-[13px] truncate">{act.action}</p>
+                      <p className="font-bold text-slate-700 dark:text-zinc-200 text-[13px] truncate">{act.action}</p>
                       <p className="text-[11px] text-slate-400 font-medium truncate mt-0.5">{act.content}</p>
                       <p className="text-[10px] text-slate-400 font-bold mt-1">{act.createdAt ? new Date(act.createdAt).toLocaleDateString() : "—"}</p>
                     </div>
@@ -534,7 +546,7 @@ function Dashboard() {
                       </div>
                     </div>
                     {/* Progress bar */}
-                    <div className="w-full h-1.5 bg-white/5 rounded-full mb-8 overflow-hidden">
+                    <div className="w-full h-1.5 bg-white dark:bg-zinc-900/5 rounded-full mb-8 overflow-hidden">
                       <motion.div initial={{ width: 0 }} whileInView={{ width: `${progress}%` }} viewport={{ once: true }} transition={{ duration: 1, delay: 0.3 }}
                         className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full" />
                     </div>
@@ -542,7 +554,7 @@ function Dashboard() {
                       {checks.map((item, i) => (
                         <Link key={item.key} href={item.link}>
                           <motion.div initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08 }}
-                            className={`flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer group ${item.done ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white/[0.02] border-white/5 hover:border-amber-600/30 hover:bg-amber-600/5'}`}>
+                            className={`flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer group ${item.done ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white dark:bg-zinc-900/[0.02] border-white/5 hover:border-amber-600/30 hover:bg-amber-600/5'}`}>
                             <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${item.done ? 'border-emerald-500 bg-emerald-500/20' : 'border-stone-600 group-hover:border-amber-600'}`}>
                               {item.done && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                             </div>
@@ -810,14 +822,14 @@ function Dashboard() {
                 </motion.div>
 
                 {/* Progress overview */}
-                <div className="mb-12 p-6 border border-white/5 rounded-xl bg-white/[0.02]">
+                <div className="mb-12 p-6 border border-white/5 rounded-xl bg-white dark:bg-zinc-900/[0.02]">
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-stone-400 text-sm font-bold">Overall Progress</span>
                     <span className="text-amber-500 font-black text-lg">
                       {clientStats.milestones.filter((m: any) => m.status === 'Achieved').length}/{clientStats.milestones.length}
                     </span>
                   </div>
-                  <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-white dark:bg-zinc-900/5 rounded-full overflow-hidden">
                     <motion.div
                       initial={{ width: 0 }}
                       whileInView={{ width: `${(clientStats.milestones.filter((m: any) => m.status === 'Achieved').length / clientStats.milestones.length) * 100}%` }}
@@ -830,7 +842,7 @@ function Dashboard() {
 
                 {/* Timeline */}
                 <div className="relative">
-                  <div className="absolute left-[19px] top-0 bottom-0 w-px bg-white/10" />
+                  <div className="absolute left-[19px] top-0 bottom-0 w-px bg-white dark:bg-zinc-900/10" />
                   <div className="space-y-8">
                     {clientStats.milestones.map((m: any, index: number) => (
                       <motion.div
@@ -844,7 +856,7 @@ function Dashboard() {
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 ${
                           m.status === 'Achieved' ? 'bg-emerald-500/20 border border-emerald-500/40' :
                           m.status === 'InProgress' ? 'bg-amber-500/20 border border-amber-500/40' :
-                          'bg-white/5 border border-white/10'
+                          'bg-white dark:bg-zinc-900/5 border border-white/10'
                         }`}>
                           {m.status === 'Achieved' ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> :
                            m.status === 'InProgress' ? <Timer className="w-5 h-5 text-amber-400" /> :
@@ -853,7 +865,7 @@ function Dashboard() {
                         <div className={`flex-1 p-6 rounded-xl border ${
                           m.status === 'Achieved' ? 'border-emerald-500/20 bg-emerald-500/[0.03]' :
                           m.status === 'InProgress' ? 'border-amber-500/20 bg-amber-500/[0.03]' :
-                          'border-white/5 bg-white/[0.02]'
+                          'border-white/5 bg-white dark:bg-zinc-900/[0.02]'
                         }`}>
                           <div className="flex items-start justify-between gap-4">
                             <div>
@@ -863,7 +875,7 @@ function Dashboard() {
                             <span className={`text-[10px] font-bold tracking-[0.2em] uppercase px-3 py-1 rounded-full shrink-0 ${
                               m.status === 'Achieved' ? 'bg-emerald-500/20 text-emerald-400' :
                               m.status === 'InProgress' ? 'bg-amber-500/20 text-amber-400' :
-                              'bg-white/5 text-stone-500'
+                              'bg-white dark:bg-zinc-900/5 text-stone-500'
                             }`}>{m.status}</span>
                           </div>
                           {m.due_date && (
@@ -910,7 +922,7 @@ function Dashboard() {
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true }}
                       transition={{ delay: index * 0.08 }}
-                      className="p-8 bg-white rounded-xl border border-stone-200/60 hover:border-amber-600/30 hover:shadow-lg transition-all group"
+                      className="p-8 bg-white dark:bg-zinc-900 rounded-xl border border-stone-200/60 hover:border-amber-600/30 hover:shadow-lg transition-all group"
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className="p-3 rounded-xl bg-gradient-to-br from-sky-400 to-cyan-500">
@@ -972,7 +984,7 @@ function Dashboard() {
                 {clientStats.invoice_summary && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-16">
                     {[
-                      { label: 'Total Billed', value: clientStats.invoice_summary.total_billed, icon: DollarSign, color: 'text-white', bg: 'border-white/10 bg-white/[0.03]' },
+                      { label: 'Total Billed', value: clientStats.invoice_summary.total_billed, icon: DollarSign, color: 'text-white', bg: 'border-white/10 bg-white dark:bg-zinc-900/[0.03]' },
                       { label: 'Paid', value: clientStats.invoice_summary.total_paid, icon: CheckCircle, color: 'text-emerald-400', bg: 'border-emerald-500/20 bg-emerald-500/[0.05]' },
                       { label: 'Pending', value: clientStats.invoice_summary.total_pending, icon: Clock, color: 'text-amber-400', bg: 'border-amber-500/20 bg-amber-500/[0.05]' },
                       { label: 'Overdue', value: clientStats.invoice_summary.total_overdue, icon: AlertTriangle, color: 'text-rose-400', bg: 'border-rose-500/20 bg-rose-500/[0.05]' },
@@ -1003,10 +1015,10 @@ function Dashboard() {
                         whileInView={{ opacity: 1, y: 0 }}
                         viewport={{ once: true }}
                         transition={{ delay: index * 0.06 }}
-                        className="flex items-center justify-between py-6 border-b border-white/5 group hover:bg-white/[0.02] px-4 -mx-4 rounded-lg transition-colors"
+                        className="flex items-center justify-between py-6 border-b border-white/5 group hover:bg-white dark:bg-zinc-900/[0.02] px-4 -mx-4 rounded-lg transition-colors"
                       >
                         <div className="flex items-center gap-5">
-                          <div className="w-10 h-10 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
+                          <div className="w-10 h-10 rounded-lg bg-white dark:bg-zinc-900/5 border border-white/10 flex items-center justify-center">
                             <FileText className="w-4 h-4 text-stone-500" />
                           </div>
                           <div>
@@ -1019,7 +1031,7 @@ function Dashboard() {
                             inv.status === 'Paid' ? 'bg-emerald-500/20 text-emerald-400' :
                             inv.status === 'Overdue' ? 'bg-rose-500/20 text-rose-400' :
                             inv.status === 'Sent' ? 'bg-blue-500/20 text-blue-400' :
-                            'bg-white/5 text-stone-400'
+                            'bg-white dark:bg-zinc-900/5 text-stone-400'
                           }`}>{inv.status}</span>
                           <p className="text-white font-black text-lg w-28 text-right">${inv.total?.toLocaleString()}</p>
                         </div>
@@ -1040,7 +1052,7 @@ function Dashboard() {
                           whileInView={{ opacity: 1, y: 0 }}
                           viewport={{ once: true }}
                           transition={{ delay: index * 0.06 }}
-                          className="p-6 rounded-xl border border-white/5 bg-white/[0.02] hover:border-amber-600/20 transition-colors"
+                          className="p-6 rounded-xl border border-white/5 bg-white dark:bg-zinc-900/[0.02] hover:border-amber-600/20 transition-colors"
                         >
                           <div className="flex items-start justify-between">
                             <h4 className="font-bold text-white text-sm">{prop.title}</h4>
@@ -1048,7 +1060,7 @@ function Dashboard() {
                               prop.status === 'Accepted' ? 'bg-emerald-500/20 text-emerald-400' :
                               prop.status === 'Sent' ? 'bg-blue-500/20 text-blue-400' :
                               prop.status === 'Rejected' ? 'bg-rose-500/20 text-rose-400' :
-                              'bg-white/5 text-stone-500'
+                              'bg-white dark:bg-zinc-900/5 text-stone-500'
                             }`}>{prop.status}</span>
                           </div>
                           {prop.total_value && <p className="text-amber-400 font-black text-xl mt-3">${prop.total_value.toLocaleString()}</p>}
@@ -1112,7 +1124,7 @@ function Dashboard() {
                           <Lock className="w-3 h-3" />
                           <span className="text-[8px] font-bold tracking-[0.2em] uppercase">Secure</span>
                         </div>
-                        <Link href="/my-files" className="p-2.5 rounded-lg bg-white/5 text-stone-400 hover:bg-amber-600 hover:text-white transition-all">
+                        <Link href="/my-files" className="p-2.5 rounded-lg bg-white dark:bg-zinc-900/5 text-stone-400 hover:bg-amber-600 hover:text-white transition-all">
                           <Eye className="w-4 h-4" />
                         </Link>
                       </div>
@@ -1163,7 +1175,7 @@ function Dashboard() {
                             whileInView={{ opacity: 1, x: 0 }}
                             viewport={{ once: true }}
                             transition={{ delay: index * 0.05 }}
-                            className="flex items-start gap-4 p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                            className="flex items-start gap-4 p-4 rounded-xl border border-white/5 bg-white dark:bg-zinc-900/[0.02] hover:bg-white dark:bg-zinc-900/[0.04] transition-colors"
                           >
                             <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
                               <Activity className="w-3.5 h-3.5 text-indigo-400" />
@@ -1199,7 +1211,7 @@ function Dashboard() {
                             viewport={{ once: true }}
                             transition={{ delay: index * 0.05 }}
                             className={`flex items-start gap-4 p-4 rounded-xl border transition-colors ${
-                              notif.is_read ? 'border-white/5 bg-white/[0.02]' : 'border-amber-500/20 bg-amber-500/[0.04]'
+                              notif.is_read ? 'border-white/5 bg-white dark:bg-zinc-900/[0.02]' : 'border-amber-500/20 bg-amber-500/[0.04]'
                             }`}
                           >
                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
@@ -1265,7 +1277,7 @@ function Dashboard() {
                       viewport={{ once: true }}
                       transition={{ delay: index * 0.06 }}
                       whileHover={{ y: -2 }}
-                      className="p-8 bg-white rounded-xl border border-stone-200/60 hover:border-amber-600/30 hover:shadow-lg transition-all group cursor-pointer"
+                      className="p-8 bg-white dark:bg-zinc-900 rounded-xl border border-stone-200/60 hover:border-amber-600/30 hover:shadow-lg transition-all group cursor-pointer"
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className={cn("p-3 rounded-xl bg-gradient-to-br", card.gradient)}>
@@ -1291,7 +1303,7 @@ function Dashboard() {
                   <p className="text-amber-700 text-[10px] font-bold tracking-[0.25em] uppercase mb-4">Recommended For You</p>
                   <div className="flex flex-wrap gap-3">
                     {clientStats.recommended_services.split(',').map((s: string) => (
-                      <span key={s} className="px-5 py-2.5 bg-white border border-stone-200 text-stone-700 font-bold text-sm rounded-lg">{s.trim()}</span>
+                      <span key={s} className="px-5 py-2.5 bg-white dark:bg-zinc-900 border border-stone-200 text-stone-700 font-bold text-sm rounded-lg">{s.trim()}</span>
                     ))}
                   </div>
                 </motion.div>

@@ -74,6 +74,7 @@ from database import (
     Project,
     Proposal,
     Remark,
+    MarketplaceService,
     ServiceCatalog,
     ServiceRequest,
     Task,
@@ -92,10 +93,49 @@ def get_session():
     with Session(engine) as session:
         yield session
 
+from modules.api_tracker import current_client_id, current_salesperson_id, current_endpoint, patch_openai
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+class APIIntelligenceMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Reset context for this request
+        current_client_id.set(None)
+        current_salesperson_id.set(None)
+        current_endpoint.set(request.url.path)
+
+        # Try to infer user from JWT token if Authorization header exists
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            try:
+                import jwt
+                from config import SECRET_KEY, ALGORITHM
+                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                user_id = payload.get("sub")
+                if user_id:
+                    current_salesperson_id.set(int(user_id))
+            except:
+                pass
+        
+        # Try to infer client_id from path parameters
+        # Example paths: /clients/123/something or /projects/456 where we might need to lookup client
+        path_parts = request.url.path.strip("/").split("/")
+        if len(path_parts) >= 2 and path_parts[0] == "clients" and path_parts[1].isdigit():
+            current_client_id.set(int(path_parts[1]))
+            
+        response = await call_next(request)
+        return response
+
 app = FastAPI(title="SerpHawk CRM", version="2.0.0")
+app.add_middleware(APIIntelligenceMiddleware)
+
+from modules.api_intelligence import router as api_intelligence_router
+app.include_router(api_intelligence_router)
 
 @app.on_event("startup")
 def on_startup():
+    patch_openai()
     create_db_and_tables()
 
 allowed_origins = [
@@ -165,6 +205,7 @@ async def research_map_company_endpoint(body: ResearchMapRequest, background_tas
 class SmartResearchRequest(BaseModel):
     company_name: str
     company_url: Optional[str] = None
+    client_id: Optional[int] = None  # If set, link extracted services to this CRM client
 
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest):
@@ -332,6 +373,51 @@ Return ONLY valid JSON:
             "spanish_body": f"Hola,\n\nEncontré {company_name} y me impresionó lo que hacen. Me encantaría explorar cómo nuestros servicios de SEO y marketing digital podrían ayudar a acelerar su crecimiento.\n\nSaludos",
         }
 
+    # Step 5: Extract structured services offered by this company
+    extracted_services = []
+    try:
+        if website_content and not website_content.startswith("ERROR"):
+            from modules.llm_engine import extract_client_services
+            extracted_services = extract_client_services(website_content, company_info.get("company_name", company_name))
+        elif company_info.get("key_value_props"):
+            # Fallback: convert key_value_props to minimal service objects
+            extracted_services = [
+                {"name": s, "brief": "", "category": "Other", "approx_cost": 0, "cost_is_estimated": True}
+                for s in company_info["key_value_props"]
+            ]
+    except Exception as _e:
+        print(f"Service extraction warning: {_e}")
+
+    # Step 6: If a client_id is linked, persist services to client + marketplace
+    if body.client_id and extracted_services:
+        try:
+            from sqlmodel import Session as _Session
+            with _Session(engine) as _sess:
+                cp = _sess.get(ClientProfile, body.client_id)
+                if cp:
+                    import json as _json2
+                    cp.services_offered = _json2.dumps(extracted_services)
+                    _sess.add(cp)
+                    # Also upsert into marketplace
+                    for svc in extracted_services:
+                        ms = MarketplaceService(
+                            service_name=svc.get("name", ""),
+                            normalized_name=svc.get("name", ""),
+                            category=svc.get("category"),
+                            description=svc.get("brief"),
+                            estimated_cost=float(svc.get("approx_cost", 0)),
+                            cost_is_estimated=svc.get("cost_is_estimated", True),
+                            provider_name=cp.companyName,
+                            provider_client_id=body.client_id,
+                            provider_industry=cp.industry,
+                            provider_address=cp.address,
+                            source="email_agent",
+                        )
+                        _sess.add(ms)
+                    _sess.commit()
+        except Exception as _e2:
+            print(f"Service persist warning: {_e2}")
+
     return {
         "company_info": company_info,
         "company_url": body.company_url or company_info.get("website") or "",
@@ -347,6 +433,7 @@ Return ONLY valid JSON:
         "email_hook": services_result.get("email_hook", ""),
         "package_suggestion": services_result.get("package_suggestion", ""),
         "draft": draft,
+        "extracted_services": extracted_services,
     }
 
 # --- Send Manual: create client + record email + activity ---
@@ -362,6 +449,7 @@ class SendManualRequest(BaseModel):
     website_url: Optional[str] = None
     phone_number: Optional[str] = None
     manual: Optional[bool] = True
+    email_agent_data: Optional[str] = None
 
 @app.post("/send-manual")
 def send_manual(body: SendManualRequest, session: Session = Depends(get_session)):
@@ -415,6 +503,22 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
         session.add(client_profile)
         session.commit()
         session.refresh(client_profile)
+
+    # Step 2.5: Find or create ClientResearch to save email_agent_data
+    if body.email_agent_data:
+        client_research = session.exec(
+            select(ClientResearch).where(ClientResearch.client_id == client_profile.id)
+        ).first()
+        if not client_research:
+            client_research = ClientResearch(
+                client_id=client_profile.id,
+                email_agent_data=body.email_agent_data
+            )
+            session.add(client_research)
+        else:
+            client_research.email_agent_data = body.email_agent_data
+            session.add(client_research)
+        session.commit()
 
     # Step 2.5: Normalize and validate recipient email
     to_email = (body.to_email or "").strip()
@@ -562,6 +666,7 @@ class LoginRequest(BaseModel):
 class ChatbotRequest(BaseModel):
     message: str
     client_id: Optional[int] = None
+    current_route: Optional[str] = None
 
 
 class CreateUserRequest(BaseModel):
@@ -661,6 +766,7 @@ class ClientFollowUpRequest(BaseModel):
     task_description: Optional[str] = None
     assigned_to: Optional[int] = None
     due_date: Optional[str] = None
+    email_agent_data: Optional[str] = None
 
 
 class ProjectCreateRequest(BaseModel):
@@ -1338,6 +1444,21 @@ def add_client_followup(client_id: int, body: ClientFollowUpRequest, session: Se
     session.commit()
     session.refresh(remark)
 
+    if body.email_agent_data:
+        client_research = session.exec(
+            select(ClientResearch).where(ClientResearch.client_id == client_id)
+        ).first()
+        if not client_research:
+            client_research = ClientResearch(
+                client_id=client_id,
+                email_agent_data=body.email_agent_data
+            )
+            session.add(client_research)
+        else:
+            client_research.email_agent_data = body.email_agent_data
+            session.add(client_research)
+        session.commit()
+
     task_response = None
     if body.task_title:
         task = Task(
@@ -1384,8 +1505,8 @@ def get_client_emails(client_id: int, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
-    return {"emails": []}
-
+    emails = session.exec(select(SentEmail).where(SentEmail.client_id == client_id).order_by(SentEmail.sent_at.desc())).all()
+    return {"emails": emails}
 
 # ─── Client Notes ──────────────────────────────────────────────────────────────
 
@@ -1564,6 +1685,7 @@ def get_client_research(client_id: int, session: Session = Depends(get_session))
         "competitors": research.competitors, "tech_stack": research.tech_stack,
         "recent_news": research.recent_news, "pain_points": research.pain_points,
         "business_goals": research.business_goals, "key_decision_makers": research.key_decision_makers,
+        "email_agent_data": research.email_agent_data,
         "updated_at": research.updated_at.isoformat(),
     }}
 
@@ -1644,6 +1766,239 @@ def auto_research_client(client_id: int, session: Session = Depends(get_session)
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
+
+
+@app.post("/clients/{client_id}/generate-outbound-draft")
+def generate_outbound_draft(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    try:
+        from modules.llm_engine import get_openai_client
+        import json as _json
+        client_ai = get_openai_client()
+        
+        # Get existing research
+        research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+        research_context = ""
+        if research:
+            research_context = f"""
+            Company Overview: {research.company_overview or 'N/A'}
+            Pain Points: {research.pain_points or 'N/A'}
+            Business Goals: {research.business_goals or 'N/A'}
+            """
+            if research.email_agent_data:
+                try:
+                    ea_data = _json.loads(research.email_agent_data)
+                    research_context += f"\nEmail Agent Intel: {_json.dumps(ea_data.get('company_info', {}), indent=2)}"
+                except:
+                    pass
+
+        # Get Notes and Conversations
+        notes = session.exec(select(ClientNote).where(ClientNote.client_id == client_id).order_by(ClientNote.created_at.desc()).limit(10)).all()
+        conversations = session.exec(select(ClientConversation).where(ClientConversation.client_id == client_id).order_by(ClientConversation.date.desc()).limit(5)).all()
+        
+        interaction_context = ""
+        if notes:
+            interaction_context += "Recent Notes:\n" + "\n".join([f"- {n.content}" for n in notes]) + "\n"
+        if conversations:
+            interaction_context += "Recent Conversations:\n" + "\n".join([f"- {c.type} on {c.date}: {c.summary}" for c in conversations]) + "\n"
+
+        prompt = f"""
+        You are an expert SDR (Sales Development Representative) at an agency. 
+        Write a highly personalized, cold outreach email draft for the following prospect.
+        Company: {cp.companyName or 'Unknown'}
+        Website: {cp.websiteUrl or 'Unknown'}
+        {research_context}
+
+        {interaction_context}
+        If there are recent notes or conversations above, make sure the email acknowledges them appropriately as a follow-up. If none exist, write a standard cold outreach email based on the research.
+
+        
+        Return ONLY valid JSON matching this schema exactly (no markdown formatting):
+        {{
+            "subject": "Email subject",
+            "english_body": "Email body in English",
+            "spanish_body": "Email body translated to Spanish",
+            "whatsapp_draft": "Short, punchy WhatsApp message (plain text, emojis allowed)"
+        }}
+        """
+        
+        resp = client_ai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=800,
+        )
+        content = resp.choices[0].message.content.strip()
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+        elif content.startswith("```"):
+            content = content[3:-3].strip()
+            
+        data = _json.loads(content)
+        
+        # Save as a draft in SentEmail
+        from database import SentEmail, User
+        user = session.get(User, cp.userId) if cp.userId else None
+        to_email = user.email if user else "unknown@example.com"
+        
+        draft = SentEmail(
+            client_id=client_id,
+            to_email=to_email,
+            subject=data.get("subject", "Proposal"),
+            english_body=data.get("english_body", ""),
+            spanish_body=data.get("spanish_body", ""),
+            draft_json=_json.dumps(data),
+            manual=True,
+            sent_at=datetime.utcnow()
+        )
+        session.add(draft)
+        session.commit()
+        return {"ok": True, "draft": data, "email_id": draft.id}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate draft: {str(e)}")
+
+
+# ─── Extract Client Services from Website ─────────────────────────────────────
+
+@app.post("/clients/{client_id}/extract-services")
+async def extract_client_services_endpoint(client_id: int, session: Session = Depends(get_session)):
+    """
+    Scrapes the client's website and uses AI to extract services they offer.
+    Falls back to LLM world-knowledge when website is unreachable (DNS, timeout, bot-block).
+    Stores results in: ClientProfile.services_offered + MarketplaceService table.
+    """
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    website_url = cp.websiteUrl
+    company_name = cp.companyName or "Unknown Company"
+
+    if not website_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Client has no website URL. Add one in the client profile first."
+        )
+
+    # ── Step 1: Try scraping (fail gracefully on any network error) ────────────
+    website_text = ""
+    scrape_method = "website_scrape"
+    try:
+        from modules.scraper import scrape_website
+        website_text = await scrape_website(website_url)
+        if website_text.startswith("ERROR"):
+            print(f"[extract-services] Scrape failed for {website_url}: {website_text[:100]}. Falling back to LLM.")
+            website_text = ""
+            scrape_method = "llm_fallback"
+    except Exception as scrape_err:
+        print(f"[extract-services] Scraper exception ({website_url}): {scrape_err}. Falling back to LLM.")
+        scrape_method = "llm_fallback"
+
+    # ── Step 2: Extract services (from scraped text, or via LLM knowledge) ─────
+    import json as _json
+    from modules.llm_engine import extract_client_services as _extract_services, get_openai_client
+
+    services = []
+
+    if website_text:
+        services = _extract_services(website_text, company_name)
+
+    # If scraping failed or extracted nothing → use LLM world-knowledge fallback
+    if not services:
+        scrape_method = "llm_fallback"
+        try:
+            oai = get_openai_client()
+            fallback_prompt = f"""You are a B2B business intelligence expert.
+
+The company "{company_name}" has website: {website_url}
+Industry: {cp.industry or "unknown"}
+
+We could not access their website. Based on the company name, domain, and industry,
+list the most likely services they offer.
+
+Return ONLY valid JSON:
+{{
+  "services": [
+    {{
+      "name": "Service name",
+      "brief": "1-2 sentence description of this service",
+      "category": "One of: SEO, Web Design, Marketing, Plumbing, Legal, Accounting, Consulting, Construction, Healthcare, Real Estate, IT Services, Landscaping, Cleaning, Electrical, HVAC, Retail, Education, Finance, Transportation, Other",
+      "approx_cost": 1200,
+      "cost_is_estimated": true
+    }}
+  ]
+}}
+
+Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for fallback."""
+            resp = oai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": fallback_prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.3,
+            )
+            services = _json.loads(resp.choices[0].message.content).get("services", [])
+        except Exception as llm_err:
+            print(f"[extract-services] LLM fallback also failed: {llm_err}")
+
+    if not services:
+        return {
+            "ok": False,
+            "services": [],
+            "scrape_method": scrape_method,
+            "message": "Could not extract services. Try adding the Industry field to improve AI fallback accuracy.",
+        }
+
+    # ── Step 3: Save to ClientProfile.services_offered ────────────────────────
+    cp.services_offered = _json.dumps(services)
+    session.add(cp)
+
+    # ── Step 4: Upsert into MarketplaceService (skip exact name duplicates) ───
+    existing = session.exec(
+        select(MarketplaceService).where(
+            MarketplaceService.provider_client_id == client_id,
+            MarketplaceService.is_active == True,
+        )
+    ).all()
+    existing_names = {s.service_name.lower() for s in existing}
+
+    added = 0
+    for svc in services:
+        svc_name = svc.get("name", "").strip()
+        if not svc_name or svc_name.lower() in existing_names:
+            continue
+        ms = MarketplaceService(
+            service_name=svc_name,
+            normalized_name=svc_name,
+            category=svc.get("category"),
+            description=svc.get("brief"),
+            estimated_cost=float(svc.get("approx_cost", 0)),
+            cost_is_estimated=svc.get("cost_is_estimated", True),
+            provider_name=company_name,
+            provider_client_id=client_id,
+            provider_industry=cp.industry,
+            provider_address=cp.address,
+            source=scrape_method,
+        )
+        session.add(ms)
+        existing_names.add(svc_name.lower())
+        added += 1
+
+    session.commit()
+
+    method_label = "live website" if scrape_method == "website_scrape" else "AI knowledge (site unreachable)"
+    return {
+        "ok": True,
+        "services": services,
+        "scrape_method": scrape_method,
+        "marketplace_entries_added": added,
+        "message": f"Extracted {len(services)} services via {method_label}. Added {added} to Marketplace.",
+    }
+
+
 
 # ─── AI Copilot Insights ──────────────────────────────────────────────────────
 
@@ -2750,6 +3105,12 @@ def dashboard_stats(
     total_activities = len(session.exec(select(ActivityLog)).all())
     total_calls = len(session.exec(select(CallLog)).all())
 
+    try:
+        from database import MarketplaceService
+        total_marketplace = len(session.exec(select(MarketplaceService)).all())
+    except:
+        total_marketplace = 0
+
     # Build real 7-day chart data from database
     labels = []
     activity_chart = []
@@ -2783,6 +3144,7 @@ def dashboard_stats(
         "totalActivities": total_activities,
         "totalCalls": total_calls,
         "totalEmailsSent": total_emails_sent,
+        "totalMarketplaceServices": total_marketplace,
         "chartLabels": labels,
         "activityChart": activity_chart,
         "emailChart": email_chart,
@@ -4681,69 +5043,383 @@ def update_portal_config(body: Dict[str, Any]):
             else:
                 _portal_config[key] = val
     return {"ok": True, "config": _portal_config}
+# ─── Auto-fill Client Endpoint ───────────────────────────────────────────────
+class AutoFillRequest(BaseModel):
+    website: str
+
+@app.post("/clients/auto-fill")
+async def auto_fill_client(request: AutoFillRequest):
+    from modules.scraper import scrape_website
+    from modules.llm_engine import extract_client_profile_from_website
+    
+    try:
+        raw_text = await scrape_website(request.website)
+        if not raw_text:
+            return {"ok": False, "error": "Could not extract content from the website."}
+            
+        profile_data = extract_client_profile_from_website(raw_text, request.website)
+        return {"ok": True, "data": profile_data}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 # ─── Chatbot endpoint ────────────────────────────────────────────────────────
 @app.post("/chatbot/message")
-def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_session)):
+async def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_session)):
     from modules.llm_engine import process_chatbot_command
-    from database import ClientProfile, ClientNote, ConversationLog, ActivityLog
+    from database import ClientProfile, ClientNote, ConversationLog, ActivityLog, Project, MarketplaceService, User
     
     client_context = None
     if request.client_id:
         cp = session.get(ClientProfile, request.client_id)
         if cp:
             client_context = {
+                "client_id": cp.id,
                 "company_name": cp.companyName,
                 "contact_person": cp.contact_person,
                 "email": cp.user.email if cp.user else None,
                 "industry": cp.industry
             }
             
-    result = process_chatbot_command(request.message, client_context)
+    # Advanced AI processing
+    result = process_chatbot_command(request.message, client_context, request.current_route)
     
     intent = result.get("intent", "general")
+    params = result.get("parameters", {})
     action_taken = None
+    route = None
     
-    if request.client_id and intent == "add_note":
-        new_note = ClientNote(
-            client_id=request.client_id,
-            content=result.get("content", ""),
-            author_name="AI Assistant",
-            type="Note"
-        )
-        session.add(new_note)
-        
-        log = ActivityLog(
-            clientId=request.client_id,
-            action="Note Added via AI Assistant",
-            details=result.get("content", "")[:100],
-            method="bot"
-        )
-        session.add(log)
-        session.commit()
-        action_taken = "note_added"
-        
-    elif request.client_id and intent == "log_conversation":
-        new_conv = ConversationLog(
-            client_id=request.client_id,
-            title=result.get("title", "Conversation"),
-            type=result.get("type", "call"),
-            description=result.get("content", ""),
-            author_name="AI Assistant"
-        )
-        session.add(new_conv)
-        
-        log = ActivityLog(
-            clientId=request.client_id,
-            action=f"Logged {new_conv.type} via AI Assistant",
-            details=new_conv.title,
-            method="bot"
-        )
-        session.add(log)
-        session.commit()
-        action_taken = "conversation_logged"
-        
+    try:
+        if intent == "create_client":
+            from modules.scraper import scrape_website
+            from modules.llm_engine import extract_client_profile_from_website
+            
+            # Scrape if website is provided
+            website_url = params.get("website")
+            scraped_data = {}
+            if website_url:
+                try:
+                    raw_text = await scrape_website(website_url)
+                    if raw_text:
+                        scraped_data = extract_client_profile_from_website(raw_text, website_url)
+                except Exception as e:
+                    print(f"Scraping failed during auto-fill: {e}")
+
+            # Check if email exists
+            email = params.get("email") or scraped_data.get("email") or f"bot_{datetime.utcnow().timestamp()}@placeholder.com"
+            existing_user = session.exec(select(User).where(User.email == email)).first() if hasattr(User, 'email') else None
+            user = existing_user
+            
+            if not user:
+                user = User(
+                    email=email,
+                    password="changeme",
+                    name=params.get("company_name") or scraped_data.get("companyName") or "Client",
+                    role="Client",
+                )
+                session.add(user)
+                session.commit()
+                session.refresh(user)
+
+            # Map targetKeywords if present
+            keywords = scraped_data.get("targetKeywords", "")
+            if isinstance(keywords, str):
+                keywords = [k.strip() for k in keywords.split(',') if k.strip()]
+
+            cp = ClientProfile(
+                userId=user.id,
+                companyName=params.get("company_name") or scraped_data.get("companyName") or "New Client",
+                websiteUrl=website_url,
+                phone=params.get("phone", ""),
+                status="Active",
+                seoStrategy=scraped_data.get("seoStrategy", ""),
+                tagline=scraped_data.get("tagline", ""),
+                targetKeywords=keywords if keywords else None
+            )
+            session.add(cp)
+            session.commit()
+            session.refresh(cp)
+            action_taken = "client_created"
+            route = f"/admin/clients/{cp.id}"
+            
+        elif intent == "create_project":
+            p = Project(
+                name=params.get("project_name", "New Project"),
+                description=params.get("description", ""),
+                status="Active",
+                progress=0
+            )
+            session.add(p)
+            session.commit()
+            session.refresh(p)
+            action_taken = "project_created"
+            route = f"/admin/projects/{p.id}"
+            
+        elif intent == "search_marketplace":
+            query = params.get("search_query", "")
+            action_taken = "navigate"
+            route = f"/admin/marketplace?search={query}"
+            
+        elif intent == "draft_email":
+            # Auto-route to email agent
+            action_taken = "navigate"
+            route = "/email-agent"
+            # We could pre-fill by setting query params if email agent supported it
+            
+        elif intent == "navigate":
+            action_taken = "navigate"
+            route = params.get("route", "/admin")
+            
+        elif intent == "add_note":
+            target_client_id = request.client_id or params.get("client_id")
+            if target_client_id:
+                new_note = ClientNote(
+                    client_id=target_client_id,
+                    content=params.get("content", result.get("content", "")),
+                    author_name="AI Assistant",
+                    type="Note"
+                )
+                session.add(new_note)
+                log = ActivityLog(clientId=target_client_id, action="Note Added via AI Assistant", details=new_note.content[:100], method="bot")
+                session.add(log)
+                session.commit()
+                action_taken = "note_added"
+                
+        elif intent == "log_conversation":
+            target_client_id = request.client_id or params.get("client_id")
+            if target_client_id:
+                new_conv = ConversationLog(
+                    client_id=target_client_id,
+                    title=params.get("title", result.get("title", "Conversation")),
+                    type=params.get("type", result.get("type", "call")),
+                    description=params.get("content", result.get("content", "")),
+                    author_name="AI Assistant"
+                )
+                session.add(new_conv)
+                log = ActivityLog(clientId=target_client_id, action=f"Logged {new_conv.type} via AI Assistant", details=new_conv.title, method="bot")
+                session.add(log)
+                session.commit()
+                action_taken = "conversation_logged"
+                
+    except Exception as e:
+        print(f"Chatbot mutation error: {e}")
+
     return {
         "reply": result.get("reply", "I processed your request."),
         "intent": intent,
-        "action_taken": action_taken
+        "action_taken": action_taken,
+        "route": route
     }
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Marketplace Catalog
+# ─────────────────────────────────────────────────────────────────────────────
+
+class MarketplaceServiceCreate(BaseModel):
+    service_name: str
+    category: Optional[str] = None
+    description: Optional[str] = None
+    estimated_cost: float = 0.0
+    provider_client_id: Optional[int] = None
+    provider_name: Optional[str] = None
+
+class MarketplaceServiceUpdate(BaseModel):
+    service_name: Optional[str] = None
+    normalized_name: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    estimated_cost: Optional[float] = None
+    cost_is_estimated: Optional[bool] = None
+    provider_name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+def _marketplace_row(s: MarketplaceService) -> dict:
+    return {
+        "id": s.id,
+        "service_name": s.service_name,
+        "normalized_name": s.normalized_name,
+        "category": s.category,
+        "description": s.description,
+        "estimated_cost": s.estimated_cost,
+        "cost_is_estimated": s.cost_is_estimated,
+        "provider_name": s.provider_name,
+        "provider_client_id": s.provider_client_id,
+        "provider_industry": s.provider_industry,
+        "provider_address": s.provider_address,
+        "source": s.source,
+        "is_active": s.is_active,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+
+@app.get("/marketplace/services")
+def list_marketplace_services(
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    min_cost: Optional[float] = None,
+    max_cost: Optional[float] = None,
+    provider: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 18,
+    session: Session = Depends(get_session),
+):
+    query = select(MarketplaceService).where(MarketplaceService.is_active == True)
+
+    if search:
+        like = f"%{search}%"
+        query = query.where(
+            or_(
+                MarketplaceService.service_name.ilike(like),
+                MarketplaceService.description.ilike(like),
+                MarketplaceService.provider_name.ilike(like),
+            )
+        )
+    if category:
+        query = query.where(MarketplaceService.category.ilike(f"%{category}%"))
+    if min_cost is not None:
+        query = query.where(MarketplaceService.estimated_cost >= min_cost)
+    if max_cost is not None:
+        query = query.where(MarketplaceService.estimated_cost <= max_cost)
+    if provider:
+        query = query.where(MarketplaceService.provider_name.ilike(f"%{provider}%"))
+
+    total = len(session.exec(query).all())
+    offset = (page - 1) * per_page
+    items = session.exec(query.offset(offset).limit(per_page)).all()
+
+    return {
+        "services": [_marketplace_row(s) for s in items],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page)),
+    }
+
+
+@app.post("/marketplace/services")
+def create_marketplace_service(
+    body: MarketplaceServiceCreate,
+    session: Session = Depends(get_session),
+):
+    # Auto-fill provider info from CRM if client_id given
+    provider_name = body.provider_name
+    provider_industry = None
+    provider_address = None
+    if body.provider_client_id:
+        cp = session.get(ClientProfile, body.provider_client_id)
+        if cp:
+            provider_name = provider_name or cp.companyName
+            provider_industry = cp.industry
+            provider_address = cp.address
+
+    svc = MarketplaceService(
+        service_name=body.service_name,
+        category=body.category,
+        description=body.description,
+        estimated_cost=body.estimated_cost,
+        provider_client_id=body.provider_client_id,
+        provider_name=provider_name,
+        provider_industry=provider_industry,
+        provider_address=provider_address,
+        source="manual",
+    )
+    session.add(svc)
+    session.commit()
+    session.refresh(svc)
+    return {"service": _marketplace_row(svc)}
+
+
+@app.put("/marketplace/services/{service_id}")
+def update_marketplace_service(
+    service_id: int,
+    body: MarketplaceServiceUpdate,
+    session: Session = Depends(get_session),
+):
+    svc = session.get(MarketplaceService, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(svc, field, value)
+    svc.updated_at = datetime.utcnow()
+    session.add(svc)
+    session.commit()
+    session.refresh(svc)
+    return {"service": _marketplace_row(svc)}
+
+
+@app.delete("/marketplace/services/{service_id}")
+def delete_marketplace_service(
+    service_id: int,
+    session: Session = Depends(get_session),
+):
+    svc = session.get(MarketplaceService, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    svc.is_active = False
+    svc.updated_at = datetime.utcnow()
+    session.add(svc)
+    session.commit()
+    return {"success": True}
+
+
+@app.get("/marketplace/categories")
+def list_marketplace_categories(session: Session = Depends(get_session)):
+    rows = session.exec(
+        select(MarketplaceService.category)
+        .where(MarketplaceService.is_active == True)
+        .where(MarketplaceService.category != None)
+        .distinct()
+        .order_by(MarketplaceService.category)
+    ).all()
+    return {"categories": [r for r in rows if r]}
+
+
+@app.post("/marketplace/services/{service_id}/ai-categorize")
+def ai_categorize_marketplace_service(
+    service_id: int,
+    session: Session = Depends(get_session),
+):
+    svc = session.get(MarketplaceService, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    import openai, os
+    client_ai = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    prompt = f"""You are a B2B service categorization expert.
+
+Given this service:
+Name: {svc.service_name}
+Description: {svc.description or 'N/A'}
+Provider Industry: {svc.provider_industry or 'N/A'}
+
+Respond with ONLY valid JSON (no markdown):
+{{
+  "normalized_name": "<clean, professional service name>",
+  "category": "<one of: SEO, Web Design, Plumbing, Legal, Accounting, Marketing, Consulting, Construction, Healthcare, Real Estate, IT Services, Landscaping, Cleaning, Electrical, HVAC, Other>",
+  "estimated_cost_usd": <number or null if truly unknown>,
+  "cost_is_estimated": <true or false>
+}}"""
+
+    try:
+        response = client_ai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+        import json
+        data = json.loads(response.choices[0].message.content.strip())
+        svc.normalized_name = data.get("normalized_name", svc.service_name)
+        svc.category = data.get("category", svc.category)
+        if data.get("estimated_cost_usd") is not None:
+            svc.estimated_cost = float(data["estimated_cost_usd"])
+            svc.cost_is_estimated = data.get("cost_is_estimated", True)
+        svc.updated_at = datetime.utcnow()
+        session.add(svc)
+        session.commit()
+        session.refresh(svc)
+        return {"service": _marketplace_row(svc)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI categorization failed: {e}")

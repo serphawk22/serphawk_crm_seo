@@ -116,10 +116,10 @@ export default function PageGuide({ pageKey, title, description, steps, buttonCl
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.96 }}
               transition={{ type: 'spring', damping: 28, stiffness: 340 }}
-              className="relative w-full max-w-[420px] bg-white rounded-3xl shadow-2xl overflow-hidden"
+              className="relative w-full max-w-[420px] bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl overflow-hidden"
             >
               {/* Progress bar */}
-              <div className="h-1 bg-gray-100">
+              <div className="h-1 bg-gray-100 dark:bg-zinc-800">
                 <motion.div
                   className="h-full bg-black"
                   animate={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
@@ -130,14 +130,14 @@ export default function PageGuide({ pageKey, title, description, steps, buttonCl
               {/* Close */}
               <button
                 onClick={finish}
-                className="absolute top-3.5 right-3.5 p-1.5 rounded-xl text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors z-10"
+                className="absolute top-3.5 right-3.5 p-1.5 rounded-xl text-gray-300 hover:text-gray-500 dark:text-zinc-400 hover:bg-gray-100 dark:bg-zinc-800 transition-colors z-10"
               >
                 <X className="w-4 h-4" />
               </button>
 
               {/* Step label */}
               <div className="px-7 pt-6">
-                <span className="text-[11px] font-bold text-black uppercase tracking-widest">
+                <span className="text-[11px] font-bold text-black dark:text-white uppercase tracking-widest">
                   Step {currentStep + 1} of {totalSteps}
                 </span>
               </div>
@@ -157,15 +157,15 @@ export default function PageGuide({ pageKey, title, description, steps, buttonCl
                   >
                     {currentStep === 0 ? (
                       <>
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gray-100 mb-4">
-                          <Sparkles className="w-8 h-8 text-black" />
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gray-100 dark:bg-zinc-800 mb-4">
+                          <Sparkles className="w-8 h-8 text-black dark:text-white" />
                         </div>
-                        <h2 className="text-lg font-bold text-gray-900 mb-2">{title}</h2>
-                        <p className="text-[13px] text-gray-500 leading-relaxed max-w-xs mx-auto">{description}</p>
+                        <h2 className="text-lg font-bold text-gray-900 dark:text-zinc-50 mb-2">{title}</h2>
+                        <p className="text-[13px] text-gray-500 dark:text-zinc-400 leading-relaxed max-w-xs mx-auto">{description}</p>
                       </>
                     ) : (
                       <>
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gray-100 mb-4 text-black">
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gray-100 dark:bg-zinc-800 mb-4 text-black dark:text-white">
                           {typeof steps[currentStep - 1].icon === 'string' ? (
                             <span className="text-4xl">{steps[currentStep - 1].icon}</span>
                           ) : (
@@ -174,7 +174,7 @@ export default function PageGuide({ pageKey, title, description, steps, buttonCl
                             </div>
                           )}
                         </div>
-                        <p className="text-[13px] text-gray-700 leading-relaxed max-w-xs mx-auto font-medium">{steps[currentStep - 1].text}</p>
+                        <p className="text-[13px] text-gray-700 dark:text-zinc-200 leading-relaxed max-w-xs mx-auto font-medium">{steps[currentStep - 1].text}</p>
                       </>
                     )}
                   </motion.div>
@@ -194,7 +194,7 @@ export default function PageGuide({ pageKey, title, description, steps, buttonCl
                         i === currentStep
                           ? 'w-7 bg-black'
                           : i < currentStep
-                            ? 'w-2 bg-gray-400 hover:bg-gray-500'
+                            ? 'w-2 bg-gray-400 hover:bg-gray-50 dark:bg-zinc-9500'
                             : 'w-2 bg-gray-200 hover:bg-gray-300'
                       }`}
                     />
@@ -206,14 +206,14 @@ export default function PageGuide({ pageKey, title, description, steps, buttonCl
                   {currentStep === 0 ? (
                     <button
                       onClick={finish}
-                      className="px-3 py-2 text-xs font-medium text-gray-400 hover:text-gray-600 rounded-xl transition-colors"
+                      className="px-3 py-2 text-xs font-medium text-gray-400 hover:text-gray-600 dark:text-zinc-300 rounded-xl transition-colors"
                     >
                       Skip tour
                     </button>
                   ) : (
                     <button
                       onClick={handleBack}
-                      className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                      className="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:bg-zinc-800 transition-colors"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
