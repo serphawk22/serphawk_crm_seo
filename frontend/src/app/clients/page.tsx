@@ -388,7 +388,7 @@ export default function ClientsPage() {
         initial="hidden" animate="show" variants={containerVariants}
         className="flex-1 space-y-8 min-w-0"
       >
-      <motion.div variants={itemVariants} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10 w-full bg-white dark:bg-zinc-900/40 backdrop-blur-2xl p-6 rounded-[2rem] border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.05)]">
+      <motion.div variants={itemVariants} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10 w-full glass-card p-6 rounded-[2rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)]">
         <div>
           <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-900 tracking-tight">{t("clients.title")}</h1>
           <p className="text-slate-500 dark:text-zinc-400 font-medium text-sm mt-1">{t("clients.description")}</p>
@@ -424,7 +424,7 @@ export default function ClientsPage() {
 
       {/* KPI Cards */}
       <motion.div variants={itemVariants} className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-        <div className="bg-white dark:bg-zinc-900/40 backdrop-blur-xl p-6 rounded-[2rem] border border-white/60 shadow-sm relative overflow-hidden group">
+        <div className="glass-card p-6 rounded-[2rem] shadow-sm relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Users className="w-16 h-16 text-indigo-600" /></div>
           <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-2">{t("clients.total_accounts")}</p>
           <p className="text-4xl font-black text-slate-800 dark:text-zinc-100">{totalCount}</p>
@@ -433,7 +433,7 @@ export default function ClientsPage() {
           )}
         </div>
         {statuses.slice(0, 3).map((status) => (
-          <div key={status.id} className="bg-white dark:bg-zinc-900/40 backdrop-blur-xl p-6 rounded-[2rem] border border-white/60 shadow-sm relative overflow-hidden group">
+          <div key={status.id} className="glass-card p-6 rounded-[2rem] shadow-sm relative overflow-hidden group">
              <div className="absolute top-0 left-0 w-1.5 h-full" style={{ backgroundColor: status.color.replace('bg-', '') || '#6366f1' }}></div>
              <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-2 pl-2">{status.name}</p>
              <p className="text-4xl font-black text-slate-800 dark:text-zinc-100 pl-2">{clients.filter(c => c.status === status.name).length}</p>
@@ -448,7 +448,7 @@ export default function ClientsPage() {
         className="w-full xl:w-[450px] shrink-0 relative"
       >
         <div className="xl:absolute xl:inset-0 w-full h-full">
-          <div className="bg-white dark:bg-zinc-900/40 backdrop-blur-2xl rounded-[2.5rem] border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.05)] p-6 h-full flex flex-col">
+          <div className="glass-card rounded-[2.5rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)] p-6 h-full flex flex-col">
           <div className="flex items-center gap-3 mb-6 shrink-0">
             <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl"><Activity className="w-5 h-5" /></div>
             <h3 className="text-lg font-black text-slate-800 dark:text-zinc-100">{language === 'es' ? 'Actividad Reciente' : 'Recent Activity'}</h3>
@@ -477,14 +477,14 @@ export default function ClientsPage() {
       </div>
 
       {/* Main Glass Box */}
-      <motion.div variants={itemVariants} className="bg-white dark:bg-zinc-900/40 backdrop-blur-2xl rounded-[2.5rem] border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.05)] overflow-hidden">
-        <div className="p-6 border-b border-white/60 flex flex-col md:flex-row gap-6 justify-between items-center bg-white dark:bg-zinc-900/20">
+      <motion.div variants={itemVariants} className="glass-card rounded-[2.5rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)] overflow-hidden">
+        <div className="p-6 border-b border-white/10 dark:border-white/5 flex flex-col md:flex-row gap-6 justify-between items-center bg-black/5 dark:bg-white/5">
           <div className="relative w-full md:w-[28rem]">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-400" />
             <input 
               type="text" 
               placeholder={t("clients.search_placeholder")} 
-              className="w-full pl-12 pr-4 py-3 bg-white dark:bg-zinc-900/70 border border-white/80 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-medium text-slate-700 dark:text-zinc-200 placeholder:text-slate-400 shadow-sm"
+              className="w-full pl-12 pr-4 py-3 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-medium text-slate-700 dark:text-zinc-200 placeholder:text-slate-400 shadow-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -495,7 +495,7 @@ export default function ClientsPage() {
               onClick={() => { setFilter('All'); setPage(1); }}
               className={cn(
                 "px-5 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-colors",
-                filter === 'All' ? "bg-indigo-600 text-white shadow-md" : "bg-white dark:bg-zinc-900/60 text-slate-600 dark:text-zinc-300 hover:bg-white dark:bg-zinc-900"
+                filter === 'All' ? "bg-indigo-600 text-white shadow-md" : "bg-black/5 dark:bg-white/5 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/10"
               )}
             >
               {t("clients.all_hubs")}
@@ -506,7 +506,7 @@ export default function ClientsPage() {
                 onClick={() => { setFilter(stat.name); setPage(1); }}
                 className={cn(
                   "px-5 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-colors",
-                  filter === stat.name ? "bg-indigo-600 text-white shadow-md" : "bg-white dark:bg-zinc-900/60 text-slate-600 dark:text-zinc-300 hover:bg-white dark:bg-zinc-900"
+                  filter === stat.name ? "bg-indigo-600 text-white shadow-md" : "bg-black/5 dark:bg-white/5 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/10"
                 )}
               >
                 {stat.name}
@@ -516,11 +516,11 @@ export default function ClientsPage() {
         </div>
 
         <div className="p-6">
-          <div className="bg-white dark:bg-zinc-900/60 backdrop-blur-md rounded-3xl border border-white/80 shadow-sm overflow-hidden">
+          <div className="glass-card rounded-3xl overflow-hidden">
             <div className="overflow-x-auto custom-scrollbar">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 dark:border-zinc-700/60 text-[10px] uppercase tracking-widest text-slate-400 bg-slate-50 dark:bg-zinc-950/50">
+                  <tr className="border-b border-black/10 dark:border-white/10 text-[10px] uppercase tracking-widest text-slate-400 bg-black/5 dark:bg-white/5">
                     <th className="px-6 py-4 font-black">{language === 'es' ? 'Cliente' : 'Client'}</th>
                     <th className="px-6 py-4 font-black">Status</th>
                     <th className="px-6 py-4 font-black">Assignee</th>
@@ -539,7 +539,7 @@ export default function ClientsPage() {
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                           transition={{ duration: 0.2 }}
-                          className="hover:bg-white dark:bg-zinc-900/80 transition-colors group cursor-pointer"
+                          className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group cursor-pointer"
                           onClick={() => router.push(`/admin/clients/${client.id}`)}
                         >
                           <td className="px-6 py-4">
@@ -616,9 +616,9 @@ export default function ClientsPage() {
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: 'auto' }}
                               exit={{ opacity: 0, height: 0 }}
-                              className="bg-slate-50 dark:bg-zinc-950/80 dark:bg-slate-800/30 overflow-hidden"
+                              className="bg-black/5 dark:bg-white/5 overflow-hidden"
                             >
-                              <td colSpan={7} className="p-0 border-b border-slate-200 dark:border-zinc-700">
+                              <td colSpan={7} className="p-0 border-b border-black/10 dark:border-white/10">
                                 <div className="px-6 py-4 flex items-center gap-3">
                                   <button
                                     onClick={() => handleQuickAction(client.id, 'analyse')}
@@ -665,7 +665,7 @@ export default function ClientsPage() {
               
               {filteredClients.length === 0 && (
                 <div className="py-20 flex flex-col items-center justify-center text-center">
-                  <div className="w-16 h-16 bg-slate-50 dark:bg-zinc-950 rounded-full flex items-center justify-center mb-4 shadow-sm">
+                  <div className="w-16 h-16 bg-black/5 dark:bg-white/5 rounded-full flex items-center justify-center mb-4 shadow-sm">
                      <Search className="w-8 h-8 text-indigo-300" />
                   </div>
                   <h3 className="text-lg font-bold text-slate-700 dark:text-zinc-200">{language === 'es' ? 'No se encontraron clientes' : 'No clients found'}</h3>
@@ -678,7 +678,7 @@ export default function ClientsPage() {
       </motion.div>
 
       {(totalCount > 0 || clients.length > 0) && (
-        <div className="flex flex-col gap-2 md:flex-row items-center justify-between px-4 py-3 rounded-3xl bg-white dark:bg-zinc-900/80 border border-white/70 shadow-sm">
+        <div className="flex flex-col gap-2 md:flex-row items-center justify-between px-4 py-3 rounded-3xl glass-card border border-white/10 dark:border-white/5 shadow-sm">
           <p className="text-sm text-slate-500 dark:text-zinc-400">
             {language === 'es' ? 'Mostrando' : 'Showing'} {(page - 1) * perPage + 1} - {Math.min(page * perPage, totalCount || clients.length)} {language === 'es' ? 'de' : 'of'} {totalCount || clients.length} {language === 'es' ? 'clientes' : 'clients'}
           </p>
@@ -686,7 +686,7 @@ export default function ClientsPage() {
             <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="px-4 py-2 rounded-2xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-50 dark:bg-zinc-950 transition-all"
+              className="px-4 py-2 rounded-2xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-slate-700 dark:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-black/10 dark:hover:bg-white/10 transition-all"
             >
               {language === 'es' ? 'Anterior' : 'Previous'}
             </button>
@@ -694,7 +694,7 @@ export default function ClientsPage() {
             <button
               onClick={() => setPage(p => Math.min(Math.ceil((totalCount || clients.length) / perPage), p + 1))}
               disabled={page >= Math.ceil((totalCount || clients.length) / perPage)}
-              className="px-4 py-2 rounded-2xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-50 dark:bg-zinc-950 transition-all"
+              className="px-4 py-2 rounded-2xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-slate-700 dark:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-black/10 dark:hover:bg-white/10 transition-all"
             >
               {language === 'es' ? 'Siguiente' : 'Next'}
             </button>
