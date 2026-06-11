@@ -31,31 +31,30 @@
 }
 
 /* ═══════════════════════════════════════════════
-   DESIGN TOKENS — Dark Mode (Premium Space UI)
-   Deep cosmic feel with elevation and depth
+   DESIGN TOKENS — Dark Mode (Pure Space: Black + White)
 ═══════════════════════════════════════════════ */
 [data-theme="dark"] {
-  --bg-primary:    #07071A;
-  --bg-secondary:  #0D0D2B;
-  --bg-card:       #11113A;
-  --bg-input:      #0F0F30;
-  --bg-hover:      #181848;
-  --border:        rgba(99,102,241,0.18);
-  --border-subtle: rgba(99,102,241,0.08);
-  --text-primary:  #F0F0FF;
-  --text-secondary:#9898CC;
-  --text-muted:    #5E5E8A;
-  --accent:        #6366F1;
-  --accent-hover:  #818CF8;
-  --accent-subtle: rgba(99,102,241,0.14);
-  --accent-border: rgba(99,102,241,0.35);
-  --sidebar-bg:    #09092A;
-  --topbar-bg:     #09092A;
-  --shadow-sm:     0 1px 3px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.06);
-  --shadow-md:     0 4px 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(99,102,241,0.08);
-  --shadow-lg:     0 16px 48px rgba(0,0,0,0.7), 0 0 40px rgba(99,102,241,0.06);
-  --background:    #07071A;
-  --foreground:    #F0F0FF;
+  --bg-primary:    #000000;
+  --bg-secondary:  #0A0A0A;
+  --bg-card:       #111111;
+  --bg-input:      #161616;
+  --bg-hover:      #1C1C1C;
+  --border:        rgba(255,255,255,0.08);
+  --border-subtle: rgba(255,255,255,0.04);
+  --text-primary:  #FFFFFF;
+  --text-secondary:#A0A0A0;
+  --text-muted:    #555555;
+  --accent:        #FFFFFF;
+  --accent-hover:  #E0E0E0;
+  --accent-subtle: rgba(255,255,255,0.06);
+  --accent-border: rgba(255,255,255,0.15);
+  --sidebar-bg:    #080808;
+  --topbar-bg:     #080808;
+  --shadow-sm:     0 1px 4px rgba(0,0,0,0.6);
+  --shadow-md:     0 4px 24px rgba(0,0,0,0.7);
+  --shadow-lg:     0 16px 48px rgba(0,0,0,0.85);
+  --background:    #000000;
+  --foreground:    #FFFFFF;
 }
 
 /* ═══════════════════════════════════════════════
@@ -94,16 +93,10 @@ body {
 ═══════════════════════════════════════════════ */
 [data-theme="dark"] body {
   background: var(--bg-primary);
-  background-image:
-    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(99,102,241,0.12) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(139,92,246,0.08) 0%, transparent 60%);
 }
 
 [data-theme="dark"] .admin-shell {
-  background: transparent;
-  background-image:
-    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(99,102,241,0.10) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(139,92,246,0.06) 0%, transparent 60%);
+  background: var(--bg-secondary);
 }
 
 /* ═══════════════════════════════════════════════
@@ -169,10 +162,10 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 [data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: rgba(99,102,241,0.3);
+  background: rgba(255,255,255,0.12);
 }
 [data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(99,102,241,0.55);
+  background: rgba(255,255,255,0.22);
 }
 
 /* ═══════════════════════════════════════════════
@@ -198,8 +191,8 @@ body {
 }
 
 @keyframes tab-glow {
-  0%, 100% { box-shadow: 0 0 4px  rgba(99,102,241,0.4); }
-  50%       { box-shadow: 0 0 10px rgba(99,102,241,0.7); }
+  0%, 100% { box-shadow: 0 0 4px  rgba(255,255,255,0.08); }
+  50%       { box-shadow: 0 0 10px rgba(255,255,255,0.16); }
 }
 
 /* Conversation thread connector */
@@ -233,19 +226,19 @@ body {
 [data-theme="dark"] .bg-gray-50        { background-color: var(--bg-secondary) !important; }
 [data-theme="dark"] .bg-slate-100      { background-color: var(--bg-hover) !important; }
 [data-theme="dark"] .bg-gray-100       { background-color: var(--bg-hover) !important; }
-[data-theme="dark"] .bg-slate-200      { background-color: rgba(99,102,241,0.12) !important; }
+[data-theme="dark"] .bg-slate-200      { background-color: var(--bg-hover) !important; }
 
 /* — Text — */
 [data-theme="dark"] .text-slate-900,
 [data-theme="dark"] .text-gray-900     { color: var(--text-primary) !important; }
 [data-theme="dark"] .text-slate-800,
-[data-theme="dark"] .text-gray-800     { color: #E8E8FF !important; }
+[data-theme="dark"] .text-gray-800     { color: #E8E8E8 !important; }
 [data-theme="dark"] .text-slate-700,
-[data-theme="dark"] .text-gray-700     { color: #C8C8EE !important; }
+[data-theme="dark"] .text-gray-700     { color: #C8C8C8 !important; }
 [data-theme="dark"] .text-slate-600,
 [data-theme="dark"] .text-gray-600     { color: var(--text-secondary) !important; }
 [data-theme="dark"] .text-slate-500,
-[data-theme="dark"] .text-gray-500     { color: #8080AA !important; }
+[data-theme="dark"] .text-gray-500     { color: #808080 !important; }
 [data-theme="dark"] .text-slate-400,
 [data-theme="dark"] .text-gray-400     { color: var(--text-muted) !important; }
 [data-theme="dark"] .text-black        { color: var(--text-primary) !important; }
@@ -256,7 +249,7 @@ body {
 [data-theme="dark"] .border-slate-200,
 [data-theme="dark"] .border-gray-200   { border-color: var(--border) !important; }
 [data-theme="dark"] .border-slate-300,
-[data-theme="dark"] .border-gray-300   { border-color: rgba(99,102,241,0.28) !important; }
+[data-theme="dark"] .border-gray-300   { border-color: rgba(255,255,255,0.18) !important; }
 
 /* — Hover states — */
 [data-theme="dark"] .hover\:bg-slate-50:hover,
@@ -314,7 +307,7 @@ body {
 /* — Table rows — */
 [data-theme="dark"] table { background: transparent !important; }
 [data-theme="dark"] thead,
-[data-theme="dark"] th    { background: rgba(99,102,241,0.06) !important; border-color: var(--border) !important; }
+[data-theme="dark"] th    { background: rgba(255,255,255,0.04) !important; border-color: var(--border) !important; }
 [data-theme="dark"] tr:hover { background: var(--bg-hover) !important; }
 [data-theme="dark"] td    { border-color: var(--border-subtle) !important; }
 
@@ -334,8 +327,8 @@ body {
    DARK — SPACE ACCENT GLOW on key cards
 ═══════════════════════════════════════════════ */
 [data-theme="dark"] .glass-card-hover:hover {
-  border-color: rgba(99,102,241,0.5) !important;
-  box-shadow: 0 0 0 1px rgba(99,102,241,0.2), 0 8px 32px rgba(0,0,0,0.5), 0 0 20px rgba(99,102,241,0.08) !important;
+  border-color: rgba(255,255,255,0.18) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
 }
 
 /* Stat cards glow slightly in dark */
