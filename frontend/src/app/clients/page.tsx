@@ -57,12 +57,14 @@ interface Client {
   email: string;
   status: string;
   keywords: string[];
-  website: string;
+  website?: string;
+  websiteUrl?: string;
   services_offered?: string;
   services_requested?: string;
   companyName?: string;
   lastActivity?: string;
   lastActivityDate?: string;
+  assignedEmployeeName?: string;
 }
 
 interface ClientStatusOption {
@@ -331,15 +333,26 @@ export default function ClientsPage() {
 
   const StatusBadge = ({ statusName }: { statusName: string }) => {
     const statusObj = statuses.find(s => s.name === statusName);
-    const colorClass = statusObj ? statusObj.color.replace('bg-', 'text-').replace('500', '600') : "text-gray-500";
-    const bgClass = statusObj ? statusObj.color.replace('bg-', 'bg-').replace('500', '100') : "bg-gray-100 dark:bg-zinc-800";
+    const colorClass = statusObj ? statusObj.color.replace('bg-', 'text-').replace('500', '400') : "text-slate-400";
+    const borderClass = statusObj ? statusObj.color.replace('bg-', 'border-').replace('500', '400/30') : "border-slate-500/30";
     
     return (
-      <div className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border border-white/40 shadow-sm", bgClass, colorClass)}>
-        <div className={cn("w-1.5 h-1.5 rounded-full", statusObj ? statusObj.color : 'bg-gray-500')}></div>
+      <div className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase border bg-black/20 backdrop-blur-md shadow-sm", colorClass, borderClass)}>
+        <div className={cn("w-1.5 h-1.5 rounded-full shadow-[0_0_4px_currentColor]", statusObj ? statusObj.color : 'bg-slate-500')}></div>
         {statusName}
       </div>
     );
+  };
+
+  const parseServices = (str?: string) => {
+    if (!str) return null;
+    try {
+      const parsed = JSON.parse(str);
+      if (Array.isArray(parsed)) return parsed.map((s: any) => s.name || s).join(', ');
+      return str;
+    } catch {
+      return str;
+    }
   };
 
   const handleQuickAction = async (clientId: number, actionType: string) => {
@@ -559,7 +572,7 @@ export default function ClientsPage() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                              <div className="w-6 h-6 rounded-full bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
                                 <Users className="w-3 h-3" />
                               </div>
                               <span className="text-sm font-medium text-slate-700 dark:text-zinc-200 truncate max-w-[120px]">
@@ -570,7 +583,7 @@ export default function ClientsPage() {
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-zinc-400 font-medium">
                               <Globe className="w-4 h-4 text-slate-400" />
-                              <span className="truncate max-w-[150px]">{client.website || '-'}</span>
+                              <span className="truncate max-w-[150px]">{client.website || client.websiteUrl || '-'}</span>
                             </div>
                           </td>
                           <td className="px-6 py-4">
@@ -586,9 +599,9 @@ export default function ClientsPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                             <div className="flex flex-col gap-1 w-[150px]">
-                               {client.services_requested && <span title={client.services_requested} className="px-2 py-0.5 bg-sky-50 text-sky-600 rounded text-[10px] font-bold block truncate w-full">Req: {client.services_requested}</span>}
-                               {client.services_offered && <span title={client.services_offered} className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold block truncate w-full">Off: {client.services_offered}</span>}
+                             <div className="flex flex-col gap-1.5 w-[150px]">
+                               {client.services_requested && <span title={parseServices(client.services_requested) || ''} className="px-2 py-1 bg-sky-500/10 border border-sky-500/30 text-sky-400 rounded-md text-[10px] font-bold block truncate w-full">Req: {parseServices(client.services_requested)}</span>}
+                               {client.services_offered && <span title={parseServices(client.services_offered) || ''} className="px-2 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-md text-[10px] font-bold block truncate w-full">Off: {parseServices(client.services_offered)}</span>}
                              </div>
                           </td>
                           <td className="px-6 py-4 text-right">
@@ -647,7 +660,7 @@ export default function ClientsPage() {
                                   <button
                                     onClick={() => handleQuickAction(client.id, 'opportunity')}
                                     disabled={!!actionLoading[client.id]}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-200 dark:bg-zinc-700 text-slate-700 dark:text-zinc-200 text-sm font-bold hover:bg-slate-300 transition-colors ml-auto"
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-500/10 border border-slate-500/30 text-slate-300 text-sm font-bold hover:bg-slate-500/20 transition-colors ml-auto"
                                   >
                                     <Briefcase className="w-4 h-4" />
                                     View Opportunity
