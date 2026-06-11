@@ -243,7 +243,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10 }}>
                 {notes.slice(0, 10).map((n: any) => (
                   <div key={n.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 14px' }}>
-                    <div style={{ display: 'flex', justify-content: 'space-between', marginBottom: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                       <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--accent)' }}>{n.type || 'Note'}</span>
                       <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
                     </div>
