@@ -38,64 +38,33 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
     }
   };
 
-  const startRadarSimulation = (clientData: any) => {
+  const startRadarSimulation = async (clientData: any) => {
     setLoading(false);
-    // Simulate Extraction
-    setTimeout(() => {
-      setRadarState('searching');
-      // Simulate Search
-      setTimeout(() => {
+    setRadarState('searching');
+    
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${clientData.id}/competitors/scan`);
+      if (res.ok) {
         setRadarState('analyzing');
-        // Simulate Analysis & Populate Mock Data
-        setTimeout(() => {
-          setCompetitors([
-            {
-              id: 1,
-              name: 'XYZ Digital Agency',
-              distance: '1.2 km',
-              rating: 4.8,
-              reviews: 220,
-              services: ['SEO', 'PPC', 'Web Design'],
-              website: 'xyz-digital.com',
-              similarity: 92,
-              priceRange: '$500 - $1200/mo',
-              type: 'direct', // direct, partial, partner
-              lat: 37.7849,
-              lng: -122.4094
-            },
-            {
-              id: 2,
-              name: 'Alpha SEO Solutions',
-              distance: '2.5 km',
-              rating: 4.5,
-              reviews: 180,
-              services: ['SEO', 'Content Marketing'],
-              website: 'alphaseo.io',
-              similarity: 75,
-              priceRange: '$300 - $800/mo',
-              type: 'partial',
-              lat: 37.7649,
-              lng: -122.4294
-            },
-            {
-              id: 3,
-              name: 'TechBoost PR',
-              distance: '4.8 km',
-              rating: 4.9,
-              reviews: 450,
-              services: ['Public Relations', 'Social Media'],
-              website: 'techboostpr.com',
-              similarity: 30,
-              priceRange: '$2000 - $5000/mo',
-              type: 'partner',
-              lat: 37.7949,
-              lng: -122.3994
-            }
-          ]);
-          setRadarState('complete');
-        }, 2000);
-      }, 2000);
-    }, 1500);
+        const data = await res.json();
+        
+        // Ensure lat/lng are set on the client object for the map center
+        setClient((prev: any) => ({ ...prev, lat: data.lat, lng: data.lng }));
+        
+        // Update competitors list
+        if (data.competitors && Array.isArray(data.competitors)) {
+            setCompetitors(data.competitors);
+        }
+        setRadarState('complete');
+      } else {
+        const err = await res.json();
+        console.error("Scan error:", err);
+        setRadarState('complete'); // Handle error gracefully (e.g., show empty state)
+      }
+    } catch (e) {
+      console.error(e);
+      setRadarState('complete');
+    }
   };
 
   const containerVariants = {
@@ -178,13 +147,19 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
 
                   <div>
                     <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Strongest Match</p>
-                    <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl flex justify-between items-center">
-                      <div>
-                        <p className="font-bold text-red-400">{competitors[0].name}</p>
-                        <p className="text-xs text-red-400/70">{competitors[0].distance} away</p>
+                    {competitors.length > 0 ? (
+                      <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl flex justify-between items-center">
+                        <div>
+                          <p className="font-bold text-red-400">{competitors[0].name}</p>
+                          <p className="text-xs text-red-400/70">{competitors[0].distance} away</p>
+                        </div>
+                        <span className="text-xl font-black text-red-400">{competitors[0].similarity}%</span>
                       </div>
-                      <span className="text-xl font-black text-red-400">{competitors[0].similarity}%</span>
-                    </div>
+                    ) : (
+                      <div className="bg-white/5 border border-white/10 p-4 rounded-2xl">
+                        <p className="text-sm text-slate-400">No competitors found</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -195,7 +170,7 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
             </motion.div>
 
             <motion.div variants={itemVariants} className="xl:col-span-2 glass-card rounded-[2rem] p-2 overflow-hidden h-[400px] border border-white/10">
-               <RadarMap clientLat={37.7749} clientLng={-122.4194} competitors={competitors} clientName={client?.companyName || client?.projectName} />
+               <RadarMap clientLat={client?.lat || 37.7749} clientLng={client?.lng || -122.4194} competitors={competitors} clientName={client?.companyName || client?.projectName} />
             </motion.div>
           </div>
 

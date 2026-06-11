@@ -1285,6 +1285,68 @@ def get_client(client_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Client not found")
     return {"client": _client_dict(cp, session)}
 
+@app.get("/clients/{client_id}/competitors/scan")
+def scan_competitors_openai(client_id: int, session: Session = Depends(get_session)):
+    import openai
+    import os
+    import json
+    
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured in backend.")
+        
+    client = openai.OpenAI(api_key=api_key)
+    
+    prompt = f"""
+    You are an OSINT Business Intelligence Agent. Your job is to extract exact pinpoint geographic coordinates and find 3 real nearby local competitors for a given company.
+    
+    Target Company: {cp.companyName or cp.projectName or 'Unknown'}
+    Website: {cp.websiteUrl or cp.website or 'Unknown'}
+    Services: {cp.services_offered or 'Unknown'}
+    
+    1. Determine the EXACT real-world latitude and longitude of this target company. If you cannot find the exact address, provide the coordinates of the center of its city.
+    2. Identify exactly 3 REAL local competitors that operate near them in the same industry.
+    3. Calculate realistic distance, assign a type ('direct', 'partial', or 'partner'), a similarity score (0-100), Google rating, review count, and a price range estimate.
+    
+    Return the output STRICTLY as valid JSON with no markdown formatting, using this exact schema:
+    {{
+      "lat": 37.7749,
+      "lng": -122.4194,
+      "competitors": [
+        {{
+          "id": 1,
+          "name": "Competitor Name",
+          "distance": "1.2 km",
+          "rating": 4.8,
+          "reviews": 150,
+          "services": ["SEO", "Web Design"],
+          "website": "competitor.com",
+          "similarity": 85,
+          "priceRange": "$1000 - $3000/mo",
+          "type": "direct",
+          "lat": 37.7800,
+          "lng": -122.4100
+        }}
+      ]
+    }}
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        data = json.loads(response.choices[0].message.content)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 @app.put("/clients/{client_id}")
 def update_client(
