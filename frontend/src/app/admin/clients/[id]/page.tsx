@@ -160,12 +160,12 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
 
       {/* Company Overview */}
       {research?.company_overview && (
-        <div style={{ background: 'linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%)', border: '1px solid #c7d2fe', borderRadius: 18, padding: '16px 20px' }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px 20px', backdropFilter: 'blur(16px)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <div style={{ background: '#7c3aed', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Building2 size={13} color="#fff" /></div>
-            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: '#5b21b6' }}>Company Overview</span>
+            <div style={{ background: 'var(--accent)', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Building2 size={13} color="#fff" /></div>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Company Overview</span>
           </div>
-          <p style={{ fontSize: 13.5, color: '#334155', lineHeight: 1.65, margin: 0 }}>{research.company_overview}</p>
+          <p style={{ fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{research.company_overview}</p>
         </div>
       )}
 
@@ -181,25 +181,25 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
         } catch {}
         if (!parsedServices || parsedServices.length === 0) return null;
         return (
-          <div style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)', border: '1px solid #bbf7d0', borderRadius: 18, padding: '16px 20px' }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px 20px', backdropFilter: 'blur(16px)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-              <div style={{ background: '#059669', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Store size={13} color="#fff" /></div>
-              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: '#065f46' }}>Services Offered</span>
-              <span style={{ marginLeft: 'auto', fontSize: 10, color: '#6ee7b7', fontWeight: 700 }}>{parsedServices.length} services detected</span>
+              <div style={{ background: 'var(--accent)', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Store size={13} color="#fff" /></div>
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Services Offered</span>
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>{parsedServices.length} services detected</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
               {parsedServices.map((svc: any, i: number) => (
-                <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid #d1fae5', borderRadius: 12, padding: '10px 14px' }}>
+                <div key={i} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                    <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: '#059669', background: '#d1fae5', borderRadius: 20, padding: '2px 7px' }}>{svc.category || 'Service'}</span>
+                    <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: 'var(--text-primary)', background: 'var(--bg-hover)', borderRadius: 20, padding: '2px 7px' }}>{svc.category || 'Service'}</span>
                     {svc.approx_cost > 0 && (
-                      <span style={{ fontSize: 9, fontWeight: 800, color: '#d97706', background: '#fef3c7', borderRadius: 20, padding: '2px 7px', marginLeft: 'auto' }}>
+                      <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-primary)', background: 'var(--bg-hover)', borderRadius: 20, padding: '2px 7px', marginLeft: 'auto' }}>
                         ~${Number(svc.approx_cost).toLocaleString()}{svc.cost_is_estimated ? ' est.' : ''}
                       </span>
                     )}
                   </div>
                   <p style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>{svc.name}</p>
-                  {svc.brief && <p style={{ fontSize: 11.5, color: '#475569', margin: 0, lineHeight: 1.5 }}>{svc.brief}</p>}
+                  {svc.brief && <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>{svc.brief}</p>}
                 </div>
               ))}
             </div>
@@ -209,8 +209,8 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
 
 
       <div style={card}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid var(--border)', background: '#fafafa' }}>
-          <div style={{ background: '#059669', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><StickyNote size={13} color="#fff" /></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
+          <div style={{ background: 'var(--accent)', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><StickyNote size={13} color="#fff" /></div>
           <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Add Note</span>
           <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>Ctrl+Enter to save</span>
         </div>
@@ -229,7 +229,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
             <button
               onClick={submitNote}
               disabled={!noteText.trim() || savingNote}
-              style={{ background: noteText.trim() ? '#059669' : '#d1fae5', color: noteText.trim() ? '#fff' : '#6ee7b7', border: 'none', borderRadius: 10, padding: '8px 20px', fontSize: 12.5, fontWeight: 700, cursor: noteText.trim() ? 'pointer' : 'default', transition: 'all 0.15s' }}
+              style={{ background: noteText.trim() ? 'var(--accent)' : 'var(--bg-hover)', color: noteText.trim() ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 10, padding: '8px 20px', fontSize: 12.5, fontWeight: 700, cursor: noteText.trim() ? 'pointer' : 'default', transition: 'all 0.15s' }}
             >
               {savingNote ? 'Saving…' : '✓ Save Note'}
             </button>
@@ -242,12 +242,12 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
             <CollapsibleSection title="Previous Notes" icon={StickyNote} count={notes.length} accentColor="#059669">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10 }}>
                 {notes.slice(0, 10).map((n: any) => (
-                  <div key={n.id} style={{ background: 'var(--bg-secondary)', border: '1px solid #e8f5e9', borderRadius: 12, padding: '10px 14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#059669' }}>{n.type || 'Note'}</span>
+                  <div key={n.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 14px' }}>
+                    <div style={{ display: 'flex', justify-content: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--accent)' }}>{n.type || 'Note'}</span>
                       <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
                     </div>
-                    <p style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.6, margin: 0 }}>{n.content}</p>
+                    <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{n.content}</p>
                   </div>
                 ))}
               </div>
@@ -258,8 +258,8 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
 
       {/* ── Log Conversation ───────────────────────────────────────────────── */}
       <div style={card}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid var(--border)', background: '#fafafa' }}>
-          <div style={{ background: '#0284c7', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><MessageSquare size={13} color="#fff" /></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
+          <div style={{ background: 'var(--accent)', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><MessageSquare size={13} color="#fff" /></div>
           <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Log Conversation</span>
         </div>
         <div style={{ padding: '14px 20px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -271,9 +271,9 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
                 onClick={() => setConvType(tp.key)}
                 style={{
                   padding: '6px 14px', borderRadius: 999, fontSize: 12, fontWeight: 700,
-                  border: convType === tp.key ? `2px solid ${tp.color}` : '1.5px solid #e2e8f0',
-                  background: convType === tp.key ? tp.color : '#f8fafc',
-                  color: convType === tp.key ? '#fff' : '#475569',
+                  border: convType === tp.key ? `2px solid ${tp.color}` : '1.5px solid var(--border)',
+                  background: convType === tp.key ? tp.color : 'var(--bg-secondary)',
+                  color: convType === tp.key ? '#fff' : 'var(--text-secondary)',
                   cursor: 'pointer', transition: 'all 0.15s',
                 }}
               >
@@ -298,7 +298,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
             <button
               onClick={submitConv}
               disabled={!convTitle.trim() || savingConv}
-              style={{ background: convTitle.trim() ? activeConvType.color : '#e2e8f0', color: convTitle.trim() ? '#fff' : '#94a3b8', border: 'none', borderRadius: 10, padding: '8px 20px', fontSize: 12.5, fontWeight: 700, cursor: convTitle.trim() ? 'pointer' : 'default', transition: 'all 0.15s' }}
+              style={{ background: convTitle.trim() ? activeConvType.color : 'var(--bg-hover)', color: convTitle.trim() ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 10, padding: '8px 20px', fontSize: 12.5, fontWeight: 700, cursor: convTitle.trim() ? 'pointer' : 'default', transition: 'all 0.15s' }}
             >
               {savingConv ? 'Saving…' : `✓ Log ${activeConvType.label}`}
             </button>
