@@ -197,11 +197,8 @@ function Dashboard() {
         <motion.div variants={itemVariants} className="relative overflow-hidden rounded-3xl">
           {/* Glass card */}
           <div className="glass-card relative p-8 md:p-10 overflow-hidden">
-            {/* Glow blobs */}
-            <div className="absolute -top-16 -right-16 w-64 h-64 bg-indigo-100 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-10 left-1/3 w-48 h-48 bg-violet-100 rounded-full blur-3xl pointer-events-none" />
             {/* Top border */}
-            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-indigo-300 to-transparent" />
+            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-indigo-500/20 to-transparent" />
 
             <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div className="space-y-2">
@@ -284,7 +281,6 @@ function Dashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Activity chart */}
             <motion.div variants={itemVariants} className="glass-card glass-card-hover p-6 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-100 rounded-full blur-2xl pointer-events-none" />
               <div className="flex items-center justify-between mb-5 relative z-10">
                 <div>
                   <p className="text-[12px] font-black text-slate-600 dark:text-zinc-300 uppercase tracking-widest">Activity Logs</p>
@@ -303,7 +299,6 @@ function Dashboard() {
 
             {/* Email chart */}
             <motion.div variants={itemVariants} className="glass-card glass-card-hover p-6 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-100 rounded-full blur-2xl pointer-events-none" />
               <div className="flex items-center justify-between mb-5 relative z-10">
                 <div>
                   <p className="text-[12px] font-black text-slate-600 dark:text-zinc-300 uppercase tracking-widest">Emails Outbound</p>
@@ -322,7 +317,6 @@ function Dashboard() {
 
             {/* Call chart */}
             <motion.div variants={itemVariants} className="glass-card glass-card-hover p-6 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-50 rounded-full blur-2xl pointer-events-none" />
               <div className="flex items-center justify-between mb-5 relative z-10">
                 <div>
                   <p className="text-[12px] font-black text-slate-600 dark:text-zinc-300 uppercase tracking-widest">Call Interactions</p>
@@ -342,7 +336,6 @@ function Dashboard() {
 
           {/* Row 3: Pipeline overview (dark glass wide card) */}
           <motion.div variants={itemVariants} className="glass-card p-6 md:p-8 relative overflow-hidden">
-            <div className="absolute -bottom-10 left-1/2 w-64 h-32 bg-indigo-50 rounded-full blur-3xl pointer-events-none" />
             <div className="flex items-center gap-3 mb-6 relative z-10">
               <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600">
                 <Target className="w-4 h-4" />
@@ -351,13 +344,13 @@ function Dashboard() {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 relative z-10">
               {[
-                { label: "Pending Setup", value: adminStats.pending, accent: "border-amber-200 bg-amber-50 text-amber-700" },
-                { label: "On Hold", value: adminStats.hold, accent: "border-rose-200 bg-rose-50 text-rose-700" },
-                { label: "Total Activities", value: adminStats.totalActivities, accent: "border-indigo-200 bg-indigo-50 text-indigo-700" },
-                { label: "Calls Logged", value: adminStats.totalCalls, accent: "border-orange-200 bg-orange-50 text-orange-700" },
-                { label: "Emails Deployed", value: adminStats.totalEmailsSent, accent: "border-violet-200 bg-violet-50 text-violet-700" },
+                { label: "Pending Setup", value: adminStats.pending, accent: "border-amber-200/50 text-amber-500" },
+                { label: "On Hold", value: adminStats.hold, accent: "border-rose-200/50 text-rose-500" },
+                { label: "Total Activities", value: adminStats.totalActivities, accent: "border-indigo-200/50 text-indigo-500" },
+                { label: "Calls Logged", value: adminStats.totalCalls, accent: "border-orange-200/50 text-orange-500" },
+                { label: "Emails Deployed", value: adminStats.totalEmailsSent, accent: "border-violet-200/50 text-violet-500" },
               ].map(({ label, value, accent }) => (
-                <div key={label} className={`rounded-2xl border p-5 ${accent}`}>
+                <div key={label} className={`rounded-2xl border bg-black/10 dark:bg-black/40 backdrop-blur-md p-5 ${accent}`}>
                   <p className="text-[12px] font-black uppercase tracking-widest mb-2 opacity-90">{label}</p>
                   <span className="font-black text-3xl opacity-100">{value}</span>
                 </div>
@@ -379,8 +372,6 @@ function Dashboard() {
                     className="group relative overflow-hidden glass-card cursor-pointer p-6 transition-all hover:border-indigo-200"
                     style={{ borderRadius: "1.25rem" }}
                   >
-                    {/* Gradient glow on hover */}
-                    <div className={cn("absolute -top-10 -right-10 w-36 h-36 rounded-full blur-3xl opacity-0 group-hover:opacity-20 transition-opacity duration-500 bg-gradient-to-br", card.gradient)} />
                     {/* Top border accent */}
                     <div className={cn("absolute top-0 left-6 right-6 h-px opacity-0 group-hover:opacity-60 transition-opacity bg-gradient-to-r from-transparent to-transparent", card.gradient.replace("from-", "via-"))} />
                     <div className="relative z-10">
@@ -401,7 +392,6 @@ function Dashboard() {
 
           {/* Row 5: Recent Activity */}
           <motion.div variants={itemVariants} className="glass-card p-6 md:p-8 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-50 rounded-full blur-3xl pointer-events-none" />
             <div className="flex items-center justify-between mb-6 relative z-10">
               <div className="flex items-center gap-3">
               <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600">
