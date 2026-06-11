@@ -25,6 +25,19 @@ import { cn } from '@/lib/utils';
 import { useLanguage } from '@/context/LanguageContext';
 import { useRole } from '@/context/RoleContext';
 import PageGuide from '@/components/PageGuide';
+import dynamic from 'next/dynamic';
+
+const ClientMapView = dynamic(() => import('./ClientMapView'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[600px] glass-card rounded-[2.5rem] flex items-center justify-center border border-white/10 dark:border-white/5">
+      <div className="flex flex-col items-center gap-4 text-indigo-500">
+        <Loader2 className="w-8 h-8 animate-spin" />
+        <span className="font-bold">Loading Satellite Map...</span>
+      </div>
+    </div>
+  )
+});
 
 // Framer Motion Variants
 const containerVariants = {
@@ -86,6 +99,7 @@ export default function ClientsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [loadTime, setLoadTime] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const router = useRouter();
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
@@ -492,6 +506,26 @@ export default function ClientsPage() {
       {/* Main Glass Box */}
       <motion.div variants={itemVariants} className="glass-card rounded-[2.5rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)] overflow-hidden">
         <div className="p-6 border-b border-white/10 dark:border-white/5 flex flex-col md:flex-row gap-6 justify-between items-center bg-black/5 dark:bg-white/5">
+          <div className="flex items-center bg-black/10 dark:bg-white/10 p-1 rounded-2xl border border-black/5 dark:border-white/5 shrink-0">
+            <button
+              onClick={() => setViewMode('list')}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                viewMode === 'list' ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-md" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
+              )}
+            >
+              List View
+            </button>
+            <button
+              onClick={() => setViewMode('map')}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                viewMode === 'map' ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-md" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
+              )}
+            >
+              Map View
+            </button>
+          </div>
           <div className="relative w-full md:w-[28rem]">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-400" />
             <input 
@@ -528,6 +562,7 @@ export default function ClientsPage() {
           </div>
         </div>
 
+        {viewMode === 'list' && (
         <div className="p-6">
           <div className="glass-card rounded-3xl overflow-hidden">
             <div className="overflow-x-auto custom-scrollbar">
@@ -688,9 +723,18 @@ export default function ClientsPage() {
             </div>
           </div>
         </div>
+        )}
+
+        {viewMode === 'map' && (
+          <div className="p-6">
+            <React.Suspense fallback={<div>Loading map...</div>}>
+              <ClientMapView clients={filteredClients} statuses={statuses} />
+            </React.Suspense>
+          </div>
+        )}
       </motion.div>
 
-      {(totalCount > 0 || clients.length > 0) && (
+      {viewMode === 'list' && (totalCount > 0 || clients.length > 0) && (
         <div className="flex flex-col gap-2 md:flex-row items-center justify-between px-4 py-3 rounded-3xl glass-card border border-white/10 dark:border-white/5 shadow-sm">
           <p className="text-sm text-slate-500 dark:text-zinc-400">
             {language === 'es' ? 'Mostrando' : 'Showing'} {(page - 1) * perPage + 1} - {Math.min(page * perPage, totalCount || clients.length)} {language === 'es' ? 'de' : 'of'} {totalCount || clients.length} {language === 'es' ? 'clientes' : 'clients'}
