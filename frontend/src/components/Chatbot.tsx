@@ -27,7 +27,7 @@ const CLIENT_ACTIONS: QuickAction[] = [
 
 export function Chatbot() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<{ role: 'bot' | 'user', text: string }[]>([
+  const [messages, setMessages] = useState<{ role: 'bot' | 'user', text: string, action?: string }[]>([
     { role: 'bot', text: 'Hi! I am the SERP Hawk Assistant. How can I help you today?' }
   ]);
   const [input, setInput] = useState('');
@@ -77,7 +77,7 @@ export function Chatbot() {
       });
       const data = await res.json();
       
-      setMessages(prev => [...prev, { role: 'bot', text: data.reply || "I've processed your request." }]);
+      setMessages(prev => [...prev, { role: 'bot', text: data.reply || "I've processed your request.", action: data.action_taken }]);
 
       // Handle navigation actions
       if (data.action_taken === 'navigate' && data.route) {
@@ -87,7 +87,7 @@ export function Chatbot() {
       }
       
       // If a database mutation happened, trigger a global refresh
-      else if (data.action_taken) {
+      else if (data.action_taken && data.action_taken !== 'trigger_whatsapp') {
         window.dispatchEvent(new Event('refresh-client-data'));
         window.dispatchEvent(new Event('refresh-marketplace-data'));
       }
@@ -150,6 +150,16 @@ export function Chatbot() {
                   }`}
                 >
                   {msg.text}
+                  {msg.action === 'trigger_whatsapp' && (
+                    <a 
+                      href="https://wa.me/918519990425" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="mt-3 block text-center bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-xl transition-colors shadow-sm"
+                    >
+                      Chat on WhatsApp (+91 8519990425)
+                    </a>
+                  )}
                 </div>
               </div>
             ))}
