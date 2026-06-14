@@ -1077,21 +1077,42 @@ def _user_dict(u: User) -> dict:
 def _client_dict(cp: ClientProfile, session: Session) -> dict:
     user = session.get(User, cp.userId) if cp.userId else None
     employee = session.get(User, cp.assignedEmployeeId) if cp.assignedEmployeeId else None
+    cf = cp.customFields or {}
+    sd = cf.get("sheet_data", {})
+
+    # Smart fallbacks: if stored fields are empty, pull from raw sheet_data
+    def _get(primary, *sheet_keys):
+        if primary:
+            return primary
+        for k in sheet_keys:
+            for sk, sv in sd.items():
+                if sk.strip().lower() == k.lower() and sv and str(sv).strip():
+                    return str(sv).strip()
+        return None
+
+    company_name    = _get(cp.companyName, "Client Name", "Company", "Company Name", "Name")
+    services        = _get(cp.services_offered, "Services", "Services prone", "Services Offered")
+    description     = _get(cp.tagline, "Description", "description", "Notes")
+    website         = _get(cp.websiteUrl, "Website URL", "Website", "url")
+    phone           = _get(cp.phone, "Contact", "Phone")
+    country         = _get(cp.address, "Country", "country", "Region")
+
     return {
         "id": cp.id,
         "userId": cp.userId,
         "email": user.email if user else None,
         "name": user.name if user else None,
-        "companyName": cp.companyName,
-        "phone": cp.phone,
-        "address": cp.address,
+        "companyName": company_name,
+        "phone": phone,
+        "address": country,
         "status": cp.status,
         "gmbName": cp.gmbName,
         "seoStrategy": cp.seoStrategy,
-        "tagline": cp.tagline,
+        "tagline": description,
         "targetKeywords": cp.targetKeywords or [],
         "keywords": cp.targetKeywords or [],
-        "websiteUrl": cp.websiteUrl,
+        "websiteUrl": website,
+        "website": website,
         "recommended_services": cp.recommended_services,
         "nextMilestone": cp.nextMilestone,
         "nextMilestoneDate": cp.nextMilestoneDate,
@@ -1104,9 +1125,18 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
         "payment_status": cp.payment_status,
         "sitemap_url": cp.sitemap_url,
         "cms_type": cp.cms_type,
-        "services_offered": cp.services_offered,
+        "services_offered": services,
         "services_requested": cp.services_requested,
-        "customFields": cp.customFields or {},
+        "industry": cp.industry or cf.get("market_size"),
+        "lead_score": cp.lead_score or 0,
+        "deal_value": cp.deal_value,
+        "contact_person": cp.contact_person or sd.get("Contact") or sd.get("contact"),
+        "linkedin_url": cp.linkedin_url,
+        "last_contact_date": cp.last_contact_date,
+        "next_followup_date": cp.next_followup_date,
+        "description": cf.get("ai_description") or cf.get("description") or description,
+        "country": cf.get("country") or sd.get("Country") or sd.get("country"),
+        "customFields": cf,
     }
 
 

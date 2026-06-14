@@ -83,7 +83,9 @@ export default function ClientHeader({
   ].filter(Boolean) as { icon: any; value: string; href?: string; accent?: boolean }[];
 
   // Brief description from research or tagline
-  const description = client?.tagline || client?.seoStrategy || client?.gmbName || null;
+  const description = client?.description || client?.tagline || client?.seoStrategy || client?.gmbName || null;
+  const services = client?.services_offered || null;
+  const companyName = client?.companyName || client?.projectName || (client?.customFields?.sheet_data?.['Client Name']) || null;
 
   return (
     <div className="sticky top-0 z-40 bg-white dark:bg-zinc-900 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border-b border-slate-200 dark:border-zinc-700">
@@ -134,7 +136,7 @@ export default function ClientHeader({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap mb-1">
               <h1 className="text-xl font-black text-slate-900 dark:text-zinc-50  leading-tight">
-                {client?.companyName || (language === 'es' ? 'Empresa Desconocida' : 'Unknown Company')}
+                {companyName || (language === 'es' ? 'Empresa Desconocida' : 'Unknown Company')}
               </h1>
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${statusCfg.bg} ${statusCfg.text}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`} />
@@ -149,9 +151,17 @@ export default function ClientHeader({
 
             {/* Company Description */}
             {description && (
-              <p className="text-xs text-slate-500 dark:text-zinc-400  mb-1.5 max-w-2xl leading-snug line-clamp-1">
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mb-2 max-w-3xl leading-snug">
                 {description}
               </p>
+            )}
+
+            {/* Services Row */}
+            {services && (
+              <div className="flex items-start gap-2 mb-1.5">
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500 mt-0.5 shrink-0">Services:</span>
+                <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold leading-snug">{services}</p>
+              </div>
             )}
 
             {/* Contact Info Chips */}
