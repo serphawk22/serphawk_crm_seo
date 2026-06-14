@@ -1105,10 +1105,22 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
                     return str(sv).strip()
         return None
 
-    company_name    = _get(cp.companyName, "Client Name", "Company", "Company Name", "Name")
-    services        = _get(cp.services_offered, "Services", "Services prone", "Services Offered")
-    description     = _get(cp.tagline, "Description", "description", "Notes")
     website         = _get(cp.websiteUrl, "Website URL", "Website", "url")
+    company_name    = _get(cp.companyName, "Client Name", "Company", "Company Name", "Name")
+    
+    # If company name is STILL blank (e.g. legacy import with no company column), derive from website
+    if not company_name and website:
+        import urllib.parse
+        try:
+            parsed = urllib.parse.urlparse(website if "://" in website else "http://" + website)
+            domain = parsed.netloc.replace("www.", "").split(".")[0]
+            if domain:
+                company_name = domain.capitalize()
+        except Exception:
+            pass
+
+    services        = _get(cp.services_offered, "Services", "Services providing", "Services Offered")
+    description     = _get(cp.tagline, "Description", "description", "Notes")
     phone           = _get(cp.phone, "Contact", "Phone")
     country         = _get(cp.address, "Country", "country", "Region")
 
@@ -1365,10 +1377,22 @@ async def import_sheet(body: SheetImportRequest, background_tasks: BackgroundTas
 
         company  = get_field(["Client Name","Company","Company Name","companyName","Name"])
         website  = get_field(["Website URL","Website","websiteUrl","url","URL"])
+
+        if not company and website:
+            # Extract domain name as company name if missing (e.g. https://www.mosco.mx -> Mosco)
+            import urllib.parse
+            try:
+                parsed = urllib.parse.urlparse(website if "://" in website else "http://" + website)
+                domain = parsed.netloc.replace("www.", "").split(".")[0]
+                if domain:
+                    company = domain.capitalize()
+            except Exception:
+                pass
+
         email    = get_field(["Email","email","Email Address"])
         phone    = get_field(["Contact","Phone","phone","Contact Number"])
         country  = get_field(["Country","country","Region"])
-        services = get_field(["Services","Services prone","Services Offered","services_offered","Services proMe Market size"])
+        services = get_field(["Services","Services providing","Services Offered","services_offered","Services providing"])
         market   = get_field(["Market size","Market","Market Size"])
         desc     = get_field(["Description","description","Notes"])
 
@@ -1451,6 +1475,29 @@ async def _auto_research_client_bg(client_id: int, website: str):
             cp.customFields = existing_cf
             sess.add(cp)
             sess.commit()
+            # Also create/update ClientResearch so the AI Agent tab works
+            from database import ClientResearch
+            research = sess.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+            if not research:
+                research = ClientResearch(client_id=client_id)
+                sess.add(research)
+            
+            # Format the output into AI Agent fields
+            research.company_overview = data.get("description", cp.tagline)
+            research.tech_stack = "Web presence detected"
+            
+            # Pack everything into email_agent_data JSON string so the UI can use it
+            import json
+            ai_data = {
+                "tagline": cp.tagline,
+                "services": data.get("services", []),
+                "industry": cp.industry,
+                "auto_researched": True
+            }
+            research.email_agent_data = json.dumps(ai_data)
+            
+            sess.commit()
+            
             deal = Deal(
                 title=f"Opportunity – {cp.companyName or website}",
                 client_id=client_id,
