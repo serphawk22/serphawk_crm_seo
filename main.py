@@ -616,44 +616,54 @@ def delete_client(client_id: int, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
-        
-    models_to_clean = [
-        ServiceRequest, MessageThread, Remark, Document, ActivityLog, CallLog,
-        SentEmail, SocialProfile, SEOAudit, CompetitorAnalysis, RankingTracker,
-        AnalyticsData, Task, Invoice, Milestone, NPSSurvey, Proposal,
-        ClientFileUpload, KeywordRankEntry, ClientNote, Deal, ConversationLog,
-        ClientResearch, ClientTicket, Project
-    ]
-    
+
     from sqlmodel import delete
-    for model in models_to_clean:
-        try:
-            # SQLAlchemy determines the correct column mapping for "clientId" or "client_id" dynamically
-            # We just need to check which attribute exists on the model
-            if hasattr(model, "clientId"):
-                session.execute(delete(model).where(model.clientId == client_id))
-            elif hasattr(model, "client_id"):
-                session.execute(delete(model).where(model.client_id == client_id))
-        except Exception as e:
-            # Safe rollback to prevent transaction abortion if one model fails somehow
-            session.rollback()
-            print(f"Error cleaning {model.__name__} for client {client_id}: {e}")
-            
-    # Handle old db schema for projects table where client_id might still exist as a FK
+    
+    # We execute all deletes in a single transaction block.
+    # No mid-loop rollbacks! We use the exact model attributes defined in database.py
     try:
-        session.execute(text("DELETE FROM projects WHERE client_id = :id"), {"id": client_id})
-        session.commit()
-    except Exception as e:
-        session.rollback()
-            
-    try:
+        session.execute(delete(ServiceRequest).where(ServiceRequest.client_id == client_id))
+        session.execute(delete(MessageThread).where(MessageThread.client_id == client_id))
+        session.execute(delete(Remark).where(Remark.clientId == client_id))
+        session.execute(delete(Document).where(Document.clientId == client_id))
+        session.execute(delete(ActivityLog).where(ActivityLog.clientId == client_id))
+        session.execute(delete(CallLog).where(CallLog.client_id == client_id))
+        session.execute(delete(SentEmail).where(SentEmail.client_id == client_id))
+        session.execute(delete(SocialProfile).where(SocialProfile.clientId == client_id))
+        session.execute(delete(SEOAudit).where(SEOAudit.clientId == client_id))
+        session.execute(delete(CompetitorAnalysis).where(CompetitorAnalysis.clientId == client_id))
+        session.execute(delete(RankingTracker).where(RankingTracker.clientId == client_id))
+        session.execute(delete(AnalyticsData).where(AnalyticsData.clientId == client_id))
+        session.execute(delete(Task).where(Task.client_id == client_id))
+        session.execute(delete(Invoice).where(Invoice.client_id == client_id))
+        session.execute(delete(Milestone).where(Milestone.client_id == client_id))
+        session.execute(delete(NPSSurvey).where(NPSSurvey.client_id == client_id))
+        session.execute(delete(Proposal).where(Proposal.client_id == client_id))
+        session.execute(delete(ClientFileUpload).where(ClientFileUpload.client_id == client_id))
+        session.execute(delete(KeywordRankEntry).where(KeywordRankEntry.client_id == client_id))
+        session.execute(delete(ClientNote).where(ClientNote.client_id == client_id))
+        session.execute(delete(Deal).where(Deal.client_id == client_id))
+        session.execute(delete(ConversationLog).where(ConversationLog.client_id == client_id))
+        session.execute(delete(ClientResearch).where(ClientResearch.client_id == client_id))
+        session.execute(delete(ClientTicket).where(ClientTicket.client_id == client_id))
+        
+        # Marketplace service provider links
+        session.execute(delete(MarketplaceService).where(MarketplaceService.provider_client_id == client_id))
+
+        # Delete the user account linked to this client (only if it's a Client-role user)
+        if cp.userId:
+            linked_user = session.get(User, cp.userId)
+            if linked_user and linked_user.role == "Client":
+                session.delete(linked_user)
+
         session.delete(cp)
         session.commit()
+        return {"success": True}
     except Exception as e:
         session.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to delete client: {e}")
-        
-    return {"success": True}
+        print(f"[DeleteClient] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete client: {str(e)}")
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────

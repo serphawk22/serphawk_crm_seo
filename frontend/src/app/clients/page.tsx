@@ -346,13 +346,22 @@ export default function ClientsPage() {
   // Delete client handler
   const handleDeleteClient = async (clientId: number) => {
     if (!window.confirm(language === 'es' ? '¿Estás seguro de que quieres eliminar este cliente?' : 'Are you sure you want to delete this client?')) return;
+    
+    // Optimistic UI: remove from list immediately
+    setClients(prev => prev.filter(c => c.id !== clientId));
+    
     try {
       const res = await fetch(`${API_BASE_URL}/clients/${clientId}`, { method: 'DELETE' });
-      if (res.ok) {
-        fetchClients();
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const errMsg = errData?.detail || `HTTP ${res.status}`;
+        alert(`Delete failed: ${errMsg}`);
+        fetchClients(); // revert optimistic removal
       }
     } catch (err) {
-      console.error(err);
+      console.error('Delete error:', err);
+      alert('Delete failed: network error');
+      fetchClients(); // revert optimistic removal
     }
   };
 
