@@ -17,7 +17,14 @@ import {
   Globe,
   MoreVertical,
   Activity,
-  Mail
+  Mail,
+  FileSpreadsheet,
+  Download,
+  CheckCircle2,
+  XCircle,
+  RefreshCw,
+  AlertCircle,
+  Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
 import { API_BASE_URL } from '@/config';
@@ -100,6 +107,12 @@ export default function ClientsPage() {
   const [loadTime, setLoadTime] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [isSheetImportOpen, setIsSheetImportOpen] = useState(false);
+  const [sheetUrl, setSheetUrl] = useState('');
+  const [sheetPreview, setSheetPreview] = useState<any[]>([]);
+  const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
+  const [sheetImportState, setSheetImportState] = useState<'idle' | 'fetching' | 'preview' | 'importing' | 'done'>('idle');
+  const [sheetImportResult, setSheetImportResult] = useState<{added: number; skipped: number; added_clients: any[]; skipped_clients: any[]} | null>(null);
   const router = useRouter();
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
@@ -420,14 +433,25 @@ export default function ClientsPage() {
           <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-900 tracking-tight">{t("clients.title")}</h1>
           <p className="text-slate-500 dark:text-zinc-400 font-medium text-sm mt-1">{t("clients.description")}</p>
         </div>
-        <div className="flex gap-3 w-full md:w-auto">
+        <div className="flex gap-2 w-full md:w-auto flex-wrap">
+          <button 
+            onClick={() => window.open(`${API_BASE_URL}/clients/export-csv`, '_blank')}
+            className="flex-1 md:flex-none px-4 py-2.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl font-bold hover:bg-emerald-500/20 transition-all flex items-center justify-center gap-2 text-sm"
+          >
+            <Download className="w-4 h-4" /> Export CSV
+          </button>
+          <button 
+            onClick={() => { setIsSheetImportOpen(true); setSheetImportState('idle'); setSheetPreview([]); setSheetUrl(''); setSheetImportResult(null); }}
+            className="flex-1 md:flex-none px-4 py-2.5 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 rounded-xl font-bold hover:bg-cyan-500/20 transition-all flex items-center justify-center gap-2 text-sm"
+          >
+            <FileSpreadsheet className="w-4 h-4" /> Import Sheet
+          </button>
           <button 
             onClick={() => setIsOCRModalOpen(true)}
             className="flex-1 md:flex-none px-5 py-2.5 bg-white dark:bg-zinc-900/70 backdrop-blur-md text-indigo-700 border border-indigo-100 rounded-xl font-bold hover:bg-white dark:bg-zinc-900 hover:shadow-md transition-all flex items-center justify-center gap-2"
           >
             <FileScan className="w-5 h-5" /> <span className="hidden sm:inline">{t("clients.ocr_scan")}</span>
           </button>
-          
           <button 
             onClick={() => setIsModalOpen(true)}
             className="flex-1 md:flex-none px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white rounded-xl font-bold shadow-[0_8px_20px_rgba(79,70,229,0.3)] hover:shadow-[0_8px_30px_rgba(79,70,229,0.5)] hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
@@ -868,6 +892,237 @@ export default function ClientsPage() {
                     <button type="submit" className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white rounded-xl font-bold hover:shadow-[0_8px_30px_rgba(79,70,229,0.3)] shadow-[0_4px_15px_rgba(79,70,229,0.2)] hover:-translate-y-0.5 transition-all">{language === 'es' ? 'Crear Cliente' : 'Create Client'}</button>
                   </div>
                 </form>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Sheet Import Modal ─────────────────────────────────── */}
+      <AnimatePresence>
+        {isSheetImportOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
+              className="bg-zinc-950 border border-white/10 rounded-[2rem] shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-cyan-500/20 text-cyan-400 rounded-xl">
+                    <FileSpreadsheet className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-white">Import from Google Sheet / Excel</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Paste a public CSV URL (Google Sheet → File → Share → Publish to web → CSV)</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsSheetImportOpen(false)} className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-400 hover:text-white transition-all text-lg">×</button>
+              </div>
+
+              <div className="overflow-y-auto flex-1 p-6 space-y-5 custom-scrollbar">
+
+                {/* ── Step 1: URL Input ── */}
+                {(sheetImportState === 'idle' || sheetImportState === 'fetching') && (
+                  <div className="space-y-4">
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Google Sheet CSV URL or paste raw CSV below</label>
+                      <div className="flex gap-2">
+                        <input
+                          value={sheetUrl}
+                          onChange={e => setSheetUrl(e.target.value)}
+                          placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv"
+                          className="flex-1 px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white placeholder-slate-500 text-sm outline-none focus:border-cyan-500 transition-all"
+                        />
+                        <button
+                          onClick={async () => {
+                            if (!sheetUrl.trim()) return;
+                            setSheetImportState('fetching');
+                            try {
+                              const r = await fetch(`${API_BASE_URL}/clients/import-sheet`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ csv_url: sheetUrl })
+                              });
+                              // Actually just preview: fetch raw CSV separately for table display
+                              const rawR = await fetch(sheetUrl);
+                              const rawText = await rawR.text();
+                              const lines = rawText.trim().split('\n');
+                              if (lines.length < 2) { setSheetImportState('idle'); return; }
+                              const headers = lines[0].split(',').map(h => h.replace(/"/g,'').trim());
+                              const rows = lines.slice(1).map(l => {
+                                const vals = l.split(',').map(v => v.replace(/"/g,'').trim());
+                                const obj: any = {};
+                                headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+                                return obj;
+                              });
+                              setSheetHeaders(headers);
+                              setSheetPreview(rows);
+                              setSheetImportState('preview');
+                            } catch (e) {
+                              console.error(e);
+                              setSheetImportState('idle');
+                            }
+                          }}
+                          disabled={sheetImportState === 'fetching'}
+                          className="px-5 py-3 bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 rounded-xl font-bold hover:bg-cyan-500/30 transition-all flex items-center gap-2 text-sm disabled:opacity-50"
+                        >
+                          {sheetImportState === 'fetching' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                          Preview
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-2">Supported columns: S.No, Client Name, Website URL, Email, Contact, Country, Services, Market size, Description</p>
+                    </div>
+                    <div className="text-center text-slate-500 text-sm font-bold">— OR —</div>
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Paste raw CSV text</label>
+                      <textarea
+                        rows={8}
+                        placeholder="S.No,Client Name,Website URL,Email,Contact,Country,Services,Description&#10;1,Acme Corp,https://acme.com,..."
+                        className="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white placeholder-slate-600 text-xs font-mono outline-none focus:border-cyan-500 transition-all resize-none"
+                        onChange={async e => {
+                          const text = e.target.value.trim();
+                          if (!text) return;
+                          const lines = text.split('\n');
+                          if (lines.length < 2) return;
+                          const headers = lines[0].split(',').map(h => h.replace(/"/g,'').trim());
+                          const rows = lines.slice(1).map(l => {
+                            const vals = l.split(',').map(v => v.replace(/"/g,'').trim());
+                            const obj: any = {};
+                            headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+                            return obj;
+                          });
+                          setSheetHeaders(headers);
+                          setSheetPreview(rows);
+                          setSheetImportState('preview');
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Step 2: Preview Table ── */}
+                {sheetImportState === 'preview' && sheetPreview.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-white font-bold">
+                        <Sparkles className="w-4 h-4 text-cyan-400" />
+                        {sheetPreview.length} rows detected – Preview (first 5 shown)
+                      </div>
+                      <button onClick={() => setSheetImportState('idle')} className="text-xs text-slate-400 hover:text-white">← Back</button>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-black/30 border-b border-white/10">
+                          <tr>
+                            {sheetHeaders.map(h => (
+                              <th key={h} className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {sheetPreview.slice(0, 5).map((row, i) => (
+                            <tr key={i} className="hover:bg-white/5">
+                              {sheetHeaders.map(h => (
+                                <td key={h} className="px-4 py-3 text-slate-300 truncate max-w-[180px]">{row[h] || '–'}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {sheetPreview.length > 5 && (
+                      <p className="text-xs text-slate-500 text-center">...and {sheetPreview.length - 5} more rows will be imported</p>
+                    )}
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={async () => {
+                          setSheetImportState('importing');
+                          try {
+                            const rawCsv = [sheetHeaders.join(','), ...sheetPreview.map(r => sheetHeaders.map(h => r[h] || '').join(','))].join('\n');
+                            const res = await fetch(`${API_BASE_URL}/clients/import-sheet`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ csv_text: rawCsv })
+                            });
+                            const data = await res.json();
+                            setSheetImportResult(data);
+                            setSheetImportState('done');
+                            fetchClients();
+                          } catch (e) {
+                            console.error(e);
+                            setSheetImportState('preview');
+                          }
+                        }}
+                        className="flex-1 py-3.5 bg-gradient-to-r from-cyan-600 to-indigo-600 text-white rounded-xl font-black hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
+                      >
+                        <UploadCloud className="w-4 h-4" /> Import All {sheetPreview.length} Clients + Auto-Research
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Step 3: Importing spinner ── */}
+                {sheetImportState === 'importing' && (
+                  <div className="flex flex-col items-center justify-center py-16 gap-5">
+                    <div className="relative w-20 h-20">
+                      <div className="absolute inset-0 border-4 border-cyan-500/20 rounded-full" />
+                      <div className="absolute inset-0 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                      <FileSpreadsheet className="absolute inset-0 m-auto w-7 h-7 text-cyan-400" />
+                    </div>
+                    <h3 className="text-xl font-black text-white">Importing & Running AI Research...</h3>
+                    <p className="text-slate-400 text-sm text-center max-w-sm">Adding all rows as new clients. Duplicate detection is active. AI will auto-research each website in the background.</p>
+                  </div>
+                )}
+
+                {/* ── Step 4: Done Summary ── */}
+                {sheetImportState === 'done' && sheetImportResult && (
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-5 flex items-center gap-4">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-400 shrink-0" />
+                        <div>
+                          <p className="text-3xl font-black text-emerald-400">{sheetImportResult.added}</p>
+                          <p className="text-xs text-emerald-400/70 font-bold uppercase tracking-wider mt-1">Clients Added</p>
+                        </div>
+                      </div>
+                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 flex items-center gap-4">
+                        <AlertCircle className="w-8 h-8 text-amber-400 shrink-0" />
+                        <div>
+                          <p className="text-3xl font-black text-amber-400">{sheetImportResult.skipped}</p>
+                          <p className="text-xs text-amber-400/70 font-bold uppercase tracking-wider mt-1">Duplicates Skipped</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-cyan-400" /> AI Auto-Research Running in Background</p>
+                      <p className="text-sm text-slate-300">Each imported client's website is being scraped and researched automatically. Company details, services, and opportunities will populate on each client page within moments.</p>
+                    </div>
+                    {sheetImportResult.added_clients.length > 0 && (
+                      <div className="rounded-2xl border border-white/10 overflow-hidden">
+                        <div className="bg-black/20 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Added Clients</div>
+                        <div className="divide-y divide-white/5 max-h-48 overflow-y-auto">
+                          {sheetImportResult.added_clients.map((c, i) => (
+                            <div key={i} className="px-4 py-2.5 flex items-center gap-3">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <span className="text-sm text-white font-medium">{c.company || c.website}</span>
+                              {c.website && <span className="text-xs text-slate-500 ml-auto truncate max-w-[180px]">{c.website}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex gap-3">
+                      <button onClick={() => { setIsSheetImportOpen(false); }} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:-translate-y-0.5 transition-all">
+                        View Client List
+                      </button>
+                    </div>
+                  </div>
+                )}
+
               </div>
             </motion.div>
           </motion.div>

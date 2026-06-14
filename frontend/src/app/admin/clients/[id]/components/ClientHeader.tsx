@@ -195,6 +195,30 @@ export default function ClientHeader({
           </div>
         </div>
 
+        {/* ── Sheet Data Row (shown only for sheet-imported clients) ── */}
+        {client?.customFields?.sheet_data && Object.keys(client.customFields.sheet_data).length > 0 && (
+          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500 flex items-center gap-1.5 shrink-0">
+                <svg className="w-3 h-3 text-emerald-500" fill="currentColor" viewBox="0 0 20 20"><path d="M3 3a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2H3zm0 2h14v1H3V5zm0 3h14v7H3V8z"/></svg>
+                Sheet Data
+              </span>
+              {Object.entries(client.customFields.sheet_data)
+                .filter(([k, v]) => v && String(v).trim() && ![''].includes(String(v).trim()))
+                .slice(0, 8)
+                .map(([key, val]) => (
+                  <span key={key} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/40">
+                    <span className="text-emerald-400 dark:text-emerald-600 font-black">{key}:</span>
+                    <span className="truncate max-w-[140px]">{String(val)}</span>
+                  </span>
+                ))
+              }
+              {Object.keys(client.customFields.sheet_data).length > 8 && (
+                <span className="text-[10px] text-slate-400 dark:text-zinc-500">+{Object.keys(client.customFields.sheet_data).length - 8} more</span>
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

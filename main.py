@@ -1278,6 +1278,175 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     return {"client": _client_dict(cp, session)}
 
 
+
+# ─── CSV/Sheet Import ────────────────────────────────────────────────────────
+from pydantic import BaseModel as _BM
+from typing import Optional as _Opt
+import csv as _csv
+import io as _io
+
+class SheetImportRequest(_BM):
+    csv_url: _Opt[str] = None
+    csv_text: _Opt[str] = None
+
+@app.post("/clients/import-sheet")
+async def import_sheet(body: SheetImportRequest, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    import httpx
+
+    raw_csv = body.csv_text
+    if not raw_csv and body.csv_url:
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=20) as http_client:
+                r = await http_client.get(body.csv_url)
+                raw_csv = r.text
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not fetch CSV: {e}")
+
+    if not raw_csv:
+        raise HTTPException(status_code=400, detail="No CSV data provided")
+
+    reader = _csv.DictReader(_io.StringIO(raw_csv))
+    rows = list(reader)
+    added, skipped = [], []
+
+    for row in rows:
+        def get_field(keys):
+            for k in keys:
+                for rk in row.keys():
+                    if rk.strip().lower() == k.lower():
+                        v = row[rk]
+                        return v.strip() if v else None
+            return None
+
+        company  = get_field(["Client Name","Company","Company Name","companyName","Name"])
+        website  = get_field(["Website URL","Website","websiteUrl","url","URL"])
+        email    = get_field(["Email","email","Email Address"])
+        phone    = get_field(["Contact","Phone","phone","Contact Number"])
+        country  = get_field(["Country","country","Region"])
+        services = get_field(["Services","Services prone","Services Offered","services_offered","Services proMe Market size"])
+        market   = get_field(["Market size","Market","Market Size"])
+        desc     = get_field(["Description","description","Notes"])
+
+        if not company and not website:
+            skipped.append({"reason": "empty row"})
+            continue
+
+        dup = None
+        if website:
+            dup = session.exec(select(ClientProfile).where(ClientProfile.websiteUrl == website)).first()
+        if not dup and company:
+            dup = session.exec(select(ClientProfile).where(ClientProfile.companyName == company)).first()
+        if dup:
+            skipped.append({"reason": "duplicate", "company": company or website, "existing_id": dup.id})
+            continue
+
+        raw_sheet_data = {k.strip(): (v.strip() if v else "") for k, v in row.items()}
+
+        cp = ClientProfile(
+            companyName=company,
+            websiteUrl=website,
+            phone=phone,
+            address=country,
+            status="Active",
+            services_offered=services,
+            customFields={"sheet_data": raw_sheet_data, "market_size": market, "description": desc, "country": country}
+        )
+
+        if email:
+            existing_user = session.exec(select(User).where(User.email == email)).first()
+            if not existing_user:
+                new_user = User(
+                    email=email,
+                    password=_hash_password("changeme"),
+                    name=company or "Client",
+                    role="Client",
+                )
+                session.add(new_user)
+                session.commit()
+                session.refresh(new_user)
+                cp.userId = new_user.id
+
+        session.add(cp)
+        session.commit()
+        session.refresh(cp)
+        added.append({"id": cp.id, "company": company, "website": website})
+
+        if website:
+            background_tasks.add_task(_auto_research_client_bg, cp.id, website)
+
+    return {"ok": True, "added": len(added), "skipped": len(skipped), "added_clients": added, "skipped_clients": skipped}
+
+
+async def _auto_research_client_bg(client_id: int, website: str):
+    from database import engine
+    from sqlmodel import Session as DBSession
+    from modules.scraper import scrape_website
+    from modules.llm_engine import extract_client_profile_from_website
+    try:
+        raw = await scrape_website(website)
+        if not raw:
+            return
+        data = extract_client_profile_from_website(raw, website)
+        with DBSession(engine) as sess:
+            cp = sess.get(ClientProfile, client_id)
+            if not cp:
+                return
+            if data.get("company_name") and not cp.companyName:
+                cp.companyName = data["company_name"]
+            if data.get("tagline"):
+                cp.tagline = data["tagline"]
+            if data.get("industry"):
+                cp.industry = data["industry"]
+            if data.get("services"):
+                svc = data["services"]
+                cp.services_offered = ", ".join(svc) if isinstance(svc, list) else str(svc)
+            existing_cf = cp.customFields or {}
+            if data.get("description"):
+                existing_cf["ai_description"] = data["description"]
+            cp.customFields = existing_cf
+            sess.add(cp)
+            sess.commit()
+            deal = Deal(
+                title=f"Opportunity – {cp.companyName or website}",
+                client_id=client_id,
+                stage="Lead",
+                value=0.0,
+                notes=f"Auto-researched via sheet import.\n\n{data.get('description', '')}",
+            )
+            sess.add(deal)
+            sess.commit()
+    except Exception as e:
+        print(f"[AutoResearch] Error for client {client_id}: {e}")
+
+
+# ─── CSV Export ────────────────────────────────────────────────────────────────
+@app.get("/clients/export-csv")
+def export_clients_csv(session: Session = Depends(get_session)):
+    from fastapi.responses import StreamingResponse
+
+    clients_list = session.exec(select(ClientProfile)).all()
+    output = _io.StringIO()
+    writer = _csv.writer(output)
+    writer.writerow(["S.No","Client Name","Website URL","Email","Phone/Contact","Country",
+                     "Services Offered","Status","Market Size","Description","Assigned To"])
+    for i, c in enumerate(clients_list, 1):
+        user = session.get(User, c.userId) if c.userId else None
+        emp = session.get(User, c.assignedEmployeeId) if c.assignedEmployeeId else None
+        cf = c.customFields or {}
+        writer.writerow([
+            i, c.companyName or "", c.websiteUrl or "", user.email if user else "",
+            c.phone or "", c.address or cf.get("country",""), c.services_offered or "",
+            c.status or "Active", cf.get("market_size",""),
+            cf.get("description", cf.get("ai_description","")), emp.name if emp else "Unassigned"
+        ])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=serphawk_clients.csv"}
+    )
+
+
 @app.get("/clients/{client_id}")
 def get_client(client_id: int, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
