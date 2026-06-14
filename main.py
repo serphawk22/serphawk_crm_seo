@@ -616,44 +616,54 @@ def delete_client(client_id: int, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
-        
-    models_to_clean = [
-        ServiceRequest, MessageThread, Remark, Document, ActivityLog, CallLog,
-        SentEmail, SocialProfile, SEOAudit, CompetitorAnalysis, RankingTracker,
-        AnalyticsData, Task, Invoice, Milestone, NPSSurvey, Proposal,
-        ClientFileUpload, KeywordRankEntry, ClientNote, Deal, ConversationLog,
-        ClientResearch, ClientTicket, Project
-    ]
-    
+
     from sqlmodel import delete
-    for model in models_to_clean:
-        try:
-            # SQLAlchemy determines the correct column mapping for "clientId" or "client_id" dynamically
-            # We just need to check which attribute exists on the model
-            if hasattr(model, "clientId"):
-                session.execute(delete(model).where(model.clientId == client_id))
-            elif hasattr(model, "client_id"):
-                session.execute(delete(model).where(model.client_id == client_id))
-        except Exception as e:
-            # Safe rollback to prevent transaction abortion if one model fails somehow
-            session.rollback()
-            print(f"Error cleaning {model.__name__} for client {client_id}: {e}")
-            
-    # Handle old db schema for projects table where client_id might still exist as a FK
+    
+    # We execute all deletes in a single transaction block.
+    # No mid-loop rollbacks! We use the exact model attributes defined in database.py
     try:
-        session.execute(text("DELETE FROM projects WHERE client_id = :id"), {"id": client_id})
-        session.commit()
-    except Exception as e:
-        session.rollback()
-            
-    try:
+        session.execute(delete(ServiceRequest).where(ServiceRequest.client_id == client_id))
+        session.execute(delete(MessageThread).where(MessageThread.client_id == client_id))
+        session.execute(delete(Remark).where(Remark.clientId == client_id))
+        session.execute(delete(Document).where(Document.clientId == client_id))
+        session.execute(delete(ActivityLog).where(ActivityLog.clientId == client_id))
+        session.execute(delete(CallLog).where(CallLog.client_id == client_id))
+        session.execute(delete(SentEmail).where(SentEmail.client_id == client_id))
+        session.execute(delete(SocialProfile).where(SocialProfile.clientId == client_id))
+        session.execute(delete(SEOAudit).where(SEOAudit.clientId == client_id))
+        session.execute(delete(CompetitorAnalysis).where(CompetitorAnalysis.clientId == client_id))
+        session.execute(delete(RankingTracker).where(RankingTracker.clientId == client_id))
+        session.execute(delete(AnalyticsData).where(AnalyticsData.clientId == client_id))
+        session.execute(delete(Task).where(Task.client_id == client_id))
+        session.execute(delete(Invoice).where(Invoice.client_id == client_id))
+        session.execute(delete(Milestone).where(Milestone.client_id == client_id))
+        session.execute(delete(NPSSurvey).where(NPSSurvey.client_id == client_id))
+        session.execute(delete(Proposal).where(Proposal.client_id == client_id))
+        session.execute(delete(ClientFileUpload).where(ClientFileUpload.client_id == client_id))
+        session.execute(delete(KeywordRankEntry).where(KeywordRankEntry.client_id == client_id))
+        session.execute(delete(ClientNote).where(ClientNote.client_id == client_id))
+        session.execute(delete(Deal).where(Deal.client_id == client_id))
+        session.execute(delete(ConversationLog).where(ConversationLog.client_id == client_id))
+        session.execute(delete(ClientResearch).where(ClientResearch.client_id == client_id))
+        session.execute(delete(ClientTicket).where(ClientTicket.client_id == client_id))
+        
+        # Marketplace service provider links
+        session.execute(delete(MarketplaceService).where(MarketplaceService.provider_client_id == client_id))
+
+        # Delete the user account linked to this client (only if it's a Client-role user)
+        if cp.userId:
+            linked_user = session.get(User, cp.userId)
+            if linked_user and linked_user.role == "Client":
+                session.delete(linked_user)
+
         session.delete(cp)
         session.commit()
+        return {"success": True}
     except Exception as e:
         session.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to delete client: {e}")
-        
-    return {"success": True}
+        print(f"[DeleteClient] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete client: {str(e)}")
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1077,21 +1087,42 @@ def _user_dict(u: User) -> dict:
 def _client_dict(cp: ClientProfile, session: Session) -> dict:
     user = session.get(User, cp.userId) if cp.userId else None
     employee = session.get(User, cp.assignedEmployeeId) if cp.assignedEmployeeId else None
+    cf = cp.customFields or {}
+    sd = cf.get("sheet_data", {})
+
+    # Smart fallbacks: if stored fields are empty, pull from raw sheet_data
+    def _get(primary, *sheet_keys):
+        if primary:
+            return primary
+        for k in sheet_keys:
+            for sk, sv in sd.items():
+                if sk.strip().lower() == k.lower() and sv and str(sv).strip():
+                    return str(sv).strip()
+        return None
+
+    company_name    = _get(cp.companyName, "Client Name", "Company", "Company Name", "Name")
+    services        = _get(cp.services_offered, "Services", "Services prone", "Services Offered")
+    description     = _get(cp.tagline, "Description", "description", "Notes")
+    website         = _get(cp.websiteUrl, "Website URL", "Website", "url")
+    phone           = _get(cp.phone, "Contact", "Phone")
+    country         = _get(cp.address, "Country", "country", "Region")
+
     return {
         "id": cp.id,
         "userId": cp.userId,
         "email": user.email if user else None,
         "name": user.name if user else None,
-        "companyName": cp.companyName,
-        "phone": cp.phone,
-        "address": cp.address,
+        "companyName": company_name,
+        "phone": phone,
+        "address": country,
         "status": cp.status,
         "gmbName": cp.gmbName,
         "seoStrategy": cp.seoStrategy,
-        "tagline": cp.tagline,
+        "tagline": description,
         "targetKeywords": cp.targetKeywords or [],
         "keywords": cp.targetKeywords or [],
-        "websiteUrl": cp.websiteUrl,
+        "websiteUrl": website,
+        "website": website,
         "recommended_services": cp.recommended_services,
         "nextMilestone": cp.nextMilestone,
         "nextMilestoneDate": cp.nextMilestoneDate,
@@ -1104,9 +1135,18 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
         "payment_status": cp.payment_status,
         "sitemap_url": cp.sitemap_url,
         "cms_type": cp.cms_type,
-        "services_offered": cp.services_offered,
+        "services_offered": services,
         "services_requested": cp.services_requested,
-        "customFields": cp.customFields or {},
+        "industry": cp.industry or cf.get("market_size"),
+        "lead_score": cp.lead_score or 0,
+        "deal_value": cp.deal_value,
+        "contact_person": cp.contact_person or sd.get("Contact") or sd.get("contact"),
+        "linkedin_url": cp.linkedin_url,
+        "last_contact_date": cp.last_contact_date,
+        "next_followup_date": cp.next_followup_date,
+        "description": cf.get("ai_description") or cf.get("description") or description,
+        "country": cf.get("country") or sd.get("Country") or sd.get("country"),
+        "customFields": cf,
     }
 
 
