@@ -55,7 +55,7 @@ export default function FilesTab({ clientId, files, onRefresh }: FilesTabProps) 
     formData.append('uploaded_by', '1'); // Admin user ID placeholder
 
     try {
-      const res = await fetch(`${API_BASE_URL}/files/upload`, {
+      const res = await fetch(`${API_BASE_URL}/upload-file`, {
         method: 'POST',
         body: formData,
       });

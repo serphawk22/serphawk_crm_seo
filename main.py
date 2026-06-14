@@ -44,7 +44,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Form, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import func, or_
@@ -4592,9 +4592,9 @@ import uuid as _uuid
 @app.post("/upload-file")
 async def upload_file_to_server(
     file: UploadFile = File(...),
-    client_id: int = Query(...),
-    uploaded_by: Optional[int] = Query(None),
-    description: Optional[str] = Query(None),
+    client_id: int = Form(...),
+    uploaded_by: Optional[int] = Form(None),
+    description: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ):
     """Upload a real file from device, save to static/uploads/, create DB record."""
