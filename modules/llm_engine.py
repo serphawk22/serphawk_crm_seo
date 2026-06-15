@@ -315,7 +315,7 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
                 "type": "function",
                 "function": {
                     "name": "create_client",
-                    "description": "Creates a new client in the CRM manually.",
+                    "description": "Creates a new client in the CRM manually. If the user asks to add a new client but does NOT provide a company name or URL, DO NOT call this tool. Instead, call navigate_user to '/clients?action=add'.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -392,11 +392,11 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
                 "type": "function",
                 "function": {
                     "name": "navigate_user",
-                    "description": "Teleports the user's screen to a specific page route.",
+                    "description": "Teleports the user's screen to a specific page route. EXACT ROUTE MAP: Dashboard = '/', Clients = '/clients', Add New Client = '/clients?action=add', Marketplace/Store = '/store', Email Agent = '/email-agent', Pipeline = '/pipeline', Projects = '/projects', Tasks = '/tasks', Messages = '/messages', Setup/Settings = '/setup', Invoices = '/invoices'. NEVER guess a route outside this map.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "route": {"type": "string", "description": "The relative URL route, e.g. /clients, /projects, /email-agent, /store"}
+                            "route": {"type": "string", "description": "The EXACT relative URL route from the map."}
                         },
                         "required": ["route"]
                     }
