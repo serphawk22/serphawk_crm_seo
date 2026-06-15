@@ -455,6 +455,7 @@ class SendManualRequest(BaseModel):
     phone_number: Optional[str] = None
     manual: Optional[bool] = True
     email_agent_data: Optional[str] = None
+    skip_send: Optional[bool] = False
 
 @app.post("/send-manual")
 def send_manual(body: SendManualRequest, session: Session = Depends(get_session)):
@@ -545,52 +546,53 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     session.commit()
     session.refresh(sent_email)
 
-    # Step 3.5: Send the actual email
-    from modules.email_sender import send_email_outlook
-    import os
-    sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "prasanthanupojuwork@gmail.com")
-    password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
-    smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "smtp.gmail.com")
-    smtp_port = int(os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587))
-    imap_server = os.getenv("IMAP_SERVER", "imap.gmail.com")
+    # Step 3.5: Send the actual email (unless skip_send is True)
+    if not body.skip_send:
+        from modules.email_sender import send_email_outlook
+        import os
+        sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "prasanthanupojuwork@gmail.com")
+        password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
+        smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "smtp.gmail.com")
+        smtp_port = int(os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587))
+        imap_server = os.getenv("IMAP_SERVER", "imap.gmail.com")
 
-    if not sender or not password:
-        raise HTTPException(status_code=500, detail="Email sender credentials are not configured")
+        if not sender or not password:
+            raise HTTPException(status_code=500, detail="Email sender credentials are not configured")
 
-    try:
-        full_body = f"{body.english_body}\n\n{body.spanish_body}" if body.spanish_body else body.english_body
-        send_email_outlook(
-            to_email=body.to_email,
-            subject=body.subject,
-            body=full_body,
-            sender_email=sender,
-            sender_password=password,
-            smtp_server=smtp_server,
-            smtp_port=smtp_port,
-            imap_server=imap_server
-        )
-        # --- Trigger n8n Webhook ---
         try:
-            import httpx
-            webhook_url = "http://localhost:5678/webhook-test/serphawk-followup"
-            payload = {
-                "event": "email_sent",
-                "sender": sender,
-                "to_email": body.to_email,
-                "subject": body.subject,
-                "company_name": body.company_name,
-                "contact_name": body.contact_name or "Prospect",
-                "phone_number": body.phone_number,
-                "recommended_services": body.recommended_services or "SEO",
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            httpx.post(webhook_url, json=payload, timeout=5.0)
-            print(f"Webhook successfully triggered from manual send to {webhook_url}")
-        except Exception as wh_e:
-            print(f"Webhook trigger failed: {wh_e}")
-    except Exception as e:
-        print(f"Manual Email send failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Manual Email send failed: {e}")
+            full_body = f"{body.english_body}\n\n{body.spanish_body}" if body.spanish_body else body.english_body
+            send_email_outlook(
+                to_email=body.to_email,
+                subject=body.subject,
+                body=full_body,
+                sender_email=sender,
+                sender_password=password,
+                smtp_server=smtp_server,
+                smtp_port=smtp_port,
+                imap_server=imap_server
+            )
+            # --- Trigger n8n Webhook ---
+            try:
+                import httpx
+                webhook_url = "http://localhost:5678/webhook-test/serphawk-followup"
+                payload = {
+                    "event": "email_sent",
+                    "sender": sender,
+                    "to_email": body.to_email,
+                    "subject": body.subject,
+                    "company_name": body.company_name,
+                    "contact_name": body.contact_name or "Prospect",
+                    "phone_number": body.phone_number,
+                    "recommended_services": body.recommended_services or "SEO",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                httpx.post(webhook_url, json=payload, timeout=5.0)
+                print(f"Webhook successfully triggered from manual send to {webhook_url}")
+            except Exception as wh_e:
+                print(f"Webhook trigger failed: {wh_e}")
+        except Exception as e:
+            print(f"Manual Email send failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Manual Email send failed: {e}")
 
 
     # Step 4: Log activity
