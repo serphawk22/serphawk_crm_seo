@@ -259,22 +259,92 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                 </div>
                 
                 <div className="p-5 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 mt-4">
-                   <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-3">Extracted Contacts</p>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                   <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-3">Extracted Company Info</p>
+                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                       <div className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
                         <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Emails</p>
-                        <p className="text-sm text-slate-800 dark:text-zinc-100 dark:text-slate-200 font-mono break-all">{eaData.company_info?.extracted_emails || 'None'}</p>
+                        <div className="flex flex-col gap-1">
+                          {eaData.company_info?.extracted_emails ? eaData.company_info.extracted_emails.split(',').map((e: string, i: number) => (
+                            <a key={i} href={`mailto:${e.trim()}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-mono break-all">{e.trim()}</a>
+                          )) : <p className="text-sm text-slate-500 dark:text-zinc-500 font-mono">None</p>}
+                        </div>
                       </div>
                       <div className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
                         <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Phones</p>
-                        <p className="text-sm text-slate-800 dark:text-zinc-100 dark:text-slate-200 font-mono break-all">{eaData.company_info?.extracted_phone_numbers || 'None'}</p>
+                        <div className="flex flex-col gap-1">
+                          {eaData.company_info?.extracted_phone_numbers ? eaData.company_info.extracted_phone_numbers.split(',').map((p: string, i: number) => (
+                            <a key={i} href={`tel:${p.trim()}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-mono break-all">{p.trim()}</a>
+                          )) : <p className="text-sm text-slate-500 dark:text-zinc-500 font-mono">None</p>}
+                        </div>
                       </div>
-                      <div className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
-                        <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">LinkedIn</p>
-                        <p className="text-sm text-slate-800 dark:text-zinc-100 dark:text-slate-200 font-mono break-all">{eaData.company_info?.extracted_linkedin || 'None'}</p>
+                      <div className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm lg:col-span-2">
+                        <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-2">Company Socials</p>
+                        <div className="flex flex-wrap gap-2">
+                          {eaData.company_info?.company_social_media?.linkedin ? <a href={eaData.company_info.company_social_media.linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn</a> : null}
+                          {eaData.company_info?.company_social_media?.twitter ? <a href={eaData.company_info.company_social_media.twitter} target="_blank" rel="noreferrer" className="px-3 py-1 bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300 rounded-md text-xs font-bold hover:bg-slate-200 transition-colors">X / Twitter</a> : null}
+                          {eaData.company_info?.company_social_media?.instagram ? <a href={eaData.company_info.company_social_media.instagram} target="_blank" rel="noreferrer" className="px-3 py-1 bg-pink-500/10 text-pink-600 dark:bg-pink-500/20 dark:text-pink-400 rounded-md text-xs font-bold hover:bg-pink-500/20 transition-colors">Instagram</a> : null}
+                          {eaData.company_info?.company_social_media?.facebook ? <a href={eaData.company_info.company_social_media.facebook} target="_blank" rel="noreferrer" className="px-3 py-1 bg-blue-600/10 text-blue-700 dark:bg-blue-600/20 dark:text-blue-400 rounded-md text-xs font-bold hover:bg-blue-600/20 transition-colors">Facebook</a> : null}
+                          {eaData.company_info?.extracted_linkedin && !eaData.company_info?.company_social_media?.linkedin ? <a href={eaData.company_info.extracted_linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn (Fallback)</a> : null}
+                          {(!eaData.company_info?.company_social_media || Object.values(eaData.company_info.company_social_media).every(v => !v)) && !eaData.company_info?.extracted_linkedin && <span className="text-sm text-slate-500 dark:text-zinc-500">No social profiles detected.</span>}
+                        </div>
                       </div>
                    </div>
                 </div>
+
+                {/* Key Decision Makers */}
+                {eaData.company_info?.contacts && Array.isArray(eaData.company_info.contacts) && eaData.company_info.contacts.length > 0 && (
+                  <div className="p-5 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 mt-4">
+                    <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-3">Key Decision Makers</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 dark:border-zinc-700 text-[10px] text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
+                            <th className="py-3 px-4 font-bold">Name & Role</th>
+                            <th className="py-3 px-4 font-bold">Contact</th>
+                            <th className="py-3 px-4 font-bold">Socials</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {eaData.company_info.contacts.map((p: any, i: number) => (
+                            <tr key={i} className="border-b border-slate-100 dark:border-zinc-800 last:border-0">
+                              <td className="py-4 px-4 align-top">
+                                <div className="font-bold text-sm text-slate-800 dark:text-zinc-100">{p.name || 'Unknown Name'}</div>
+                                {p.role && <div className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{p.role}</div>}
+                              </td>
+                              <td className="py-4 px-4 align-top">
+                                {p.email && (
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <Mail size={12} className="text-slate-400" />
+                                    <a href={`mailto:${p.email}`} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline break-all">{p.email}</a>
+                                  </div>
+                                )}
+                                {p.phone_number && (
+                                  <div className="flex items-center gap-2">
+                                    <Phone size={12} className="text-slate-400" />
+                                    <a href={`tel:${p.phone_number}`} className="text-xs text-slate-600 dark:text-zinc-300 hover:underline">{p.phone_number}</a>
+                                  </div>
+                                )}
+                                {!p.email && !p.phone_number && <span className="text-xs text-slate-400">Not found</span>}
+                              </td>
+                              <td className="py-4 px-4 align-top">
+                                <div className="flex flex-wrap gap-2">
+                                  {p.personal_social_media?.linkedin ? (
+                                    <a href={p.personal_social_media.linkedin} target="_blank" rel="noreferrer" className="px-2 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded text-[10px] font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn</a>
+                                  ) : null}
+                                  {p.personal_social_media?.twitter ? (
+                                    <a href={p.personal_social_media.twitter} target="_blank" rel="noreferrer" className="px-2 py-1 bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300 rounded text-[10px] font-bold hover:bg-slate-200 transition-colors">X/Twitter</a>
+                                  ) : null}
+                                  {!p.personal_social_media?.linkedin && !p.personal_social_media?.twitter && <span className="text-xs text-slate-400">-</span>}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
                 
                 {/* Additional Intelligence: Recommended Services, Extracted Services, and Drafts */}
                 {eaData.recommended_services && eaData.recommended_services.length > 0 && (

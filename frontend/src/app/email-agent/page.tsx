@@ -208,7 +208,7 @@ function BottomUpFillMail() {
   );
 }
 
-function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAutomatically, onSaveFollowUp }: { result: ResearchResultData; companyName: string; companyUrl: string; onSendManually: (r: ResearchResultData, name: string, url: string, skip_send?: boolean) => Promise<SendEmailResult>; onSendAutomatically: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSaveFollowUp: (r: ResearchResultData, note: string, title: string) => Promise<boolean>; }) {
+function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAutomatically, onSaveFollowUp }: { result: ResearchResultData; companyName: string; companyUrl: string; onSendManually: (r: ResearchResultData, name: string, url: string, skip_send?: boolean, action_type?: string) => Promise<SendEmailResult>; onSendAutomatically: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSaveFollowUp: (r: ResearchResultData, note: string, title: string) => Promise<boolean>; }) {
   const [activeTab, setActiveTab] = useState<"english" | "spanish">("english");
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
@@ -222,11 +222,17 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
   const directContactEmail = Array.isArray((result.company_info as any)?.contacts) ? (result.company_info as any).contacts[0]?.email : (result.company_info as any)?.email;
   const contactEmail = result.contact?.email || directContactEmail || extractedEmail;
 
+  const englishText = result.draft?.english_body || result.draft?.body || "";
+  const spanishText = result.draft?.spanish_body || "";
+  const gmailBodyText = spanishText && !englishText.includes(spanishText) 
+    ? `${englishText}\n\n---\n\n${spanishText}`
+    : englishText;
+
   const handleSend = async () => {
     setSending(true);
     setSendError(null);
     try {
-      await onSendManually(result, companyName, companyUrl);
+      await onSendManually(result, companyName, companyUrl, false, "System");
       setSendSuccess("Sent Manually");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to send email";
@@ -532,10 +538,10 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                       Send via System
                     </button>
                     <a
-                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${contactEmail || ''}&su=${encodeURIComponent(result.draft?.subject || '')}&body=${encodeURIComponent((result.draft?.english_body || result.draft?.body || "") + (result.draft?.spanish_body ? "\n\n---\n\n" + result.draft.spanish_body : ""))}`}
+                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${contactEmail || ''}&su=${encodeURIComponent(result.draft?.subject || '')}&body=${encodeURIComponent(gmailBodyText)}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={() => onSendManually(result, companyName, companyUrl, true).catch(console.error)}
+                      onClick={() => onSendManually(result, companyName, companyUrl, true, "Gmail").catch(console.error)}
                       className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-amber-600 transition-all shrink-0"
                     >
                       <Send className="w-3.5 h-3.5" />
@@ -546,6 +552,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                         href={`https://wa.me/${result.contact.phone_number.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(result.draft.whatsapp_draft)}`}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={() => onSendManually(result, companyName, companyUrl, true, "WhatsApp").catch(console.error)}
                         className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-emerald-600 transition-all shrink-0"
                       >
                         <MessageCircle className="w-3.5 h-3.5" /> Send via WhatsApp
@@ -716,8 +723,8 @@ export default function EmailAgentPage() {
     }
   };
 
-  const handleSendManually = async (result: ResearchResultData, name: string, url: string, skip_send: boolean = false): Promise<SendEmailResult> => {
-    const data = await sendEmail(result, name, url, true, skip_send);
+  const handleSendManually = async (result: ResearchResultData, name: string, url: string, skip_send: boolean = false, action_type: string = "System"): Promise<SendEmailResult> => {
+    const data = await sendEmail(result, name, url, true, skip_send, action_type);
     if (data?.client_id) {
       setResultsHistory(prev => prev.map(item => item.resultData === result ? { ...item, resultData: { ...item.resultData, client_id: data.client_id } } : item));
     }
@@ -725,14 +732,14 @@ export default function EmailAgentPage() {
   };
 
   const handleSendAutomatically = async (result: ResearchResultData, name: string, url: string): Promise<SendEmailResult> => {
-    const data = await sendEmail(result, name, url, false);
+    const data = await sendEmail(result, name, url, false, false, "System Auto");
     if (data?.client_id) {
       setResultsHistory(prev => prev.map(item => item.resultData === result ? { ...item, resultData: { ...item.resultData, client_id: data.client_id } } : item));
     }
     return data;
   };
 
-  const sendEmail = async (result: ResearchResultData, name: string, url: string, manual: boolean, skip_send: boolean = false): Promise<SendEmailResult> => {
+  const sendEmail = async (result: ResearchResultData, name: string, url: string, manual: boolean, skip_send: boolean = false, action_type: string = "System"): Promise<SendEmailResult> => {
     try {
       const serviceNames = (result.recommended_services || []).map((s) => (typeof s === 'string' ? s : s.service_name || '')).filter(Boolean).join(", ");
       const fallbackEmail = Array.isArray(result.company_info?.contacts) ? result.company_info.contacts[0]?.email : undefined;
@@ -757,6 +764,7 @@ export default function EmailAgentPage() {
           phone_number: result.contact?.phone_number || null,
           manual,
           skip_send,
+          action_type,
           email_agent_data: JSON.stringify(result),
         }),
       });

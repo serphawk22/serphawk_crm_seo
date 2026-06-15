@@ -456,6 +456,7 @@ class SendManualRequest(BaseModel):
     manual: Optional[bool] = True
     email_agent_data: Optional[str] = None
     skip_send: Optional[bool] = False
+    action_type: Optional[str] = "System"
 
 @app.post("/send-manual")
 def send_manual(body: SendManualRequest, session: Session = Depends(get_session)):
@@ -480,6 +481,16 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
         session.commit()
         session.refresh(user)
 
+    # Determine action string
+    if body.action_type == "Gmail":
+        action_str = "Outreach via Gmail"
+    elif body.action_type == "WhatsApp":
+        action_str = "Outreach via WhatsApp"
+    elif body.action_type == "System Auto":
+        action_str = "Automated email sent"
+    else:
+        action_str = "Manual outreach email sent"
+
     # Step 2: Find or create ClientProfile
     client_profile = session.exec(
         select(ClientProfile).where(ClientProfile.userId == user.id)
@@ -492,7 +503,7 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
             phone=body.phone_number or None,
             status="Active",
             recommended_services=body.recommended_services,
-            lastActivity="Outreach email sent",
+            lastActivity=action_str,
             lastActivityDate=datetime.utcnow().isoformat(),
         )
         session.add(client_profile)
@@ -500,7 +511,7 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
         session.refresh(client_profile)
     else:
         # Update existing profile
-        client_profile.lastActivity = "Outreach email sent"
+        client_profile.lastActivity = action_str
         client_profile.lastActivityDate = datetime.utcnow().isoformat()
         if body.recommended_services:
             client_profile.recommended_services = body.recommended_services
@@ -597,9 +608,18 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
 
     # Step 4: Log activity
     try:
+        if body.action_type == "Gmail":
+            log_action = f"Sent outreach via Gmail to {body.to_email}"
+        elif body.action_type == "WhatsApp":
+            log_action = f"Sent outreach via WhatsApp to {body.phone_number}"
+        elif body.action_type == "System Auto":
+            log_action = f"Automated outreach email sent to {body.to_email}"
+        else:
+            log_action = f"Manual outreach email sent to {body.to_email}"
+
         activity = ActivityLog(
             client_id=client_profile.id,
-            action=(f"Manual outreach email sent to {body.to_email}" if body.manual else f"Automated outreach email sent to {body.to_email}"),
+            action=log_action,
             details=f"Subject: {body.subject} | Services: {body.recommended_services or 'N/A'}",
             timestamp=datetime.utcnow(),
         )
