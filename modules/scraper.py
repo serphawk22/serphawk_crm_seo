@@ -258,7 +258,7 @@ async def scrape_website(url):
     contact_links = []
     try:
         soup = BeautifulSoup(response_text, 'html.parser')
-        keywords = ['contact', 'about', 'reach', 'info', 'support', 'help', 'career', 'team', 'sales', 'inquiry', 'business', 'partnership']
+        keywords = ['contact', 'about', 'reach', 'info', 'support', 'help', 'career', 'team', 'our-team', 'staff', 'people', 'leadership', 'management', 'board', 'sales', 'inquiry', 'business', 'partnership']
         seen_urls = set()
         for a in soup.find_all('a', href=True):
             href = a['href'].strip()
@@ -278,7 +278,7 @@ async def scrape_website(url):
         logger.error(f"Error parsing contact links: {e}")
 
     # Scrape top contact/about pages for contact info
-    for link in contact_links[:3]:  # Increased from 2 to 3 pages
+    for link in contact_links[:5]:  # Increased from 3 to 5 pages
         logger.info(f"Scraping contact/about subpage: {link}")
         try:
             sub_resp = requests.get(link, headers=headers, timeout=6)
