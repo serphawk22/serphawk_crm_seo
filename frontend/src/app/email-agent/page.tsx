@@ -222,6 +222,12 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
   const directContactEmail = Array.isArray((result.company_info as any)?.contacts) ? (result.company_info as any).contacts[0]?.email : (result.company_info as any)?.email;
   const contactEmail = result.contact?.email || directContactEmail || extractedEmail;
 
+  const englishText = result.draft?.english_body || result.draft?.body || "";
+  const spanishText = result.draft?.spanish_body || "";
+  const gmailBodyText = spanishText && !englishText.includes(spanishText) 
+    ? `${englishText}\n\n---\n\n${spanishText}`
+    : englishText;
+
   const handleSend = async () => {
     setSending(true);
     setSendError(null);
@@ -532,7 +538,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                       Send via System
                     </button>
                     <a
-                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${contactEmail || ''}&su=${encodeURIComponent(result.draft?.subject || '')}&body=${encodeURIComponent((result.draft?.english_body || result.draft?.body || "") + (result.draft?.spanish_body ? "\n\n---\n\n" + result.draft.spanish_body : ""))}`}
+                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${contactEmail || ''}&su=${encodeURIComponent(result.draft?.subject || '')}&body=${encodeURIComponent(gmailBodyText)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={() => onSendManually(result, companyName, companyUrl, true, "Gmail").catch(console.error)}
