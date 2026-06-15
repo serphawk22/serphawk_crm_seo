@@ -5476,7 +5476,7 @@ async def chatbot_message(
                 session.commit()
                 session.refresh(cp)
                 action_taken = "client_created"
-                route = f"/admin/clients/{cp.id}"
+                route = f"/clients/{cp.id}"
                 
                 if website_url:
                     background_tasks.add_task(_auto_research_client_bg, cp.id, website_url)
@@ -5506,7 +5506,7 @@ async def chatbot_message(
                 
             elif action_name == "navigate_user":
                 action_taken = "navigate"
-                route = params.get("route", "/admin")
+                route = params.get("route", "/")
                 
             elif action_name == "trigger_whatsapp_support":
                 action_taken = "trigger_whatsapp"

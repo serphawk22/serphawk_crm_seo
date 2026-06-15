@@ -332,7 +332,7 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
                 "type": "function",
                 "function": {
                     "name": "draft_email",
-                    "description": "Drafts a cold email or standard email for a client.",
+                    "description": "Drafts an email for a client. IMPORTANT: When you call this tool, your conversational reply MUST say 'I will redirect you to the Email Agent, where you can enter the website URL or client details to draft the email.'",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -396,7 +396,7 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "route": {"type": "string", "description": "The relative URL route, e.g. /admin/clients, /admin/projects, /email-agent, /store"}
+                            "route": {"type": "string", "description": "The relative URL route, e.g. /clients, /projects, /email-agent, /store"}
                         },
                         "required": ["route"]
                     }
