@@ -273,9 +273,9 @@ def extract_tasks_from_note(note_content):
         print(f"Error in task extraction: {e}")
         return []
 
-def process_chatbot_command(message: str, client_context: dict = None, current_route: str = None):
+def process_chatbot_command(message: str, client_context: dict = None, current_route: str = None, crm_summary: str = ""):
     """
-    Analyzes user message to determine CRM action intent for the chatbot.
+    Analyzes user message using OpenAI Function Calling to determine one or more CRM actions.
     """
     import json
     try:
@@ -283,53 +283,163 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
         context_str = f"Client context: {json.dumps(client_context)}" if client_context else "No specific client context."
         route_str = f"User's current page route: {current_route}" if current_route else "Unknown route."
         
-        prompt = f"""
-        You are the highly advanced SERP Hawk CRM Assistant.
-        The user has sent a message. Detect their intent and extract any parameters needed to perform the action.
+        system_prompt = f"""
+        You are the highly advanced SERP Hawk CRM Omni-Agent. 
+        Your goal is to perform operations on behalf of the user to make managing their CRM 'as easy as f***'.
         
         {route_str}
         {context_str}
+        {crm_summary}
         
-        User message: "{message}"
-        
-        Return ONLY a JSON object with this exact structure:
-        {{
-            "intent": "create_client" | "create_project" | "search_marketplace" | "draft_email" | "add_note" | "log_conversation" | "navigate" | "general",
-            "parameters": {{
-                "company_name": "...",
-                "email": "...",
-                "phone": "...",
-                "website": "...",
-                "project_name": "...",
-                "description": "...",
-                "search_query": "...",
-                "route": "...",
-                "client_id": 123,
-                "content": "...",
-                "title": "...",
-                "type": "..."
-            }},
-            "reply": "A friendly confirmation to send back to the user in the chat."
-        }}
-        
-        Rules:
-        - If the user asks to go somewhere or see something, intent is 'navigate'. (route should be things like "/admin", "/admin/clients", "/admin/marketplace", "/admin/projects", "/email-agent")
-        - If the user asks to add a client/company, intent is 'create_client'. Extract website if mentioned.
-        - If the user asks to search for a service, intent is 'search_marketplace'.
-        - If the user asks to draft an email, intent is 'draft_email'.
-        - If you don't know the exact intent, use 'general' and just reply naturally.
+        You have a suite of tools available. If the user asks you to do something that matches a tool, CALL THE TOOL. 
+        You can call multiple tools if necessary.
+        If no tools are relevant, or after you've called tools, respond with a helpful conversational reply.
         """
+        
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "bulk_import_websites",
+                    "description": "Scrapes and imports a list of website URLs into the CRM as new clients.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "urls": {"type": "array", "items": {"type": "string"}, "description": "List of URLs to scrape and add"}
+                        },
+                        "required": ["urls"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "create_client",
+                    "description": "Creates a new client in the CRM manually.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "company_name": {"type": "string"},
+                            "website": {"type": "string"},
+                            "email": {"type": "string"},
+                            "phone": {"type": "string"}
+                        },
+                        "required": ["company_name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "draft_email",
+                    "description": "Drafts a cold email or standard email for a client.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "client_id": {"type": "integer", "description": "The target client ID"},
+                            "prompt": {"type": "string", "description": "Specific instructions for the email copy"}
+                        },
+                        "required": ["prompt"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_note_to_client",
+                    "description": "Adds a meeting note, conversation log, or general note to a client profile.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "client_id": {"type": "integer"},
+                            "content": {"type": "string"}
+                        },
+                        "required": ["content"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "create_deal",
+                    "description": "Creates a new deal/opportunity for a client.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "client_id": {"type": "integer"},
+                            "title": {"type": "string", "description": "Deal name"},
+                            "value": {"type": "number", "description": "Estimated deal value in USD"},
+                            "stage": {"type": "string", "description": "Stage (e.g. Lead, Negotiating, Closed Won)"}
+                        },
+                        "required": ["client_id", "title"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "trigger_whatsapp_support",
+                    "description": "Triggers the customer support WhatsApp redirect UI.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "issue_summary": {"type": "string", "description": "Optional summary of what the user needs help with."}
+                        }
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "navigate_user",
+                    "description": "Teleports the user's screen to a specific page route.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "route": {"type": "string", "description": "The relative URL route, e.g. /admin/clients, /admin/projects, /email-agent, /store"}
+                        },
+                        "required": ["route"]
+                    }
+                }
+            }
+        ]
+
         response = client.chat.completions.create(
             model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message}
+            ],
+            tools=tools,
+            tool_choice="auto"
         )
-        return json.loads(response.choices[0].message.content)
-    except Exception as e:
-        print(f"Error in chatbot command processing: {e}")
+        
+        msg = response.choices[0].message
+        actions = []
+        reply = msg.content or ""
+        
+        if msg.tool_calls:
+            for tool_call in msg.tool_calls:
+                args = json.loads(tool_call.function.arguments)
+                actions.append({
+                    "action": tool_call.function.name,
+                    "parameters": args
+                })
+                
+            # Generate a dynamic reply based on the actions taken if the LLM didn't provide one
+            if not reply:
+                names = [a["action"] for a in actions]
+                reply = f"I've initiated the following actions: {', '.join(names)}."
+                
         return {
-            "intent": "general",
-            "reply": "I'm sorry, I encountered an error trying to process your request."
+            "actions": actions,
+            "reply": reply
+        }
+    except Exception as e:
+        print(f"Error in Omni-Agent command processing: {e}")
+        return {
+            "actions": [],
+            "reply": "I'm sorry, my Omni-Agent processor encountered an error."
         }
 
 

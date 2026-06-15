@@ -5387,9 +5387,18 @@ async def auto_fill_client(request: AutoFillRequest):
 
 # ─── Chatbot endpoint ────────────────────────────────────────────────────────
 @app.post("/chatbot/message")
-async def chatbot_message(request: ChatbotRequest, session: Session = Depends(get_session)):
+async def chatbot_message(
+    request: ChatbotRequest, 
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session)
+):
     from modules.llm_engine import process_chatbot_command
     from database import ClientProfile, ClientNote, ConversationLog, ActivityLog, Project, MarketplaceService, User
+    
+    # 1. Gather rich CRM summary for context
+    active_clients = session.exec(select(ClientProfile).limit(10)).all()
+    client_names = [c.companyName for c in active_clients if c.companyName]
+    crm_summary = f"CRM Summary: {len(client_names)} active clients ({', '.join(client_names[:5])}...)"
     
     client_context = None
     if request.client_id:
@@ -5403,132 +5412,129 @@ async def chatbot_message(request: ChatbotRequest, session: Session = Depends(ge
                 "industry": cp.industry
             }
             
-    # Advanced AI processing
-    result = process_chatbot_command(request.message, client_context, request.current_route)
+    # 2. Advanced Omni-Agent AI processing
+    result = process_chatbot_command(request.message, client_context, request.current_route, crm_summary)
     
-    intent = result.get("intent", "general")
-    params = result.get("parameters", {})
+    actions = result.get("actions", [])
     action_taken = None
     route = None
     
     try:
-        if intent == "create_client":
-            from modules.scraper import scrape_website
-            from modules.llm_engine import extract_client_profile_from_website
+        for action_obj in actions:
+            action_name = action_obj.get("action")
+            params = action_obj.get("parameters", {})
             
-            # Scrape if website is provided
-            website_url = params.get("website")
-            scraped_data = {}
-            if website_url:
-                try:
-                    raw_text = await scrape_website(website_url)
-                    if raw_text:
-                        scraped_data = extract_client_profile_from_website(raw_text, website_url)
-                except Exception as e:
-                    print(f"Scraping failed during auto-fill: {e}")
-
-            # Check if email exists
-            email = params.get("email") or scraped_data.get("email") or f"bot_{datetime.utcnow().timestamp()}@placeholder.com"
-            existing_user = session.exec(select(User).where(User.email == email)).first() if hasattr(User, 'email') else None
-            user = existing_user
-            
-            if not user:
-                user = User(
-                    email=email,
-                    password="changeme",
-                    name=params.get("company_name") or scraped_data.get("companyName") or "Client",
-                    role="Client",
-                )
-                session.add(user)
-                session.commit()
-                session.refresh(user)
-
-            # Map targetKeywords if present
-            keywords = scraped_data.get("targetKeywords", "")
-            if isinstance(keywords, str):
-                keywords = [k.strip() for k in keywords.split(',') if k.strip()]
-
-            cp = ClientProfile(
-                userId=user.id,
-                companyName=params.get("company_name") or scraped_data.get("companyName") or "New Client",
-                websiteUrl=website_url,
-                phone=params.get("phone", ""),
-                status="Active",
-                seoStrategy=scraped_data.get("seoStrategy", ""),
-                tagline=scraped_data.get("tagline", ""),
-                targetKeywords=keywords if keywords else None
-            )
-            session.add(cp)
-            session.commit()
-            session.refresh(cp)
-            action_taken = "client_created"
-            route = f"/admin/clients/{cp.id}"
-            
-        elif intent == "create_project":
-            p = Project(
-                name=params.get("project_name", "New Project"),
-                description=params.get("description", ""),
-                status="Active",
-                progress=0
-            )
-            session.add(p)
-            session.commit()
-            session.refresh(p)
-            action_taken = "project_created"
-            route = f"/admin/projects/{p.id}"
-            
-        elif intent == "search_marketplace":
-            query = params.get("search_query", "")
-            action_taken = "navigate"
-            route = f"/admin/marketplace?search={query}"
-            
-        elif intent == "draft_email":
-            # Auto-route to email agent
-            action_taken = "navigate"
-            route = "/email-agent"
-            # We could pre-fill by setting query params if email agent supported it
-            
-        elif intent == "navigate":
-            action_taken = "navigate"
-            route = params.get("route", "/admin")
-            
-        elif intent == "add_note":
-            target_client_id = request.client_id or params.get("client_id")
-            if target_client_id:
-                new_note = ClientNote(
-                    client_id=target_client_id,
-                    content=params.get("content", result.get("content", "")),
-                    author_name="AI Assistant",
-                    type="Note"
-                )
-                session.add(new_note)
-                log = ActivityLog(clientId=target_client_id, action="Note Added via AI Assistant", details=new_note.content[:100], method="bot")
-                session.add(log)
-                session.commit()
-                action_taken = "note_added"
+            if action_name == "bulk_import_websites":
+                from modules.scraper import scrape_website
+                from modules.llm_engine import extract_client_profile_from_website
                 
-        elif intent == "log_conversation":
-            target_client_id = request.client_id or params.get("client_id")
-            if target_client_id:
-                new_conv = ConversationLog(
-                    client_id=target_client_id,
-                    title=params.get("title", result.get("title", "Conversation")),
-                    type=params.get("type", result.get("type", "call")),
-                    description=params.get("content", result.get("content", "")),
-                    author_name="AI Assistant"
-                )
-                session.add(new_conv)
-                log = ActivityLog(clientId=target_client_id, action=f"Logged {new_conv.type} via AI Assistant", details=new_conv.title, method="bot")
-                session.add(log)
-                session.commit()
-                action_taken = "conversation_logged"
+                urls = params.get("urls", [])
+                for website_url in urls:
+                    # Create a skeleton client first
+                    cp = ClientProfile(
+                        companyName=website_url.replace("https://", "").replace("http://", "").split("/")[0],
+                        websiteUrl=website_url,
+                        status="Active",
+                        tagline="Scraping in progress..."
+                    )
+                    session.add(cp)
+                    session.commit()
+                    session.refresh(cp)
+                    
+                    # Spawn the background task to scrape and auto-research!
+                    background_tasks.add_task(_auto_research_client_bg, cp.id, website_url)
+                    
+                action_taken = "bulk_clients_created"
                 
+            elif action_name == "create_client":
+                from modules.scraper import scrape_website
+                from modules.llm_engine import extract_client_profile_from_website
+                
+                website_url = params.get("website")
+                email = params.get("email") or f"bot_{datetime.utcnow().timestamp()}@placeholder.com"
+                existing_user = session.exec(select(User).where(User.email == email)).first() if hasattr(User, 'email') else None
+                user = existing_user
+                if not user:
+                    user = User(
+                        email=email,
+                        password="changeme",
+                        name=params.get("company_name") or "Client",
+                        role="Client",
+                    )
+                    session.add(user)
+                    session.commit()
+                    session.refresh(user)
+
+                cp = ClientProfile(
+                    userId=user.id,
+                    companyName=params.get("company_name", "New Client"),
+                    websiteUrl=website_url,
+                    phone=params.get("phone", ""),
+                    status="Active"
+                )
+                session.add(cp)
+                session.commit()
+                session.refresh(cp)
+                action_taken = "client_created"
+                route = f"/admin/clients/{cp.id}"
+                
+                if website_url:
+                    background_tasks.add_task(_auto_research_client_bg, cp.id, website_url)
+                
+            elif action_name == "create_deal":
+                from database import Deal
+                client_id = params.get("client_id") or request.client_id
+                if client_id:
+                    deal = Deal(
+                        title=params.get("title", "New Deal"),
+                        client_id=client_id,
+                        stage=params.get("stage", "Lead"),
+                        value=params.get("value", 0.0),
+                        notes="Created by Omni-Agent"
+                    )
+                    session.add(deal)
+                    session.commit()
+                    action_taken = "deal_created"
+                    
+            elif action_name == "draft_email":
+                client_id = params.get("client_id") or request.client_id
+                if client_id:
+                    # In a real setup, we would call generate_email() here and save it to an EmailLog.
+                    # For now, navigate to the email agent
+                    action_taken = "navigate"
+                    route = f"/email-agent?client_id={client_id}"
+                
+            elif action_name == "navigate_user":
+                action_taken = "navigate"
+                route = params.get("route", "/admin")
+                
+            elif action_name == "trigger_whatsapp_support":
+                action_taken = "trigger_whatsapp"
+                # Frontend will catch this and render a WhatsApp link
+                
+            elif action_name == "add_note_to_client":
+                target_client_id = request.client_id or params.get("client_id")
+                if target_client_id:
+                    new_note = ClientNote(
+                        client_id=target_client_id,
+                        content=params.get("content", ""),
+                        author_name="Omni-Agent",
+                        type="Note"
+                    )
+                    session.add(new_note)
+                    log = ActivityLog(clientId=target_client_id, action="Note Added via Omni-Agent", details=new_note.content[:100], method="bot")
+                    session.add(log)
+                    session.commit()
+                    action_taken = "note_added"
+                    
     except Exception as e:
         print(f"Chatbot mutation error: {e}")
 
+    # Fallback response format for the frontend
     return {
         "reply": result.get("reply", "I processed your request."),
-        "intent": intent,
+        "intent": "omni_agent", # Legacy
+        "actions": actions,
         "action_taken": action_taken,
         "route": route
     }
