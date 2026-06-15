@@ -532,11 +532,13 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                       Send via System
                     </button>
                     <a
-                      href={`mailto:${contactEmail || ''}?subject=${encodeURIComponent(result.draft?.subject || '')}&body=${encodeURIComponent(activeTab === "english" ? (result.draft?.english_body || result.draft?.body || "") : (result.draft?.spanish_body || ""))}`}
+                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${contactEmail || ''}&su=${encodeURIComponent(result.draft?.subject || '')}&body=${encodeURIComponent(activeTab === "english" ? (result.draft?.english_body || result.draft?.body || "") : (result.draft?.spanish_body || ""))}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-amber-600 transition-all shrink-0"
                     >
                       <Send className="w-3.5 h-3.5" />
-                      Send through my email
+                      Send through Gmail
                     </a>
                     {result.draft?.whatsapp_draft && result.contact?.phone_number && (
                       <a
