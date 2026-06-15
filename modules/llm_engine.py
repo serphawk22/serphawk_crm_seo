@@ -49,7 +49,7 @@ def analyze_content(text):
         Look closely at the 'Extracted Emails', 'Extracted Phone Numbers', and any 'Social Links' in the company info below. Always prefer using the actual scraped links and emails instead of placeholders or guesses. Extract as many people/decision makers as possible.
 
         Company Info:
-        {text[:15000]}
+        {text[:60000]}
         """
 
         response = client.chat.completions.create(

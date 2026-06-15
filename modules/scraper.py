@@ -284,8 +284,8 @@ async def scrape_website(url):
             sub_resp = requests.get(link, headers=headers, timeout=6)
             if sub_resp.status_code == 200:
                 sub_text = extract_from_html(sub_resp.text, link)
-                # Keep more text for better extraction (5000 chars instead of 3000)
-                scraped_texts.append(sub_text[:5000])
+                # Keep more text for better extraction (15000 chars instead of 5000)
+                scraped_texts.append(sub_text[:15000])
         except Exception as e:
             logger.error(f"Failed to scrape subpage {link}: {e}")
 

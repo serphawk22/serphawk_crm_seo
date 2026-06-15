@@ -278,9 +278,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
       className="space-y-4 w-full"
     >
       {/* Top row: Company Info + Contact */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Company Info */}
-        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 lg:col-span-2 shadow-sm">
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-800 dark:text-zinc-100 font-black text-lg shadow-inner">
@@ -417,7 +415,6 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
             </div>
           )}
         </div>
-      </div>
 
       {/* Recommended Services */}
       {result.recommended_services && result.recommended_services.length > 0 && (
