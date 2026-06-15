@@ -208,7 +208,7 @@ function BottomUpFillMail() {
   );
 }
 
-function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAutomatically, onSaveFollowUp }: { result: ResearchResultData; companyName: string; companyUrl: string; onSendManually: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSendAutomatically: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSaveFollowUp: (r: ResearchResultData, note: string, title: string) => Promise<boolean>; }) {
+function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAutomatically, onSaveFollowUp }: { result: ResearchResultData; companyName: string; companyUrl: string; onSendManually: (r: ResearchResultData, name: string, url: string, skip_send?: boolean) => Promise<SendEmailResult>; onSendAutomatically: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSaveFollowUp: (r: ResearchResultData, note: string, title: string) => Promise<boolean>; }) {
   const [activeTab, setActiveTab] = useState<"english" | "spanish">("english");
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
@@ -532,9 +532,10 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                       Send via System
                     </button>
                     <a
-                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${contactEmail || ''}&su=${encodeURIComponent(result.draft?.subject || '')}&body=${encodeURIComponent(activeTab === "english" ? (result.draft?.english_body || result.draft?.body || "") : (result.draft?.spanish_body || ""))}`}
+                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${contactEmail || ''}&su=${encodeURIComponent(result.draft?.subject || '')}&body=${encodeURIComponent((result.draft?.english_body || result.draft?.body || "") + (result.draft?.spanish_body ? "\n\n---\n\n" + result.draft.spanish_body : ""))}`}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={() => onSendManually(result, companyName, companyUrl, true).catch(console.error)}
                       className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-amber-600 transition-all shrink-0"
                     >
                       <Send className="w-3.5 h-3.5" />
@@ -715,8 +716,8 @@ export default function EmailAgentPage() {
     }
   };
 
-  const handleSendManually = async (result: ResearchResultData, name: string, url: string): Promise<SendEmailResult> => {
-    const data = await sendEmail(result, name, url, true);
+  const handleSendManually = async (result: ResearchResultData, name: string, url: string, skip_send: boolean = false): Promise<SendEmailResult> => {
+    const data = await sendEmail(result, name, url, true, skip_send);
     if (data?.client_id) {
       setResultsHistory(prev => prev.map(item => item.resultData === result ? { ...item, resultData: { ...item.resultData, client_id: data.client_id } } : item));
     }
@@ -731,7 +732,7 @@ export default function EmailAgentPage() {
     return data;
   };
 
-  const sendEmail = async (result: ResearchResultData, name: string, url: string, manual: boolean): Promise<SendEmailResult> => {
+  const sendEmail = async (result: ResearchResultData, name: string, url: string, manual: boolean, skip_send: boolean = false): Promise<SendEmailResult> => {
     try {
       const serviceNames = (result.recommended_services || []).map((s) => (typeof s === 'string' ? s : s.service_name || '')).filter(Boolean).join(", ");
       const fallbackEmail = Array.isArray(result.company_info?.contacts) ? result.company_info.contacts[0]?.email : undefined;
@@ -755,6 +756,7 @@ export default function EmailAgentPage() {
           website_url: result.company_url || result.company_info?.website || url || null,
           phone_number: result.contact?.phone_number || null,
           manual,
+          skip_send,
           email_agent_data: JSON.stringify(result),
         }),
       });
