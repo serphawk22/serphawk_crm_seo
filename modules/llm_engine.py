@@ -392,7 +392,7 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
                 "type": "function",
                 "function": {
                     "name": "navigate_user",
-                    "description": "Teleports the user's screen to a specific page route. EXACT ROUTE MAP: Dashboard = '/', Clients = '/clients', Add New Client = '/clients?action=add', Marketplace/Store = '/store', Email Agent = '/email-agent', Pipeline = '/pipeline', Projects = '/projects', Tasks = '/tasks', Messages = '/messages', Setup/Settings = '/setup', Invoices = '/invoices'. NEVER guess a route outside this map.",
+                    "description": "Teleports the user's screen to a specific page route. EXACT ROUTE MAP: Dashboard = '/', Clients = '/clients', Add New Client = '/clients?action=add', Marketplace = '/admin/marketplace', Store = '/store', Email Agent = '/email-agent', Pipeline = '/pipeline', Projects = '/projects', Tasks = '/tasks', Messages = '/messages', Setup/Settings = '/setup', Invoices = '/invoices'. NEVER guess a route outside this map.",
                     "parameters": {
                         "type": "object",
                         "properties": {

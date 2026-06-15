@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, 
@@ -114,6 +114,13 @@ export default function ClientsPage() {
   const [sheetImportState, setSheetImportState] = useState<'idle' | 'fetching' | 'preview' | 'importing' | 'done'>('idle');
   const [sheetImportResult, setSheetImportResult] = useState<{added: number; skipped: number; added_clients: any[]; skipped_clients: any[]} | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams?.get('action') === 'add') {
+      setIsModalOpen(true);
+    }
+  }, [searchParams]);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
   const [actionLoading, setActionLoading] = useState<Record<number, string>>({});
