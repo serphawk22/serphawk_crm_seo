@@ -322,45 +322,98 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
           </div>
         </div>
 
-        {/* Contact Card */}
+        {/* Extracted Company Info */}
         <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-2 mb-5">
-            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
+            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
               <AtSign className="w-4 h-4" />
             </div>
-            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Business Contact</p>
+            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Extracted Company Info</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Emails</p>
+              <div className="flex flex-col gap-1">
+                {result.company_info?.extracted_emails ? result.company_info.extracted_emails.split(',').map((e: string, i: number) => (
+                  <a key={i} href={`mailto:${e.trim()}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-mono break-all">{e.trim()}</a>
+                )) : <p className="text-sm text-slate-500 dark:text-zinc-500 font-mono">None</p>}
+              </div>
+            </div>
+            <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Phones</p>
+              <div className="flex flex-col gap-1">
+                {result.company_info?.extracted_phone_numbers ? result.company_info.extracted_phone_numbers.split(',').map((p: string, i: number) => (
+                  <a key={i} href={`tel:${p.trim()}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-mono break-all">{p.trim()}</a>
+                )) : <p className="text-sm text-slate-500 dark:text-zinc-500 font-mono">None</p>}
+              </div>
+            </div>
+            <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm lg:col-span-2">
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-2">Company Socials</p>
+              <div className="flex flex-wrap gap-2">
+                {result.company_info?.company_social_media?.linkedin ? <a href={result.company_info.company_social_media.linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn</a> : null}
+                {result.company_info?.company_social_media?.twitter ? <a href={result.company_info.company_social_media.twitter} target="_blank" rel="noreferrer" className="px-3 py-1 bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300 rounded-md text-xs font-bold hover:bg-slate-200 transition-colors">X / Twitter</a> : null}
+                {result.company_info?.company_social_media?.instagram ? <a href={result.company_info.company_social_media.instagram} target="_blank" rel="noreferrer" className="px-3 py-1 bg-pink-500/10 text-pink-600 dark:bg-pink-500/20 dark:text-pink-400 rounded-md text-xs font-bold hover:bg-pink-500/20 transition-colors">Instagram</a> : null}
+                {result.company_info?.company_social_media?.facebook ? <a href={result.company_info.company_social_media.facebook} target="_blank" rel="noreferrer" className="px-3 py-1 bg-blue-600/10 text-blue-700 dark:bg-blue-600/20 dark:text-blue-400 rounded-md text-xs font-bold hover:bg-blue-600/20 transition-colors">Facebook</a> : null}
+                {result.company_info?.extracted_linkedin && !result.company_info?.company_social_media?.linkedin ? <a href={result.company_info.extracted_linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn (Fallback)</a> : null}
+                {(!result.company_info?.company_social_media || Object.values(result.company_info.company_social_media).every(v => !v)) && !result.company_info?.extracted_linkedin && <span className="text-sm text-slate-500 dark:text-zinc-500">No social profiles detected.</span>}
+              </div>
+            </div>
           </div>
 
-          {result.contact?.email ? (
-            <div className="space-y-4">
-              <div className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl flex items-center justify-between">
-                <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Email</p>
-                  <p className="text-sm font-black text-slate-800 dark:text-zinc-100">{result.contact.email}</p>
-                </div>
-                <CopyButton text={result.contact.email} />
-              </div>
-              {result.contact.phone_number && (
-                <div className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl flex items-center justify-between">
-                  <div>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Phone</p>
-                    <p className="text-sm font-black text-slate-800 dark:text-zinc-100">{result.contact.phone_number}</p>
-                  </div>
-                  <CopyButton text={result.contact.phone_number} />
-                </div>
-              )}
-              {result.contact.name && (
-                <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Contact</p>
-                  <p className="text-sm font-bold text-slate-800 dark:text-zinc-100">{result.contact.name}</p>
-                  {result.contact.role && <p className="text-xs text-slate-500 dark:text-zinc-400">{result.contact.role}</p>}
-                </div>
-              )}
+          {/* Key Decision Makers */}
+          {result.company_info?.contacts && Array.isArray(result.company_info.contacts) && result.company_info.contacts.length > 0 ? (
+            <div className="bg-slate-50 dark:bg-zinc-950 rounded-xl border border-slate-100 dark:border-zinc-800 overflow-x-auto mt-4">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-zinc-700 text-[10px] text-slate-500 dark:text-zinc-400 uppercase tracking-widest bg-slate-100 dark:bg-zinc-900/50">
+                    <th className="py-3 px-4 font-bold">Name & Role</th>
+                    <th className="py-3 px-4 font-bold">Contact</th>
+                    <th className="py-3 px-4 font-bold">Socials</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.company_info.contacts.map((p: any, i: number) => (
+                    <tr key={i} className="border-b border-slate-100 dark:border-zinc-800 last:border-0 hover:bg-white dark:hover:bg-zinc-900 transition-colors">
+                      <td className="py-4 px-4 align-top">
+                        <div className="font-bold text-sm text-slate-800 dark:text-zinc-100">{p.name || 'Unknown Name'}</div>
+                        {p.role && <div className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{p.role}</div>}
+                      </td>
+                      <td className="py-4 px-4 align-top">
+                        {p.email && (
+                          <div className="flex items-center gap-2 mb-1">
+                            <Mail size={12} className="text-slate-400" />
+                            <a href={`mailto:${p.email}`} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline break-all">{p.email}</a>
+                          </div>
+                        )}
+                        {p.phone_number && (
+                          <div className="flex items-center gap-2">
+                            <Phone size={12} className="text-slate-400" />
+                            <a href={`tel:${p.phone_number}`} className="text-xs text-slate-600 dark:text-zinc-300 hover:underline">{p.phone_number}</a>
+                          </div>
+                        )}
+                        {!p.email && !p.phone_number && <span className="text-xs text-slate-400">Not found</span>}
+                      </td>
+                      <td className="py-4 px-4 align-top">
+                        <div className="flex flex-wrap gap-2">
+                          {p.personal_social_media?.linkedin ? (
+                            <a href={p.personal_social_media.linkedin} target="_blank" rel="noreferrer" className="px-2 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded text-[10px] font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn</a>
+                          ) : null}
+                          {p.personal_social_media?.twitter ? (
+                            <a href={p.personal_social_media.twitter} target="_blank" rel="noreferrer" className="px-2 py-1 bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300 rounded text-[10px] font-bold hover:bg-slate-200 transition-colors">X/Twitter</a>
+                          ) : null}
+                          {!p.personal_social_media?.linkedin && !p.personal_social_media?.twitter && <span className="text-xs text-slate-400">-</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-24 text-slate-400">
               <AtSign className="w-8 h-8 opacity-30" />
-              <p className="text-xs mt-2">No contact found</p>
+              <p className="text-xs mt-2">No key decision makers found</p>
             </div>
           )}
         </div>
