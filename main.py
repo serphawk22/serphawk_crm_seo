@@ -1492,9 +1492,15 @@ async def _auto_research_client_bg(client_id: int, website: str):
                 "tagline": cp.tagline,
                 "services": data.get("services", []),
                 "industry": cp.industry,
-                "auto_researched": True
+                "auto_researched": True,
+                "company_socials": data.get("company_socials", {}),
+                "people": data.get("people", [])
             }
             research.email_agent_data = json.dumps(ai_data)
+            
+            # Also store the people array natively into key_decision_makers for legacy/direct display
+            if data.get("people"):
+                research.key_decision_makers = json.dumps(data.get("people"))
             
             sess.commit()
             

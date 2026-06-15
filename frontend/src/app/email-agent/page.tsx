@@ -529,8 +529,15 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                       className="px-4 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 font-bold text-xs flex items-center gap-2 hover:bg-slate-50 dark:bg-zinc-950 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                     >
                       <UserPlus className="w-3.5 h-3.5" />
-                      Send Manually
+                      Send via System
                     </button>
+                    <a
+                      href={`mailto:${contactEmail || ''}?subject=${encodeURIComponent(result.draft?.subject || '')}&body=${encodeURIComponent(activeTab === "english" ? (result.draft?.english_body || result.draft?.body || "") : (result.draft?.spanish_body || ""))}`}
+                      className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-amber-600 transition-all shrink-0"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      Send through my email
+                    </a>
                     {result.draft?.whatsapp_draft && result.contact?.phone_number && (
                       <a
                         href={`https://wa.me/${result.contact.phone_number.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(result.draft.whatsapp_draft)}`}

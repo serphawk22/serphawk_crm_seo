@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity, MessageSquare, StickyNote, CheckSquare, Building2, ChevronDown,
   Target, FolderOpen, HeartPulse, LayoutDashboard, Users,
-  TrendingUp, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag
+  TrendingUp, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone
 } from 'lucide-react';
 
 import { API_BASE_URL } from '@/config';
@@ -168,6 +168,63 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
           <p style={{ fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{research.company_overview}</p>
         </div>
       )}
+      {/* Key Decision Makers */}
+      {(() => {
+        let people: any[] = [];
+        try {
+          if (research?.key_decision_makers) {
+            people = JSON.parse(research.key_decision_makers);
+          }
+        } catch {}
+        if (people && people.length > 0) {
+          return (
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px 20px', backdropFilter: 'blur(16px)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <div style={{ background: 'var(--accent)', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Users size={13} color="#fff" /></div>
+                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Key Decision Makers</span>
+                <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>{people.length} extracted</span>
+              </div>
+              
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      <th style={{ padding: '8px 12px', fontWeight: 700 }}>Name & Role</th>
+                      <th style={{ padding: '8px 12px', fontWeight: 700 }}>Contact</th>
+                      <th style={{ padding: '8px 12px', fontWeight: 700 }}>Socials</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {people.map((p, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border)', fontSize: 13, color: 'var(--text-primary)' }}>
+                        <td style={{ padding: '12px 12px' }}>
+                          <div style={{ fontWeight: 700 }}>{p.name || 'Unknown Name'}</div>
+                          {p.role && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{p.role}</div>}
+                        </td>
+                        <td style={{ padding: '12px 12px' }}>
+                          {p.email && <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Mail size={12} color="var(--text-muted)"/> <a href={`mailto:${p.email}`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>{p.email}</a></div>}
+                          {p.phone && <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}><Phone size={12} color="var(--text-muted)"/> <a href={`tel:${p.phone}`} style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>{p.phone}</a></div>}
+                          {!p.email && !p.phone && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Not found</span>}
+                        </td>
+                        <td style={{ padding: '12px 12px', display: 'flex', gap: 8 }}>
+                          {p.linkedin ? (
+                            <a href={p.linkedin} target="_blank" rel="noreferrer" style={{ padding: '4px 8px', background: '#e0f2fe', color: '#0284c7', borderRadius: 6, fontSize: 11, fontWeight: 700, textDecoration: 'none' }}>LinkedIn</a>
+                          ) : null}
+                          {p.twitter ? (
+                            <a href={p.twitter} target="_blank" rel="noreferrer" style={{ padding: '4px 8px', background: '#f1f5f9', color: '#475569', borderRadius: 6, fontSize: 11, fontWeight: 700, textDecoration: 'none' }}>X/Twitter</a>
+                          ) : null}
+                          {!p.linkedin && !p.twitter && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>-</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* ── Services Offered ──────────────────────────────────────────── */}
       {(() => {

@@ -17,16 +17,26 @@ def analyze_content(text):
     try:
         client = get_openai_client()
         prompt = f"""
-        You are an expert business analyst. Given the following website text, do real research (using your knowledge and reasoning) and return a JSON object with:
+        You are an expert business analyst and OSINT researcher. Given the following website text, do real research (using your knowledge and reasoning) and return a JSON object with:
         {{
             "company_name": "The real name of the company (never a placeholder)",
             "what_they_do": "A real, concise summary of what this company does (2-3 sentences, never a template)",
+            "company_social_media": {{
+                "linkedin": "Company LinkedIn URL or null",
+                "twitter": "Company Twitter/X URL or null",
+                "instagram": "Company Instagram URL or null",
+                "facebook": "Company Facebook URL or null"
+            }},
             "contacts": [
                 {{
                     "name": "If you can infer a real contact name, otherwise null",
-                    "role": "If you can infer a real role, otherwise null",
-                    "email": "A real company email address (look at the 'Extracted Emails' list at the top, or guess a likely one like info@domain if not found)",
-                    "phone_number": "A real company phone number (look at the 'Extracted Phone Numbers' list at the top. Prefer the actual scraped phone numbers if available, otherwise null)",
+                    "role": "If you can infer a real role (e.g. Founder, CEO), otherwise null",
+                    "email": "A real company email address (look at the 'Extracted Emails' list at the top)",
+                    "phone_number": "A real company phone number (look at the 'Extracted Phone Numbers' list at the top)",
+                    "personal_social_media": {{
+                        "linkedin": "Personal LinkedIn URL if found, else null",
+                        "twitter": "Personal Twitter/X URL if found, else null"
+                    }},
                     "context": "How you found or inferred this contact, or null"
                 }}
             ],
@@ -36,7 +46,7 @@ def analyze_content(text):
         My services are: Organic SEO, Local SEO, Google Ads, Meta Ads, Social Media, Content Marketing, Web Development, App Development, Automation & Consulting.
         Map the most relevant of these to the company based on their business.
 
-        Look closely at the 'Extracted Emails' and 'Extracted Phone Numbers' sections in the company info below. Always prefer using the actual scraped emails and phone numbers instead of placeholders or guesses.
+        Look closely at the 'Extracted Emails', 'Extracted Phone Numbers', and any 'Social Links' in the company info below. Always prefer using the actual scraped links and emails instead of placeholders or guesses. Extract as many people/decision makers as possible.
 
         Company Info:
         {text[:15000]}
@@ -515,9 +525,26 @@ Return ONLY valid JSON matching this structure:
   "companyName": "The business name (don't use the URL)",
   "email": "Extract a contact email, or guess a generic one like info@company.com if missing",
   "tagline": "A short 5-10 word tagline or value proposition",
+  "description": "A 2-3 sentence description of the company",
   "seoStrategy": "A 1-2 sentence suggested SEO strategy based on their industry",
   "targetKeywords": "A comma-separated string of 5-8 highly relevant target keywords",
-  "industry": "The specific industry they operate in"
+  "industry": "The specific industry they operate in",
+  "company_socials": {{
+      "linkedin": "Company LinkedIn URL or null",
+      "twitter": "Company Twitter/X URL or null",
+      "instagram": "Company Instagram URL or null",
+      "facebook": "Company Facebook URL or null"
+  }},
+  "people": [
+      {{
+          "name": "Person name or null",
+          "role": "Job role or null",
+          "email": "Email address or null",
+          "phone": "Phone number or null",
+          "linkedin": "Personal LinkedIn URL or null",
+          "twitter": "Personal Twitter URL or null"
+      }}
+  ]
 }}
 """
         response = client.chat.completions.create(
