@@ -14,15 +14,15 @@ interface QuickAction {
 }
 
 const ADMIN_ACTIONS: QuickAction[] = [
-  { label: 'View Customer', icon: <Users className="w-4 h-4 text-blue-500" />, response: 'Taking you to the clients list.', route: '/admin/clients' },
-  { label: 'Add Customer', icon: <UserPlus className="w-4 h-4 text-green-500" />, response: 'Navigating to the clients page to add a new customer.', route: '/admin/clients?action=add' },
-  { label: 'Send Email', icon: <Mail className="w-4 h-4 text-purple-500" />, response: 'Opening the Email Agent.', route: '/email-agent' },
+  { label: 'View Leads', icon: <Users className="w-3.5 h-3.5 text-blue-500" />, response: 'Taking you to the clients list.', route: '/clients' },
+  { label: 'New Client', icon: <UserPlus className="w-3.5 h-3.5 text-emerald-500" />, response: 'Navigating to add a new customer.', route: '/clients?action=add' },
+  { label: 'Draft Email', icon: <Mail className="w-3.5 h-3.5 text-purple-500" />, response: 'Opening the Email Agent.', route: '/email-agent' },
 ];
 
 const CLIENT_ACTIONS: QuickAction[] = [
-  { label: 'View Services', icon: <ShoppingBag className="w-4 h-4 text-amber-500" />, response: 'Taking you to the services store.', route: '/store' },
-  { label: 'My Messages', icon: <MessageCircle className="w-4 h-4 text-blue-500" />, response: 'Opening your messages inbox.', route: '/messages' },
-  { label: 'Settings', icon: <Settings className="w-4 h-4 text-gray-500" />, response: 'Navigating to your account settings.', route: '/setup' },
+  { label: 'View Services', icon: <ShoppingBag className="w-3.5 h-3.5 text-amber-500" />, response: 'Taking you to the services store.', route: '/store' },
+  { label: 'My Messages', icon: <MessageCircle className="w-3.5 h-3.5 text-blue-500" />, response: 'Opening your messages inbox.', route: '/messages' },
+  { label: 'Settings', icon: <Settings className="w-3.5 h-3.5 text-gray-500" />, response: 'Navigating to your account settings.', route: '/setup' },
 ];
 
 export function Chatbot() {
@@ -174,19 +174,20 @@ export function Chatbot() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Actions */}
-          <div className="p-3 border-t border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 space-y-1 shrink-0">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 px-1">Quick Actions</p>
-            {quickActions.map((action) => (
-              <button
-                key={action.label}
-                onClick={() => handleCommand(action.label)}
-                className="w-full flex items-center justify-between p-2 hover:bg-slate-50 dark:bg-zinc-950 rounded-xl text-sm font-semibold text-slate-700 dark:text-zinc-200 transition-colors border border-transparent hover:border-slate-200 dark:border-zinc-700"
-              >
-                <span className="flex items-center gap-2.5">{action.icon} {action.label}</span>
-                <ChevronRight className="w-4 h-4 text-slate-400" />
-              </button>
-            ))}
+          {/* Quick Actions (Horizontal Pills) */}
+          <div className="px-4 py-3 bg-white dark:bg-zinc-900 shrink-0 border-t border-slate-100 dark:border-zinc-800">
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              {quickActions.map((action) => (
+                <button
+                  key={action.label}
+                  onClick={() => handleCommand(action.label)}
+                  className="flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 bg-slate-50 dark:bg-zinc-800/50 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-full border border-slate-200/60 dark:border-zinc-700/60 text-[11px] font-bold text-slate-600 dark:text-zinc-300 transition-all hover:scale-105 active:scale-95 shadow-sm"
+                >
+                  {action.icon}
+                  {action.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Input Area */}
