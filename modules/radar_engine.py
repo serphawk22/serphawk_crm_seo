@@ -9,7 +9,7 @@ import logging
 from typing import Optional
 
 logger = logging.getLogger(__name__)
-GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY") or "AIzaSyC8AKhmbX1B7fkdrp2e64EVyrF7-XXPZOg"
+GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY") or "AIzaSyAJbAEbE5egi9y-adJ5G804u_vL64We_nc"
 PLACES_NEW_BASE = "https://places.googleapis.com/v1/places"
 
 SERVICE_KEYWORDS = {
