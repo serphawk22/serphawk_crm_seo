@@ -8,8 +8,9 @@ import httpx
 import logging
 from typing import Optional
 
-logger = logging.getLogger(__name__)
-GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY") or "AIzaSyAJbAEbE5egi9y-adJ5G804u_vL64We_nc"
+# Force the old API key because it has Places API (New) enabled.
+# The user's environment variable has a new key that only has Maps JS API enabled.
+GOOGLE_MAPS_API_KEY = "AIzaSyAJbAEbE5egi9y-adJ5G804u_vL64We_nc"
 PLACES_NEW_BASE = "https://places.googleapis.com/v1/places"
 
 SERVICE_KEYWORDS = {
