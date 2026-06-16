@@ -113,6 +113,7 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
   const [addedPlaceIds, setAddedPlaceIds] = useState<Set<string>>(new Set());
   const [addSuccess, setAddSuccess] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [manualQuery, setManualQuery] = useState("");
 
   useEffect(() => {
     loadGoogleMapsScript(GOOGLE_MAPS_KEY).then(() => setMapReady(true));
@@ -120,18 +121,21 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
 
   useEffect(() => {
     if (!id) return;
-    const runFullRadarFlow = async () => {
+    const runFullRadarFlow = async (overrideQuery?: string) => {
       try {
         setLoadingStep('fetching_client');
-        const res = await fetch(`${API_BASE_URL}/clients/${id}`);
-        if (!res.ok) throw new Error("Failed to load client.");
-        const data = await res.json();
-        const clientData = data.client;
-        setClient(clientData);
+        let clientData = client;
+        if (!clientData) {
+          const res = await fetch(`${API_BASE_URL}/clients/${id}`);
+          if (!res.ok) throw new Error("Failed to load client.");
+          const data = await res.json();
+          clientData = data.client;
+          setClient(clientData);
+        }
 
         // Step 1: Locate Target on Google Maps
         setLoadingStep('locating_target');
-        const query = `${clientData.companyName || clientData.projectName} ${clientData.address || clientData.city || ''}`.trim();
+        const query = overrideQuery || `${clientData.companyName || clientData.projectName} ${clientData.address || clientData.city || ''}`.trim();
         const searchRes = await fetch(`${API_BASE_URL}/radar/search`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -175,8 +179,64 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
       }
     };
 
-    runFullRadarFlow();
-  }, [id]);
+    if (id && loadingStep === 'fetching_client') {
+       runFullRadarFlow();
+    }
+  }, [id, client, loadingStep]);
+
+  const handleManualSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualQuery.trim()) return;
+    setLoadingStep('locating_target');
+    setError(null);
+  };
+
+  useEffect(() => {
+    // If the manual search triggered a re-evaluation
+    if (loadingStep === 'locating_target' && manualQuery && client) {
+        // We reuse the effect logic above by extracting the function out, but let's just do it directly:
+        const doManual = async () => {
+            try {
+                const searchRes = await fetch(`${API_BASE_URL}/radar/search`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ query: manualQuery, location_hint: client.city }),
+                });
+                if (!searchRes.ok) throw new Error("Failed to pinpoint on Google Maps.");
+                const searchData = await searchRes.json();
+                setFoundPlace(searchData.place);
+                
+                setLoadingStep('scanning_radar');
+                const analyzeRes = await fetch(`${API_BASE_URL}/radar/analyze`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    place_id: searchData.place.place_id,
+                    target_name: searchData.place.name,
+                    target_lat: searchData.place.lat,
+                    target_lng: searchData.place.lng,
+                    target_address: searchData.place.address,
+                    target_phone: searchData.place.phone,
+                    target_website: searchData.place.website,
+                    target_rating: searchData.place.rating,
+                    target_reviews: searchData.place.reviews,
+                    target_category: client.industry || "Business",
+                    radius_km: 10,
+                    client_id: parseInt(id),
+                  }),
+                });
+                if (!analyzeRes.ok) throw new Error("Failed to analyze competitors.");
+                const analyzeData = await analyzeRes.json();
+                setRadarResult(analyzeData);
+                setLoadingStep('complete');
+            } catch(e: any) {
+                setError(e.message || "Manual search failed");
+                setLoadingStep('error');
+            }
+        };
+        doManual();
+    }
+  }, [loadingStep, manualQuery, client, id]);
 
   const handleAddToClients = useCallback(async (c: any) => {
     if (!radarResult || !client) return;
@@ -248,12 +308,36 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
         </div>
       )}
 
-      {/* Error State */}
+      {/* Error State with Fallback */}
       {loadingStep === 'error' && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-6 flex flex-col items-center justify-center text-center">
-          <AlertCircle className="w-10 h-10 text-red-500 mb-4" />
-          <h2 className="text-xl font-bold text-red-400 mb-2">Radar Scan Failed</h2>
-          <p className="text-red-400/80">{error}</p>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 max-w-2xl mx-auto shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-red-500" />
+          <div className="flex flex-col items-center text-center">
+            <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
+              <AlertCircle className="w-8 h-8 text-red-500" />
+            </div>
+            <h2 className="text-2xl font-black text-zinc-100 mb-2">Target Not Found</h2>
+            <p className="text-zinc-400 mb-6 max-w-md">
+              We couldn't automatically find <strong>{client?.companyName}</strong> on Google Maps. The business might not be registered or the name is ambiguous.
+            </p>
+            
+            <div className="w-full bg-black/40 rounded-2xl p-6 border border-zinc-800">
+              <h3 className="text-sm font-bold text-zinc-300 mb-4 text-left">Manual Override:</h3>
+              <form onSubmit={handleManualSearch} className="flex flex-col sm:flex-row gap-3">
+                <input 
+                  type="text" 
+                  value={manualQuery}
+                  onChange={e => setManualQuery(e.target.value)}
+                  placeholder="e.g. SerpHawk Digital Marketing Miami" 
+                  className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500 transition-colors"
+                />
+                <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-3 rounded-xl transition-colors whitespace-nowrap">
+                  Force Search
+                </button>
+              </form>
+              {error && <p className="text-xs font-medium text-red-400 mt-3 text-left">{error}</p>}
+            </div>
+          </div>
         </div>
       )}
 
