@@ -10,7 +10,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY") or "AIzaSyAJbAEbE5egi9y-adJ5G804u_vL64We_nc"
-PLACES_BASE = "https://maps.googleapis.com/maps/api/place"
+PLACES_NEW_BASE = "https://places.googleapis.com/v1/places"
 
 SERVICE_KEYWORDS = {
     "SEO": ["seo", "search engine", "organic", "ranking", "serp"],
@@ -72,87 +72,125 @@ def calculate_market_density(competitor_count, radius_km):
 async def find_place(query, location_hint=None):
     search_query = f"{query} {location_hint}" if location_hint else query
     async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(f"{PLACES_BASE}/textsearch/json", params={"query": search_query, "key": GOOGLE_MAPS_API_KEY})
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+            "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.websiteUri,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.types,places.businessStatus"
+        }
+        data = {"textQuery": search_query}
+        resp = await client.post(f"{PLACES_NEW_BASE}:searchText", headers=headers, json=data)
         resp.raise_for_status()
         data = resp.json()
-        results = data.get("results", [])
-        if not results:
+        places = data.get("places", [])
+        if not places:
             return None
-        return await get_place_details(results[0]["place_id"])
+            
+        p = places[0]
+        return {
+            "place_id": p.get("id"),
+            "name": p.get("displayName", {}).get("text"),
+            "address": p.get("formattedAddress"),
+            "lat": p.get("location", {}).get("latitude"),
+            "lng": p.get("location", {}).get("longitude"),
+            "website": p.get("websiteUri"),
+            "phone": p.get("nationalPhoneNumber"),
+            "rating": p.get("rating"),
+            "reviews": p.get("userRatingCount"),
+            "types": p.get("types", []),
+            "business_status": p.get("businessStatus"),
+            "maps_url": f"https://www.google.com/maps/place/?q=place_id:{p.get('id')}"
+        }
 
 async def get_place_details(place_id):
+    # Backward compatibility: we don't strictly need this if we just use find_place, 
+    # but radar_search endpoint supports passing place_id directly.
+    # The New API allows GET /v1/places/{placeId}
     async with httpx.AsyncClient(timeout=15.0) as client:
-        params = {
-            "place_id": place_id,
-            "fields": "place_id,name,formatted_address,geometry,website,formatted_phone_number,rating,user_ratings_total,types,url,business_status",
-            "key": GOOGLE_MAPS_API_KEY,
+        headers = {
+            "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+            "X-Goog-FieldMask": "id,displayName,formattedAddress,location,websiteUri,nationalPhoneNumber,rating,userRatingCount,types,businessStatus"
         }
-        resp = await client.get(f"{PLACES_BASE}/details/json", params=params)
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("status") != "OK":
+        resp = await client.get(f"{PLACES_NEW_BASE}/{place_id}", headers=headers)
+        if resp.status_code != 200:
             return None
-        r = data.get("result", {})
-        geo = r.get("geometry", {}).get("location", {})
+        p = resp.json()
         return {
-            "place_id": r.get("place_id"),
-            "name": r.get("name"),
-            "address": r.get("formatted_address"),
-            "lat": geo.get("lat"),
-            "lng": geo.get("lng"),
-            "website": r.get("website"),
-            "phone": r.get("formatted_phone_number"),
-            "rating": r.get("rating"),
-            "reviews": r.get("user_ratings_total"),
-            "types": r.get("types", []),
-            "maps_url": r.get("url"),
-            "business_status": r.get("business_status"),
+            "place_id": p.get("id"),
+            "name": p.get("displayName", {}).get("text"),
+            "address": p.get("formattedAddress"),
+            "lat": p.get("location", {}).get("latitude"),
+            "lng": p.get("location", {}).get("longitude"),
+            "website": p.get("websiteUri"),
+            "phone": p.get("nationalPhoneNumber"),
+            "rating": p.get("rating"),
+            "reviews": p.get("userRatingCount"),
+            "types": p.get("types", []),
+            "business_status": p.get("businessStatus"),
+            "maps_url": f"https://www.google.com/maps/place/?q=place_id:{p.get('id')}"
         }
 
 async def find_nearby_competitors(lat, lng, radius_m, keyword, target_name=""):
     import asyncio
     async with httpx.AsyncClient(timeout=30.0) as client:
-        params = {"location": f"{lat},{lng}", "radius": radius_m, "keyword": keyword, "key": GOOGLE_MAPS_API_KEY}
-        resp = await client.get(f"{PLACES_BASE}/nearbysearch/json", params=params)
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+            "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.types,places.websiteUri"
+        }
+        data = {
+            "textQuery": keyword,
+            "locationBias": {
+                "circle": {
+                    "center": {"latitude": lat, "longitude": lng},
+                    "radius": radius_m
+                }
+            }
+        }
+        resp = await client.post(f"{PLACES_NEW_BASE}:searchText", headers=headers, json=data)
         resp.raise_for_status()
-        data = resp.json()
-        results = data.get("results", [])
-        next_page = data.get("next_page_token")
-        if next_page:
-            await asyncio.sleep(2)
-            resp2 = await client.get(f"{PLACES_BASE}/nearbysearch/json", params={"pagetoken": next_page, "key": GOOGLE_MAPS_API_KEY})
-            if resp2.status_code == 200:
-                results += resp2.json().get("results", [])
+        resp_data = resp.json()
+        results = resp_data.get("places", [])
 
     competitors = []
     for r in results:
-        if target_name and r.get("name", "").lower() == target_name.lower():
+        name = r.get("displayName", {}).get("text", "")
+        if target_name and name.lower() == target_name.lower():
             continue
-        geo = r.get("geometry", {}).get("location", {})
-        r_lat = geo.get("lat", lat)
-        r_lng = geo.get("lng", lng)
+            
+        r_lat = r.get("location", {}).get("latitude", lat)
+        r_lng = r.get("location", {}).get("longitude", lng)
         dist = round(_haversine(lat, lng, r_lat, r_lng), 2)
         types = r.get("types", [])
-        overlap = calculate_service_overlap(keyword, types, r.get("name", ""))
+        
+        # Calculate scores using the old mock structure
+        # Our old code expected keys like "user_ratings_total" to score market size
+        legacy_format_r = {
+            "user_ratings_total": r.get("userRatingCount"),
+            "rating": r.get("rating"),
+            "website": r.get("websiteUri"),
+            "types": types
+        }
+        
+        overlap = calculate_service_overlap(keyword, types, name)
         competitors.append({
-            "place_id": r.get("place_id"),
-            "name": r.get("name"),
-            "address": r.get("vicinity") or r.get("formatted_address"),
+            "place_id": r.get("id"),
+            "name": name,
+            "address": r.get("formattedAddress"),
             "lat": r_lat,
             "lng": r_lng,
             "rating": r.get("rating"),
-            "reviews": r.get("user_ratings_total"),
+            "reviews": r.get("userRatingCount"),
             "types": types,
             "category": types[0].replace("_", " ").title() if types else "Business",
             "distance_km": dist,
-            "market_size_score": score_market_size(r),
-            "team_size_estimate": estimate_team_size(r),
+            "market_size_score": score_market_size(legacy_format_r),
+            "team_size_estimate": estimate_team_size(legacy_format_r),
             "overlap_pct": overlap["overlap_pct"],
             "matched_services": overlap["matched_services"],
             "missing_services": overlap["missing_services"],
             "pin_color": get_competitor_color(overlap["overlap_pct"]),
-            "maps_url": f"https://www.google.com/maps/place/?q=place_id:{r.get('place_id')}",
-            "website": r.get("website"),
+            "maps_url": f"https://www.google.com/maps/place/?q=place_id:{r.get('id')}",
+            "website": r.get("websiteUri"),
         })
     return competitors
 
