@@ -1,6 +1,6 @@
 'use client';
 import React, { useState } from 'react';
-import { MapPin, TrendingUp, Users, Layers, ExternalLink, Plus, Check, Star, Globe } from 'lucide-react';
+import { MapPin, TrendingUp, Users, Layers, ExternalLink, Plus, Check, Star, Globe, Info } from 'lucide-react';
 
 interface Competitor {
   place_id: string;
@@ -188,8 +188,24 @@ export default function CompetitorTable({ rankings, onAddToClients, addedPlaceId
               <tr className="border-b border-slate-100 dark:border-zinc-800 text-[10px] text-slate-500 dark:text-zinc-400 uppercase tracking-widest bg-slate-50 dark:bg-zinc-950">
                 <th className="py-3 px-4 font-bold">Business</th>
                 <th className="py-3 px-4 font-bold">Distance</th>
-                <th className="py-3 px-4 font-bold">Market Score</th>
-                <th className="py-3 px-4 font-bold">Team Size</th>
+                <th className="py-3 px-4 font-bold">
+                  <div className="flex items-center gap-1 group relative">
+                    Market Score
+                    <Info size={12} className="text-slate-400 cursor-help" />
+                    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-48 p-2 bg-zinc-800 dark:bg-zinc-700 text-zinc-200 text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 normal-case tracking-normal font-normal border border-zinc-700">
+                      Based on review count (max 50pts), star rating (max 20pts), website presence (10pts), and service variety (max 20pts). Max Score: 100.
+                    </div>
+                  </div>
+                </th>
+                <th className="py-3 px-4 font-bold">
+                  <div className="flex items-center gap-1 group relative">
+                    Team Size
+                    <Info size={12} className="text-slate-400 cursor-help" />
+                    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-40 p-2 bg-zinc-800 dark:bg-zinc-700 text-zinc-200 text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 normal-case tracking-normal font-normal border border-zinc-700">
+                      Estimated employee tier derived proportionally from the business's market score.
+                    </div>
+                  </div>
+                </th>
                 <th className="py-3 px-4 font-bold">Services</th>
                 <th className="py-3 px-4 font-bold">Actions</th>
               </tr>
