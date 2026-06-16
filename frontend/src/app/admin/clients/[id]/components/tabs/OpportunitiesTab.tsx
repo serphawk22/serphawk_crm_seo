@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, ArrowRight, CheckCircle2, Clock, XCircle, Target, Brain, Mail, Calendar, Wand2, Loader2, Store, AlertCircle, MessageCircle, Phone } from 'lucide-react';
+import { TrendingUp, ArrowRight, CheckCircle2, Clock, XCircle, Target, Brain, Mail, Calendar, Wand2, Loader2, Store, AlertCircle, MessageCircle, Phone, Radar } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { API_BASE_URL } from '@/config';
 
@@ -144,6 +144,20 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
   const [extractResult, setExtractResult] = React.useState<{ count: number; marketplace: number } | null>(null);
   const [extractError, setExtractError] = React.useState<string | null>(null);
 
+  // Radar Discovery Graph State
+  const [radarData, setRadarData] = React.useState<any>(null);
+  const [loadingRadar, setLoadingRadar] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!client?.id) return;
+    setLoadingRadar(true);
+    fetch(`${API_BASE_URL}/radar/relationships/${client.id}`)
+      .then(res => res.json())
+      .then(data => setRadarData(data))
+      .catch(console.error)
+      .finally(() => setLoadingRadar(false));
+  }, [client?.id]);
+
   const handleAutoResearch = async () => {
     try {
       setIsAutoResearching(true);
@@ -187,6 +201,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
           { id: 'email_agent', label: language === 'es' ? 'Análisis del Agente IA' : 'AI Agent Analysis', icon: Target },
           { id: 'presales', label: language === 'es' ? 'Investigación Pre-Ventas' : 'Pre-Sales Research', icon: Brain },
           { id: 'emails', label: language === 'es' ? 'Correos Salientes' : 'Outbound Emails', icon: Mail },
+          { id: 'radar', label: language === 'es' ? 'Gráfico de Descubrimiento' : 'Discovery Graph', icon: Radar },
         ].map(t => (
           <button
             key={t.id}
@@ -607,6 +622,78 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         </div>
       )}
       </div>
+      )}
+
+      {activeSubTab === 'radar' && (
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-zinc-900 dark:bg-slate-900 p-6 md:p-8 shadow-sm">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
+                <Radar size={20} className="text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-800 dark:text-zinc-100 dark:text-slate-200">Radar Analysis Discovery</h3>
+                <p className="text-xs text-slate-500 dark:text-zinc-400 dark:text-slate-400">Attribution and graph relationships for this client</p>
+              </div>
+            </div>
+
+            {loadingRadar ? (
+              <div className="flex justify-center items-center py-10 text-indigo-500">
+                <Loader2 className="animate-spin" size={24} />
+              </div>
+            ) : (
+              <div className="space-y-8">
+                {/* How they were found */}
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-zinc-400 mb-3">Origin (Found From)</h4>
+                  {radarData?.discovered_from?.length > 0 || client?.discovered_from_name ? (
+                    <div className="inline-flex flex-col bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl p-4 min-w-[300px]">
+                      <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Discovered Via</div>
+                      <div className="text-sm font-bold text-slate-800 dark:text-zinc-100">
+                        {radarData?.discovered_from?.[0]?.discovery_method || client?.discovered_via || "Radar Analysis"}
+                      </div>
+                      <div className="mt-3 text-[10px] uppercase font-bold text-slate-400 mb-1">Source Client</div>
+                      <div className="text-sm font-black text-indigo-600 dark:text-indigo-400">
+                        {radarData?.discovered_from?.[0]?.source_client_name || client?.discovered_from_name || "Unknown"}
+                      </div>
+                      <div className="mt-2 text-[10px] text-slate-500 font-mono">
+                        Date: {radarData?.discovered_from?.[0]?.discovered_date?.split('T')[0] || client?.discovery_date || "N/A"}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-slate-500 italic">Not discovered via Radar Analysis.</div>
+                  )}
+                </div>
+
+                {/* Who they found */}
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-zinc-400 mb-3">Discovered Competitors</h4>
+                  {radarData?.discovered_competitors?.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {radarData.discovered_competitors.map((comp: any, idx: number) => (
+                        <div key={idx} className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl p-4">
+                          <a href={`/admin/clients/${comp.discovered_client_id}`} target="_blank" className="text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
+                            {comp.discovered_client_name}
+                          </a>
+                          <div className="grid grid-cols-2 gap-2 mt-3">
+                            <div className="text-[10px] uppercase font-bold text-slate-500">Distance</div>
+                            <div className="text-xs font-mono font-bold text-slate-700 dark:text-zinc-300 text-right">{comp.competitor_data?.distance_km} km</div>
+                            <div className="text-[10px] uppercase font-bold text-slate-500">Overlap</div>
+                            <div className="text-xs font-mono font-bold text-slate-700 dark:text-zinc-300 text-right">{comp.competitor_data?.overlap_pct}%</div>
+                            <div className="text-[10px] uppercase font-bold text-slate-500">Date</div>
+                            <div className="text-xs font-mono font-bold text-slate-700 dark:text-zinc-300 text-right">{comp.discovered_date?.split('T')[0]}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-slate-500 italic">No competitors discovered from this client yet.</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
     </div>

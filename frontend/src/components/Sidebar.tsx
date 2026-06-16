@@ -12,7 +12,8 @@ import {
   StickyNote,
   Activity,
   Settings,
-  LogOut
+  LogOut,
+  Radar
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -37,6 +38,7 @@ export function Sidebar({ role }: SidebarProps) {
     { name: language === 'es' ? 'Pasantes' : 'Interns', icon: Activity, href: '/interns', roles: ['Admin', 'Employee'] },
     { name: language === 'es' ? 'Equipo de Ventas' : 'Sales Team', icon: UserCheck, href: '/admin/sales-team', roles: ['Admin'] },
     { name: language === 'es' ? 'Agente de Email' : 'Email Agent', icon: Bot, href: '/email-agent', roles: ['Admin', 'Employee'] },
+    { name: language === 'es' ? 'Radar de Competidores' : 'Radar Analysis', icon: Radar, href: '/admin/radar', roles: ['Admin', 'Employee'] },
     { name: language === 'es' ? 'Inteligencia de API' : 'API Intelligence', icon: Activity, href: '/admin/api-intelligence', roles: ['Admin'] },
   ];
 
