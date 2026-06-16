@@ -10,7 +10,7 @@ import {
 import { API_BASE_URL } from '@/config';
 import CompetitorTable from '@/app/admin/radar/components/CompetitorTable';
 
-const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
+const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyAJbAEbE5egi9y-adJ5G804u_vL64We_nc";
 
 function loadGoogleMapsScript(apiKey: string): Promise<void> {
   return new Promise((resolve) => {

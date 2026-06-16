@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -9,7 +9,7 @@ import {
 import CompetitorTable from "./components/CompetitorTable";
 import { API_BASE_URL } from "@/config";
 
-const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
+const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyAJbAEbE5egi9y-adJ5G804u_vL64We_nc";
 const RADIUS_OPTIONS = [1, 3, 5, 10, 25];
 
 function loadGoogleMapsScript(apiKey: string): Promise<void> {
