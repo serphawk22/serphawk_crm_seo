@@ -265,6 +265,22 @@ class ClientProfile(SQLModel, table=True):
     contact_person: Optional[str] = Field(default=None, max_length=255)
     last_contact_date: Optional[str] = Field(default=None, max_length=50)
     next_followup_date: Optional[str] = Field(default=None, max_length=50)
+
+    # Geo & Radar Discovery Fields
+    latitude: Optional[float] = Field(default=None)
+    longitude: Optional[float] = Field(default=None)
+    place_id: Optional[str] = Field(default=None, max_length=255)
+    google_rating: Optional[float] = Field(default=None)
+    google_reviews: Optional[int] = Field(default=None)
+    market_size_score: Optional[int] = Field(default=None)  # 0-100
+    team_size_estimate: Optional[str] = Field(default=None, max_length=50)  # e.g. '11-25'
+    business_category: Optional[str] = Field(default=None, max_length=255)
+
+    # CRM Discovery Attribution (Found From)
+    discovered_from_client_id: Optional[int] = Field(default=None)  # source client
+    discovered_via: Optional[str] = Field(default=None, max_length=100)  # 'Radar Analysis'
+    discovery_date: Optional[str] = Field(default=None, max_length=50)
+    discovered_from_name: Optional[str] = Field(default=None, max_length=255)  # denormalized label
     
     # Relationships
     user: Optional[User] = Relationship(back_populates="profile")
@@ -290,6 +306,54 @@ class ClientProfile(SQLModel, table=True):
     invoices: List["Invoice"] = Relationship(back_populates="client")
     proposals: List["Proposal"] = Relationship(back_populates="client")
     keyword_ranks: List["KeywordRankEntry"] = Relationship(back_populates="client")
+
+
+class RadarAnalysis(SQLModel, table=True):
+    """
+    Stores a full Google Maps Radar Analysis run for a client.
+    """
+    __tablename__ = "radar_analyses"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", index=True)
+    run_date: datetime = Field(default_factory=datetime.utcnow)
+
+    # Target business info
+    target_name: Optional[str] = Field(default=None, max_length=255)
+    target_place_id: Optional[str] = Field(default=None, max_length=255)
+    target_lat: Optional[float] = Field(default=None)
+    target_lng: Optional[float] = Field(default=None)
+    target_address: Optional[str] = Field(default=None, max_length=500)
+    target_phone: Optional[str] = Field(default=None, max_length=100)
+    target_website: Optional[str] = Field(default=None, max_length=500)
+    target_rating: Optional[float] = Field(default=None)
+    target_reviews: Optional[int] = Field(default=None)
+    target_category: Optional[str] = Field(default=None, max_length=255)
+
+    # Analysis config
+    radius_km: int = Field(default=5)
+    market_density_score: Optional[int] = Field(default=None)  # 0-100
+    competitor_count: int = Field(default=0)
+
+    # Full competitors JSON array
+    competitors: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
+
+
+class CompetitorRelationship(SQLModel, table=True):
+    """
+    Tracks the discovery graph: which client was found FROM which radar analysis.
+    """
+    __tablename__ = "competitor_relationships"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    source_client_id: int = Field(foreign_key="client_profiles.id", index=True)
+    source_client_name: Optional[str] = Field(default=None, max_length=255)
+    discovered_client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", index=True)
+    discovered_client_name: Optional[str] = Field(default=None, max_length=255)
+    source_radar_id: Optional[int] = Field(default=None, foreign_key="radar_analyses.id")
+    discovery_method: str = Field(default="Radar Analysis", max_length=100)
+    discovered_date: datetime = Field(default_factory=datetime.utcnow)
+    competitor_data: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))  # snapshot of competitor info at discovery time
 
 
 class Remark(SQLModel, table=True):

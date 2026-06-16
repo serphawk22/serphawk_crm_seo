@@ -62,6 +62,7 @@ from database import (
     ClientStatus,
     ClientTicket,
     CompetitorAnalysis,
+    CompetitorRelationship,
     ConversationLog,
     ConversationReply,
     Deal,
@@ -75,6 +76,7 @@ from database import (
     Notification,
     Project,
     Proposal,
+    RadarAnalysis,
     RankingTracker,
     Remark,
     MarketplaceService,
@@ -5780,3 +5782,304 @@ Respond with ONLY valid JSON (no markdown):
         return {"service": _marketplace_row(svc)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI categorization failed: {e}")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RADAR ANALYSIS ENGINE — Google Maps Competitor Intelligence
+# ─────────────────────────────────────────────────────────────────────────────
+from modules.radar_engine import (
+    find_place, find_nearby_competitors, calculate_market_density,
+    sort_nearest, sort_largest_market, sort_largest_team, sort_most_similar,
+    score_market_size, estimate_team_size
+)
+from database import RadarAnalysis, CompetitorRelationship
+
+class RadarSearchRequest(BaseModel):
+    query: str
+    location_hint: Optional[str] = None
+    place_id: Optional[str] = None
+
+class RadarAnalyzeRequest(BaseModel):
+    place_id: str
+    target_name: str
+    target_lat: float
+    target_lng: float
+    target_address: Optional[str] = None
+    target_phone: Optional[str] = None
+    target_website: Optional[str] = None
+    target_rating: Optional[float] = None
+    target_reviews: Optional[int] = None
+    target_category: str = "digital marketing agency"
+    target_types: Optional[list] = []
+    radius_km: int = 5
+    client_id: Optional[int] = None
+
+class RadarAddClientRequest(BaseModel):
+    competitor: dict
+    source_client_id: int
+    source_client_name: str
+    radar_id: Optional[int] = None
+
+@app.post("/radar/search")
+async def radar_search(body: RadarSearchRequest):
+    """Search for a business on Google Maps and return its exact place details."""
+    try:
+        if body.place_id:
+            from modules.radar_engine import get_place_details
+            place = await get_place_details(body.place_id)
+        else:
+            place = await find_place(body.query, body.location_hint)
+        if not place:
+            raise HTTPException(status_code=404, detail="Business not found on Google Maps")
+        return {"place": place}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Radar search failed: {e}")
+
+@app.post("/radar/analyze")
+async def radar_analyze(body: RadarAnalyzeRequest, session: Session = Depends(get_session)):
+    """Run full competitor discovery around target business."""
+    try:
+        radius_m = body.radius_km * 1000
+        competitors = await find_nearby_competitors(
+            lat=body.target_lat,
+            lng=body.target_lng,
+            radius_m=radius_m,
+            keyword=body.target_category,
+            target_name=body.target_name
+        )
+        density = calculate_market_density(len(competitors), body.radius_km)
+
+        rankings = {
+            "nearest": sort_nearest(competitors),
+            "largest_market": sort_largest_market(competitors),
+            "largest_team": sort_largest_team(competitors),
+            "most_similar": sort_most_similar(competitors),
+        }
+
+        # Store radar analysis to DB
+        radar = RadarAnalysis(
+            client_id=body.client_id,
+            target_name=body.target_name,
+            target_place_id=body.place_id if hasattr(body, 'place_id') else None,
+            target_lat=body.target_lat,
+            target_lng=body.target_lng,
+            target_address=body.target_address,
+            target_phone=body.target_phone,
+            target_website=body.target_website,
+            target_rating=body.target_rating,
+            target_reviews=body.target_reviews,
+            target_category=body.target_category,
+            radius_km=body.radius_km,
+            market_density_score=density,
+            competitor_count=len(competitors),
+            competitors={"list": competitors},
+        )
+        session.add(radar)
+        session.commit()
+        session.refresh(radar)
+
+        return {
+            "radar_id": radar.id,
+            "target": {
+                "name": body.target_name,
+                "lat": body.target_lat,
+                "lng": body.target_lng,
+                "address": body.target_address,
+                "phone": body.target_phone,
+                "website": body.target_website,
+                "rating": body.target_rating,
+                "reviews": body.target_reviews,
+                "category": body.target_category,
+            },
+            "radius_km": body.radius_km,
+            "competitor_count": len(competitors),
+            "market_density_score": density,
+            "competitors": competitors,
+            "rankings": rankings,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Radar analysis failed: {e}")
+
+@app.get("/radar/analyses")
+def get_all_radar_analyses(session: Session = Depends(get_session)):
+    """Get all radar analyses."""
+    analyses = session.exec(select(RadarAnalysis).order_by(RadarAnalysis.run_date.desc()).limit(50)).all()
+    return [
+        {
+            "id": a.id,
+            "client_id": a.client_id,
+            "target_name": a.target_name,
+            "target_address": a.target_address,
+            "radius_km": a.radius_km,
+            "competitor_count": a.competitor_count,
+            "market_density_score": a.market_density_score,
+            "run_date": a.run_date.isoformat() if a.run_date else None,
+        }
+        for a in analyses
+    ]
+
+@app.get("/radar/analyses/{client_id}")
+def get_client_radar_analyses(client_id: int, session: Session = Depends(get_session)):
+    """Get radar analyses for a specific client."""
+    analyses = session.exec(
+        select(RadarAnalysis).where(RadarAnalysis.client_id == client_id).order_by(RadarAnalysis.run_date.desc())
+    ).all()
+    return [
+        {
+            "id": a.id,
+            "target_name": a.target_name,
+            "target_address": a.target_address,
+            "target_lat": a.target_lat,
+            "target_lng": a.target_lng,
+            "radius_km": a.radius_km,
+            "competitor_count": a.competitor_count,
+            "market_density_score": a.market_density_score,
+            "competitors": a.competitors,
+            "run_date": a.run_date.isoformat() if a.run_date else None,
+        }
+        for a in analyses
+    ]
+
+@app.post("/radar/add-client")
+def radar_add_client(body: RadarAddClientRequest, session: Session = Depends(get_session)):
+    """Add a competitor discovered via radar to the CRM client list with full attribution."""
+    try:
+        comp = body.competitor
+        name = comp.get("name", "Unknown Business")
+        website = comp.get("website") or ""
+        
+        # Check for existing client
+        existing = None
+        if website:
+            existing = session.exec(select(ClientProfile).where(ClientProfile.websiteUrl == website)).first()
+        if not existing:
+            existing = session.exec(select(ClientProfile).where(ClientProfile.companyName == name)).first()
+
+        if existing:
+            # Update with radar data
+            existing.latitude = comp.get("lat")
+            existing.longitude = comp.get("lng")
+            existing.place_id = comp.get("place_id")
+            existing.google_rating = comp.get("rating")
+            existing.google_reviews = comp.get("reviews")
+            existing.market_size_score = comp.get("market_size_score")
+            existing.team_size_estimate = comp.get("team_size_estimate")
+            existing.business_category = comp.get("category")
+            if not existing.discovered_via:
+                existing.discovered_via = "Radar Analysis"
+                existing.discovered_from_client_id = body.source_client_id
+                existing.discovered_from_name = body.source_client_name
+                existing.discovery_date = datetime.utcnow().strftime("%Y-%m-%d")
+            session.add(existing)
+            session.commit()
+            cp = existing
+        else:
+            # Create new client profile
+            now_str = datetime.utcnow().strftime("%Y-%m-%d")
+            cp = ClientProfile(
+                companyName=name,
+                websiteUrl=website,
+                phone=comp.get("phone"),
+                address=comp.get("address"),
+                status="Lead",
+                lead_source="Radar Analysis",
+                latitude=comp.get("lat"),
+                longitude=comp.get("lng"),
+                place_id=comp.get("place_id"),
+                google_rating=comp.get("rating"),
+                google_reviews=comp.get("reviews"),
+                market_size_score=comp.get("market_size_score"),
+                team_size_estimate=comp.get("team_size_estimate"),
+                business_category=comp.get("category"),
+                industry=comp.get("category"),
+                discovered_via="Radar Analysis",
+                discovered_from_client_id=body.source_client_id,
+                discovered_from_name=body.source_client_name,
+                discovery_date=now_str,
+                lastActivity=f"Discovered via Radar Analysis of {body.source_client_name}",
+                lastActivityDate=now_str,
+                customFields={
+                    "radar_discovery": {
+                        "source_client": body.source_client_name,
+                        "source_client_id": body.source_client_id,
+                        "radar_id": body.radar_id,
+                        "distance_km": comp.get("distance_km"),
+                        "overlap_pct": comp.get("overlap_pct"),
+                        "matched_services": comp.get("matched_services", []),
+                        "pin_color": comp.get("pin_color"),
+                        "maps_url": comp.get("maps_url"),
+                        "discovered_date": now_str,
+                    }
+                }
+            )
+            session.add(cp)
+            session.commit()
+            session.refresh(cp)
+
+        # Log competitor relationship
+        rel = CompetitorRelationship(
+            source_client_id=body.source_client_id,
+            source_client_name=body.source_client_name,
+            discovered_client_id=cp.id,
+            discovered_client_name=name,
+            source_radar_id=body.radar_id,
+            competitor_data={
+                "distance_km": comp.get("distance_km"),
+                "overlap_pct": comp.get("overlap_pct"),
+                "market_size_score": comp.get("market_size_score"),
+                "team_size_estimate": comp.get("team_size_estimate"),
+                "matched_services": comp.get("matched_services", []),
+                "lat": comp.get("lat"),
+                "lng": comp.get("lng"),
+            }
+        )
+        session.add(rel)
+        session.commit()
+
+        return {
+            "success": True,
+            "client_id": cp.id,
+            "client_name": name,
+            "message": f"{name} added to client list. Discovered from: {body.source_client_name}",
+            "discovered_from": body.source_client_name,
+            "discovery_date": datetime.utcnow().strftime("%Y-%m-%d"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add client: {e}")
+
+@app.get("/radar/relationships/{client_id}")
+def get_radar_relationships(client_id: int, session: Session = Depends(get_session)):
+    """Get the competitor discovery graph for a client (who they found + who found them)."""
+    # Clients discovered FROM this client
+    discovered = session.exec(
+        select(CompetitorRelationship).where(CompetitorRelationship.source_client_id == client_id)
+    ).all()
+    # Who discovered this client
+    found_from = session.exec(
+        select(CompetitorRelationship).where(CompetitorRelationship.discovered_client_id == client_id)
+    ).all()
+
+    return {
+        "discovered_from": [
+            {
+                "source_client_id": r.source_client_id,
+                "source_client_name": r.source_client_name,
+                "discovery_method": r.discovery_method,
+                "discovered_date": r.discovered_date.isoformat() if r.discovered_date else None,
+            }
+            for r in found_from
+        ],
+        "discovered_competitors": [
+            {
+                "discovered_client_id": r.discovered_client_id,
+                "discovered_client_name": r.discovered_client_name,
+                "discovery_method": r.discovery_method,
+                "discovered_date": r.discovered_date.isoformat() if r.discovered_date else None,
+                "competitor_data": r.competitor_data,
+            }
+            for r in discovered
+        ],
+    }
