@@ -4,13 +4,13 @@ import { useEffect } from "react";
 import "./globals.css";
 import { Inter } from "next/font/google";
 import { Chatbot } from "@/components/Chatbot";
-import { AdminTopbar } from "@/components/AdminTopbar";
 import { SidebarProvider, useSidebar } from "@/context/SidebarContext";
 import { RoleProvider, useRole } from "@/context/RoleContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import I18nProvider from "@/i18n/I18nProvider";
-import { ClientSidebar } from "@/components/ClientSidebar";
+import { Sidebar } from "@/components/Sidebar";
+import { GlobalLoader } from "@/components/GlobalLoader";
 import { usePathname } from "next/navigation";
 import { CallNotificationBar } from "@/components/CallNotificationBar";
 import SpaceAtmosphere from "@/components/SpaceAtmosphere";
@@ -21,8 +21,8 @@ function AdminMainContent({ children }: { children: React.ReactNode }) {
   const isClientDetail = pathname?.match(/^\/admin\/clients\/\d+$/);
 
   return (
-    <main className="relative z-10 pt-16 min-h-screen transition-all duration-300">
-      <div className={isClientDetail ? "w-full" : "p-6 md:p-8 max-w-[1600px] mx-auto"}>
+    <main className={`relative z-10 min-h-screen transition-all duration-300 ${collapsed ? "ml-[72px]" : "ml-[260px]"}`}>
+      <div className={isClientDetail ? "w-full h-full" : "p-6 md:p-8 max-w-[1600px] mx-auto h-full"}>
         {children}
       </div>
     </main>
@@ -63,16 +63,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
   }, []);
 
   if (loading) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center" style={{ background: "var(--bg-primary)" }}>
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-black text-lg animate-pulse">
-            SH
-          </div>
-          <p className="text-sm font-semibold animate-pulse" style={{ color: "var(--text-secondary)" }}>Loading...</p>
-        </div>
-      </div>
-    );
+    return <GlobalLoader />;
   }
 
   if (pathname === "/login") {
@@ -92,8 +83,8 @@ function AppContent({ children }: { children: React.ReactNode }) {
   if (isAdminOrEmployee) {
     return (
       <SidebarProvider>
-        <div className="admin-shell min-h-screen bg-transparent">
-          <AdminTopbar />
+        <div className="admin-shell min-h-screen" style={{ background: "var(--background)" }}>
+          <Sidebar role={role} />
           <AdminMainContent>{children}</AdminMainContent>
           <Chatbot />
         </div>

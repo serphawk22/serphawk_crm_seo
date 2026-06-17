@@ -33,6 +33,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useRole } from '@/context/RoleContext';
 import PageGuide from '@/components/PageGuide';
 import dynamic from 'next/dynamic';
+import { ContextMenu } from '@/components/ContextMenu';
 
 const ClientMapView = dynamic(() => import('./ClientMapView'), {
   ssr: false,
@@ -621,7 +622,18 @@ export default function ClientsPage() {
                 <tbody className="divide-y divide-slate-100">
                   <AnimatePresence>
                     {filteredClients.map(client => (
-                      <React.Fragment key={client.id}>
+                      <ContextMenu 
+                        key={client.id}
+                        onCtrlClick={() => window.open(`/admin/clients/${client.id}`, '_blank')}
+                        actions={[
+                          { label: 'Open in New Tab', icon: <ExternalLink className="w-4 h-4" />, onClick: () => window.open(`/admin/clients/${client.id}`, '_blank') },
+                          { label: 'Open Client', icon: <ChevronRight className="w-4 h-4" />, onClick: () => router.push(`/admin/clients/${client.id}`) },
+                          { label: 'Assign Owner', icon: <Users className="w-4 h-4" />, onClick: () => alert('Assign Owner feature coming soon') },
+                          { label: 'View Activity', icon: <Activity className="w-4 h-4" />, onClick: () => router.push(`/admin/clients/${client.id}?tab=activity`) },
+                          { label: 'Copy Client ID', icon: <CheckCircle2 className="w-4 h-4" />, onClick: () => navigator.clipboard.writeText(client.id.toString()) },
+                          { label: 'Delete Client', icon: <XCircle className="w-4 h-4" />, danger: true, onClick: () => handleDeleteClient(client.id) },
+                        ]}
+                      >
                         <motion.tr 
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
@@ -745,7 +757,7 @@ export default function ClientsPage() {
                             </motion.tr>
                           )}
                         </AnimatePresence>
-                      </React.Fragment>
+                      </ContextMenu>
                     ))}
                   </AnimatePresence>
                 </tbody>

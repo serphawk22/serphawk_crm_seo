@@ -3,58 +3,59 @@
 @variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* ═══════════════════════════════════════════════
-   DESIGN TOKENS — Light Mode (Cloud City / iCloud)
+   DESIGN TOKENS — Light Mode (Zoho Inspired)
 ═══════════════════════════════════════════════ */
 :root {
-  --bg-primary:    transparent;
-  --bg-secondary:  transparent;
-  --bg-card:       rgba(255, 255, 255, 0.75);
-  --bg-input:      rgba(255, 255, 255, 0.6);
-  --bg-hover:      rgba(255, 255, 255, 0.9);
-  --border:        rgba(0, 0, 0, 0.08);
-  --border-subtle: rgba(0, 0, 0, 0.04);
-  --text-primary:  #111827;
-  --text-secondary:#64748B;
-  --text-muted:    #94A3B8;
-  --accent:        #2563EB;
-  --accent-hover:  #1D4ED8;
-  --accent-subtle: rgba(37, 99, 235, 0.08);
-  --accent-border: rgba(37, 99, 235, 0.2);
-  --sidebar-bg:    rgba(255, 255, 255, 0.85);
-  --topbar-bg:     rgba(255, 255, 255, 0.85);
-  --shadow-sm:     0 2px 10px rgba(0, 0, 0, 0.03);
-  --shadow-md:     0 8px 30px rgba(0, 0, 0, 0.04);
-  --shadow-lg:     0 20px 40px rgba(0, 0, 0, 0.06);
-  --radius:        1rem;
-  --background:    #FFFFFF;
-  --foreground:    #111827;
+  --background: #ffffff;
+  --surface: #f8fafc;
+  --border: #e5e7eb;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e5e7eb;
+  --sidebar-hover: #f1f5f9;
+  --sidebar-text: #475569;
+  --sidebar-active-bg: #eff6ff;
+  --sidebar-active-text: #2563eb;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --radius: 0.5rem;
 }
 
 /* ═══════════════════════════════════════════════
-   DESIGN TOKENS — Dark Mode (Deep Cosmic Space)
+   DESIGN TOKENS — Dark Mode (Linear / GitHub Inspired)
 ═══════════════════════════════════════════════ */
 [data-theme="dark"] {
-  --bg-primary:    transparent;
-  --bg-secondary:  transparent;
-  --bg-card:       rgba(25, 25, 25, 0.25);
-  --bg-input:      rgba(40, 40, 40, 0.3);
-  --bg-hover:      rgba(255, 255, 255, 0.05);
-  --border:        rgba(255, 255, 255, 0.06);
-  --border-subtle: rgba(255, 255, 255, 0.03);
-  --text-primary:  #FFFFFF;
-  --text-secondary:#A1A1AA;
-  --text-muted:    #71717A;
-  --accent:        #06B6D4; /* Cyan accent for space */
-  --accent-hover:  #22D3EE;
-  --accent-subtle: rgba(6, 182, 212, 0.15);
-  --accent-border: rgba(255, 255, 255, 0.15);
-  --sidebar-bg:    rgba(10, 10, 10, 0.3);
-  --topbar-bg:     rgba(10, 10, 10, 0.3);
-  --shadow-sm:     0 2px 10px rgba(0, 0, 0, 0.5);
-  --shadow-md:     0 8px 30px rgba(0, 0, 0, 0.6);
-  --shadow-lg:     0 20px 40px rgba(0, 0, 0, 0.8);
-  --background:    #000000;
-  --foreground:    #FFFFFF;
+  --background: #0f172a;
+  --surface: #111827;
+  --card: #1e293b;
+  --border: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+
+  --sidebar-bg: #111827;
+  --sidebar-border: #1e293b;
+  --sidebar-hover: #1e293b;
+  --sidebar-text: #94a3b8;
+  --sidebar-active-bg: rgba(59, 130, 246, 0.1);
+  --sidebar-active-text: #3b82f6;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.5);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
 }
 
 /* ═══════════════════════════════════════════════
@@ -62,10 +63,12 @@
 ═══════════════════════════════════════════════ */
 *, *::before, *::after {
   transition:
-    background-color 250ms cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 250ms cubic-bezier(0.4, 0, 0.2, 1),
-    color 250ms cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1);
+    background-color 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    fill 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    stroke 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .animate-spin, .animate-pulse, .animate-bounce, .animate-shimmer {
@@ -74,56 +77,47 @@
 
 @theme inline {
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-foreground: var(--text-primary);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-surface: var(--surface);
+  --color-text-secondary: var(--text-secondary);
 }
 
 html { scroll-behavior: smooth; }
 
 body {
-  background: transparent;
+  background: var(--background);
   color: var(--text-primary);
   font-family: 'Inter', Arial, Helvetica, sans-serif;
   min-height: 100vh;
 }
 
 /* ═══════════════════════════════════════════════
-   THEME UTILITY CLASSES
+   CARDS / PANELS
 ═══════════════════════════════════════════════ */
-.th-bg        { background: var(--bg-primary); }
-.th-bg-sec    { background: var(--bg-secondary); }
-.th-card      { background: var(--bg-card); border: 1px solid var(--border); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
-.th-input     { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); backdrop-filter: blur(8px); }
-.th-text      { color: var(--text-primary); }
-.th-text-sec  { color: var(--text-secondary); }
-.th-muted     { color: var(--text-muted); }
-.th-border    { border-color: var(--border); }
-.th-sidebar   { background: var(--sidebar-bg); border-right: 1px solid var(--border); backdrop-filter: blur(20px); }
-.th-topbar    { background: var(--topbar-bg); border-bottom: 1px solid var(--border); backdrop-filter: blur(20px); }
-.th-hover:hover { background: var(--bg-hover); }
-
-/* ═══════════════════════════════════════════════
-   CARDS / GLASS (Universal)
-═══════════════════════════════════════════════ */
-.glass-card {
-  background: var(--bg-card);
+.zoho-card {
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-}
-.glass-card-hover {
-  transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
-}
-.glass-card-hover:hover {
-  box-shadow: var(--shadow-md);
-  border-color: var(--accent-border);
-  transform: translateY(-2px);
 }
 
-/* Dark mode card specific glow */
-[data-theme="dark"] .glass-card-hover:hover {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 8px 32px rgba(0,0,0,0.8) !important;
+[data-theme="dark"] .zoho-card {
+  background: var(--card);
+}
+
+.zoho-card-hover {
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+.zoho-card-hover:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--primary);
+  transform: translateY(-2px);
 }
 
 /* ═══════════════════════════════════════════════
@@ -131,160 +125,25 @@ body {
 ═══════════════════════════════════════════════ */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
-
-[data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.15);
-}
-[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.3);
-}
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
 
 /* ═══════════════════════════════════════════════
-   ANIMATIONS
+   ANIMATIONS (Loaders)
 ═══════════════════════════════════════════════ */
 @keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
-}
-.animate-shimmer {
-  animation: shimmer 1.5s linear infinite;
-  background-size: 200% auto;
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-/* Conversation thread connector */
-.thread-line { position: relative; }
-.thread-line::before {
-  content: '';
-  position: absolute;
-  left: 11px; top: 24px; bottom: 0;
-  width: 2px;
-  background: linear-gradient(to bottom, var(--accent-border), transparent);
-  border-radius: 1px;
+.skeleton-loader {
+  background: linear-gradient(90deg, var(--border) 25%, var(--surface) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius);
 }
 
-/* ═══════════════════════════════════════════════
-   ADMIN SHELL
-═══════════════════════════════════════════════ */
-.admin-shell {
-  background: transparent;
-  color: var(--text-primary);
-  min-height: 100vh;
-}
-
-/* ═══════════════════════════════════════════════
-   DARK MODE — FORCE ALL TAILWIND BG/TEXT/BORDER
-   These override hardcoded Tailwind classes application-wide
-═══════════════════════════════════════════════ */
-
-/* — Backgrounds — */
-[data-theme="dark"] .bg-white          { background-color: var(--bg-card) !important; backdrop-filter: blur(16px); }
-[data-theme="dark"] .bg-slate-50       { background-color: var(--bg-secondary) !important; }
-[data-theme="dark"] .bg-gray-50        { background-color: var(--bg-secondary) !important; }
-[data-theme="dark"] .bg-slate-100      { background-color: var(--bg-hover) !important; }
-[data-theme="dark"] .bg-gray-100       { background-color: var(--bg-hover) !important; }
-[data-theme="dark"] .bg-slate-200      { background-color: var(--bg-hover) !important; }
-
-/* — Text — */
-[data-theme="dark"] .text-slate-900,
-[data-theme="dark"] .text-gray-900     { color: var(--text-primary) !important; }
-[data-theme="dark"] .text-slate-800,
-[data-theme="dark"] .text-gray-800     { color: #E8E8E8 !important; }
-[data-theme="dark"] .text-slate-700,
-[data-theme="dark"] .text-gray-700     { color: #C8C8C8 !important; }
-[data-theme="dark"] .text-slate-600,
-[data-theme="dark"] .text-gray-600     { color: var(--text-secondary) !important; }
-[data-theme="dark"] .text-slate-500,
-[data-theme="dark"] .text-gray-500     { color: #808080 !important; }
-[data-theme="dark"] .text-slate-400,
-[data-theme="dark"] .text-gray-400     { color: var(--text-muted) !important; }
-[data-theme="dark"] .text-black        { color: var(--text-primary) !important; }
-
-/* — Borders — */
-[data-theme="dark"] .border-slate-100,
-[data-theme="dark"] .border-gray-100   { border-color: var(--border-subtle) !important; }
-[data-theme="dark"] .border-slate-200,
-[data-theme="dark"] .border-gray-200   { border-color: var(--border) !important; }
-[data-theme="dark"] .border-slate-300,
-[data-theme="dark"] .border-gray-300   { border-color: rgba(255,255,255,0.18) !important; }
-
-/* — Hover states — */
-[data-theme="dark"] .hover\:bg-slate-50:hover,
-[data-theme="dark"] .hover\:bg-gray-50:hover   { background-color: var(--bg-hover) !important; }
-[data-theme="dark"] .hover\:bg-slate-100:hover,
-[data-theme="dark"] .hover\:bg-gray-100:hover  { background-color: var(--bg-hover) !important; }
-[data-theme="dark"] .hover\:bg-white:hover     { background-color: var(--bg-card) !important; }
-
-/* — Dividers — */
-[data-theme="dark"] .divide-slate-100 > * + *,
-[data-theme="dark"] .divide-gray-100  > * + *  { border-color: var(--border-subtle) !important; }
-[data-theme="dark"] .divide-slate-200 > * + *,
-[data-theme="dark"] .divide-gray-200  > * + *  { border-color: var(--border) !important; }
-
-/* — Shadows — */
-[data-theme="dark"] .shadow-sm  { box-shadow: var(--shadow-sm) !important; }
-[data-theme="dark"] .shadow-md  { box-shadow: var(--shadow-md) !important; }
-[data-theme="dark"] .shadow-lg  { box-shadow: var(--shadow-lg) !important; }
-[data-theme="dark"] .shadow-xl  { box-shadow: var(--shadow-lg) !important; }
-[data-theme="dark"] .shadow-2xl { box-shadow: var(--shadow-lg) !important; }
-
-/* — Inputs — */
-[data-theme="dark"] input,
-[data-theme="dark"] textarea,
-[data-theme="dark"] select {
-  background-color: var(--bg-input) !important;
-  border-color: var(--border) !important;
-  color: var(--text-primary) !important;
-  backdrop-filter: blur(8px) !important;
-}
-[data-theme="dark"] input::placeholder,
-[data-theme="dark"] textarea::placeholder { color: var(--text-muted) !important; }
-
-/* — Topbar + Header — */
-[data-theme="dark"] header.fixed,
-[data-theme="dark"] .admin-topbar {
-  background: var(--topbar-bg) !important;
-  border-bottom-color: var(--border) !important;
-  box-shadow: 0 1px 0 var(--border), 0 2px 20px rgba(0,0,0,0.4) !important;
-  backdrop-filter: blur(20px) !important;
-}
-
-/* — Dropdown panels — */
-[data-theme="dark"] .bg-white.rounded-2xl,
-[data-theme="dark"] .bg-white.rounded-xl,
-[data-theme="dark"] .bg-white.overflow-hidden  {
-  background-color: var(--bg-card) !important;
-  border-color: var(--border) !important;
-  backdrop-filter: blur(16px) !important;
-}
-
-/* — Nav active state — */
-[data-theme="dark"] .nav-item-active {
-  background: var(--accent-subtle);
-  border-color: var(--accent-border);
-}
-
-/* — Table rows — */
-[data-theme="dark"] table { background: transparent !important; }
-[data-theme="dark"] thead,
-[data-theme="dark"] th    { background: rgba(255,255,255,0.04) !important; border-color: var(--border) !important; }
-[data-theme="dark"] tr:hover { background: var(--bg-hover) !important; }
-[data-theme="dark"] td    { border-color: var(--border-subtle) !important; }
-
-/* — White card panels — */
-[data-theme="dark"] [class*="rounded-"][class*="bg-white"],
-[data-theme="dark"] [class*="rounded-"][class*="bg-slate-50"] {
-  background: var(--bg-card) !important;
-  border-color: var(--border) !important;
-  backdrop-filter: blur(16px) !important;
-}
-
-/* — Scrollbar themed — */
-.scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
-.scrollbar-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-
-/* Stat cards glow slightly in dark */
-[data-theme="dark"] [class*="rounded-"][class*="border"] {
-  border-color: var(--border);
+[data-theme="dark"] .skeleton-loader {
+  background: linear-gradient(90deg, var(--border) 25%, var(--card) 50%, var(--border) 75%);
+  background-size: 200% 100%;
 }
