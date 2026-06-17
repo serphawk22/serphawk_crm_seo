@@ -6,12 +6,12 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
-  FileText,
   Bot,
   UserCheck,
   Activity,
   LogOut,
   Radar,
+  StickyNote,
   ChevronRight,
   Sun,
   Moon,
@@ -36,13 +36,15 @@ export function Sidebar({ role }: SidebarProps) {
   const { theme, toggleTheme } = useTheme();
 
   const allItems = [
-    { name: language === "es" ? "Tablero" : "Dashboard", icon: LayoutDashboard, href: "/", roles: ["Admin", "Employee", "Intern"] },
-    { name: language === "es" ? "Clientes" : "Clients", icon: Users, href: "/clients", roles: ["Admin", "Employee", "SalesManager"] },
-    { name: language === "es" ? "Leads" : "Leads", icon: UserCheck, href: "/leads", roles: ["Admin", "Employee", "SalesManager"] },
-    { name: language === "es" ? "Contactos" : "Contacts", icon: FileText, href: "/contacts", roles: ["Admin", "Employee"] },
-    { name: language === "es" ? "Competidores" : "Competitors", icon: Radar, href: "/admin/radar", roles: ["Admin", "Employee"] },
-    { name: language === "es" ? "Agente de Email" : "Email Agent", icon: Bot, href: "/email-agent", roles: ["Admin", "Employee"] },
-    { name: language === "es" ? "Actividades" : "Activities", icon: Activity, href: "/activities", roles: ["Admin", "Employee", "Intern"] },
+    { name: language === 'es' ? 'Tablero' : 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['Admin', 'Employee', 'Client', 'Intern'] },
+    { name: language === 'es' ? 'Proyectos' : 'Projects', icon: StickyNote, href: '/projects', roles: ['Admin', 'Employee', 'Intern'] },
+    { name: language === 'es' ? 'Clientes' : 'Clients', icon: Users, href: '/clients', roles: ['Admin', 'Employee', 'SalesManager'] },
+    { name: language === 'es' ? 'Gerente de Ventas' : 'Sales Manager', icon: UserCheck, href: '/sales-manager', roles: ['Admin', 'Employee', 'SalesManager'] },
+    { name: language === 'es' ? 'Pasantes' : 'Interns', icon: Activity, href: '/interns', roles: ['Admin', 'Employee'] },
+    { name: language === 'es' ? 'Equipo de Ventas' : 'Sales Team', icon: UserCheck, href: '/admin/sales-team', roles: ['Admin'] },
+    { name: language === 'es' ? 'Agente de Email' : 'Email Agent', icon: Bot, href: '/email-agent', roles: ['Admin', 'Employee'] },
+    { name: language === 'es' ? 'Radar de Competidores' : 'Radar Analysis', icon: Radar, href: '/admin/radar', roles: ['Admin', 'Employee'] },
+    { name: language === 'es' ? 'Inteligencia de API' : 'API Intelligence', icon: Activity, href: '/admin/api-intelligence', roles: ['Admin'] },
   ];
 
   const filteredItems = allItems.filter(item => item.roles.includes(role));
