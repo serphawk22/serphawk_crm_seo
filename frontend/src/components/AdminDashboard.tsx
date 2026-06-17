@@ -119,7 +119,7 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language }: any) {
               <div className="p-8 text-center text-[var(--text-secondary)]">No activities yet.</div>
             ) : (
               <div className="divide-y divide-[var(--border)]">
-                {adminStats.recentActivities.slice(0, 5).map((act: any) => (
+                {adminStats.recentActivities.slice(0, 10).map((act: any) => (
                   <div key={act.id} className="p-4 flex gap-4 hover:bg-[var(--sidebar-hover)] transition-colors">
                     <div className="w-8 h-8 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center shrink-0">
                       <Activity className="w-4 h-4" />
@@ -142,7 +142,7 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language }: any) {
             <h3 className="font-bold text-[var(--text-primary)]">Quick Links</h3>
           </div>
           <div className="p-4 grid grid-cols-2 gap-3">
-             {NAV_CARDS.filter((c: any) => c.roles.includes("Admin")).slice(0, 6).map((card: any) => (
+             {NAV_CARDS.filter((c: any) => c.roles.includes("Admin")).map((card: any) => (
                 <Link key={card.href} href={card.href} className="p-4 border border-[var(--border)] rounded-xl hover:border-[var(--primary)] hover:bg-[var(--sidebar-hover)] transition-all group flex flex-col items-center text-center gap-2">
                   <card.icon className="w-5 h-5 text-[var(--text-secondary)] group-hover:text-[var(--primary)] transition-colors" />
                   <span className="text-xs font-bold text-[var(--text-primary)]">{card.title}</span>

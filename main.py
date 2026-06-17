@@ -3483,20 +3483,29 @@ def dashboard_stats(
         call_chart.append(sum(1 for c in all_calls_list if c.createdAt and day_start <= c.createdAt < day_end))
 
     import calendar
-    from dateutil.relativedelta import relativedelta
     all_invoices = session.exec(select(Invoice)).all()
     all_service_reqs = session.exec(select(ServiceRequest)).all()
 
     revenue_data = []
     today = datetime.utcnow()
     for i in range(5, -1, -1):
-        target_month = today - relativedelta(months=i)
-        month_start = target_month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        month_end = month_start + relativedelta(months=1)
+        target_month = today.month - i
+        target_year = today.year
+        while target_month <= 0:
+            target_month += 12
+            target_year -= 1
+            
+        month_start = datetime(target_year, target_month, 1)
+        next_month = target_month + 1
+        next_year = target_year
+        if next_month > 12:
+            next_month = 1
+            next_year += 1
+        month_end = datetime(next_year, next_month, 1)
         
         rev = sum(inv.total for inv in all_invoices if inv.status == "Paid" and inv.created_at and month_start <= inv.created_at < month_end)
         exp = sum(inv.total for inv in all_invoices if inv.status == "Sent" and inv.created_at and month_start <= inv.created_at < month_end) * 0.3
-        revenue_data.append({"name": calendar.month_abbr[target_month.month], "revenue": rev, "expenses": exp})
+        revenue_data.append({"name": calendar.month_abbr[target_month], "revenue": rev, "expenses": exp})
         
     pipeline_data = [
         {"stage": "Prospecting", "count": pending_clients},
