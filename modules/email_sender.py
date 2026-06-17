@@ -4,6 +4,7 @@ import time
 import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from modules.api_tracker import track_api_call, current_client_id, current_salesperson_id, current_endpoint
 
 DEFAULT_CC_EMAILS = []
 
@@ -137,7 +138,27 @@ def send_email_outlook(to_email, subject, body, sender_email, sender_password, s
         # Combine recipients for the envelope
         recipients = [to_email] + cc_emails if cc_emails else [to_email]
         
-        server.sendmail(sender_email, recipients, text)
+        start_time = time.time()
+        success = True
+        try:
+            server.sendmail(sender_email, recipients, text)
+        except Exception as e:
+            success = False
+            raise e
+        finally:
+            end_time = time.time()
+            track_api_call(
+                endpoint=current_endpoint.get(),
+                model="smtp-email",
+                input_tokens=0,
+                output_tokens=0,
+                response_time_ms=int((end_time - start_time) * 1000),
+                salesperson_id=current_salesperson_id.get(),
+                client_id=current_client_id.get(),
+                status_code=200 if success else 500,
+                success=success,
+                content_type="email"
+            )
         server.quit()
         print(f"Email sent to {to_email} (CC: {cc_emails})")
         

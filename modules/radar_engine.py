@@ -6,7 +6,9 @@ import math
 import os
 import httpx
 import logging
+import time
 from typing import Optional
+from modules.api_tracker import track_api_call, current_client_id, current_salesperson_id, current_endpoint
 
 # Force the old API key because it has Places API (New) enabled.
 # The user's environment variable has a new key that only has Maps JS API enabled.
@@ -79,9 +81,34 @@ async def find_place(query, location_hint=None):
             "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.websiteUri,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.types,places.businessStatus"
         }
         data = {"textQuery": search_query}
-        resp = await client.post(f"{PLACES_NEW_BASE}:searchText", headers=headers, json=data)
-        resp.raise_for_status()
-        data = resp.json()
+        start_time = time.time()
+        status_code = 200
+        success = True
+        try:
+            resp = await client.post(f"{PLACES_NEW_BASE}:searchText", headers=headers, json=data)
+            resp.raise_for_status()
+            data = resp.json()
+            status_code = resp.status_code
+        except Exception as e:
+            success = False
+            status_code = getattr(e, 'response', None)
+            status_code = status_code.status_code if status_code else 500
+            raise e
+        finally:
+            end_time = time.time()
+            track_api_call(
+                endpoint=current_endpoint.get(),
+                model="places-search-text",
+                input_tokens=0,
+                output_tokens=0,
+                response_time_ms=int((end_time - start_time) * 1000),
+                salesperson_id=current_salesperson_id.get(),
+                client_id=current_client_id.get(),
+                status_code=status_code,
+                success=success,
+                content_type="external_api"
+            )
+
         places = data.get("places", [])
         if not places:
             return None
@@ -111,8 +138,35 @@ async def get_place_details(place_id):
             "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
             "X-Goog-FieldMask": "id,displayName,formattedAddress,location,websiteUri,nationalPhoneNumber,rating,userRatingCount,types,businessStatus"
         }
-        resp = await client.get(f"{PLACES_NEW_BASE}/{place_id}", headers=headers)
-        if resp.status_code != 200:
+        start_time = time.time()
+        success = True
+        status_code = 200
+        try:
+            resp = await client.get(f"{PLACES_NEW_BASE}/{place_id}", headers=headers)
+            status_code = resp.status_code
+            if status_code != 200:
+                success = False
+        except Exception as e:
+            success = False
+            status_code = getattr(e, 'response', None)
+            status_code = status_code.status_code if status_code else 500
+            raise e
+        finally:
+            end_time = time.time()
+            track_api_call(
+                endpoint=current_endpoint.get(),
+                model="places-details",
+                input_tokens=0,
+                output_tokens=0,
+                response_time_ms=int((end_time - start_time) * 1000),
+                salesperson_id=current_salesperson_id.get(),
+                client_id=current_client_id.get(),
+                status_code=status_code,
+                success=success,
+                content_type="external_api"
+            )
+            
+        if status_code != 200:
             return None
         p = resp.json()
         return {
@@ -147,9 +201,35 @@ async def find_nearby_competitors(lat, lng, radius_m, keyword, target_name=""):
                 }
             }
         }
-        resp = await client.post(f"{PLACES_NEW_BASE}:searchText", headers=headers, json=data)
-        resp.raise_for_status()
-        resp_data = resp.json()
+        
+        start_time = time.time()
+        success = True
+        status_code = 200
+        try:
+            resp = await client.post(f"{PLACES_NEW_BASE}:searchText", headers=headers, json=data)
+            resp.raise_for_status()
+            resp_data = resp.json()
+            status_code = resp.status_code
+        except Exception as e:
+            success = False
+            status_code = getattr(e, 'response', None)
+            status_code = status_code.status_code if status_code else 500
+            raise e
+        finally:
+            end_time = time.time()
+            track_api_call(
+                endpoint=current_endpoint.get(),
+                model="places-nearby",
+                input_tokens=0,
+                output_tokens=0,
+                response_time_ms=int((end_time - start_time) * 1000),
+                salesperson_id=current_salesperson_id.get(),
+                client_id=current_client_id.get(),
+                status_code=status_code,
+                success=success,
+                content_type="external_api"
+            )
+            
         results = resp_data.get("places", [])
 
     competitors = []

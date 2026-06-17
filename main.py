@@ -3482,6 +3482,30 @@ def dashboard_stats(
         email_chart.append(sum(1 for e in all_emails if e.sent_at and day_start <= e.sent_at < day_end))
         call_chart.append(sum(1 for c in all_calls_list if c.createdAt and day_start <= c.createdAt < day_end))
 
+    import calendar
+    from dateutil.relativedelta import relativedelta
+    all_invoices = session.exec(select(Invoice)).all()
+    all_service_reqs = session.exec(select(ServiceRequest)).all()
+
+    revenue_data = []
+    today = datetime.utcnow()
+    for i in range(5, -1, -1):
+        target_month = today - relativedelta(months=i)
+        month_start = target_month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_end = month_start + relativedelta(months=1)
+        
+        rev = sum(inv.total for inv in all_invoices if inv.status == "Paid" and inv.created_at and month_start <= inv.created_at < month_end)
+        exp = sum(inv.total for inv in all_invoices if inv.status == "Sent" and inv.created_at and month_start <= inv.created_at < month_end) * 0.3
+        revenue_data.append({"name": calendar.month_abbr[target_month.month], "revenue": rev, "expenses": exp})
+        
+    pipeline_data = [
+        {"stage": "Prospecting", "count": pending_clients},
+        {"stage": "Qualification", "count": len([r for r in all_service_reqs if r.status == "Pending"])},
+        {"stage": "Proposal", "count": len([r for r in all_service_reqs if r.status == "Quoted"])},
+        {"stage": "Negotiation", "count": len([r for r in all_service_reqs if r.status == "In Progress"])},
+        {"stage": "Closed Won", "count": len([r for r in all_service_reqs if r.status == "Accepted"])},
+    ]
+
     recent_activities = session.exec(
         select(ActivityLog).order_by(ActivityLog.createdAt.desc()).limit(10)
     ).all()
@@ -3498,6 +3522,8 @@ def dashboard_stats(
         "totalCalls": total_calls,
         "totalEmailsSent": total_emails_sent,
         "totalMarketplaceServices": total_marketplace,
+        "revenueData": revenue_data,
+        "pipelineData": pipeline_data,
         "chartLabels": labels,
         "activityChart": activity_chart,
         "emailChart": email_chart,

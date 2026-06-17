@@ -16,7 +16,18 @@ import {
   Sun,
   Moon,
   Monitor,
-  Briefcase
+  Briefcase,
+  Bell,
+  File as FileIcon,
+  MessageSquare,
+  CheckSquare,
+  ShoppingBag,
+  FileText,
+  FileSignature,
+  LineChart,
+  PhoneCall,
+  UsersRound,
+  GraduationCap
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRole, Role } from "@/context/RoleContext";
@@ -35,19 +46,47 @@ export function Sidebar({ role }: SidebarProps) {
   const { collapsed, setCollapsed } = useSidebar();
   const { theme, toggleTheme } = useTheme();
 
-  const allItems = [
-    { name: language === 'es' ? 'Tablero' : 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['Admin', 'Employee', 'Client', 'Intern'] },
-    { name: language === 'es' ? 'Proyectos' : 'Projects', icon: StickyNote, href: '/projects', roles: ['Admin', 'Employee', 'Intern'] },
-    { name: language === 'es' ? 'Clientes' : 'Clients', icon: Users, href: '/clients', roles: ['Admin', 'Employee', 'SalesManager'] },
-    { name: language === 'es' ? 'Gerente de Ventas' : 'Sales Manager', icon: UserCheck, href: '/sales-manager', roles: ['Admin', 'Employee', 'SalesManager'] },
-    { name: language === 'es' ? 'Pasantes' : 'Interns', icon: Activity, href: '/interns', roles: ['Admin', 'Employee'] },
-    { name: language === 'es' ? 'Equipo de Ventas' : 'Sales Team', icon: UserCheck, href: '/admin/sales-team', roles: ['Admin'] },
-    { name: language === 'es' ? 'Agente de Email' : 'Email Agent', icon: Bot, href: '/email-agent', roles: ['Admin', 'Employee'] },
-    { name: language === 'es' ? 'Radar de Competidores' : 'Radar Analysis', icon: Radar, href: '/admin/radar', roles: ['Admin', 'Employee'] },
-    { name: language === 'es' ? 'Inteligencia de API' : 'API Intelligence', icon: Activity, href: '/admin/api-intelligence', roles: ['Admin'] },
+  const sidebarSections = [
+    {
+      heading: language === 'es' ? 'Principal' : 'Main',
+      items: [
+        { name: language === 'es' ? 'Tablero' : 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['Admin', 'Employee', 'Client', 'Intern'] },
+        { name: language === 'es' ? 'Notificaciones' : 'Notifications', icon: Bell, href: '/notifications', roles: ['Admin', 'Employee', 'Client'] },
+        { name: language === 'es' ? 'Mis Archivos' : 'My Files', icon: FileIcon, href: '/my-files', roles: ['Admin', 'Employee', 'Client'] },
+        { name: language === 'es' ? 'Mensajes' : 'Messages', icon: MessageSquare, href: '/messages', roles: ['Admin', 'Employee', 'Client'] },
+      ]
+    },
+    {
+      heading: language === 'es' ? 'Operaciones de Clientes' : 'Client Operations',
+      items: [
+        { name: language === 'es' ? 'Clientes' : 'Clients', icon: Users, href: '/clients', roles: ['Admin', 'Employee', 'SalesManager'] },
+        { name: language === 'es' ? 'Proyectos' : 'Projects', icon: Briefcase, href: '/projects', roles: ['Admin', 'Employee', 'Intern'] },
+        { name: language === 'es' ? 'Tareas' : 'Tasks', icon: CheckSquare, href: '/tasks', roles: ['Admin', 'Employee', 'Intern'] },
+        { name: language === 'es' ? 'Mercado' : 'Market Place', icon: ShoppingBag, href: '/admin/marketplace', roles: ['Admin', 'Employee', 'SalesManager'] },
+        { name: language === 'es' ? 'Facturas' : 'Invoices', icon: FileText, href: '/invoices', roles: ['Admin', 'SalesManager'] },
+        { name: language === 'es' ? 'Propuestas' : 'Proposals', icon: FileSignature, href: '/proposals', roles: ['Admin', 'SalesManager'] },
+      ]
+    },
+    {
+      heading: language === 'es' ? 'Motor de Salida' : 'Outbound Engine',
+      items: [
+        { name: language === 'es' ? 'Agente de Email' : 'Email Agent', icon: Bot, href: '/email-agent', roles: ['Admin', 'Employee'] },
+        { name: language === 'es' ? 'Análisis Radar' : 'Radar Analysis', icon: Radar, href: '/admin/radar', roles: ['Admin', 'Employee'] },
+        { name: language === 'es' ? 'Embudo de Ventas' : 'Sales Pipeline', icon: LineChart, href: '/pipeline', roles: ['Admin', 'SalesManager', 'Employee'] },
+        { name: language === 'es' ? 'Llamadas' : 'Call Logs', icon: PhoneCall, href: '/calls', roles: ['Admin', 'SalesManager'] },
+      ]
+    },
+    {
+      heading: language === 'es' ? 'Gestión Interna' : 'System & Team',
+      items: [
+        { name: language === 'es' ? 'Equipo de Ventas' : 'Sales Team', icon: UsersRound, href: '/admin/sales-team', roles: ['Admin'] },
+        { name: language === 'es' ? 'Gerente de Ventas' : 'Sales Manager', icon: UserCheck, href: '/sales-manager', roles: ['Admin', 'SalesManager'] },
+        { name: language === 'es' ? 'Empleados' : 'Employees', icon: Users, href: '/employees', roles: ['Admin'] },
+        { name: language === 'es' ? 'Pasantes' : 'Interns', icon: GraduationCap, href: '/interns', roles: ['Admin', 'Employee'] },
+        { name: language === 'es' ? 'Inteligencia de API' : 'API Intelligence', icon: Activity, href: '/admin/api-intelligence', roles: ['Admin'] },
+      ]
+    }
   ];
-
-  const filteredItems = allItems.filter(item => item.roles.includes(role));
 
   const initial = user?.name?.charAt(0).toUpperCase() || "A";
 
@@ -83,45 +122,68 @@ export function Sidebar({ role }: SidebarProps) {
 
         {/* Nav Links */}
         <nav className={cn("flex flex-col gap-1 flex-1 overflow-y-auto", collapsed ? "items-center px-0" : "px-4")}>
-          {filteredItems.map((item) => {
-            const isActive = pathname === item.href;
+          {sidebarSections.map((section, idx) => {
+            const visibleItems = section.items.filter(item => item.roles.includes(role));
+            if (visibleItems.length === 0) return null;
+            
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "relative rounded-md flex items-center transition-colors group shrink-0",
-                  collapsed ? "w-10 h-10 justify-center" : "gap-3 px-3 py-2",
-                  isActive ? "font-semibold" : "font-medium"
-                )}
-                style={isActive
-                  ? { background: "var(--sidebar-active-bg)", color: "var(--sidebar-active-text)" }
-                  : { color: "var(--sidebar-text)" }
-                }
-              >
-                <item.icon className={cn("w-5 h-5 shrink-0 transition-colors", !isActive && "group-hover:text-[var(--text-primary)]")} />
+              <div key={idx} className="mb-6 flex flex-col gap-1">
                 <AnimatePresence>
                   {!collapsed && (
-                    <motion.span
-                      initial={{ opacity: 0, x: -6 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -6 }}
-                      transition={{ duration: 0.15 }}
-                      className="text-[14px] truncate"
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="px-3 mb-2 text-[10px] font-bold tracking-widest uppercase"
+                      style={{ color: "var(--text-secondary)" }}
                     >
-                      {item.name}
-                    </motion.span>
+                      {section.heading}
+                    </motion.div>
                   )}
                 </AnimatePresence>
                 
-                {/* Tooltip */}
-                {collapsed && (
-                  <span className="absolute left-full ml-4 px-2 py-1 text-xs font-medium rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md z-[100]"
-                    style={{ background: "var(--surface)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
-                    {item.name}
-                  </span>
-                )}
-              </Link>
+                {visibleItems.map((item) => {
+                  const isActive = pathname === item.href;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={cn(
+                        "relative rounded-md flex items-center transition-colors group shrink-0",
+                        collapsed ? "w-10 h-10 justify-center" : "gap-3 px-3 py-2",
+                        isActive ? "font-semibold" : "font-medium"
+                      )}
+                      style={isActive
+                        ? { background: "var(--sidebar-active-bg)", color: "var(--sidebar-active-text)" }
+                        : { color: "var(--sidebar-text)" }
+                      }
+                    >
+                      <item.icon className={cn("w-5 h-5 shrink-0 transition-colors", !isActive && "group-hover:text-[var(--text-primary)]")} />
+                      <AnimatePresence>
+                        {!collapsed && (
+                          <motion.span
+                            initial={{ opacity: 0, x: -6 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -6 }}
+                            transition={{ duration: 0.15 }}
+                            className="text-[14px] truncate"
+                          >
+                            {item.name}
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                      
+                      {/* Tooltip */}
+                      {collapsed && (
+                        <span className="absolute left-full ml-4 px-2 py-1 text-xs font-medium rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md z-[100]"
+                          style={{ background: "var(--surface)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
+                          {item.name}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
             );
           })}
         </nav>
