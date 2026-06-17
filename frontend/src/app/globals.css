@@ -34,22 +34,22 @@
    DESIGN TOKENS — Dark Mode (Linear / GitHub Inspired)
 ═══════════════════════════════════════════════ */
 [data-theme="dark"] {
-  --background: #0f172a;
-  --surface: #111827;
-  --card: #1e293b;
-  --border: #334155;
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
+  --background: #000000;
+  --surface: #0a0a0a;
+  --card: #111111;
+  --border: #1a1a1a;
+  --text-primary: #e2e8f0;
+  --text-secondary: #8b949e;
   --primary: #3b82f6;
   --primary-hover: #60a5fa;
-  --success: #34d399;
-  --warning: #fbbf24;
-  --danger: #f87171;
+  --success: #3fb950;
+  --warning: #d29922;
+  --danger: #f85149;
 
-  --sidebar-bg: #111827;
-  --sidebar-border: #1e293b;
-  --sidebar-hover: #1e293b;
-  --sidebar-text: #94a3b8;
+  --sidebar-bg: #000000;
+  --sidebar-border: #1a1a1a;
+  --sidebar-hover: #111111;
+  --sidebar-text: #8b949e;
   --sidebar-active-bg: rgba(59, 130, 246, 0.1);
   --sidebar-active-text: #3b82f6;
 
