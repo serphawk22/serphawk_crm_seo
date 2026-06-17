@@ -43,6 +43,11 @@ def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> tuple[f
         else:
             rates = {"input": 0.0, "output": 0.0}
 
+    if "places" in model_lower:
+        return 0.0, 0.0, 0.032  # Flat rate for Places API
+    if "serper" in model_lower:
+        return 0.0, 0.0, 0.001  # Flat rate for Serper API
+
     in_cost = (input_tokens / 1_000_000) * rates["input"]
     out_cost = (output_tokens / 1_000_000) * rates["output"]
     return in_cost, out_cost, in_cost + out_cost
@@ -61,6 +66,10 @@ def determine_provider(model: str) -> str:
         return "groq"
     if "deepseek" in model_lower:
         return "deepseek"
+    if "places" in model_lower:
+        return "google_maps"
+    if "serper" in model_lower:
+        return "serper"
     return "custom"
 
 def track_api_call(

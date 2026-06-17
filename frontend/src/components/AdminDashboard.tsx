@@ -6,24 +6,7 @@ import Link from "next/link";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from "recharts";
 import { cn } from "@/lib/utils";
 
-const revenueData = [
-  { name: 'Jan', revenue: 4000, expenses: 2400 },
-  { name: 'Feb', revenue: 3000, expenses: 1398 },
-  { name: 'Mar', revenue: 2000, expenses: 9800 },
-  { name: 'Apr', revenue: 2780, expenses: 3908 },
-  { name: 'May', revenue: 1890, expenses: 4800 },
-  { name: 'Jun', revenue: 2390, expenses: 3800 },
-  { name: 'Jul', revenue: 3490, expenses: 4300 },
-];
-
-const pipelineData = [
-  { stage: 'Prospecting', count: 12 },
-  { stage: 'Qualification', count: 8 },
-  { stage: 'Proposal', count: 5 },
-  { stage: 'Negotiation', count: 3 },
-  { stage: 'Closed Won', count: 15 },
-];
-
+// Data comes from adminStats from the backend
 const itemVariants = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100 } }
@@ -85,7 +68,7 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language }: any) {
           </div>
           <div className="p-5 flex-1 min-h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart data={adminStats?.revenueData || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
@@ -112,7 +95,7 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language }: any) {
           </div>
           <div className="p-5 flex-1 min-h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart layout="vertical" data={pipelineData} margin={{ top: 0, right: 20, left: 20, bottom: 0 }}>
+              <BarChart layout="vertical" data={adminStats?.pipelineData || []} margin={{ top: 0, right: 20, left: 20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
                 <XAxis type="number" hide />
                 <YAxis dataKey="stage" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} />
