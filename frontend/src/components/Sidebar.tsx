@@ -12,10 +12,10 @@ import {
   CheckCircle,
   Radar,
   Mail,
-  Bot,
   Zap,
   Globe,
   BarChart2,
+  Activity,
   FileText,
   FileEdit,
   ShoppingBag,
@@ -23,9 +23,10 @@ import {
   Moon,
   Sun,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Search,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRole, Role } from "@/context/RoleContext";
@@ -37,7 +38,6 @@ interface SidebarProps {
   role: Role;
 }
 
-// Notification count (mock)
 const NOTIFICATION_COUNT = 3;
 
 const sidebarSections = [
@@ -67,9 +67,9 @@ const sidebarSections = [
     items: [
       { name: "Email Agent", icon: Mail, href: "/email-agent", roles: ["Admin", "Employee"] },
       { name: "Radar Analysis", icon: Radar, href: "/admin/radar", roles: ["Admin", "Employee"] },
-      { name: "Sales Copilot", icon: Bot, href: "/admin/agents/sales-copilot", roles: ["Admin", "Employee"] },
       { name: "Competitor Analysis", icon: BarChart2, href: "/admin/agents/competitor", roles: ["Admin", "Employee"] },
       { name: "Website Scanner", icon: Globe, href: "/admin/agents/website-scanner", roles: ["Admin", "Employee"] },
+      { name: "AI Automations", icon: Zap, href: "/admin/automations", roles: ["Admin"] },
     ],
   },
   {
@@ -78,6 +78,12 @@ const sidebarSections = [
       { name: "Invoices", icon: FileText, href: "/invoices", roles: ["Admin", "SalesManager"] },
       { name: "Proposals", icon: FileEdit, href: "/proposals", roles: ["Admin", "SalesManager"] },
       { name: "Marketplace", icon: ShoppingBag, href: "/admin/marketplace", roles: ["Admin", "Employee", "SalesManager"] },
+    ],
+  },
+  {
+    heading: "SYSTEM",
+    items: [
+      { name: "API Intelligence", icon: Activity, href: "/admin/api-intelligence", roles: ["Admin"] },
     ],
   },
 ];
@@ -112,75 +118,34 @@ export function Sidebar({ role }: SidebarProps) {
         }}
       >
         {/* ── TOP BRANDING ── */}
-        <div
-          className={cn(
-            "shrink-0 flex items-center justify-between py-5",
-            collapsed ? "px-3" : "px-6"
-          )}
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            {/* Logo Icon */}
-            <div className="shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md">
-              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
-                <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.5" />
-                <circle cx="12" cy="12" r="2" fill="white" />
-              </svg>
-            </div>
-
-            <AnimatePresence>
-              {!collapsed && (
-                <motion.div
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -8 }}
-                  transition={{ duration: 0.18 }}
-                  className="flex flex-col min-w-0 overflow-hidden"
-                >
-                  <span
-                    className="font-bold text-[15px] leading-tight tracking-tight truncate"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    SERP Hawk
-                  </span>
-                  <span
-                    className="text-[11px] font-medium truncate"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    Corporate HQ
-                  </span>
-                </motion.div>
-              )}
-            </AnimatePresence>
+        <div className={cn("shrink-0 flex items-center py-4", collapsed ? "justify-center px-2" : "px-4 gap-3")}>
+          {/* Logo */}
+          <div className="shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md">
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
+              <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
+              <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.5" />
+              <circle cx="12" cy="12" r="2" fill="white" />
+            </svg>
           </div>
 
-          {/* Collapse button */}
           <AnimatePresence>
             {!collapsed && (
-              <motion.button
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setCollapsed(true)}
-                className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:bg-gray-100 dark:hover:bg-gray-800"
-                style={{ color: "var(--text-secondary)" }}
-                title="Collapse sidebar"
+              <motion.div
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }}
+                transition={{ duration: 0.15 }}
+                className="flex-1 min-w-0 overflow-hidden"
               >
-                <ChevronLeft className="w-4 h-4" />
-              </motion.button>
+                <span className="block font-bold text-[15px] leading-tight tracking-tight truncate" style={{ color: "var(--text-primary)" }}>
+                  SERP Hawk
+                </span>
+                <span className="block text-[11px] font-medium truncate" style={{ color: "var(--text-secondary)" }}>
+                  Corporate HQ
+                </span>
+              </motion.div>
             )}
           </AnimatePresence>
-
-          {collapsed && (
-            <motion.button
-              onClick={() => setCollapsed(false)}
-              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:bg-gray-100 mx-auto"
-              style={{ color: "var(--text-secondary)" }}
-              title="Expand sidebar"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </motion.button>
-          )}
         </div>
 
         {/* ── SEARCH BAR ── */}
@@ -190,14 +155,11 @@ export function Sidebar({ role }: SidebarProps) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="shrink-0 px-4 pb-4"
+              className="shrink-0 px-3 pb-3"
             >
               <div
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-all"
-                style={{
-                  background: "var(--surface)",
-                  borderColor: "var(--border)",
-                }}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border"
+                style={{ background: "var(--surface)", borderColor: "var(--border)" }}
               >
                 <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-secondary)" }} />
                 <input
@@ -208,10 +170,7 @@ export function Sidebar({ role }: SidebarProps) {
                   className="flex-1 bg-transparent text-[13px] outline-none placeholder-gray-400"
                   style={{ color: "var(--text-primary)" }}
                 />
-                <span
-                  className="text-[10px] font-medium px-1.5 py-0.5 rounded-md border shrink-0"
-                  style={{ color: "var(--text-secondary)", borderColor: "var(--border)", background: "var(--background)" }}
-                >
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md border shrink-0" style={{ color: "var(--text-secondary)", borderColor: "var(--border)", background: "var(--background)" }}>
                   ⌘K
                 </span>
               </div>
@@ -221,21 +180,15 @@ export function Sidebar({ role }: SidebarProps) {
 
         {/* ── MAIN NAVIGATION ── */}
         <nav
-          className={cn(
-            "flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pb-2",
-            collapsed ? "px-2" : "px-3"
-          )}
+          className={cn("flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pb-2", collapsed ? "px-2" : "px-3")}
           style={{ scrollbarWidth: "none" }}
         >
           {sidebarSections.map((section, sIdx) => {
-            const visibleItems = section.items.filter((item) =>
-              item.roles.includes(role)
-            );
+            const visibleItems = section.items.filter((item) => item.roles.includes(role));
             if (visibleItems.length === 0) return null;
 
             return (
               <div key={sIdx} className={cn("flex flex-col", sIdx > 0 ? "mt-3" : "mt-0")}>
-                {/* Section Label */}
                 <AnimatePresence>
                   {!collapsed && section.heading && (
                     <motion.div
@@ -250,7 +203,6 @@ export function Sidebar({ role }: SidebarProps) {
                   )}
                 </AnimatePresence>
 
-                {/* Nav Items */}
                 <div className="flex flex-col gap-0.5">
                   {visibleItems.map((item) => {
                     const isActive = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href));
@@ -261,36 +213,14 @@ export function Sidebar({ role }: SidebarProps) {
                         className={cn(
                           "relative group flex items-center gap-3 rounded-xl transition-all duration-150 select-none shrink-0",
                           collapsed ? "w-11 h-11 justify-center mx-auto" : "h-[42px] px-3",
-                          isActive
-                            ? ""
-                            : "hover:bg-gray-50"
+                          !isActive && "hover:bg-gray-50"
                         )}
-                        style={
-                          isActive
-                            ? {
-                                background: "rgba(37, 99, 235, 0.08)",
-                                color: "#2563eb",
-                              }
-                            : { color: "var(--sidebar-text)" }
-                        }
+                        style={isActive ? { background: "rgba(37,99,235,0.08)", color: "#2563eb" } : { color: "var(--sidebar-text)" }}
                       >
-                        {/* Left accent indicator */}
                         {isActive && !collapsed && (
-                          <motion.span
-                            layoutId="sidebar-active-indicator"
-                            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-blue-600"
-                          />
+                          <motion.span layoutId="sidebar-active-indicator" className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-blue-600" />
                         )}
-
-                        {/* Icon */}
-                        <item.icon
-                          className={cn(
-                            "w-[18px] h-[18px] shrink-0 transition-colors",
-                            isActive ? "text-blue-600" : "group-hover:text-blue-500"
-                          )}
-                        />
-
-                        {/* Label */}
+                        <item.icon className={cn("w-[18px] h-[18px] shrink-0 transition-colors", isActive ? "text-blue-600" : "group-hover:text-blue-500")} />
                         <AnimatePresence>
                           {!collapsed && (
                             <motion.span
@@ -298,44 +228,26 @@ export function Sidebar({ role }: SidebarProps) {
                               animate={{ opacity: 1, x: 0 }}
                               exit={{ opacity: 0, x: -6 }}
                               transition={{ duration: 0.14 }}
-                              className={cn(
-                                "flex-1 text-[13.5px] font-medium truncate",
-                                isActive ? "font-semibold" : ""
-                              )}
+                              className={cn("flex-1 text-[13.5px] font-medium truncate", isActive && "font-semibold")}
                             >
                               {item.name}
                             </motion.span>
                           )}
                         </AnimatePresence>
-
-                        {/* Badge */}
                         {item.badge && item.badge > 0 && !collapsed && (
                           <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
                             {item.badge}
                           </span>
                         )}
-
-                        {/* Chevron */}
                         {!collapsed && !item.badge && (
-                          <ChevronRight
-                            className={cn(
-                              "shrink-0 w-3.5 h-3.5 opacity-0 group-hover:opacity-40 transition-opacity",
-                              isActive && "opacity-40"
-                            )}
-                          />
+                          <ChevronRight className={cn("shrink-0 w-3.5 h-3.5 opacity-0 group-hover:opacity-40 transition-opacity", isActive && "opacity-40")} />
                         )}
-
-                        {/* Tooltip (collapsed) */}
                         {collapsed && (
                           <span
                             className="absolute left-full ml-3 px-2.5 py-1.5 text-xs font-semibold rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none shadow-lg z-[100] whitespace-nowrap transition-all duration-150"
-                            style={{
-                              background: "var(--text-primary)",
-                              color: "var(--background)",
-                            }}
+                            style={{ background: "var(--text-primary)", color: "var(--background)" }}
                           >
-                            {item.name}
-                            {item.badge ? ` (${item.badge})` : ""}
+                            {item.name}{item.badge ? ` (${item.badge})` : ""}
                           </span>
                         )}
                       </Link>
@@ -348,41 +260,25 @@ export function Sidebar({ role }: SidebarProps) {
         </nav>
 
         {/* ── BOTTOM SECTION ── */}
-        <div
-          className="shrink-0"
-          style={{ borderTop: "1px solid var(--sidebar-border)" }}
-        >
+        <div className="shrink-0" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
           <div className={cn("flex flex-col gap-0.5 py-3", collapsed ? "px-2" : "px-3")}>
             {/* Settings */}
             <Link
               href="/admin/settings"
-              className={cn(
-                "group flex items-center gap-3 rounded-xl transition-all duration-150 hover:bg-gray-50",
-                collapsed ? "w-11 h-11 justify-center mx-auto" : "h-[42px] px-3"
-              )}
+              className={cn("group flex items-center gap-3 rounded-xl transition-all duration-150 hover:bg-gray-50", collapsed ? "w-11 h-11 justify-center mx-auto" : "h-[42px] px-3")}
               style={{ color: "var(--sidebar-text)" }}
             >
               <Settings className="w-[18px] h-[18px] shrink-0 group-hover:text-blue-500 transition-colors" />
               <AnimatePresence>
                 {!collapsed && (
-                  <motion.span
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="flex-1 text-[13.5px] font-medium"
-                  >
+                  <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 text-[13.5px] font-medium">
                     Settings
                   </motion.span>
                 )}
               </AnimatePresence>
-              {!collapsed && (
-                <ChevronRight className="shrink-0 w-3.5 h-3.5 opacity-0 group-hover:opacity-40 transition-opacity" />
-              )}
+              {!collapsed && <ChevronRight className="shrink-0 w-3.5 h-3.5 opacity-0 group-hover:opacity-40 transition-opacity" />}
               {collapsed && (
-                <span
-                  className="absolute left-full ml-3 px-2.5 py-1.5 text-xs font-semibold rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none shadow-lg z-[100] whitespace-nowrap transition-all duration-150"
-                  style={{ background: "var(--text-primary)", color: "var(--background)" }}
-                >
+                <span className="absolute left-full ml-3 px-2.5 py-1.5 text-xs font-semibold rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none shadow-lg z-[100] whitespace-nowrap" style={{ background: "var(--text-primary)", color: "var(--background)" }}>
                   Settings
                 </span>
               )}
@@ -390,49 +286,23 @@ export function Sidebar({ role }: SidebarProps) {
 
             {/* Dark Mode Toggle */}
             <div
-              className={cn(
-                "group flex items-center gap-3 rounded-xl transition-all duration-150 cursor-pointer hover:bg-gray-50",
-                collapsed ? "w-11 h-11 justify-center mx-auto" : "h-[42px] px-3"
-              )}
+              className={cn("group flex items-center gap-3 rounded-xl transition-all duration-150 cursor-pointer hover:bg-gray-50", collapsed ? "w-11 h-11 justify-center mx-auto relative" : "h-[42px] px-3")}
               style={{ color: "var(--sidebar-text)" }}
               onClick={handleDarkToggle}
             >
-              {theme === "dark" ? (
-                <Moon className="w-[18px] h-[18px] shrink-0 group-hover:text-blue-500 transition-colors" />
-              ) : (
-                <Sun className="w-[18px] h-[18px] shrink-0 group-hover:text-blue-500 transition-colors" />
-              )}
+              {theme === "dark" ? <Moon className="w-[18px] h-[18px] shrink-0 group-hover:text-blue-500 transition-colors" /> : <Sun className="w-[18px] h-[18px] shrink-0 group-hover:text-blue-500 transition-colors" />}
               <AnimatePresence>
                 {!collapsed && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="flex-1 flex items-center justify-between"
-                  >
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex items-center justify-between">
                     <span className="text-[13.5px] font-medium">Dark Mode</span>
-                    {/* Toggle Switch */}
-                    <div
-                      className={cn(
-                        "relative w-9 h-5 rounded-full transition-all duration-300 shrink-0",
-                        darkToggle ? "bg-blue-600" : "bg-gray-300"
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-300",
-                          darkToggle ? "left-[18px]" : "left-0.5"
-                        )}
-                      />
+                    <div className={cn("relative w-9 h-5 rounded-full transition-all duration-300 shrink-0", darkToggle ? "bg-blue-600" : "bg-gray-300")}>
+                      <div className={cn("absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-300", darkToggle ? "left-[18px]" : "left-0.5")} />
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
               {collapsed && (
-                <span
-                  className="absolute left-full ml-3 px-2.5 py-1.5 text-xs font-semibold rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none shadow-lg z-[100] whitespace-nowrap transition-all duration-150"
-                  style={{ background: "var(--text-primary)", color: "var(--background)" }}
-                >
+                <span className="absolute left-full ml-3 px-2.5 py-1.5 text-xs font-semibold rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none shadow-lg z-[100] whitespace-nowrap" style={{ background: "var(--text-primary)", color: "var(--background)" }}>
                   Dark Mode
                 </span>
               )}
@@ -448,33 +318,16 @@ export function Sidebar({ role }: SidebarProps) {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 6 }}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all hover:bg-gray-50 group"
-                  style={{
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                  }}
+                  style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
                 >
-                  {/* Avatar */}
                   <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm">
                     {initial}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p
-                      className="text-[13px] font-semibold truncate leading-tight"
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      {userName}
-                    </p>
-                    <p
-                      className="text-[11px] font-medium truncate"
-                      style={{ color: "var(--text-secondary)" }}
-                    >
-                      Admin
-                    </p>
+                    <p className="text-[13px] font-semibold truncate leading-tight" style={{ color: "var(--text-primary)" }}>{userName}</p>
+                    <p className="text-[11px] font-medium truncate" style={{ color: "var(--text-secondary)" }}>Admin</p>
                   </div>
-                  <ChevronDown
-                    className="w-4 h-4 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity"
-                    style={{ color: "var(--text-secondary)" }}
-                  />
+                  <ChevronDown className="w-4 h-4 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity" style={{ color: "var(--text-secondary)" }} />
                 </motion.div>
               ) : (
                 <motion.div
@@ -491,6 +344,25 @@ export function Sidebar({ role }: SidebarProps) {
           </div>
         </div>
       </motion.div>
+
+      {/* ── FLOATING COLLAPSE / EXPAND TOGGLE (no overlap, always visible) ── */}
+      <motion.button
+        animate={{ left: collapsed ? 72 : 280 }}
+        transition={{ type: "spring", stiffness: 280, damping: 30 }}
+        onClick={() => setCollapsed(!collapsed)}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.92 }}
+        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        className="fixed top-[52px] z-[60] -translate-x-1/2 flex items-center justify-center w-7 h-7 rounded-full border-2 shadow-md transition-colors"
+        style={{
+          background: "var(--sidebar-bg)",
+          borderColor: "var(--border)",
+          color: "var(--text-secondary)",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
+        }}
+      >
+        {collapsed ? <PanelLeftOpen className="w-3.5 h-3.5" /> : <PanelLeftClose className="w-3.5 h-3.5" />}
+      </motion.button>
     </>
   );
 }
