@@ -22,7 +22,7 @@ function AdminMainContent({ children }: { children: React.ReactNode }) {
   const isClientDetail = pathname?.match(/^\/admin\/clients\/\d+$/);
 
   return (
-    <main className={`relative z-10 min-h-screen transition-all duration-300 ${collapsed ? "ml-[72px]" : "ml-[260px]"}`}>
+    <main className={`relative z-10 min-h-screen transition-all duration-300 ${collapsed ? "ml-[72px]" : "ml-[280px]"}`}>
       <div className={isClientDetail ? "w-full h-full" : "p-6 md:p-8 max-w-[1600px] mx-auto h-full"}>
         {children}
       </div>

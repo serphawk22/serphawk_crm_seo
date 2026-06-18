@@ -5,282 +5,493 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Users,
-  Bot,
-  UserCheck,
-  Activity,
-  LogOut,
-  Radar,
-  StickyNote,
-  ChevronRight,
-  Sun,
-  Moon,
-  Monitor,
-  Briefcase,
   Bell,
-  File as FileIcon,
-  MessageSquare,
+  Users,
+  BookOpen,
+  UserPlus,
+  FolderOpen,
   CheckSquare,
-  ShoppingBag,
+  CheckCircle,
+  Radar,
+  Mail,
+  TrendingUp,
+  Zap,
   FileText,
-  FileSignature,
-  LineChart,
-  PhoneCall,
-  UsersRound,
-  GraduationCap
+  FileEdit,
+  ShoppingBag,
+  Settings,
+  Moon,
+  Sun,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRole, Role } from "@/context/RoleContext";
-import { useLanguage } from "@/context/LanguageContext";
 import { useSidebar } from "@/context/SidebarContext";
 import { useTheme } from "@/context/ThemeContext";
+import { useState } from "react";
 
 interface SidebarProps {
   role: Role;
 }
 
+// Notification count (mock)
+const NOTIFICATION_COUNT = 3;
+
+const sidebarSections = [
+  {
+    heading: null,
+    items: [
+      { name: "Dashboard", icon: LayoutDashboard, href: "/", roles: ["Admin", "Employee", "Client", "Intern", "SalesManager"] },
+      { name: "Notifications", icon: Bell, href: "/notifications", roles: ["Admin", "Employee", "Client"], badge: NOTIFICATION_COUNT },
+    ],
+  },
+  {
+    heading: "CLIENTS",
+    items: [
+      { name: "Clients", icon: Users, href: "/clients", roles: ["Admin", "Employee", "SalesManager"] },
+      { name: "Accounts", icon: BookOpen, href: "/admin/accounts", roles: ["Admin", "SalesManager"] },
+      { name: "Leads", icon: UserPlus, href: "/admin/leads", roles: ["Admin", "Employee", "SalesManager"] },
+    ],
+  },
+  {
+    heading: "PROJECTS",
+    items: [
+      { name: "Projects", icon: FolderOpen, href: "/projects", roles: ["Admin", "Employee", "Intern"] },
+      { name: "Tasks", icon: CheckSquare, href: "/tasks", roles: ["Admin", "Employee", "Intern"] },
+      { name: "Completed", icon: CheckCircle, href: "/admin/completed", roles: ["Admin", "Employee"] },
+    ],
+  },
+  {
+    heading: "GROWTH ENGINE",
+    items: [
+      { name: "Radar Analysis", icon: Radar, href: "/admin/radar", roles: ["Admin", "Employee"] },
+      { name: "Email Agent", icon: Mail, href: "/email-agent", roles: ["Admin", "Employee"] },
+      { name: "Sales Pipeline", icon: TrendingUp, href: "/pipeline", roles: ["Admin", "SalesManager", "Employee"] },
+      { name: "AI Automations", icon: Zap, href: "/admin/automations", roles: ["Admin"] },
+    ],
+  },
+  {
+    heading: "FINANCIALS",
+    items: [
+      { name: "Invoices", icon: FileText, href: "/invoices", roles: ["Admin", "SalesManager"] },
+      { name: "Proposals", icon: FileEdit, href: "/proposals", roles: ["Admin", "SalesManager"] },
+      { name: "Marketplace", icon: ShoppingBag, href: "/admin/marketplace", roles: ["Admin", "Employee", "SalesManager"] },
+    ],
+  },
+];
+
 export function Sidebar({ role }: SidebarProps) {
   const pathname = usePathname();
-  const { logout, user } = useRole();
-  const { t, language } = useLanguage();
+  const { user } = useRole();
   const { collapsed, setCollapsed } = useSidebar();
   const { theme, toggleTheme } = useTheme();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [darkToggle, setDarkToggle] = useState(theme === "dark");
 
-  const sidebarSections = [
-    {
-      heading: language === 'es' ? 'Principal' : 'Main',
-      items: [
-        { name: language === 'es' ? 'Tablero' : 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['Admin', 'Employee', 'Client', 'Intern'] },
-        { name: language === 'es' ? 'Notificaciones' : 'Notifications', icon: Bell, href: '/notifications', roles: ['Admin', 'Employee', 'Client'] },
-        { name: language === 'es' ? 'Mis Archivos' : 'My Files', icon: FileIcon, href: '/my-files', roles: ['Admin', 'Employee', 'Client'] },
-        { name: language === 'es' ? 'Mensajes' : 'Messages', icon: MessageSquare, href: '/messages', roles: ['Admin', 'Employee', 'Client'] },
-      ]
-    },
-    {
-      heading: language === 'es' ? 'Operaciones de Clientes' : 'Client Operations',
-      items: [
-        { name: language === 'es' ? 'Clientes' : 'Clients', icon: Users, href: '/clients', roles: ['Admin', 'Employee', 'SalesManager'] },
-        { name: language === 'es' ? 'Proyectos' : 'Projects', icon: Briefcase, href: '/projects', roles: ['Admin', 'Employee', 'Intern'] },
-        { name: language === 'es' ? 'Tareas' : 'Tasks', icon: CheckSquare, href: '/tasks', roles: ['Admin', 'Employee', 'Intern'] },
-        { name: language === 'es' ? 'Mercado' : 'Market Place', icon: ShoppingBag, href: '/admin/marketplace', roles: ['Admin', 'Employee', 'SalesManager'] },
-        { name: language === 'es' ? 'Facturas' : 'Invoices', icon: FileText, href: '/invoices', roles: ['Admin', 'SalesManager'] },
-        { name: language === 'es' ? 'Propuestas' : 'Proposals', icon: FileSignature, href: '/proposals', roles: ['Admin', 'SalesManager'] },
-      ]
-    },
-    {
-      heading: language === 'es' ? 'Motor de Salida' : 'Outbound Engine',
-      items: [
-        { name: language === 'es' ? 'Agente de Email' : 'Email Agent', icon: Bot, href: '/email-agent', roles: ['Admin', 'Employee'] },
-        { name: language === 'es' ? 'Análisis Radar' : 'Radar Analysis', icon: Radar, href: '/admin/radar', roles: ['Admin', 'Employee'] },
-        { name: language === 'es' ? 'Embudo de Ventas' : 'Sales Pipeline', icon: LineChart, href: '/pipeline', roles: ['Admin', 'SalesManager', 'Employee'] },
-        { name: language === 'es' ? 'Llamadas' : 'Call Logs', icon: PhoneCall, href: '/calls', roles: ['Admin', 'SalesManager'] },
-      ]
-    },
-    {
-      heading: language === 'es' ? 'Gestión Interna' : 'System & Team',
-      items: [
-        { name: language === 'es' ? 'Equipo de Ventas' : 'Sales Team', icon: UsersRound, href: '/admin/sales-team', roles: ['Admin'] },
-        { name: language === 'es' ? 'Gerente de Ventas' : 'Sales Manager', icon: UserCheck, href: '/sales-manager', roles: ['Admin', 'SalesManager'] },
-        { name: language === 'es' ? 'Empleados' : 'Employees', icon: Users, href: '/employees', roles: ['Admin'] },
-        { name: language === 'es' ? 'Pasantes' : 'Interns', icon: GraduationCap, href: '/interns', roles: ['Admin', 'Employee'] },
-        { name: language === 'es' ? 'Inteligencia de API' : 'API Intelligence', icon: Activity, href: '/admin/api-intelligence', roles: ['Admin'] },
-      ]
-    }
-  ];
+  const initial = user?.name?.charAt(0).toUpperCase() || "B";
+  const userName = user?.name || "Brajesh";
 
-  const initial = user?.name?.charAt(0).toUpperCase() || "A";
+  const handleDarkToggle = () => {
+    setDarkToggle(!darkToggle);
+    toggleTheme();
+  };
 
   return (
     <>
       <motion.div
         initial={false}
-        animate={{ width: collapsed ? 72 : 260 }}
-        transition={{ type: "spring", stiffness: 300, damping: 35 }}
-        className="fixed left-0 top-0 bottom-0 z-50 flex flex-col py-6 overflow-hidden shadow-sm"
-        style={{ background: "var(--sidebar-bg)", borderRight: "1px solid var(--sidebar-border)" }}
+        animate={{ width: collapsed ? 72 : 280 }}
+        transition={{ type: "spring", stiffness: 280, damping: 30 }}
+        className="fixed left-0 top-0 bottom-0 z-50 flex flex-col overflow-hidden"
+        style={{
+          background: "var(--sidebar-bg)",
+          boxShadow: "4px 0 24px rgba(0,0,0,0.06)",
+          borderRight: "1px solid var(--sidebar-border)",
+        }}
       >
-        {/* Workspace Selector */}
-        <div className={cn("flex items-center gap-3 mb-8 shrink-0", collapsed ? "justify-center px-0" : "px-5")}>
-          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-sm shrink-0">
-            <Briefcase className="w-5 h-5" />
+        {/* ── TOP BRANDING ── */}
+        <div
+          className={cn(
+            "shrink-0 flex items-center justify-between py-5",
+            collapsed ? "px-3" : "px-6"
+          )}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Logo Icon */}
+            <div className="shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md">
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
+                <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.5" />
+                <circle cx="12" cy="12" r="2" fill="white" />
+              </svg>
+            </div>
+
+            <AnimatePresence>
+              {!collapsed && (
+                <motion.div
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -8 }}
+                  transition={{ duration: 0.18 }}
+                  className="flex flex-col min-w-0 overflow-hidden"
+                >
+                  <span
+                    className="font-bold text-[15px] leading-tight tracking-tight truncate"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    SERP Hawk
+                  </span>
+                  <span
+                    className="text-[11px] font-medium truncate"
+                    style={{ color: "var(--text-secondary)" }}
+                  >
+                    Corporate HQ
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
+
+          {/* Collapse button */}
           <AnimatePresence>
             {!collapsed && (
-              <motion.div
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -8 }}
-                transition={{ duration: 0.18 }}
-                className="flex flex-col overflow-hidden"
+              <motion.button
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setCollapsed(true)}
+                className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:bg-gray-100 dark:hover:bg-gray-800"
+                style={{ color: "var(--text-secondary)" }}
+                title="Collapse sidebar"
               >
-                <span className="font-semibold text-sm leading-tight tracking-tight" style={{ color: "var(--text-primary)" }}>SERP Hawk</span>
-                <span className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>Corporate HQ</span>
-              </motion.div>
+                <ChevronLeft className="w-4 h-4" />
+              </motion.button>
             )}
           </AnimatePresence>
+
+          {collapsed && (
+            <motion.button
+              onClick={() => setCollapsed(false)}
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:bg-gray-100 mx-auto"
+              style={{ color: "var(--text-secondary)" }}
+              title="Expand sidebar"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </motion.button>
+          )}
         </div>
 
-        {/* Nav Links */}
-        <nav className={cn("flex flex-col gap-1 flex-1 overflow-y-auto", collapsed ? "items-center px-0" : "px-4")}>
-          {sidebarSections.map((section, idx) => {
-            const visibleItems = section.items.filter(item => item.roles.includes(role));
+        {/* ── SEARCH BAR ── */}
+        <AnimatePresence>
+          {!collapsed && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="shrink-0 px-4 pb-4"
+            >
+              <div
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-all"
+                style={{
+                  background: "var(--surface)",
+                  borderColor: "var(--border)",
+                }}
+              >
+                <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-secondary)" }} />
+                <input
+                  type="text"
+                  placeholder="Search anything..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="flex-1 bg-transparent text-[13px] outline-none placeholder-gray-400"
+                  style={{ color: "var(--text-primary)" }}
+                />
+                <span
+                  className="text-[10px] font-medium px-1.5 py-0.5 rounded-md border shrink-0"
+                  style={{ color: "var(--text-secondary)", borderColor: "var(--border)", background: "var(--background)" }}
+                >
+                  ⌘K
+                </span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── MAIN NAVIGATION ── */}
+        <nav
+          className={cn(
+            "flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pb-2",
+            collapsed ? "px-2" : "px-3"
+          )}
+          style={{ scrollbarWidth: "none" }}
+        >
+          {sidebarSections.map((section, sIdx) => {
+            const visibleItems = section.items.filter((item) =>
+              item.roles.includes(role)
+            );
             if (visibleItems.length === 0) return null;
-            
+
             return (
-              <div key={idx} className="mb-6 flex flex-col gap-1">
+              <div key={sIdx} className={cn("flex flex-col", sIdx > 0 ? "mt-3" : "mt-0")}>
+                {/* Section Label */}
                 <AnimatePresence>
-                  {!collapsed && (
+                  {!collapsed && section.heading && (
                     <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="px-3 mb-2 text-[10px] font-bold tracking-widest uppercase"
+                      className="px-3 pt-1 pb-1.5 text-[10px] font-bold tracking-[0.12em] uppercase"
                       style={{ color: "var(--text-secondary)" }}
                     >
                       {section.heading}
                     </motion.div>
                   )}
                 </AnimatePresence>
-                
-                {visibleItems.map((item) => {
-                  const isActive = pathname === item.href;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={cn(
-                        "relative rounded-md flex items-center transition-colors group shrink-0",
-                        collapsed ? "w-10 h-10 justify-center" : "gap-3 px-3 py-2",
-                        isActive ? "font-semibold" : "font-medium"
-                      )}
-                      style={isActive
-                        ? { background: "var(--sidebar-active-bg)", color: "var(--sidebar-active-text)" }
-                        : { color: "var(--sidebar-text)" }
-                      }
-                    >
-                      <item.icon className={cn("w-5 h-5 shrink-0 transition-colors", !isActive && "group-hover:text-[var(--text-primary)]")} />
-                      <AnimatePresence>
-                        {!collapsed && (
+
+                {/* Nav Items */}
+                <div className="flex flex-col gap-0.5">
+                  {visibleItems.map((item) => {
+                    const isActive = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href));
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={cn(
+                          "relative group flex items-center gap-3 rounded-xl transition-all duration-150 select-none shrink-0",
+                          collapsed ? "w-11 h-11 justify-center mx-auto" : "h-[42px] px-3",
+                          isActive
+                            ? ""
+                            : "hover:bg-gray-50"
+                        )}
+                        style={
+                          isActive
+                            ? {
+                                background: "rgba(37, 99, 235, 0.08)",
+                                color: "#2563eb",
+                              }
+                            : { color: "var(--sidebar-text)" }
+                        }
+                      >
+                        {/* Left accent indicator */}
+                        {isActive && !collapsed && (
                           <motion.span
-                            initial={{ opacity: 0, x: -6 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -6 }}
-                            transition={{ duration: 0.15 }}
-                            className="text-[14px] truncate"
+                            layoutId="sidebar-active-indicator"
+                            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-blue-600"
+                          />
+                        )}
+
+                        {/* Icon */}
+                        <item.icon
+                          className={cn(
+                            "w-[18px] h-[18px] shrink-0 transition-colors",
+                            isActive ? "text-blue-600" : "group-hover:text-blue-500"
+                          )}
+                        />
+
+                        {/* Label */}
+                        <AnimatePresence>
+                          {!collapsed && (
+                            <motion.span
+                              initial={{ opacity: 0, x: -6 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: -6 }}
+                              transition={{ duration: 0.14 }}
+                              className={cn(
+                                "flex-1 text-[13.5px] font-medium truncate",
+                                isActive ? "font-semibold" : ""
+                              )}
+                            >
+                              {item.name}
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+
+                        {/* Badge */}
+                        {item.badge && item.badge > 0 && !collapsed && (
+                          <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
+                            {item.badge}
+                          </span>
+                        )}
+
+                        {/* Chevron */}
+                        {!collapsed && !item.badge && (
+                          <ChevronRight
+                            className={cn(
+                              "shrink-0 w-3.5 h-3.5 opacity-0 group-hover:opacity-40 transition-opacity",
+                              isActive && "opacity-40"
+                            )}
+                          />
+                        )}
+
+                        {/* Tooltip (collapsed) */}
+                        {collapsed && (
+                          <span
+                            className="absolute left-full ml-3 px-2.5 py-1.5 text-xs font-semibold rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none shadow-lg z-[100] whitespace-nowrap transition-all duration-150"
+                            style={{
+                              background: "var(--text-primary)",
+                              color: "var(--background)",
+                            }}
                           >
                             {item.name}
-                          </motion.span>
+                            {item.badge ? ` (${item.badge})` : ""}
+                          </span>
                         )}
-                      </AnimatePresence>
-                      
-                      {/* Tooltip */}
-                      {collapsed && (
-                        <span className="absolute left-full ml-4 px-2 py-1 text-xs font-medium rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md z-[100]"
-                          style={{ background: "var(--surface)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
-                          {item.name}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
+                      </Link>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}
         </nav>
 
-        {/* Bottom Section (Theme, Profile, Logout) */}
-        <div className={cn("shrink-0 pt-4 flex flex-col gap-2", collapsed ? "px-0 items-center" : "px-4")} style={{ borderTop: "1px solid var(--sidebar-border)" }}>
-          
-          {/* Theme Switcher */}
-          <button
-            onClick={toggleTheme}
-            className={cn("relative rounded-md flex items-center transition-colors group", collapsed ? "w-10 h-10 justify-center" : "gap-3 px-3 py-2 w-full")}
-            style={{ color: "var(--sidebar-text)" }}
-          >
-            {theme === "dark" ? <Moon className="w-5 h-5 shrink-0" /> : theme === "light" ? <Sun className="w-5 h-5 shrink-0" /> : <Monitor className="w-5 h-5 shrink-0" />}
-            <AnimatePresence>
+        {/* ── BOTTOM SECTION ── */}
+        <div
+          className="shrink-0"
+          style={{ borderTop: "1px solid var(--sidebar-border)" }}
+        >
+          <div className={cn("flex flex-col gap-0.5 py-3", collapsed ? "px-2" : "px-3")}>
+            {/* Settings */}
+            <Link
+              href="/admin/settings"
+              className={cn(
+                "group flex items-center gap-3 rounded-xl transition-all duration-150 hover:bg-gray-50",
+                collapsed ? "w-11 h-11 justify-center mx-auto" : "h-[42px] px-3"
+              )}
+              style={{ color: "var(--sidebar-text)" }}
+            >
+              <Settings className="w-[18px] h-[18px] shrink-0 group-hover:text-blue-500 transition-colors" />
+              <AnimatePresence>
+                {!collapsed && (
+                  <motion.span
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex-1 text-[13.5px] font-medium"
+                  >
+                    Settings
+                  </motion.span>
+                )}
+              </AnimatePresence>
               {!collapsed && (
-                <motion.span
+                <ChevronRight className="shrink-0 w-3.5 h-3.5 opacity-0 group-hover:opacity-40 transition-opacity" />
+              )}
+              {collapsed && (
+                <span
+                  className="absolute left-full ml-3 px-2.5 py-1.5 text-xs font-semibold rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none shadow-lg z-[100] whitespace-nowrap transition-all duration-150"
+                  style={{ background: "var(--text-primary)", color: "var(--background)" }}
+                >
+                  Settings
+                </span>
+              )}
+            </Link>
+
+            {/* Dark Mode Toggle */}
+            <div
+              className={cn(
+                "group flex items-center gap-3 rounded-xl transition-all duration-150 cursor-pointer hover:bg-gray-50",
+                collapsed ? "w-11 h-11 justify-center mx-auto" : "h-[42px] px-3"
+              )}
+              style={{ color: "var(--sidebar-text)" }}
+              onClick={handleDarkToggle}
+            >
+              {theme === "dark" ? (
+                <Moon className="w-[18px] h-[18px] shrink-0 group-hover:text-blue-500 transition-colors" />
+              ) : (
+                <Sun className="w-[18px] h-[18px] shrink-0 group-hover:text-blue-500 transition-colors" />
+              )}
+              <AnimatePresence>
+                {!collapsed && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex-1 flex items-center justify-between"
+                  >
+                    <span className="text-[13.5px] font-medium">Dark Mode</span>
+                    {/* Toggle Switch */}
+                    <div
+                      className={cn(
+                        "relative w-9 h-5 rounded-full transition-all duration-300 shrink-0",
+                        darkToggle ? "bg-blue-600" : "bg-gray-300"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-300",
+                          darkToggle ? "left-[18px]" : "left-0.5"
+                        )}
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              {collapsed && (
+                <span
+                  className="absolute left-full ml-3 px-2.5 py-1.5 text-xs font-semibold rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none shadow-lg z-[100] whitespace-nowrap transition-all duration-150"
+                  style={{ background: "var(--text-primary)", color: "var(--background)" }}
+                >
+                  Dark Mode
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* User Profile Card */}
+          <div className={cn("pb-4", collapsed ? "px-2" : "px-3")}>
+            <AnimatePresence>
+              {!collapsed ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 6 }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all hover:bg-gray-50 group"
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  {/* Avatar */}
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm">
+                    {initial}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className="text-[13px] font-semibold truncate leading-tight"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      {userName}
+                    </p>
+                    <p
+                      className="text-[11px] font-medium truncate"
+                      style={{ color: "var(--text-secondary)" }}
+                    >
+                      Admin
+                    </p>
+                  </div>
+                  <ChevronDown
+                    className="w-4 h-4 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity"
+                    style={{ color: "var(--text-secondary)" }}
+                  />
+                </motion.div>
+              ) : (
+                <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="text-[14px] font-medium group-hover:text-[var(--text-primary)] transition-colors"
+                  className="w-11 h-11 mx-auto rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm cursor-pointer shadow-sm"
+                  title={`${userName} — Admin`}
                 >
-                  {theme === "dark" ? "Dark Mode" : theme === "light" ? "Light Mode" : "System Theme"}
-                </motion.span>
-              )}
-            </AnimatePresence>
-            {collapsed && (
-              <span className="absolute left-full ml-4 px-2 py-1 text-xs font-medium rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md z-[100]"
-                style={{ background: "var(--surface)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
-                Theme
-              </span>
-            )}
-          </button>
-
-          {/* User Profile */}
-          <AnimatePresence>
-            {!collapsed && (
-              <motion.div
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 6 }}
-                className="flex items-center gap-3 px-3 py-2 rounded-md border mt-2"
-                style={{ background: "var(--surface)", borderColor: "var(--border)" }}
-              >
-                <div className="w-8 h-8 rounded-md bg-blue-600 flex items-center justify-center text-white font-semibold text-sm shrink-0">
                   {initial}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold truncate" style={{ color: "var(--text-primary)" }}>{user?.name || "Admin"}</p>
-                  <p className="text-[11px] font-medium truncate" style={{ color: "var(--text-secondary)" }}>{role}</p>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Logout */}
-          <button
-            onClick={logout}
-            className={cn("relative rounded-md flex items-center transition-colors group hover:text-red-500", collapsed ? "w-10 h-10 justify-center" : "gap-3 px-3 py-2 w-full")}
-            style={{ color: "var(--sidebar-text)" }}
-          >
-            <LogOut className="w-5 h-5 shrink-0" />
-            <AnimatePresence>
-              {!collapsed && (
-                <motion.span
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="text-[14px] font-medium"
-                >
-                  Logout
-                </motion.span>
+                </motion.div>
               )}
             </AnimatePresence>
-            {collapsed && (
-              <span className="absolute left-full ml-4 px-2 py-1 text-xs font-medium rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md z-[100]"
-                style={{ background: "var(--surface)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
-                Logout
-              </span>
-            )}
-          </button>
-
+          </div>
         </div>
       </motion.div>
-
-      {/* Expand / Collapse Button */}
-      <motion.button
-        onClick={() => setCollapsed(!collapsed)}
-        animate={{ left: collapsed ? 72 : 260 }}
-        transition={{ type: "spring", stiffness: 300, damping: 35 }}
-        whileHover={{ x: 2 }}
-        whileTap={{ scale: 0.95 }}
-        className="fixed top-6 -translate-x-1/2 z-[60] flex items-center justify-center w-6 h-6 rounded-full border shadow-sm transition-colors"
-        style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--text-secondary)" }}
-      >
-        <ChevronRight className={cn("w-3.5 h-3.5 transition-transform duration-300", !collapsed && "rotate-180")} />
-      </motion.button>
     </>
   );
 }
