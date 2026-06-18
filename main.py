@@ -6126,6 +6126,8 @@ class AutomationScanRequest(BaseModel):
 @app.post("/automations/intelligence-scan")
 async def automations_intelligence_scan(body: AutomationScanRequest):
     import json as _json
+    import os
+    import requests
     from modules.llm_engine import get_openai_client
     from modules.scraper import scrape_website
     
@@ -6139,17 +6141,46 @@ async def automations_intelligence_scan(body: AutomationScanRequest):
         scraped_content = await scrape_website(url)
     except Exception as e:
         scraped_content = f"Failed to scrape: {str(e)}"
+        
+    serp_data_str = "No Google Search API key provided, search data unavailable."
+    serper_api_key = os.environ.get("SERPER_API_KEY")
+    if serper_api_key:
+        try:
+            search_query = domain.split(".")[0].capitalize()
+            payload = _json.dumps({"q": search_query})
+            headers = {
+                'X-API-KEY': serper_api_key,
+                'Content-Type': 'application/json'
+            }
+            serp_response = requests.post("https://google.serper.dev/search", headers=headers, data=payload, timeout=10)
+            if serp_response.ok:
+                serp_json = serp_response.json()
+                serp_data_str = _json.dumps({
+                    "knowledgeGraph": serp_json.get("knowledgeGraph"),
+                    "organic": serp_json.get("organic", [])[:10]
+                })
+        except Exception as e:
+            serp_data_str = f"Error fetching SERP: {str(e)}"
     
     prompt = f"""
     You are an expert business intelligence gathering AI.
     We are running a scan on the website/domain: {url} ({domain}).
-    Here is the live, scraped content of their website (which may include extracted social links):
     
+    Here is the live, scraped content of their website (which may include extracted social links):
     <scraped_content>
     {scraped_content[:15000]}
     </scraped_content>
     
-    Based ONLY on the provided scraped content, extract their real social profiles. Do not guess social profiles if they are not present. If the content does not contain enough info, you may supplement the Google Search Volume, Trend, Mentions, and Size with your best realistic estimate based on the company name/domain. 
+    Here is live Google Search data for the company (including Organic results and Google Maps/Knowledge Graph data):
+    <google_search_data>
+    {serp_data_str}
+    </google_search_data>
+    
+    Based ONLY on the provided scraped content and Google Search data:
+    1. Extract their real social profiles from the scrape or organic search results. Do not guess.
+    2. Extract their Google Maps rating and review count from the knowledgeGraph (if present) to formulate a review mention.
+    3. Use the organic search results to populate the `webMentions`. For example, if a top organic result is their LinkedIn page, Crunchbase, or a news article, list it exactly as found in the search data.
+    4. Estimate Google Search Volume, Trend, and Size based on the search presence and scraped content.
     
     Return ONLY a valid JSON object matching the following structure EXACTLY:
     {{
@@ -6171,10 +6202,10 @@ async def automations_intelligence_scan(body: AutomationScanRequest):
         ],
         "webMentions": [
             {{
-                "title": "Article or mention title",
-                "url": "https://example.com/article",
-                "domain": "example.com",
-                "snippet": "Short snippet mentioning the company...",
+                "title": "Exact Title from organic search results or knowledge graph",
+                "url": "https://exact-url-from-search.com",
+                "domain": "exact-domain.com",
+                "snippet": "Short snippet from organic result...",
                 "domainAuthority": 80,
                 "type": "news"
             }}
@@ -6184,7 +6215,7 @@ async def automations_intelligence_scan(body: AutomationScanRequest):
         "overallScore": 75
     }}
     
-    Provide up to 4 social platforms if found. Provide 4-6 web mentions.
+    Provide up to 4 social platforms if found. Provide 4-6 web mentions STRICTLY derived from the `<google_search_data>` and `<scraped_content>`.
     Platform colors: LinkedIn: #0A66C2, Twitter/X: #000000, Instagram: #E4405F, Facebook: #1877F2, YouTube: #FF0000
     Mention types must be: news, directory, social, review, partner, or blog.
     Estimated size must be: Startup (1-10), SMB (11-50), Mid-Market (51-200), or Enterprise (200+)
