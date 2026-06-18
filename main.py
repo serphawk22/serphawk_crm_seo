@@ -6124,9 +6124,10 @@ class AutomationScanRequest(BaseModel):
     url: str
 
 @app.post("/automations/intelligence-scan")
-def automations_intelligence_scan(body: AutomationScanRequest):
+async def automations_intelligence_scan(body: AutomationScanRequest):
     import json as _json
     from modules.llm_engine import get_openai_client
+    from modules.scraper import scrape_website
     
     url = body.url.strip()
     if not url.startswith("http"):
@@ -6134,21 +6135,32 @@ def automations_intelligence_scan(body: AutomationScanRequest):
     
     domain = url.replace("https://", "").replace("http://", "").split("/")[0]
     
+    try:
+        scraped_content = await scrape_website(url)
+    except Exception as e:
+        scraped_content = f"Failed to scrape: {str(e)}"
+    
     prompt = f"""
     You are an expert business intelligence gathering AI.
     We are running a scan on the website/domain: {url} ({domain}).
-    Provide estimated real-world data for this company's online presence based on your knowledge base.
+    Here is the live, scraped content of their website (which may include extracted social links):
+    
+    <scraped_content>
+    {scraped_content[:15000]}
+    </scraped_content>
+    
+    Based ONLY on the provided scraped content, extract their real social profiles. Do not guess social profiles if they are not present. If the content does not contain enough info, you may supplement the Google Search Volume, Trend, Mentions, and Size with your best realistic estimate based on the company name/domain. 
     
     Return ONLY a valid JSON object matching the following structure EXACTLY:
     {{
         "domain": "{domain}",
-        "name": "Company Name",
+        "name": "Company Name (extracted or inferred)",
         "googleSearchVolume": "Number/mo (e.g. '15,000/mo')",
         "googleTrend": "rising",
         "socialProfiles": [
             {{
                 "platform": "LinkedIn",
-                "handle": "company/handle",
+                "handle": "extracted_handle",
                 "followers": "10.5K",
                 "engagement": "2.5%",
                 "url": "https://linkedin.com/company/handle",
@@ -6172,7 +6184,7 @@ def automations_intelligence_scan(body: AutomationScanRequest):
         "overallScore": 75
     }}
     
-    Provide 3-4 social platforms and 4-6 web mentions.
+    Provide up to 4 social platforms if found. Provide 4-6 web mentions.
     Platform colors: LinkedIn: #0A66C2, Twitter/X: #000000, Instagram: #E4405F, Facebook: #1877F2, YouTube: #FF0000
     Mention types must be: news, directory, social, review, partner, or blog.
     Estimated size must be: Startup (1-10), SMB (11-50), Mid-Market (51-200), or Enterprise (200+)
