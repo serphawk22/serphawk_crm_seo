@@ -6118,3 +6118,80 @@ def get_radar_relationships(client_id: int, session: Session = Depends(get_sessi
             for r in discovered
         ],
     }
+
+
+class AutomationScanRequest(BaseModel):
+    url: str
+
+@app.post("/automations/intelligence-scan")
+def automations_intelligence_scan(body: AutomationScanRequest):
+    import json as _json
+    from modules.llm_engine import get_openai_client
+    
+    url = body.url.strip()
+    if not url.startswith("http"):
+        url = "https://" + url
+    
+    domain = url.replace("https://", "").replace("http://", "").split("/")[0]
+    
+    prompt = f"""
+    You are an expert business intelligence gathering AI.
+    We are running a scan on the website/domain: {url} ({domain}).
+    Provide estimated real-world data for this company's online presence based on your knowledge base.
+    
+    Return ONLY a valid JSON object matching the following structure EXACTLY:
+    {{
+        "domain": "{domain}",
+        "name": "Company Name",
+        "googleSearchVolume": "Number/mo (e.g. '15,000/mo')",
+        "googleTrend": "rising",
+        "socialProfiles": [
+            {{
+                "platform": "LinkedIn",
+                "handle": "company/handle",
+                "followers": "10.5K",
+                "engagement": "2.5%",
+                "url": "https://linkedin.com/company/handle",
+                "verified": true,
+                "color": "#0A66C2",
+                "popularity": 85
+            }}
+        ],
+        "webMentions": [
+            {{
+                "title": "Article or mention title",
+                "url": "https://example.com/article",
+                "domain": "example.com",
+                "snippet": "Short snippet mentioning the company...",
+                "domainAuthority": 80,
+                "type": "news"
+            }}
+        ],
+        "estimatedSize": "SMB (11-50)",
+        "sizeScore": 45,
+        "overallScore": 75
+    }}
+    
+    Provide 3-4 social platforms and 4-6 web mentions.
+    Platform colors: LinkedIn: #0A66C2, Twitter/X: #000000, Instagram: #E4405F, Facebook: #1877F2, YouTube: #FF0000
+    Mention types must be: news, directory, social, review, partner, or blog.
+    Estimated size must be: Startup (1-10), SMB (11-50), Mid-Market (51-200), or Enterprise (200+)
+    Google trend must be: rising, stable, or declining.
+    
+    Do not use markdown blocks. Return only raw JSON.
+    """
+    
+    try:
+        client_ai = get_openai_client()
+        resp = client_ai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+            max_tokens=2000,
+            response_format={"type": "json_object"}
+        )
+        content = resp.choices[0].message.content.strip()
+        data = _json.loads(content)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to scan: {str(e)}")

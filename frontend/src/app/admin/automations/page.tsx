@@ -64,57 +64,33 @@ interface CompanyProfile {
   overallScore: number;
 }
 
-// ─── Mock data generator ──────────────────────────────────────────────────────
+import { API_BASE_URL } from "@/config";
 
-function generateProfile(url: string): Promise<CompanyProfile> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const domain = url.replace(/https?:\/\//, "").replace(/\/$/, "").split("/")[0];
-      const name = domain.split(".")[0].charAt(0).toUpperCase() + domain.split(".")[0].slice(1);
-      const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
-      const fmt = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}K` : `${n}`;
+const PLATFORM_ICONS: Record<string, any> = {
+  "LinkedIn": Linkedin,
+  "Twitter/X": Twitter,
+  "Instagram": Instagram,
+  "Facebook": Facebook,
+  "YouTube": Youtube,
+};
 
-      const SOCIAL: SocialProfile[] = [
-        { platform: "LinkedIn", handle: `company/${domain.split(".")[0]}`, followers: fmt(rand(800, 180_000)), engagement: `${(Math.random() * 4 + 0.5).toFixed(1)}%`, url: `https://linkedin.com/company/${domain.split(".")[0]}`, verified: Math.random() > 0.4, icon: Linkedin, color: "#0A66C2", popularity: rand(20, 95) },
-        { platform: "Twitter/X", handle: `@${domain.split(".")[0]}`, followers: fmt(rand(200, 95_000)), engagement: `${(Math.random() * 3 + 0.3).toFixed(1)}%`, url: `https://x.com/${domain.split(".")[0]}`, verified: Math.random() > 0.5, icon: Twitter, color: "#000000", popularity: rand(15, 90) },
-        { platform: "Instagram", handle: `@${domain.split(".")[0]}`, followers: fmt(rand(500, 250_000)), engagement: `${(Math.random() * 6 + 1).toFixed(1)}%`, url: `https://instagram.com/${domain.split(".")[0]}`, verified: Math.random() > 0.6, icon: Instagram, color: "#E4405F", popularity: rand(10, 88) },
-        { platform: "Facebook", handle: domain.split(".")[0], followers: fmt(rand(300, 120_000)), engagement: `${(Math.random() * 2 + 0.2).toFixed(1)}%`, url: `https://facebook.com/${domain.split(".")[0]}`, verified: Math.random() > 0.5, icon: Facebook, color: "#1877F2", popularity: rand(10, 80) },
-        { platform: "YouTube", handle: `@${domain.split(".")[0]}`, followers: fmt(rand(100, 80_000)), engagement: `${(Math.random() * 5 + 0.5).toFixed(1)}%`, url: `https://youtube.com/@${domain.split(".")[0]}`, verified: Math.random() > 0.7, icon: Youtube, color: "#FF0000", popularity: rand(5, 75) },
-      ].filter(() => Math.random() > 0.1); // randomly drop some platforms
-
-      const MENTION_TYPES: WebMention["type"][] = ["news", "directory", "social", "review", "partner", "blog"];
-      const DOMAINS = ["techcrunch.com", "forbes.com", "g2.com", "crunchbase.com", "clutch.co", "trustpilot.com", "yelp.com", "linkedin.com", "reddit.com", "glassdoor.com", "capterra.com", "producthunt.com"];
-
-      const webMentions: WebMention[] = Array.from({ length: rand(8, 14) }, (_, i) => {
-        const d = DOMAINS[i % DOMAINS.length];
-        const t = MENTION_TYPES[rand(0, MENTION_TYPES.length - 1)];
-        return {
-          title: `${name} — ${t === "news" ? "Company Review & Growth Story" : t === "directory" ? "Business Profile" : t === "review" ? "Customer Reviews & Ratings" : "Mentioned Company"}`,
-          url: `https://${d}/${domain.split(".")[0]}-${t}`,
-          domain: d,
-          snippet: `${name} is a ${["growing", "fast-scaling", "recognized", "award-winning", "trusted"][rand(0, 4)]} company in the ${["SaaS", "SEO", "digital marketing", "e-commerce", "fintech"][rand(0, 4)]} space...`,
-          domainAuthority: rand(35, 98),
-          type: t,
-        };
-      }).slice(0, 10);
-
-      const sizeScore = rand(15, 95);
-      const estimatedSize: CompanyProfile["estimatedSize"] =
-        sizeScore < 25 ? "Startup (1-10)" : sizeScore < 50 ? "SMB (11-50)" : sizeScore < 75 ? "Mid-Market (51-200)" : "Enterprise (200+)";
-
-      resolve({
-        domain,
-        name,
-        googleSearchVolume: `${rand(100, 90_000).toLocaleString()}/mo`,
-        googleTrend: (["rising", "stable", "declining"] as const)[rand(0, 2)],
-        socialProfiles: SOCIAL,
-        webMentions,
-        estimatedSize,
-        sizeScore,
-        overallScore: rand(30, 90),
-      });
-    }, 2800);
+async function generateProfile(url: string): Promise<CompanyProfile> {
+  const res = await fetch(`${API_BASE_URL}/automations/intelligence-scan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url })
   });
+  if (!res.ok) {
+    throw new Error("Failed to scan website");
+  }
+  const data = await res.json();
+  if (data.socialProfiles) {
+    data.socialProfiles = data.socialProfiles.map((s: any) => ({
+      ...s,
+      icon: PLATFORM_ICONS[s.platform] || Globe,
+    }));
+  }
+  return data;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
