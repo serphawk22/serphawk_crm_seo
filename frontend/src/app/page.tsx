@@ -163,13 +163,47 @@ function Dashboard() {
 
   if (loading) {
     return (
-      <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
-        <div className="relative w-16 h-16">
-          <div className="absolute inset-0 rounded-full border border-indigo-500/20" />
-          <div className="absolute inset-0 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-          <div className="absolute inset-3 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-full animate-pulse" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "var(--background)" }}>
+        <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 55% 55% at 50% 50%, rgba(37,99,235,0.07) 0%, transparent 70%)" }} />
+        <svg className="absolute inset-0 w-full h-full opacity-[0.025]" xmlns="http://www.w3.org/2000/svg">
+          <defs><pattern id="ddots" width="28" height="28" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#2563eb" /></pattern></defs>
+          <rect width="100%" height="100%" fill="url(#ddots)" />
+        </svg>
+        <div className="relative flex flex-col items-center gap-9">
+          <div className="relative" style={{ width: 160, height: 160 }}>
+            <motion.div animate={{ rotate: 360 }} transition={{ duration: 5, repeat: Infinity, ease: "linear" }} className="absolute inset-0" style={{ borderRadius: "50%", border: "1.5px solid rgba(37,99,235,0.14)" }}>
+              <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-blue-600 shadow-[0_0_12px_rgba(37,99,235,0.7)]" />
+            </motion.div>
+            <motion.div animate={{ rotate: -360 }} transition={{ duration: 3.5, repeat: Infinity, ease: "linear" }} className="absolute inset-[20px]" style={{ borderRadius: "50%", border: "1.5px solid rgba(99,102,241,0.16)" }}>
+              <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.7)]" />
+            </motion.div>
+            <motion.div animate={{ rotate: 360 }} transition={{ duration: 2.2, repeat: Infinity, ease: "linear" }} className="absolute inset-[38px]" style={{ borderRadius: "50%", border: "1.5px solid rgba(139,92,246,0.16)" }}>
+              <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.8)]" />
+            </motion.div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <motion.div animate={{ scale: [1, 1.07, 1], boxShadow: ["0 0 0px rgba(37,99,235,0.3)", "0 0 28px rgba(37,99,235,0.55)", "0 0 0px rgba(37,99,235,0.3)"] }} transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }} className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #2563eb 0%, #6366f1 100%)" }}>
+                <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
+                  <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
+                  <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.45" />
+                  <circle cx="12" cy="12" r="2" fill="white" />
+                </svg>
+              </motion.div>
+            </div>
+          </div>
+          <div className="flex flex-col items-center gap-2 text-center">
+            <motion.span className="text-lg font-extrabold tracking-tight" style={{ color: "var(--text-primary)" }} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+              SERP Hawk{" "}<span style={{ background: "linear-gradient(90deg,#2563eb,#6366f1)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>CRM</span>
+            </motion.span>
+            <motion.p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }} animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}>
+              Loading your dashboard…
+            </motion.p>
+          </div>
+          <div className="w-52">
+            <div className="h-0.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
+              <motion.div className="h-full rounded-full" style={{ background: "linear-gradient(90deg,#2563eb,#6366f1,#8b5cf6)", width: "40%" }} animate={{ x: ["-100%", "350%"] }} transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }} />
+            </div>
+          </div>
         </div>
-        <p className="text-slate-400 text-sm font-semibold animate-pulse">Loading Dashboard...</p>
       </div>
     );
   }
