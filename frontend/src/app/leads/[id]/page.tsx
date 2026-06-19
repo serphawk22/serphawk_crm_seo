@@ -8,7 +8,6 @@ import {
   MessageSquare, History, UserPlus
 } from "lucide-react";
 import Link from "next/link";
-import { toast } from "sonner"; // Assuming sonner is used for toasts, if not, it will just fail gracefully or we can add it
 
 export default function LeadDetailsPage() {
   const params = useParams();
@@ -50,15 +49,15 @@ export default function LeadDetailsPage() {
       
       if (res.ok) {
         const data = await res.json();
-        toast?.success("Lead successfully converted to Client!");
+        alert("Lead successfully converted to Client!");
         router.push(`/clients/${data.client_id}`);
       } else {
         const err = await res.json();
-        toast?.error(err.detail || "Failed to convert lead");
+        alert(err.detail || "Failed to convert lead");
       }
     } catch (error) {
       console.error("Conversion error:", error);
-      toast?.error("Error converting lead");
+      alert("Error converting lead");
     } finally {
       setConverting(false);
     }

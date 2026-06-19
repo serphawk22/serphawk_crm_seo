@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import { Upload, ArrowRight, CheckCircle, AlertTriangle, FileText, X } from "lucide-react";
-import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
 const MODULES = [
@@ -62,7 +61,7 @@ export default function ImportPage() {
       setMapping(autoMap);
       setStep(2);
     } catch (err: any) {
-      toast?.error(err.message || "Error reading file");
+      alert(err.message || "Error reading file");
     }
   };
 
@@ -91,9 +90,9 @@ export default function ImportPage() {
       const data = await res.json();
       setResult(data);
       setStep(3);
-      toast?.success(`Successfully imported ${data.imported} records`);
+      alert(`Successfully imported ${data.imported} records`);
     } catch (err: any) {
-      toast?.error(err.message || "Error during import");
+      alert(err.message || "Error during import");
     } finally {
       setImporting(false);
     }
