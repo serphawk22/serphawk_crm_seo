@@ -803,6 +803,69 @@ class ClientTicket(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class Account(SQLModel, table=True):
+    __tablename__ = "accounts"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_name: str = Field(max_length=255, index=True)
+    website: Optional[str] = Field(default=None, max_length=500)
+    industry: Optional[str] = Field(default=None, max_length=200)
+    phone: Optional[str] = Field(default=None, max_length=100)
+    address: Optional[str] = Field(default=None, sa_column=Column(Text))
+    owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_activity: Optional[str] = Field(default=None, max_length=500)
+    
+    contacts: List["Contact"] = Relationship(back_populates="account")
+    leads: List["Lead"] = Relationship(back_populates="account")
+
+class Lead(SQLModel, table=True):
+    __tablename__ = "leads"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_name: str = Field(max_length=255, index=True)
+    website: Optional[str] = Field(default=None, max_length=500)
+    industry: Optional[str] = Field(default=None, max_length=200)
+    email: Optional[str] = Field(default=None, max_length=255)
+    phone: Optional[str] = Field(default=None, max_length=100)
+    address: Optional[str] = Field(default=None, sa_column=Column(Text))
+    source: Optional[str] = Field(default=None, max_length=100)
+    owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    status: str = Field(default="New")
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    is_converted: bool = Field(default=False)
+    converted_client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    account_id: Optional[int] = Field(default=None, foreign_key="accounts.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_activity: Optional[str] = Field(default=None, max_length=500)
+
+    account: Optional[Account] = Relationship(back_populates="leads")
+    contacts: List["Contact"] = Relationship(back_populates="lead")
+
+class Contact(SQLModel, table=True):
+    __tablename__ = "contacts"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    first_name: str = Field(max_length=100)
+    last_name: Optional[str] = Field(default=None, max_length=100)
+    full_name: Optional[str] = Field(default=None, max_length=255)
+    designation: Optional[str] = Field(default=None, max_length=200)
+    department: Optional[str] = Field(default=None, max_length=100)
+    email: Optional[str] = Field(default=None, max_length=255)
+    mobile_number: Optional[str] = Field(default=None, max_length=100)
+    alternate_number: Optional[str] = Field(default=None, max_length=100)
+    linkedin_url: Optional[str] = Field(default=None, max_length=500)
+    
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
+    account_id: Optional[int] = Field(default=None, foreign_key="accounts.id")
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    tags: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    lead: Optional[Lead] = Relationship(back_populates="contacts")
+    account: Optional[Account] = Relationship(back_populates="contacts")
+
+
 def create_db_and_tables():
     """
     Create all database tables (drops existing tables first to ensure schema matches)

@@ -49,9 +49,12 @@ const sidebarSections = [
     ],
   },
   {
-    heading: "CLIENTS",
+    heading: "CRM",
     items: [
-      { name: "Clients", icon: Users, href: "/clients", roles: ["Admin", "Employee", "SalesManager"] },
+      { name: "Leads", icon: Radar, href: "/leads", roles: ["Admin", "Employee", "SalesManager"] },
+      { name: "Accounts", icon: FolderOpen, href: "/accounts", roles: ["Admin", "Employee", "SalesManager"] },
+      { name: "Contacts", icon: Users, href: "/contacts", roles: ["Admin", "Employee", "SalesManager"] },
+      { name: "Clients", icon: CheckCircle, href: "/clients", roles: ["Admin", "Employee", "SalesManager"] },
     ],
   },
   {
