@@ -403,6 +403,7 @@ class ActivityLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     userId: Optional[int] = Field(default=None, foreign_key="users.id")
     clientId: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     action: str # e.g., "Manual Activity", "Login", "Profile Update"
     method: Optional[str] = None # Email, Phone, In-person, WhatsApp, Website
     content: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -493,6 +494,7 @@ class SentEmail(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     to_email: str = Field(max_length=255)
     subject: str = Field(max_length=500)
     english_body: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -776,10 +778,11 @@ class ConversationReply(SQLModel, table=True):
 
 
 class ClientResearch(SQLModel, table=True):
-    """Pre-sales research data for a client"""
+    """Pre-sales research data for a client or lead"""
     __tablename__ = "client_research"
     id: Optional[int] = Field(default=None, primary_key=True)
-    client_id: int = Field(foreign_key="client_profiles.id", unique=True)
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", unique=True)
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id", unique=True)
     company_overview: Optional[str] = Field(default=None, sa_column=Column(Text))
     competitors: Optional[str] = Field(default=None, sa_column=Column(Text))
     tech_stack: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -908,6 +911,10 @@ def create_db_and_tables():
         # Marketplace indexes (table created by SQLModel.metadata.create_all)
         "CREATE INDEX IF NOT EXISTS ix_marketplace_services_category ON marketplace_services (category)",
         "CREATE INDEX IF NOT EXISTS ix_marketplace_services_provider ON marketplace_services (provider_client_id)",
+        # Lead-related columns for cross-module linking
+        "ALTER TABLE client_research ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
+        "ALTER TABLE sent_emails ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
+        "ALTER TABLE activity_logs ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
     ]
     
     with engine.connect() as conn:

@@ -1,4 +1,5 @@
 "use client";
+import { API_BASE_URL } from "@/config";
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -14,7 +15,7 @@ export default function ContactsPage() {
 
   const fetchContacts = async () => {
     try {
-      const res = await fetch("/api/contacts");
+      const res = await fetch(`${API_BASE_URL}/contacts`);
       if (res.ok) {
         const data = await res.json();
         setContacts(data.contacts || []);

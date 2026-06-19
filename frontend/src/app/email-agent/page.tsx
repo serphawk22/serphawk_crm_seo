@@ -775,16 +775,16 @@ export default function EmailAgentPage() {
 
   const handleSendManually = async (result: ResearchResultData, name: string, url: string, skip_send: boolean = false, action_type: string = "System"): Promise<SendEmailResult> => {
     const data = await sendEmail(result, name, url, true, skip_send, action_type);
-    if (data?.client_id) {
-      setResultsHistory(prev => prev.map(item => item.resultData === result ? { ...item, resultData: { ...item.resultData, client_id: data.client_id } } : item));
+    if (data?.lead_id) {
+      setResultsHistory(prev => prev.map(item => item.resultData === result ? { ...item, resultData: { ...item.resultData, lead_id: data.lead_id } } : item));
     }
     return data;
   };
 
   const handleSendAutomatically = async (result: ResearchResultData, name: string, url: string): Promise<SendEmailResult> => {
     const data = await sendEmail(result, name, url, false, false, "System Auto");
-    if (data?.client_id) {
-      setResultsHistory(prev => prev.map(item => item.resultData === result ? { ...item, resultData: { ...item.resultData, client_id: data.client_id } } : item));
+    if (data?.lead_id) {
+      setResultsHistory(prev => prev.map(item => item.resultData === result ? { ...item, resultData: { ...item.resultData, lead_id: data.lead_id } } : item));
     }
     return data;
   };
@@ -841,12 +841,12 @@ export default function EmailAgentPage() {
 
   const handleSaveFollowUp = async (result: ResearchResultData, note: string, title: string): Promise<boolean> => {
     try {
-      const clientId = (result as any).client_id || (result.company_info as any)?.client_id || (result as any).id;
-      if (!clientId) {
-        console.error("Cannot save follow-up without client ID");
+      const leadId = (result as any).lead_id || (result.company_info as any)?.lead_id || (result as any).id;
+      if (!leadId) {
+        console.error("Cannot save follow-up without lead ID");
         return false;
       }
-      const response = await fetch(`${API_BASE_URL}/clients/${clientId}/followup`, {
+      const response = await fetch(`${API_BASE_URL}/leads/${leadId}/followup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

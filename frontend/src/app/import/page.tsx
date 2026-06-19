@@ -1,4 +1,5 @@
 "use client";
+import { API_BASE_URL } from "@/config";
 
 import React, { useState } from "react";
 import { Upload, ArrowRight, CheckCircle, AlertTriangle, FileText, X } from "lucide-react";
@@ -36,7 +37,7 @@ export default function ImportPage() {
     formData.append("module", module);
 
     try {
-      const res = await fetch("/api/import/preview", {
+      const res = await fetch(`${API_BASE_URL}/api/import/preview`, {
         method: "POST",
         body: formData,
       });
@@ -77,7 +78,7 @@ export default function ImportPage() {
       formData.append("skip_duplicates", duplicateAction === "skip" ? "true" : "false");
       formData.append("update_existing", duplicateAction === "update" ? "true" : "false");
 
-      const res = await fetch("/api/import/execute", {
+      const res = await fetch(`${API_BASE_URL}/api/import/execute`, {
         method: "POST",
         body: formData,
       });

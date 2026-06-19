@@ -1,4 +1,5 @@
 "use client";
+import { API_BASE_URL } from "@/config";
 
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -26,7 +27,7 @@ export default function LeadDetailsPage() {
   const fetchLeadDetails = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/leads/${leadId}`);
+      const res = await fetch(`${API_BASE_URL}/leads/${leadId}`);
       if (res.ok) {
         const data = await res.json();
         setLead(data);
@@ -43,7 +44,7 @@ export default function LeadDetailsPage() {
     
     try {
       setConverting(true);
-      const res = await fetch(`/api/leads/${leadId}/convert`, {
+      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/convert`, {
         method: "POST"
       });
       

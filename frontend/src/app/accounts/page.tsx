@@ -1,4 +1,5 @@
 "use client";
+import { API_BASE_URL } from "@/config";
 
 import React, { useState, useEffect } from "react";
 import { Search, Plus, Building2, Globe, Phone, MoreVertical } from "lucide-react";
@@ -13,7 +14,7 @@ export default function AccountsPage() {
 
   const fetchAccounts = async () => {
     try {
-      const res = await fetch("/api/accounts");
+      const res = await fetch(`${API_BASE_URL}/accounts`);
       if (res.ok) {
         const data = await res.json();
         setAccounts(data.accounts || []);
