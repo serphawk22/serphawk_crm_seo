@@ -51,6 +51,7 @@ from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from database import (
+    Account,
     ActivityLog,
     AnalyticsData,
     CallLog,
@@ -63,6 +64,7 @@ from database import (
     ClientTicket,
     CompetitorAnalysis,
     CompetitorRelationship,
+    Contact,
     ConversationLog,
     ConversationReply,
     Deal,
@@ -70,6 +72,7 @@ from database import (
     EmailLog,
     Invoice,
     KeywordRankEntry,
+    Lead,
     MessageThread,
     Milestone,
     NPSSurvey,
@@ -463,25 +466,10 @@ class SendManualRequest(BaseModel):
 @app.post("/send-manual")
 def send_manual(body: SendManualRequest, session: Session = Depends(get_session)):
     """
-    Records a manually sent email, creates a client (User + ClientProfile) if not existing,
+    Records a manually sent email, creates a Lead if not existing,
     and logs an activity entry.
     """
     from datetime import datetime
-    import hashlib
-
-    # Step 1: Find or create User by email
-    user = session.exec(select(User).where(User.email == body.to_email)).first()
-    if not user:
-        hashed_pw = hashlib.sha256("password123".encode()).hexdigest()
-        user = User(
-            email=body.to_email,
-            password=hashed_pw,
-            name=body.contact_name or body.company_name or "New Client",
-            role="Client",
-        )
-        session.add(user)
-        session.commit()
-        session.refresh(user)
 
     # Determine action string
     if body.action_type == "Gmail":
@@ -493,44 +481,59 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     else:
         action_str = "Manual outreach email sent"
 
-    # Step 2: Find or create ClientProfile
-    client_profile = session.exec(
-        select(ClientProfile).where(ClientProfile.userId == user.id)
+    # Step 1: Find or create Lead by email
+    to_email = (body.to_email or "").strip()
+    if not to_email:
+        raise HTTPException(status_code=400, detail="Recipient email is required")
+
+    lead = session.exec(
+        select(Lead).where(Lead.email == to_email)
     ).first()
-    if not client_profile:
-        client_profile = ClientProfile(
-            userId=user.id,
-            companyName=body.company_name,
-            websiteUrl=body.website_url or None,
+    
+    if not lead:
+        lead = Lead(
+            company_name=body.company_name or "Unknown Company",
+            website=body.website_url or None,
+            email=to_email,
             phone=body.phone_number or None,
-            status="Active",
-            recommended_services=body.recommended_services,
-            lastActivity=action_str,
-            lastActivityDate=datetime.utcnow().isoformat(),
+            source="Email Agent",
+            status="Contacted"
         )
-        session.add(client_profile)
+        session.add(lead)
         session.commit()
-        session.refresh(client_profile)
+        session.refresh(lead)
     else:
-        # Update existing profile
-        client_profile.lastActivity = action_str
-        client_profile.lastActivityDate = datetime.utcnow().isoformat()
-        if body.recommended_services:
-            client_profile.recommended_services = body.recommended_services
+        lead.status = "Contacted"
         if body.phone_number:
-            client_profile.phone = body.phone_number
-        session.add(client_profile)
+            lead.phone = body.phone_number
+        if body.website_url:
+            lead.website = body.website_url
+        session.add(lead)
         session.commit()
-        session.refresh(client_profile)
+        session.refresh(lead)
+
+    # Add Contact if there's contact info
+    if body.contact_name:
+        contact = session.exec(select(Contact).where(Contact.email == to_email)).first()
+        if not contact:
+            contact = Contact(
+                first_name=body.contact_name,
+                full_name=body.contact_name,
+                email=to_email,
+                lead_id=lead.id,
+                designation=body.contact_role
+            )
+            session.add(contact)
+            session.commit()
 
     # Step 2.5: Find or create ClientResearch to save email_agent_data
     if body.email_agent_data:
         client_research = session.exec(
-            select(ClientResearch).where(ClientResearch.client_id == client_profile.id)
+            select(ClientResearch).where(ClientResearch.lead_id == lead.id)
         ).first()
         if not client_research:
             client_research = ClientResearch(
-                client_id=client_profile.id,
+                lead_id=lead.id,
                 email_agent_data=body.email_agent_data
             )
             session.add(client_research)
@@ -539,14 +542,9 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
             session.add(client_research)
         session.commit()
 
-    # Step 2.5: Normalize and validate recipient email
-    to_email = (body.to_email or "").strip()
-    if not to_email:
-        raise HTTPException(status_code=400, detail="Recipient email is required")
-
     # Step 3: Save SentEmail record
     sent_email = SentEmail(
-        client_id=client_profile.id,
+        lead_id=lead.id,
         to_email=to_email,
         subject=body.subject,
         english_body=body.english_body,
@@ -620,10 +618,9 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
             log_action = f"Manual outreach email sent to {body.to_email}"
 
         activity = ActivityLog(
-            client_id=client_profile.id,
+            lead_id=lead.id,
             action=log_action,
             details=f"Subject: {body.subject} | Services: {body.recommended_services or 'N/A'}",
-            timestamp=datetime.utcnow(),
         )
         session.add(activity)
         session.commit()
@@ -632,10 +629,9 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
 
     return {
         "success": True,
-        "client_id": client_profile.id,
-        "user_id": user.id,
+        "lead_id": lead.id,
         "sent_email_id": sent_email.id,
-        "message": f"Client created and email recorded for {body.to_email}",
+        "message": f"Lead created and email recorded for {body.to_email}",
     }
 
 
@@ -5980,110 +5976,90 @@ def get_client_radar_analyses(client_id: int, session: Session = Depends(get_ses
 
 @app.post("/radar/add-client")
 def radar_add_client(body: RadarAddClientRequest, session: Session = Depends(get_session)):
-    """Add a competitor discovered via radar to the CRM client list with full attribution."""
+    """Add a competitor discovered via radar to the CRM as a Lead (not a Client)."""
     try:
         comp = body.competitor
         name = comp.get("name", "Unknown Business")
-        website = comp.get("website") or ""
-        
-        # Check for existing client
-        existing = None
-        if website:
-            existing = session.exec(select(ClientProfile).where(ClientProfile.websiteUrl == website)).first()
-        if not existing:
-            existing = session.exec(select(ClientProfile).where(ClientProfile.companyName == name)).first()
+        website = comp.get("website") or None
+        phone = comp.get("phone") or None
+        address = comp.get("address") or None
+        industry = comp.get("category") or None
 
-        if existing:
-            # Update with radar data
-            existing.latitude = comp.get("lat")
-            existing.longitude = comp.get("lng")
-            existing.place_id = comp.get("place_id")
-            existing.google_rating = comp.get("rating")
-            existing.google_reviews = comp.get("reviews")
-            existing.market_size_score = comp.get("market_size_score")
-            existing.team_size_estimate = comp.get("team_size_estimate")
-            existing.business_category = comp.get("category")
-            if not existing.discovered_via:
-                existing.discovered_via = "Radar Analysis"
-                existing.discovered_from_client_id = body.source_client_id
-                existing.discovered_from_name = body.source_client_name
-                existing.discovery_date = datetime.utcnow().strftime("%Y-%m-%d")
-            session.add(existing)
+        # Check for existing Lead by website or name to avoid duplicates
+        existing_lead = None
+        if website:
+            existing_lead = session.exec(select(Lead).where(Lead.website == website)).first()
+        if not existing_lead:
+            existing_lead = session.exec(select(Lead).where(Lead.company_name == name)).first()
+
+        if existing_lead:
+            # Update existing lead with fresher radar data
+            existing_lead.last_activity = f"Re-discovered via Radar from {body.source_client_name}"
+            if phone and not existing_lead.phone:
+                existing_lead.phone = phone
+            if address and not existing_lead.address:
+                existing_lead.address = address
+            if industry and not existing_lead.industry:
+                existing_lead.industry = industry
+            session.add(existing_lead)
             session.commit()
-            cp = existing
+            lead = existing_lead
+            is_new = False
         else:
-            # Create new client profile
-            now_str = datetime.utcnow().strftime("%Y-%m-%d")
-            cp = ClientProfile(
-                companyName=name,
-                websiteUrl=website,
-                phone=comp.get("phone"),
-                address=comp.get("address"),
-                status="Lead",
-                lead_source="Radar Analysis",
-                latitude=comp.get("lat"),
-                longitude=comp.get("lng"),
-                place_id=comp.get("place_id"),
-                google_rating=comp.get("rating"),
-                google_reviews=comp.get("reviews"),
-                market_size_score=comp.get("market_size_score"),
-                team_size_estimate=comp.get("team_size_estimate"),
-                business_category=comp.get("category"),
-                industry=comp.get("category"),
-                discovered_via="Radar Analysis",
-                discovered_from_client_id=body.source_client_id,
-                discovered_from_name=body.source_client_name,
-                discovery_date=now_str,
-                lastActivity=f"Discovered via Radar Analysis of {body.source_client_name}",
-                lastActivityDate=now_str,
-                customFields={
-                    "radar_discovery": {
-                        "source_client": body.source_client_name,
-                        "source_client_id": body.source_client_id,
-                        "radar_id": body.radar_id,
-                        "distance_km": comp.get("distance_km"),
-                        "overlap_pct": comp.get("overlap_pct"),
-                        "matched_services": comp.get("matched_services", []),
-                        "pin_color": comp.get("pin_color"),
-                        "maps_url": comp.get("maps_url"),
-                        "discovered_date": now_str,
-                    }
+            # Create new Lead
+            lead = Lead(
+                company_name=name,
+                website=website,
+                phone=phone,
+                address=address,
+                industry=industry,
+                source="Radar Analysis",
+                status="New",
+                last_activity=f"Discovered via Radar Analysis of {body.source_client_name}",
+            )
+            session.add(lead)
+            session.commit()
+            session.refresh(lead)
+            is_new = True
+
+        # Log competitor relationship (still tracks which source client triggered the discovery)
+        try:
+            rel = CompetitorRelationship(
+                source_client_id=body.source_client_id,
+                source_client_name=body.source_client_name,
+                discovered_client_id=None,  # no longer creating a ClientProfile
+                discovered_client_name=name,
+                source_radar_id=body.radar_id,
+                competitor_data={
+                    "distance_km": comp.get("distance_km"),
+                    "overlap_pct": comp.get("overlap_pct"),
+                    "market_size_score": comp.get("market_size_score"),
+                    "team_size_estimate": comp.get("team_size_estimate"),
+                    "matched_services": comp.get("matched_services", []),
+                    "lat": comp.get("lat"),
+                    "lng": comp.get("lng"),
+                    "lead_id": lead.id,
                 }
             )
-            session.add(cp)
+            session.add(rel)
             session.commit()
-            session.refresh(cp)
-
-        # Log competitor relationship
-        rel = CompetitorRelationship(
-            source_client_id=body.source_client_id,
-            source_client_name=body.source_client_name,
-            discovered_client_id=cp.id,
-            discovered_client_name=name,
-            source_radar_id=body.radar_id,
-            competitor_data={
-                "distance_km": comp.get("distance_km"),
-                "overlap_pct": comp.get("overlap_pct"),
-                "market_size_score": comp.get("market_size_score"),
-                "team_size_estimate": comp.get("team_size_estimate"),
-                "matched_services": comp.get("matched_services", []),
-                "lat": comp.get("lat"),
-                "lng": comp.get("lng"),
-            }
-        )
-        session.add(rel)
-        session.commit()
+        except Exception:
+            pass  # Relationship logging is best-effort
 
         return {
             "success": True,
-            "client_id": cp.id,
+            "lead_id": lead.id,
+            "client_id": lead.id,  # backwards-compat alias
             "client_name": name,
-            "message": f"{name} added to client list. Discovered from: {body.source_client_name}",
+            "is_new": is_new,
+            "message": f"{name} added to Leads. Discovered from: {body.source_client_name}",
             "discovered_from": body.source_client_name,
             "discovery_date": datetime.utcnow().strftime("%Y-%m-%d"),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to add client: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to add lead: {e}")
+
+
 
 @app.get("/radar/relationships/{client_id}")
 def get_radar_relationships(client_id: int, session: Session = Depends(get_session)):
@@ -6239,15 +6215,12 @@ async def automations_intelligence_scan(body: AutomationScanRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to scan: {str(e)}")
 
-
 # =====================================================================
 # ENHANCED CRM ARCHITECTURE - LEADS, ACCOUNTS, CONTACTS
 # =====================================================================
-from database import Lead, Account, Contact, ClientProfile
-from sqlmodel import select, update
 import json
 import pandas as pd
-from fastapi import UploadFile, File
+
 
 class LeadCreateRequest(BaseModel):
     company_name: str
@@ -6567,3 +6540,44 @@ async def import_execute(
         session.rollback()
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
+
+
+@app.post("/leads/{lead_id}/followup")
+def add_lead_followup(lead_id: int, body: ClientFollowUpRequest, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    # Add to notes
+    existing_notes = lead.notes or ""
+    new_note = f"Follow-up: {body.content}"
+    lead.notes = existing_notes + "\n" + new_note if existing_notes else new_note
+    session.add(lead)
+    
+    # Log activity
+    from datetime import datetime
+    activity = ActivityLog(
+        lead_id=lead_id,
+        action="Added Follow-up Note",
+        details=body.content,
+        timestamp=datetime.utcnow()
+    )
+    session.add(activity)
+
+    if body.email_agent_data:
+        client_research = session.exec(
+            select(ClientResearch).where(ClientResearch.lead_id == lead_id)
+        ).first()
+        if not client_research:
+            client_research = ClientResearch(
+                lead_id=lead_id,
+                email_agent_data=body.email_agent_data
+            )
+            session.add(client_research)
+        else:
+            client_research.email_agent_data = body.email_agent_data
+            session.add(client_research)
+
+    session.commit()
+    
+    return {"success": True, "message": "Follow-up added to lead."}

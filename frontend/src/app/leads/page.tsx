@@ -1,4 +1,5 @@
 "use client";
+import { API_BASE_URL } from "@/config";
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -10,7 +11,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 interface Lead {
-  id: int;
+  id: number;
   company_name: string;
   website: string | null;
   industry: string | null;
@@ -36,7 +37,7 @@ export default function LeadsPage() {
   const fetchLeads = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/leads");
+      const res = await fetch(`${API_BASE_URL}/leads`);
       if (res.ok) {
         const data = await res.json();
         setLeads(data.leads || []);
