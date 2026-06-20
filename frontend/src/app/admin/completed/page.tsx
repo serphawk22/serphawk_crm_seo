@@ -35,7 +35,7 @@ export default function CompletedTasksPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`${API_BASE_URL}/tasks?status=Done`)
+    fetch(`${API_BASE_URL}/tasks?status=done`)
       .then(r => r.json())
       .then(d => setTasks(Array.isArray(d.tasks) ? d.tasks : []))
       .catch(() => setTasks([]))

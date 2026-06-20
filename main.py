@@ -900,10 +900,33 @@ class SendLeadRequest(BaseModel):
 
 # ── New Feature Pydantic Models ───────────────────────────────────────────────
 
+# Normalize frontend status strings -> PostgreSQL enum values
+# The DB enum 'taskstatus' was created with lowercase values.
+# Frontend sends 'Todo', 'InProgress', 'Done' — map them correctly.
+_TASK_STATUS_MAP: dict = {
+    "todo": "todo",
+    "Todo": "todo",
+    "TODO": "todo",
+    "inprogress": "inprogress",
+    "InProgress": "inprogress",
+    "INPROGRESS": "inprogress",
+    "in_progress": "inprogress",
+    "In Progress": "inprogress",
+    "done": "done",
+    "Done": "done",
+    "DONE": "done",
+}
+
+def _normalize_task_status(s: Optional[str]) -> Optional[str]:
+    if not s:
+        return s
+    return _TASK_STATUS_MAP.get(s, s.lower())
+
+
 class TaskCreateRequest(BaseModel):
     title: str
     description: Optional[str] = None
-    status: str = "Todo"
+    status: str = "todo"
     priority: str = "Medium"
     due_date: Optional[str] = None
     client_id: Optional[int] = None
@@ -3984,9 +4007,13 @@ def list_tasks(
     project_id: Optional[int] = None,
     session: Session = Depends(get_session),
 ):
+    from sqlalchemy import cast, String as SAString
     q = select(Task).order_by(Task.created_at.desc())
     if status:
-        q = q.where(Task.status == status)
+        # Cast the enum column to String for comparison to avoid
+        # PostgreSQL "invalid input value for enum taskstatus" errors
+        # when the stored enum casing differs from what the client passes.
+        q = q.where(cast(Task.status, SAString).ilike(status))
     if assigned_to:
         q = q.where(Task.assigned_to == assigned_to)
     if client_id:
@@ -3999,7 +4026,9 @@ def list_tasks(
 
 @app.post("/tasks")
 def create_task(body: TaskCreateRequest, session: Session = Depends(get_session)):
-    t = Task(**body.model_dump())
+    data = body.model_dump()
+    data["status"] = _normalize_task_status(data.get("status"))
+    t = Task(**data)
     session.add(t)
     session.commit()
     session.refresh(t)
@@ -4044,7 +4073,10 @@ def update_task(task_id: int, body: TaskUpdateRequest, session: Session = Depend
     t = session.get(Task, task_id)
     if not t:
         raise HTTPException(status_code=404, detail="Task not found")
-    for field, val in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    if "status" in updates:
+        updates["status"] = _normalize_task_status(updates["status"])
+    for field, val in updates.items():
         setattr(t, field, val)
     t.updated_at = datetime.utcnow()
     session.add(t)
