@@ -6613,3 +6613,589 @@ def add_lead_followup(lead_id: int, body: ClientFollowUpRequest, session: Sessio
     session.commit()
     
     return {"success": True, "message": "Follow-up added to lead."}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ACTIVITIES: MEETINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+from database import Meeting, Product, CRMQuote, QuoteItem, SalesOrder, PurchaseOrder, Case, Solution
+
+class MeetingCreateRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    location: Optional[str] = None
+    meeting_type: str = "Meeting"
+    status: str = "Scheduled"
+    scheduled_at: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    host_id: Optional[int] = None
+    lead_id: Optional[int] = None
+    client_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    attendees: Optional[List[str]] = []
+    notes: Optional[str] = None
+
+class MeetingUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    location: Optional[str] = None
+    meeting_type: Optional[str] = None
+    status: Optional[str] = None
+    scheduled_at: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    attendees: Optional[List[str]] = None
+    notes: Optional[str] = None
+    outcome: Optional[str] = None
+
+def _meeting_dict(m: Meeting, session: Session) -> dict:
+    host = session.get(User, m.host_id) if m.host_id else None
+    lead = session.get(Lead, m.lead_id) if m.lead_id else None
+    client = session.get(ClientProfile, m.client_id) if m.client_id else None
+    return {
+        "id": m.id, "title": m.title, "description": m.description,
+        "location": m.location, "meeting_type": m.meeting_type,
+        "status": m.status,
+        "scheduled_at": m.scheduled_at.isoformat() if m.scheduled_at else None,
+        "duration_minutes": m.duration_minutes,
+        "host_id": m.host_id, "host_name": host.name if host else None,
+        "lead_id": m.lead_id, "lead_name": lead.company_name if lead else None,
+        "client_id": m.client_id, "client_name": client.companyName if client else None,
+        "attendees": m.attendees or [],
+        "notes": m.notes, "outcome": m.outcome,
+        "created_at": m.created_at.isoformat(),
+        "updated_at": m.updated_at.isoformat(),
+    }
+
+@app.get("/meetings")
+def list_meetings(
+    status: Optional[str] = None,
+    lead_id: Optional[int] = None,
+    client_id: Optional[int] = None,
+    session: Session = Depends(get_session)
+):
+    q = select(Meeting).order_by(Meeting.scheduled_at.desc())
+    if status:
+        q = q.where(Meeting.status == status)
+    if lead_id:
+        q = q.where(Meeting.lead_id == lead_id)
+    if client_id:
+        q = q.where(Meeting.client_id == client_id)
+    meetings = session.exec(q).all()
+    return {"meetings": [_meeting_dict(m, session) for m in meetings]}
+
+@app.post("/meetings")
+def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_session)):
+    data = body.model_dump()
+    if data.get("scheduled_at"):
+        try:
+            data["scheduled_at"] = datetime.fromisoformat(data["scheduled_at"])
+        except Exception:
+            data["scheduled_at"] = None
+    m = Meeting(**data)
+    session.add(m)
+    session.commit()
+    session.refresh(m)
+    return {"meeting": _meeting_dict(m, session)}
+
+@app.get("/meetings/{meeting_id}")
+def get_meeting(meeting_id: int, session: Session = Depends(get_session)):
+    m = session.get(Meeting, meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    return {"meeting": _meeting_dict(m, session)}
+
+@app.put("/meetings/{meeting_id}")
+def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session = Depends(get_session)):
+    m = session.get(Meeting, meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    updates = body.model_dump(exclude_unset=True)
+    if "scheduled_at" in updates and updates["scheduled_at"]:
+        try:
+            updates["scheduled_at"] = datetime.fromisoformat(updates["scheduled_at"])
+        except Exception:
+            updates.pop("scheduled_at")
+    for k, v in updates.items():
+        setattr(m, k, v)
+    m.updated_at = datetime.utcnow()
+    session.add(m)
+    session.commit()
+    session.refresh(m)
+    return {"meeting": _meeting_dict(m, session)}
+
+@app.delete("/meetings/{meeting_id}")
+def delete_meeting(meeting_id: int, session: Session = Depends(get_session)):
+    m = session.get(Meeting, meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    session.delete(m)
+    session.commit()
+    return {"ok": True}
+
+@app.post("/meetings/import")
+async def import_meetings(file: UploadFile = File(...), session: Session = Depends(get_session)):
+    """Import meetings from CSV/Excel"""
+    import pandas as pd, io
+    content = await file.read()
+    try:
+        df = pd.read_excel(io.BytesIO(content)) if file.filename.endswith((".xlsx",".xls")) else pd.read_csv(io.BytesIO(content))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse file: {e}")
+    imported = 0
+    for _, row in df.iterrows():
+        try:
+            m = Meeting(
+                title=str(row.get("title") or row.get("Title") or "Imported Meeting"),
+                description=str(row.get("description") or row.get("Description") or "") or None,
+                notes=str(row.get("notes") or row.get("Notes") or "") or None,
+                status=str(row.get("status") or row.get("Status") or "Scheduled"),
+                meeting_type=str(row.get("meeting_type") or row.get("Type") or "Meeting"),
+            )
+            session.add(m)
+            imported += 1
+        except Exception:
+            pass
+    session.commit()
+    return {"imported": imported}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INVENTORY: PRODUCTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class ProductCreateRequest(BaseModel):
+    name: str
+    sku: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    unit_price: float = 0.0
+    currency: str = "USD"
+    tax_rate: float = 0.0
+    stock_quantity: Optional[int] = None
+    is_active: bool = True
+
+class ProductUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    sku: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    unit_price: Optional[float] = None
+    tax_rate: Optional[float] = None
+    stock_quantity: Optional[int] = None
+    is_active: Optional[bool] = None
+
+@app.get("/products")
+def list_products(category: Optional[str] = None, active_only: bool = False, session: Session = Depends(get_session)):
+    q = select(Product).order_by(Product.name)
+    if category:
+        q = q.where(Product.category == category)
+    if active_only:
+        q = q.where(Product.is_active == True)
+    products = session.exec(q).all()
+    return {"products": [p.model_dump() for p in products]}
+
+@app.post("/products")
+def create_product(body: ProductCreateRequest, session: Session = Depends(get_session)):
+    p = Product(**body.model_dump())
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return {"product": p.model_dump()}
+
+@app.get("/products/{product_id}")
+def get_product(product_id: int, session: Session = Depends(get_session)):
+    p = session.get(Product, product_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return {"product": p.model_dump()}
+
+@app.put("/products/{product_id}")
+def update_product(product_id: int, body: ProductUpdateRequest, session: Session = Depends(get_session)):
+    p = session.get(Product, product_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Product not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(p, k, v)
+    p.updated_at = datetime.utcnow()
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return {"product": p.model_dump()}
+
+@app.delete("/products/{product_id}")
+def delete_product(product_id: int, session: Session = Depends(get_session)):
+    p = session.get(Product, product_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Product not found")
+    session.delete(p)
+    session.commit()
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INVENTORY: QUOTES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class QuoteCreateRequest(BaseModel):
+    title: str
+    lead_id: Optional[int] = None
+    client_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    status: str = "Draft"
+    currency: str = "USD"
+    valid_until: Optional[str] = None
+    notes: Optional[str] = None
+    terms: Optional[str] = None
+    owner_id: Optional[int] = None
+
+@app.get("/quotes")
+def list_quotes(status: Optional[str] = None, client_id: Optional[int] = None, lead_id: Optional[int] = None, session: Session = Depends(get_session)):
+    q = select(CRMQuote).order_by(CRMQuote.created_at.desc())
+    if status:
+        q = q.where(CRMQuote.status == status)
+    if client_id:
+        q = q.where(CRMQuote.client_id == client_id)
+    if lead_id:
+        q = q.where(CRMQuote.lead_id == lead_id)
+    quotes = session.exec(q).all()
+    return {"quotes": [_quote_dict(qt, session) for qt in quotes]}
+
+def _quote_dict(qt: CRMQuote, session: Session) -> dict:
+    client = session.get(ClientProfile, qt.client_id) if qt.client_id else None
+    lead = session.get(Lead, qt.lead_id) if qt.lead_id else None
+    items = session.exec(select(QuoteItem).where(QuoteItem.quote_id == qt.id)).all()
+    d = qt.model_dump()
+    d["client_name"] = client.companyName if client else None
+    d["lead_name"] = lead.company_name if lead else None
+    d["items"] = [i.model_dump() for i in items]
+    return d
+
+@app.post("/quotes")
+def create_quote(body: QuoteCreateRequest, session: Session = Depends(get_session)):
+    import random, string
+    q = CRMQuote(**body.model_dump())
+    q.quote_number = "QT-" + "".join(random.choices(string.digits, k=6))
+    session.add(q)
+    session.commit()
+    session.refresh(q)
+    return {"quote": _quote_dict(q, session)}
+
+@app.get("/quotes/{quote_id}")
+def get_quote(quote_id: int, session: Session = Depends(get_session)):
+    q = session.get(CRMQuote, quote_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    return {"quote": _quote_dict(q, session)}
+
+@app.put("/quotes/{quote_id}")
+def update_quote(quote_id: int, body: QuoteCreateRequest, session: Session = Depends(get_session)):
+    q = session.get(CRMQuote, quote_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(q, k, v)
+    q.updated_at = datetime.utcnow()
+    session.add(q)
+    session.commit()
+    session.refresh(q)
+    return {"quote": _quote_dict(q, session)}
+
+@app.delete("/quotes/{quote_id}")
+def delete_quote(quote_id: int, session: Session = Depends(get_session)):
+    q = session.get(CRMQuote, quote_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    session.delete(q)
+    session.commit()
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INVENTORY: SALES ORDERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SalesOrderCreateRequest(BaseModel):
+    quote_id: Optional[int] = None
+    lead_id: Optional[int] = None
+    client_id: Optional[int] = None
+    status: str = "Pending"
+    grand_total: float = 0.0
+    currency: str = "USD"
+    delivery_date: Optional[str] = None
+    notes: Optional[str] = None
+    owner_id: Optional[int] = None
+
+@app.get("/sales-orders")
+def list_sales_orders(status: Optional[str] = None, client_id: Optional[int] = None, session: Session = Depends(get_session)):
+    q = select(SalesOrder).order_by(SalesOrder.created_at.desc())
+    if status:
+        q = q.where(SalesOrder.status == status)
+    if client_id:
+        q = q.where(SalesOrder.client_id == client_id)
+    orders = session.exec(q).all()
+    return {"orders": [_so_dict(o, session) for o in orders]}
+
+def _so_dict(o: SalesOrder, session: Session) -> dict:
+    client = session.get(ClientProfile, o.client_id) if o.client_id else None
+    d = o.model_dump()
+    d["client_name"] = client.companyName if client else None
+    return d
+
+@app.post("/sales-orders")
+def create_sales_order(body: SalesOrderCreateRequest, session: Session = Depends(get_session)):
+    import random, string
+    o = SalesOrder(**body.model_dump())
+    o.order_number = "SO-" + "".join(random.choices(string.digits, k=6))
+    session.add(o)
+    session.commit()
+    session.refresh(o)
+    return {"order": _so_dict(o, session)}
+
+@app.put("/sales-orders/{order_id}")
+def update_sales_order(order_id: int, body: SalesOrderCreateRequest, session: Session = Depends(get_session)):
+    o = session.get(SalesOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(o, k, v)
+    o.updated_at = datetime.utcnow()
+    session.add(o)
+    session.commit()
+    session.refresh(o)
+    return {"order": _so_dict(o, session)}
+
+@app.delete("/sales-orders/{order_id}")
+def delete_sales_order(order_id: int, session: Session = Depends(get_session)):
+    o = session.get(SalesOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    session.delete(o)
+    session.commit()
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INVENTORY: PURCHASE ORDERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class PurchaseOrderCreateRequest(BaseModel):
+    vendor_name: str
+    vendor_email: Optional[str] = None
+    status: str = "Draft"
+    grand_total: float = 0.0
+    currency: str = "USD"
+    expected_delivery: Optional[str] = None
+    notes: Optional[str] = None
+    owner_id: Optional[int] = None
+
+@app.get("/purchase-orders")
+def list_purchase_orders(status: Optional[str] = None, session: Session = Depends(get_session)):
+    q = select(PurchaseOrder).order_by(PurchaseOrder.created_at.desc())
+    if status:
+        q = q.where(PurchaseOrder.status == status)
+    orders = session.exec(q).all()
+    return {"orders": [o.model_dump() for o in orders]}
+
+@app.post("/purchase-orders")
+def create_purchase_order(body: PurchaseOrderCreateRequest, session: Session = Depends(get_session)):
+    import random, string
+    o = PurchaseOrder(**body.model_dump())
+    o.po_number = "PO-" + "".join(random.choices(string.digits, k=6))
+    session.add(o)
+    session.commit()
+    session.refresh(o)
+    return {"order": o.model_dump()}
+
+@app.put("/purchase-orders/{order_id}")
+def update_purchase_order(order_id: int, body: PurchaseOrderCreateRequest, session: Session = Depends(get_session)):
+    o = session.get(PurchaseOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(o, k, v)
+    o.updated_at = datetime.utcnow()
+    session.add(o)
+    session.commit()
+    session.refresh(o)
+    return {"order": o.model_dump()}
+
+@app.delete("/purchase-orders/{order_id}")
+def delete_purchase_order(order_id: int, session: Session = Depends(get_session)):
+    o = session.get(PurchaseOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    session.delete(o)
+    session.commit()
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SUPPORT: CASES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class CaseCreateRequest(BaseModel):
+    subject: str
+    description: Optional[str] = None
+    status: str = "Open"
+    priority: str = "Medium"
+    category: Optional[str] = None
+    lead_id: Optional[int] = None
+    client_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    assigned_to: Optional[int] = None
+
+class CaseUpdateRequest(BaseModel):
+    subject: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    category: Optional[str] = None
+    assigned_to: Optional[int] = None
+    resolution: Optional[str] = None
+
+def _case_dict(c: Case, session: Session) -> dict:
+    client = session.get(ClientProfile, c.client_id) if c.client_id else None
+    lead = session.get(Lead, c.lead_id) if c.lead_id else None
+    assignee = session.get(User, c.assigned_to) if c.assigned_to else None
+    d = c.model_dump()
+    d["client_name"] = client.companyName if client else None
+    d["lead_name"] = lead.company_name if lead else None
+    d["assignee_name"] = assignee.name if assignee else None
+    d["resolved_at"] = c.resolved_at.isoformat() if c.resolved_at else None
+    d["created_at"] = c.created_at.isoformat()
+    d["updated_at"] = c.updated_at.isoformat()
+    return d
+
+@app.get("/cases")
+def list_cases(status: Optional[str] = None, priority: Optional[str] = None, client_id: Optional[int] = None, session: Session = Depends(get_session)):
+    q = select(Case).order_by(Case.created_at.desc())
+    if status:
+        q = q.where(Case.status == status)
+    if priority:
+        q = q.where(Case.priority == priority)
+    if client_id:
+        q = q.where(Case.client_id == client_id)
+    cases = session.exec(q).all()
+    return {"cases": [_case_dict(c, session) for c in cases]}
+
+@app.post("/cases")
+def create_case(body: CaseCreateRequest, session: Session = Depends(get_session)):
+    import random, string
+    c = Case(**body.model_dump())
+    c.case_number = "CASE-" + "".join(random.choices(string.digits, k=5))
+    session.add(c)
+    session.commit()
+    session.refresh(c)
+    return {"case": _case_dict(c, session)}
+
+@app.get("/cases/{case_id}")
+def get_case(case_id: int, session: Session = Depends(get_session)):
+    c = session.get(Case, case_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return {"case": _case_dict(c, session)}
+
+@app.put("/cases/{case_id}")
+def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depends(get_session)):
+    c = session.get(Case, case_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Case not found")
+    updates = body.model_dump(exclude_unset=True)
+    if updates.get("status") in ("Resolved", "Closed") and not c.resolved_at:
+        c.resolved_at = datetime.utcnow()
+    for k, v in updates.items():
+        setattr(c, k, v)
+    c.updated_at = datetime.utcnow()
+    session.add(c)
+    session.commit()
+    session.refresh(c)
+    return {"case": _case_dict(c, session)}
+
+@app.delete("/cases/{case_id}")
+def delete_case(case_id: int, session: Session = Depends(get_session)):
+    c = session.get(Case, case_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Case not found")
+    session.delete(c)
+    session.commit()
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SUPPORT: SOLUTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SolutionCreateRequest(BaseModel):
+    title: str
+    content: str
+    category: Optional[str] = None
+    tags: Optional[List[str]] = []
+    is_published: bool = True
+    author_id: Optional[int] = None
+
+class SolutionUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    is_published: Optional[bool] = None
+
+@app.get("/solutions")
+def list_solutions(category: Optional[str] = None, q: Optional[str] = None, session: Session = Depends(get_session)):
+    query = select(Solution).where(Solution.is_published == True).order_by(Solution.view_count.desc())
+    if category:
+        query = query.where(Solution.category == category)
+    solutions = session.exec(query).all()
+    if q:
+        solutions = [s for s in solutions if q.lower() in s.title.lower() or q.lower() in s.content.lower()]
+    return {"solutions": [s.model_dump() for s in solutions]}
+
+@app.post("/solutions")
+def create_solution(body: SolutionCreateRequest, session: Session = Depends(get_session)):
+    s = Solution(**body.model_dump())
+    session.add(s)
+    session.commit()
+    session.refresh(s)
+    return {"solution": s.model_dump()}
+
+@app.get("/solutions/{solution_id}")
+def get_solution(solution_id: int, session: Session = Depends(get_session)):
+    s = session.get(Solution, solution_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    s.view_count += 1
+    session.add(s)
+    session.commit()
+    return {"solution": s.model_dump()}
+
+@app.put("/solutions/{solution_id}")
+def update_solution(solution_id: int, body: SolutionUpdateRequest, session: Session = Depends(get_session)):
+    s = session.get(Solution, solution_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(s, k, v)
+    s.updated_at = datetime.utcnow()
+    session.add(s)
+    session.commit()
+    session.refresh(s)
+    return {"solution": s.model_dump()}
+
+@app.delete("/solutions/{solution_id}")
+def delete_solution(solution_id: int, session: Session = Depends(get_session)):
+    s = session.get(Solution, solution_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    session.delete(s)
+    session.commit()
+    return {"ok": True}
+
+@app.post("/solutions/{solution_id}/helpful")
+def mark_solution_helpful(solution_id: int, session: Session = Depends(get_session)):
+    s = session.get(Solution, solution_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    s.helpful_count += 1
+    session.add(s)
+    session.commit()
+    return {"helpful_count": s.helpful_count}
