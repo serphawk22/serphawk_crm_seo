@@ -1,23 +1,34 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ShoppingCart, Plus, X, Search, Loader2, Trash2 } from "lucide-react";
+import { ShoppingCart, Plus, X, Search, Loader2, Trash2, Building2 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 
 interface SalesOrder { id: number; order_number?: string; status: string; grand_total: number; currency: string; client_name?: string; delivery_date?: string; created_at: string; }
+interface Lead { id: number; company_name: string; email?: string; }
 const STATUSES = ["Pending", "Processing", "Fulfilled", "Cancelled"];
 const STATUS_COLORS: Record<string, string> = { Pending: "bg-amber-500/10 text-amber-600", Processing: "bg-blue-500/10 text-blue-600", Fulfilled: "bg-emerald-500/10 text-emerald-600", Cancelled: "bg-red-500/10 text-red-500" };
 
 export default function SalesOrdersPage() {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ status: "Pending", grand_total: "", currency: "USD", delivery_date: "", notes: "" });
+  const [form, setForm] = useState({ lead_id: "" as string | number, status: "Pending", grand_total: "", currency: "USD", delivery_date: "", notes: "" });
 
-  const load = () => { setLoading(true); fetch(`${API_BASE_URL}/sales-orders`).then(r => r.json()).then(d => setOrders(Array.isArray(d.orders) ? d.orders : [])).finally(() => setLoading(false)); };
+  const load = () => { 
+    setLoading(true); 
+    Promise.all([
+      fetch(`${API_BASE_URL}/sales-orders`).then(r => r.json()),
+      fetch(`${API_BASE_URL}/leads`).then(r => r.json()),
+    ]).then(([od, ld]) => {
+      setOrders(Array.isArray(od.orders) ? od.orders : []);
+      setLeads(Array.isArray(ld.leads) ? ld.leads : []);
+    }).finally(() => setLoading(false));
+  };
   useEffect(load, []);
 
   const filtered = useMemo(() => orders.filter(o => {
@@ -27,8 +38,9 @@ export default function SalesOrdersPage() {
   }), [orders, search, statusFilter]);
 
   const handleSave = async () => {
+    if (!form.lead_id) { alert("Please select a lead first"); return; }
     setSaving(true);
-    await fetch(`${API_BASE_URL}/sales-orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, grand_total: parseFloat(form.grand_total) || 0 }) });
+    await fetch(`${API_BASE_URL}/sales-orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, lead_id: Number(form.lead_id), grand_total: parseFloat(form.grand_total as string) || 0 }) });
     setSaving(false); setShowModal(false); load();
   };
   const handleDelete = async (id: number) => { if (!confirm("Delete order?")) return; await fetch(`${API_BASE_URL}/sales-orders/${id}`, { method: "DELETE" }); load(); };
@@ -95,8 +107,22 @@ export default function SalesOrdersPage() {
         {showModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
-              <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-black text-slate-800 dark:text-zinc-100">New Sales Order</h2><button onClick={() => setShowModal(false)}><X className="w-4 h-4" /></button></div>
+              <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-200 dark:border-zinc-700">
+                <h2 className="text-lg font-black text-slate-800 dark:text-zinc-100">New Sales Order</h2>
+                <button onClick={() => setShowModal(false)}><X className="w-4 h-4" /></button>
+              </div>
               <div className="space-y-4">
+                {/* Lead Selector — required */}
+                <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700/40">
+                  <label className="text-xs font-black text-blue-700 dark:text-blue-400 uppercase tracking-widest mb-2 block flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5" /> For which Lead? *
+                  </label>
+                  <select value={form.lead_id} onChange={e => setForm(f => ({ ...f, lead_id: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-blue-200 dark:border-blue-700/40 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Select a lead...</option>
+                    {leads.map(l => <option key={l.id} value={l.id}>{l.company_name}{l.email ? ` — ${l.email}` : ""}</option>)}
+                  </select>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Amount</label>
                     <input type="number" value={form.grand_total} onChange={e => setForm(f => ({ ...f, grand_total: e.target.value }))} placeholder="0.00" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -111,7 +137,7 @@ export default function SalesOrdersPage() {
               </div>
               <div className="flex gap-3 mt-6">
                 <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 font-bold text-sm hover:bg-slate-200 transition-all">Cancel</button>
-                <button onClick={handleSave} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+                <button onClick={handleSave} disabled={saving || !form.lead_id} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-sm hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2">
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />} Create Order
                 </button>
               </div>

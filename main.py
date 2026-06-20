@@ -6291,6 +6291,15 @@ def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depend
     session.refresh(lead)
     return lead
 
+@app.delete("/leads/{lead_id}")
+def delete_lead(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    session.delete(lead)
+    session.commit()
+    return {"ok": True}
+
 @app.post("/leads/{lead_id}/convert")
 def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
@@ -6377,6 +6386,15 @@ def update_account(account_id: int, body: AccountCreateRequest, session: Session
     session.refresh(account)
     return account
 
+@app.delete("/accounts/{account_id}")
+def delete_account(account_id: int, session: Session = Depends(get_session)):
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    session.delete(account)
+    session.commit()
+    return {"ok": True}
+
 # ---- CONTACTS API ----
 @app.get("/contacts")
 def get_contacts(session: Session = Depends(get_session)):
@@ -6418,6 +6436,15 @@ def update_contact(contact_id: int, body: ContactCreateRequest, session: Session
     session.commit()
     session.refresh(contact)
     return contact
+
+@app.delete("/contacts/{contact_id}")
+def delete_contact(contact_id: int, session: Session = Depends(get_session)):
+    contact = session.get(Contact, contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    session.delete(contact)
+    session.commit()
+    return {"ok": True}
 
 
 # ---- IMPORT SYSTEM ----
