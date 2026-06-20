@@ -27,6 +27,14 @@ import {
   Search,
   PanelLeftClose,
   PanelLeftOpen,
+  Calendar,
+  Phone,
+  Package,
+  ShoppingCart,
+  Truck,
+  HeadphonesIcon,
+  BookOpen,
+  FileBarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRole, Role } from "@/context/RoleContext";
@@ -58,11 +66,19 @@ const sidebarSections = [
     ],
   },
   {
+    heading: "ACTIVITIES",
+    items: [
+      { name: "Meetings", icon: Calendar, href: "/meetings", roles: ["Admin", "Employee", "SalesManager"] },
+      { name: "Calls", icon: Phone, href: "/calls", roles: ["Admin", "Employee", "SalesManager"] },
+      { name: "Tasks", icon: CheckSquare, href: "/tasks", roles: ["Admin", "Employee", "Intern"] },
+      { name: "Completed", icon: CheckCircle, href: "/admin/completed", roles: ["Admin", "Employee"] },
+    ],
+  },
+  {
     heading: "PROJECTS",
     items: [
       { name: "Projects", icon: FolderOpen, href: "/projects", roles: ["Admin", "Employee", "Intern"] },
-      { name: "Tasks", icon: CheckSquare, href: "/tasks", roles: ["Admin", "Employee", "Intern"] },
-      { name: "Completed", icon: CheckCircle, href: "/admin/completed", roles: ["Admin", "Employee"] },
+      { name: "Milestones", icon: Activity, href: "/milestones", roles: ["Admin", "Employee", "Intern"] },
     ],
   },
   {
@@ -76,9 +92,25 @@ const sidebarSections = [
     ],
   },
   {
+    heading: "INVENTORY",
+    items: [
+      { name: "Products", icon: Package, href: "/products", roles: ["Admin", "SalesManager"] },
+      { name: "Quotes", icon: FileBarChart2, href: "/quotes", roles: ["Admin", "SalesManager"] },
+      { name: "Sales Orders", icon: ShoppingCart, href: "/sales-orders", roles: ["Admin", "SalesManager"] },
+      { name: "Purchase Orders", icon: Truck, href: "/purchase-orders", roles: ["Admin"] },
+      { name: "Invoices", icon: FileText, href: "/invoices", roles: ["Admin", "SalesManager"] },
+    ],
+  },
+  {
+    heading: "SUPPORT",
+    items: [
+      { name: "Cases", icon: HeadphonesIcon, href: "/support/cases", roles: ["Admin", "Employee", "SalesManager"] },
+      { name: "Solutions", icon: BookOpen, href: "/support/solutions", roles: ["Admin", "Employee", "SalesManager"] },
+    ],
+  },
+  {
     heading: "FINANCIALS",
     items: [
-      { name: "Invoices", icon: FileText, href: "/invoices", roles: ["Admin", "SalesManager"] },
       { name: "Proposals", icon: FileEdit, href: "/proposals", roles: ["Admin", "SalesManager"] },
       { name: "Marketplace", icon: ShoppingBag, href: "/admin/marketplace", roles: ["Admin", "Employee", "SalesManager"] },
     ],
