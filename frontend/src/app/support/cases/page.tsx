@@ -5,6 +5,7 @@ import { HeadphonesIcon, Plus, X, Search, Filter, Loader2, Trash2, Edit2, AlertC
 import { API_BASE_URL } from "@/config";
 
 interface Case { id: number; case_number?: string; subject: string; description?: string; status: string; priority: string; category?: string; client_name?: string; lead_name?: string; assignee_name?: string; created_at: string; resolved_at?: string; }
+interface Lead { id: number; company_name: string; email?: string; }
 const STATUSES = ["Open", "In Progress", "Resolved", "Closed"];
 const PRIORITIES = ["Low", "Medium", "High", "Urgent"];
 const STATUS_COLORS: Record<string, string> = { Open: "bg-blue-500/10 text-blue-600", "In Progress": "bg-amber-500/10 text-amber-600", Resolved: "bg-emerald-500/10 text-emerald-600", Closed: "bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400" };
@@ -13,6 +14,7 @@ const PRIORITY_DOT: Record<string, string> = { Low: "bg-slate-400", Medium: "bg-
 
 export default function CasesPage() {
   const [cases, setCases] = useState<Case[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -20,9 +22,18 @@ export default function CasesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editCase, setEditCase] = useState<Case | null>(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ subject: "", description: "", status: "Open", priority: "Medium", category: "" });
+  const [form, setForm] = useState({ subject: "", description: "", status: "Open", priority: "Medium", category: "", lead_id: "" as string | number });
 
-  const load = () => { setLoading(true); fetch(`${API_BASE_URL}/cases`).then(r => r.json()).then(d => setCases(Array.isArray(d.cases) ? d.cases : [])).finally(() => setLoading(false)); };
+  const load = () => {
+    setLoading(true);
+    Promise.all([
+      fetch(`${API_BASE_URL}/cases`).then(r => r.json()),
+      fetch(`${API_BASE_URL}/leads`).then(r => r.json()),
+    ]).then(([cd, ld]) => {
+      setCases(Array.isArray(cd.cases) ? cd.cases : []);
+      setLeads(Array.isArray(ld.leads) ? ld.leads : []);
+    }).finally(() => setLoading(false));
+  };
   useEffect(load, []);
 
   const filtered = useMemo(() => cases.filter(c => {
@@ -124,8 +135,22 @@ export default function CasesPage() {
         {showModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
-              <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-black text-slate-800 dark:text-zinc-100">{editCase ? "Edit Case" : "New Case"}</h2><button onClick={() => setShowModal(false)}><X className="w-4 h-4" /></button></div>
+              <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-200 dark:border-zinc-700">
+                <h2 className="text-lg font-black text-slate-800 dark:text-zinc-100">{editCase ? "Edit Case" : "New Case"}</h2>
+                <button onClick={() => setShowModal(false)}><X className="w-4 h-4" /></button>
+              </div>
               <div className="space-y-4">
+                {/* Lead Selector — required context */}
+                <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-700/40">
+                  <label className="text-xs font-black text-rose-700 dark:text-rose-400 uppercase tracking-widest mb-2 block flex items-center gap-1.5">
+                    <HeadphonesIcon className="w-3.5 h-3.5" /> For which Lead? *
+                  </label>
+                  <select value={form.lead_id} onChange={e => setForm(f => ({ ...f, lead_id: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-rose-200 dark:border-rose-700/40 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-rose-500">
+                    <option value="">Select a lead...</option>
+                    {leads.map(l => <option key={l.id} value={l.id}>{l.company_name}{l.email ? ` — ${l.email}` : ""}</option>)}
+                  </select>
+                </div>
                 <div><label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Subject *</label>
                   <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="Brief description of the issue" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500" />
                 </div>
@@ -147,7 +172,7 @@ export default function CasesPage() {
               </div>
               <div className="flex gap-3 mt-6">
                 <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 font-bold text-sm hover:bg-slate-200 transition-all">Cancel</button>
-                <button onClick={handleSave} disabled={saving || !form.subject.trim()} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+                <button onClick={handleSave} disabled={saving || !form.subject.trim() || (!editCase && !form.lead_id)} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}{editCase ? "Update" : "Create Case"}
                 </button>
               </div>
