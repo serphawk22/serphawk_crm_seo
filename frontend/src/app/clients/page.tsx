@@ -25,7 +25,10 @@ import {
   RefreshCw,
   AlertCircle,
   Sparkles,
-  Phone
+  Phone,
+  Building2,
+  Trash2,
+  Zap
 } from 'lucide-react';
 import Link from 'next/link';
 import { API_BASE_URL } from '@/config';
@@ -35,6 +38,7 @@ import { useRole } from '@/context/RoleContext';
 import PageGuide from '@/components/PageGuide';
 import dynamic from 'next/dynamic';
 import { ContextMenu } from '@/components/ContextMenu';
+import { ViewSwitcher, ViewType } from '@/components/ViewSwitcher';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const ClientMapView = dynamic(() => import('./ClientMapView'), {
