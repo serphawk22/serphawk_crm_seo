@@ -129,8 +129,16 @@ export default function ClientsPage() {
     }
   }, [searchParams]);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const [isOCRModalOpen, setIsOCRModalOpen] = useState(false);
+  const [ocrLoading, setOcrLoading] = useState(false);
+
+  // Quick Actions State
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
   const [actionLoading, setActionLoading] = useState<Record<number, string>>({});
+  
+  // Pitch Modal State
+  const [pitchModal, setPitchModal] = useState<{isOpen: boolean, pitch: string, clientName: string}>({ isOpen: false, pitch: "", clientName: "" });
+
   const [formData, setFormData] = useState({
     companyName: '',
     websiteUrl: '',
@@ -172,9 +180,6 @@ export default function ClientsPage() {
     };
   }, []);
 
-  const [isOCRModalOpen, setIsOCRModalOpen] = useState(false);
-  const [ocrLoading, setOcrLoading] = useState(false);
-  
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
@@ -433,19 +438,19 @@ export default function ClientsPage() {
   };
 
   const handleSimulateCall = async (clientId: number) => {
+    const clientName = clients.find(c => c.id === clientId)?.companyName || 'Unknown Client';
     setActionLoading(p => ({ ...p, [clientId]: 'call' }));
     try {
       const res = await fetch(`${API_BASE_URL}/clients/${clientId}/simulate-call`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        alert(`AI Pitch Generated:\n\n${data.pitch}`);
-        fetchActivities();
+        setPitchModal({ isOpen: true, pitch: data.pitch, clientName });
       } else {
-        alert('Failed to generate simulation');
+        toast.error('Failed to generate simulation');
       }
     } catch (err) {
       console.error(err);
-      alert('Error connecting to AI');
+      toast.error('Error connecting to AI');
     } finally {
       setActionLoading(p => { const next = { ...p }; delete next[clientId]; return next; });
     }
@@ -1093,6 +1098,46 @@ export default function ClientsPage() {
                   </div>
                 )}
 
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {pitchModal.isOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          >
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-3xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              <div className="flex justify-between items-center px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800 dark:text-white">
+                  <Phone className="w-5 h-5 text-green-500" />
+                  AI Call Pitch: {pitchModal.clientName}
+                </h2>
+                <button onClick={() => setPitchModal({isOpen: false, pitch: "", clientName: ""})} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto flex-1">
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-6 border border-slate-200 dark:border-slate-700">
+                  <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300 font-medium leading-relaxed">
+                    {pitchModal.pitch}
+                  </p>
+                </div>
+              </div>
+              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex justify-end gap-3">
+                <button onClick={() => {
+                  navigator.clipboard.writeText(pitchModal.pitch);
+                  toast.success('Copied to clipboard!');
+                }} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-white transition-colors">
+                  Copy Pitch
+                </button>
+                <button onClick={() => setPitchModal({isOpen: false, pitch: "", clientName: ""})} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+                  Done
+                </button>
               </div>
             </motion.div>
           </motion.div>

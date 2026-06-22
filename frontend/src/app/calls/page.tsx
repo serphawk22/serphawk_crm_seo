@@ -168,17 +168,27 @@ function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void
 
 export default function CallsPage() {
   const [calls, setCalls] = useState<CallEntry[]>([]);
+  const [clients, setClients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [selectedClient, setSelectedClient] = useState("");
+  const [generatedPitch, setGeneratedPitch] = useState<{clientName: string, pitch: string} | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  const fetchCalls = async () => {
+  const fetchCallsAndClients = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/calls`);
-      const data = await res.json();
-      setCalls(data.calls || []);
+      const [callsRes, clientsRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/calls`),
+        fetch(`${API_BASE_URL}/clients`)
+      ]);
+      const callsData = await callsRes.json();
+      const clientsData = await clientsRes.json();
+      setCalls(callsData.calls || []);
+      setClients(clientsData.clients || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -186,7 +196,28 @@ export default function CallsPage() {
     }
   };
 
-  useEffect(() => { fetchCalls(); }, []);
+  useEffect(() => { fetchCallsAndClients(); }, []);
+
+  const handleGeneratePitch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedClient) return;
+    setGenerating(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${selectedClient}/simulate-call`, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        const clientName = clients.find(c => c.id.toString() === selectedClient)?.companyName || 'Unknown Client';
+        setGeneratedPitch({ clientName, pitch: data.pitch });
+        fetchCallsAndClients();
+        setShowGenerateModal(false);
+        setSelectedClient("");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const handleLogCall = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,7 +238,7 @@ export default function CallsPage() {
       });
       setForm(EMPTY_FORM);
       setShowModal(false);
-      fetchCalls();
+      fetchCallsAndClients();
     } finally {
       setSubmitting(false);
     }
@@ -240,33 +271,10 @@ export default function CallsPage() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={async () => {
-              const demoCalls = [
-                { phone: "+1 (555) 123-4567", duration: 145 },
-                { phone: "+1 (888) 999-0000", duration: 62 },
-                { phone: "+44 20 7123 4567", duration: 320 },
-              ];
-              const random = demoCalls[Math.floor(Math.random() * demoCalls.length)];
-              try {
-                await fetch(`${API_BASE_URL}/calls`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    phone_number: random.phone,
-                    duration_seconds: random.duration,
-                    received_at: new Date().toISOString(),
-                  }),
-                });
-                fetchCalls();
-                // Custom event to tell NotificationBar to fetch immediately
-                window.dispatchEvent(new CustomEvent("refresh-calls"));
-              } catch (e) {
-                console.error("Simulation failed", e);
-              }
-            }}
+            onClick={() => setShowGenerateModal(true)}
             className="flex items-center gap-2 px-6 py-3.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 rounded-2xl font-bold shadow-sm hover:bg-slate-50 dark:bg-zinc-950 transition-all"
           >
-            <Zap className="w-4 h-4 text-amber-500" /> Simulate Call
+            <Zap className="w-4 h-4 text-amber-500" /> Generate AI Pitch
           </button>
           <button
             onClick={() => setShowModal(true)}
@@ -354,7 +362,7 @@ export default function CallsPage() {
                     transition={{ duration: 0.25 }}
                     style={{ overflow: "hidden" }}
                   >
-                    <CallDetailPanel call={call} onSave={fetchCalls} />
+                    <CallDetailPanel call={call} onSave={fetchCallsAndClients} />
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -453,6 +461,89 @@ export default function CallsPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Generate AI Pitch Modal */}
+      <AnimatePresence>
+        {showGenerateModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-50 p-4"
+          >
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
+              className="bg-white dark:bg-zinc-900/90 backdrop-blur-2xl rounded-[2rem] border border-white shadow-2xl w-full max-w-lg p-8 relative overflow-hidden"
+            >
+              <button onClick={() => setShowGenerateModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700 dark:text-zinc-200"><X className="w-5 h-5" /></button>
+              <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 mb-6 flex items-center gap-3">
+                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><Zap className="w-5 h-5" /></div>
+                Generate AI Call Pitch
+              </h2>
+              <form onSubmit={handleGeneratePitch} className="space-y-6">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">🏢 Select Client</label>
+                  <select 
+                    required 
+                    value={selectedClient} 
+                    onChange={(e) => setSelectedClient(e.target.value)}
+                    className="w-full px-4 py-3.5 bg-white dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
+                  >
+                    <option value="" disabled>Select a client...</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.id}>{c.companyName || c.projectName || c.email}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <button type="submit" disabled={generating || !selectedClient}
+                  className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl font-bold shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Phone className="w-5 h-5" />}
+                  Generate Call Pitch
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Generated Pitch View Modal */}
+      <AnimatePresence>
+        {generatedPitch && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          >
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-3xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              <div className="flex justify-between items-center px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800 dark:text-white">
+                  <Phone className="w-5 h-5 text-green-500" />
+                  AI Call Pitch: {generatedPitch.clientName}
+                </h2>
+                <button onClick={() => setGeneratedPitch(null)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto flex-1">
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-6 border border-slate-200 dark:border-slate-700">
+                  <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300 font-medium leading-relaxed">
+                    {generatedPitch.pitch}
+                  </p>
+                </div>
+              </div>
+              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex justify-end gap-3">
+                <button onClick={() => {
+                  navigator.clipboard.writeText(generatedPitch.pitch);
+                }} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-white transition-colors">
+                  Copy Pitch
+                </button>
+                <button onClick={() => setGeneratedPitch(null)} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </motion.div>
   );
 }
