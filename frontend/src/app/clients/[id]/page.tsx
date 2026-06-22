@@ -405,6 +405,25 @@ export default function ClientDetailPage() {
     }
   };
 
+  const handleSimulateCall = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${id}/simulate-call`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        alert(`AI Pitch Generated:\n\n${data.pitch}`);
+        fetchActivities();
+      } else {
+        alert('Failed to generate simulation');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error connecting to AI');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSaveMetrics = async () => {
     setLoading(true);
     try {
@@ -803,23 +822,30 @@ export default function ClientDetailPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.55 }}
               whileHover={{ y: -8 }}
-              className="group relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 overflow-hidden cursor-pointer shadow-sm"
+              className="group relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 overflow-hidden shadow-sm"
             >
               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative z-10">
-                <div className="flex items-start justify-between mb-6">
-                  <div>
-                    <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">Untapped Revenue</h3>
-                    <p className="text-sm text-slate-500 dark:text-zinc-400">Growth opportunities ahead</p>
+              <div className="relative z-10 flex flex-col h-full justify-between">
+                <div>
+                  <div className="flex items-start justify-between mb-6">
+                    <div>
+                      <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">Untapped Revenue</h3>
+                      <p className="text-sm text-slate-500 dark:text-zinc-400">Growth opportunities ahead</p>
+                    </div>
+                    <div className="p-3 bg-orange-100 text-orange-600 rounded-xl"><TrendingUp size={24} /></div>
                   </div>
-                  <div className="p-3 bg-orange-100 text-orange-600 rounded-xl"><TrendingUp size={24} /></div>
+                  <p className="text-lg font-bold text-slate-600 dark:text-zinc-300 mb-6">
+                    {client.customFields?.untapped_revenue_note || 'No data yet — admin can set this'}
+                  </p>
                 </div>
-                <p className="text-lg font-bold text-slate-600 dark:text-zinc-300 mb-4">
-                  {client.customFields?.untapped_revenue_note || 'No data yet — admin can set this'}
-                </p>
-                <Link href="/store" className="block w-full py-2 text-center bg-orange-600/80 hover:bg-orange-600 text-white rounded-xl font-bold text-sm transition-all">
-                  See Opportunities →
-                </Link>
+                <div className="flex gap-3">
+                  <Link href="/store" className="flex-1 py-3 text-center bg-orange-600/10 hover:bg-orange-600/20 text-orange-600 rounded-xl font-bold text-sm transition-all border border-orange-200">
+                    See Opportunities
+                  </Link>
+                  <button onClick={handleSimulateCall} disabled={loading} className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-orange-500/20 transition-all disabled:opacity-50">
+                    {loading ? 'Thinking...' : 'AI Call Simulation'}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

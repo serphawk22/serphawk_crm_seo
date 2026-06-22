@@ -1595,6 +1595,50 @@ def get_client(client_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Client not found")
     return {"client": _client_dict(cp, session)}
 
+@app.post("/clients/{client_id}/simulate-call")
+def simulate_client_call(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp: raise HTTPException(status_code=404, detail="Client not found")
+    
+    notes = cp.notes or ""
+    activities = session.exec(select(ActivityLog).where(ActivityLog.client_id == client_id)).all()
+    act_str = "\n".join([f"- {a.action}: {a.content}" for a in activities])
+    
+    prompt = f"""You are an expert sales AI. Analyze the following client profile, notes, and activity logs.
+Client: {cp.companyName or cp.projectName}
+Email: {cp.email}
+Keywords: {cp.keywords}
+Notes: {notes}
+Recent Activity:
+{act_str}
+
+Please generate a 3-minute sales call simulation pitch that I can use to talk to them. It should be engaging, addressing their needs, and moving them to the next stage."""
+
+    from modules.llm_engine import get_openai_client
+    openai_client = get_openai_client()
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800
+        )
+        pitch = response.choices[0].message.content
+        
+        call = CallLog(
+            phone_number=cp.phone or "Unknown",
+            duration_seconds=180,
+            summary=f"AI Pitch Simulation for {cp.companyName or cp.projectName}",
+            description=pitch,
+            client_id=client_id,
+        )
+        session.add(call)
+        session.commit()
+        session.refresh(call)
+        return {"ok": True, "call_id": call.id, "pitch": pitch}
+    except Exception as e:
+        print("Error in simulation:", e)
+        raise HTTPException(status_code=500, detail="Failed to simulate call")
+
 @app.get("/clients/{client_id}/competitors/scan")
 def scan_competitors_openai(client_id: int, session: Session = Depends(get_session)):
     import openai
@@ -6289,6 +6333,7 @@ class ContactCreateRequest(BaseModel):
     notes: Optional[str] = None
     tags: Optional[List[str]] = []
     owner_id: Optional[int] = None
+    create_new_lead: Optional[bool] = False
 
 # ---- LEADS API ----
 @app.get("/leads")
@@ -6435,12 +6480,25 @@ def get_contacts(session: Session = Depends(get_session)):
 
 @app.post("/contacts")
 def create_contact(body: ContactCreateRequest, session: Session = Depends(get_session)):
-    contact = Contact(**body.dict())
+    contact_data = body.dict(exclude={"create_new_lead"})
+    contact = Contact(**contact_data)
     if contact.first_name and contact.last_name:
         contact.full_name = f"{contact.first_name} {contact.last_name}"
     elif contact.first_name:
         contact.full_name = contact.first_name
         
+    if body.create_new_lead:
+        lead = Lead(
+            company_name=contact.full_name,
+            email=contact.email,
+            phone=contact.mobile_number,
+            status="New",
+            source="Contact Form"
+        )
+        session.add(lead)
+        session.flush()
+        contact.lead_id = lead.id
+
     session.add(contact)
     session.commit()
     session.refresh(contact)
@@ -6722,6 +6780,39 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
     session.add(m)
     session.commit()
     session.refresh(m)
+
+    to_email = None
+    if m.client_id:
+        c = session.get(ClientProfile, m.client_id)
+        if c: to_email = c.email
+    elif m.lead_id:
+        l = session.get(Lead, m.lead_id)
+        if l: to_email = l.email
+    elif m.contact_id:
+        ct = session.get(Contact, m.contact_id)
+        if ct: to_email = ct.email
+
+    if to_email:
+        try:
+            from modules.email_sender import send_email_outlook
+            dt_str = m.scheduled_at.strftime("%Y-%m-%d %H:%M") if m.scheduled_at else "TBD"
+            subject = f"Meeting Scheduled: {m.title}"
+            content = f"Hello,\n\nA meeting has been scheduled for {dt_str}.\nTopic: {m.title}\n\nThanks,\nSerpHawk CRM"
+            send_email_outlook(to_email, subject, content)
+            
+            session.add(SentEmail(
+                client_id=m.client_id,
+                lead_id=m.lead_id,
+                to_address=to_email,
+                subject=subject,
+                body_content=content,
+                status="Sent",
+                provider="Outlook (Meeting)"
+            ))
+            session.commit()
+        except Exception as e:
+            print("Failed to send meeting email:", e)
+
     return {"meeting": _meeting_dict(m, session)}
 
 @app.get("/meetings/{meeting_id}")
