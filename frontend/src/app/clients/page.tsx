@@ -751,6 +751,7 @@ export default function ClientsPage() {
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm">Try adjusting filters or click "Add Client" to get started.</p>
             </div>
           )}
+        </div>
       </div>
       {/* Modals remain structurally similar, but updated with glassmorphism */}
       <AnimatePresence>
