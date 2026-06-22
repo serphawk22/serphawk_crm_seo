@@ -408,7 +408,6 @@ export default function LeadsPage() {
           </table>
         )}
       </div>
-      </div>
 
       {/* Activity Sidebar */}
       <motion.div
