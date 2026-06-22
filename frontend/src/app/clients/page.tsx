@@ -24,7 +24,8 @@ import {
   XCircle,
   RefreshCw,
   AlertCircle,
-  Sparkles
+  Sparkles,
+  Phone
 } from 'lucide-react';
 import Link from 'next/link';
 import { API_BASE_URL } from '@/config';
@@ -40,7 +41,7 @@ const ClientMapView = dynamic(() => import('./ClientMapView'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-[600px] glass-card rounded-[2.5rem] flex items-center justify-center border border-white/10 dark:border-white/5">
-      <div className="flex flex-col items-center gap-4 text-indigo-500">
+      <div className="flex flex-col items-center gap-4 text-zinc-500">
         <Loader2 className="w-8 h-8 animate-spin" />
         <span className="font-bold">Loading Satellite Map...</span>
       </div>
@@ -427,12 +428,31 @@ export default function ClientsPage() {
     }
   };
 
+  const handleSimulateCall = async (clientId: number) => {
+    setActionLoading(p => ({ ...p, [clientId]: 'call' }));
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${clientId}/simulate-call`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        alert(`AI Pitch Generated:\n\n${data.pitch}`);
+        fetchActivities();
+      } else {
+        alert('Failed to generate simulation');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error connecting to AI');
+    } finally {
+      setActionLoading(p => { const next = { ...p }; delete next[clientId]; return next; });
+    }
+  };
+
   if (loading && clients.length === 0) {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
         <div className="relative w-20 h-20">
-          <div className="absolute inset-0 border-4 border-indigo-100 rounded-full"></div>
-          <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
+          <div className="absolute inset-0 border-4 border-zinc-100 rounded-full"></div>
+          <div className="absolute inset-0 border-4 border-zinc-600 rounded-full border-t-transparent animate-spin"></div>
         </div>
         <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100 animate-pulse">{language === 'es' ? 'Cargando Directorio de Clientes...' : 'Loading Client Directory...'}</h2>
       </div>
@@ -448,31 +468,31 @@ export default function ClientsPage() {
       >
       <motion.div variants={itemVariants} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10 w-full glass-card p-6 rounded-[2rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)]">
         <div>
-          <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-900 tracking-tight">{t("clients.title")}</h1>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-zinc-100 tracking-tight">{t("clients.title")}</h1>
           <p className="text-slate-500 dark:text-zinc-400 font-medium text-sm mt-1">{t("clients.description")}</p>
         </div>
         <div className="flex gap-2 w-full md:w-auto flex-wrap">
           <button 
             onClick={() => window.open(`${API_BASE_URL}/clients/export-csv`, '_blank')}
-            className="flex-1 md:flex-none px-4 py-2.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl font-bold hover:bg-emerald-500/20 transition-all flex items-center justify-center gap-2 text-sm"
+            className="flex-1 md:flex-none px-4 py-2.5 bg-zinc-500/10 border border-zinc-500/30 text-zinc-400 rounded-xl font-bold hover:bg-zinc-500/20 transition-all flex items-center justify-center gap-2 text-sm"
           >
             <Download className="w-4 h-4" /> Export CSV
           </button>
           <button 
             onClick={() => { setIsSheetImportOpen(true); setSheetImportState('idle'); setSheetPreview([]); setSheetUrl(''); setSheetImportResult(null); }}
-            className="flex-1 md:flex-none px-4 py-2.5 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 rounded-xl font-bold hover:bg-cyan-500/20 transition-all flex items-center justify-center gap-2 text-sm"
+            className="flex-1 md:flex-none px-4 py-2.5 bg-slate-500/10 border border-slate-500/30 text-slate-400 rounded-xl font-bold hover:bg-slate-500/20 transition-all flex items-center justify-center gap-2 text-sm"
           >
             <FileSpreadsheet className="w-4 h-4" /> Import Sheet
           </button>
           <button 
             onClick={() => setIsOCRModalOpen(true)}
-            className="flex-1 md:flex-none px-5 py-2.5 bg-white dark:bg-zinc-900/70 backdrop-blur-md text-indigo-700 border border-indigo-100 rounded-xl font-bold hover:bg-white dark:bg-zinc-900 hover:shadow-md transition-all flex items-center justify-center gap-2"
+            className="flex-1 md:flex-none px-5 py-2.5 bg-white dark:bg-zinc-900/70 backdrop-blur-md text-zinc-700 border border-zinc-100 rounded-xl font-bold hover:bg-white dark:bg-zinc-900 hover:shadow-md transition-all flex items-center justify-center gap-2"
           >
             <FileScan className="w-5 h-5" /> <span className="hidden sm:inline">{t("clients.ocr_scan")}</span>
           </button>
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="flex-1 md:flex-none px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white rounded-xl font-bold shadow-[0_8px_20px_rgba(79,70,229,0.3)] hover:shadow-[0_8px_30px_rgba(79,70,229,0.5)] hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
+            className="flex-1 md:flex-none px-5 py-2.5 bg-gradient-to-r from-zinc-600 to-slate-600 text-white rounded-xl font-bold shadow-[0_8px_20px_rgba(79,70,229,0.3)] hover:shadow-[0_8px_30px_rgba(79,70,229,0.5)] hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
           >
             <Plus className="w-5 h-5" /> {t("clients.add_client")}
           </button>
@@ -494,7 +514,7 @@ export default function ClientsPage() {
       {/* KPI Cards */}
       <motion.div variants={itemVariants} className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
         <div className="glass-card p-6 rounded-[2rem] shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Users className="w-16 h-16 text-indigo-600" /></div>
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Users className="w-16 h-16 text-zinc-600" /></div>
           <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-2">{t("clients.total_accounts")}</p>
           <p className="text-4xl font-black text-slate-800 dark:text-zinc-100">{totalCount}</p>
           {loadTime !== null && (
@@ -519,7 +539,7 @@ export default function ClientsPage() {
         <div className="xl:absolute xl:inset-0 w-full h-full">
           <div className="glass-card rounded-[2.5rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)] p-6 h-full flex flex-col">
           <div className="flex items-center gap-3 mb-6 shrink-0">
-            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl"><Activity className="w-5 h-5" /></div>
+            <div className="p-2 bg-zinc-100 text-zinc-600 rounded-xl"><Activity className="w-5 h-5" /></div>
             <h3 className="text-lg font-black text-slate-800 dark:text-zinc-100">{language === 'es' ? 'Actividad Reciente' : 'Recent Activity'}</h3>
           </div>
           <div ref={scrollRef} className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar">
@@ -529,10 +549,10 @@ export default function ClientsPage() {
               activities.map(act => (
                 <Link href={act.clientId ? `/admin/clients/${act.clientId}` : '#'} key={act.id} className="block p-4 bg-white dark:bg-zinc-900/60 hover:bg-white dark:bg-zinc-900 rounded-2xl border border-white/80 shadow-sm hover:shadow-md transition-all group">
                   <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-bold px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg">{act.action}</span>
+                    <span className="text-xs font-bold px-2 py-1 bg-zinc-50 text-zinc-600 rounded-lg">{act.action}</span>
                     <span className="text-[10px] text-slate-400 font-medium">{new Date(act.createdAt).toLocaleDateString()}</span>
                   </div>
-                  <p className="text-sm font-semibold text-slate-700 dark:text-zinc-200 group-hover:text-indigo-600 transition-colors line-clamp-2">{act.content}</p>
+                  <p className="text-sm font-semibold text-slate-700 dark:text-zinc-200 group-hover:text-zinc-600 transition-colors line-clamp-2">{act.content}</p>
                   {act.details && (
                     <p className="text-xs text-slate-500 dark:text-zinc-400 mt-2 line-clamp-1">{act.details}</p>
                   )}
@@ -596,11 +616,11 @@ export default function ClientsPage() {
             </button>
           </div>
           <div className="relative w-full md:w-[28rem]">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-400" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
             <input 
               type="text" 
               placeholder={t("clients.search_placeholder")} 
-              className="w-full pl-12 pr-4 py-3 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-medium text-slate-700 dark:text-zinc-200 placeholder:text-slate-400 shadow-sm"
+              className="w-full pl-12 pr-4 py-3 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/50 focus:border-zinc-500 transition-all font-medium text-slate-700 dark:text-zinc-200 placeholder:text-slate-400 shadow-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -611,7 +631,7 @@ export default function ClientsPage() {
               onClick={() => { setFilter('All'); setPage(1); }}
               className={cn(
                 "px-5 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-colors",
-                filter === 'All' ? "bg-indigo-600 text-white shadow-md" : "bg-black/5 dark:bg-white/5 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/10"
+                filter === 'All' ? "bg-zinc-600 text-white shadow-md" : "bg-black/5 dark:bg-white/5 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/10"
               )}
             >
               {t("clients.all_hubs")}
@@ -622,7 +642,7 @@ export default function ClientsPage() {
                 onClick={() => { setFilter(stat.name); setPage(1); }}
                 className={cn(
                   "px-5 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-colors",
-                  filter === stat.name ? "bg-indigo-600 text-white shadow-md" : "bg-black/5 dark:bg-white/5 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/10"
+                  filter === stat.name ? "bg-zinc-600 text-white shadow-md" : "bg-black/5 dark:bg-white/5 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/10"
                 )}
               >
                 {stat.name}
@@ -656,6 +676,7 @@ export default function ClientsPage() {
                         actions={[
                           { label: 'Open in New Tab', icon: <ExternalLink className="w-4 h-4" />, onClick: () => window.open(`/admin/clients/${client.id}`, '_blank') },
                           { label: 'Open Client', icon: <ChevronRight className="w-4 h-4" />, onClick: () => router.push(`/admin/clients/${client.id}`) },
+                          { label: 'AI Call Pitch', icon: <Phone className="w-4 h-4" />, onClick: () => handleSimulateCall(client.id) },
                           { label: 'Assign Owner', icon: <Users className="w-4 h-4" />, onClick: () => alert('Assign Owner feature coming soon') },
                           { label: 'View Activity', icon: <Activity className="w-4 h-4" />, onClick: () => router.push(`/admin/clients/${client.id}?tab=activity`) },
                           { label: 'Copy Client ID', icon: <CheckCircle2 className="w-4 h-4" />, onClick: () => navigator.clipboard.writeText(client.id.toString()) },
@@ -672,7 +693,7 @@ export default function ClientsPage() {
                         >
                           <td className="px-6 py-4">
                             <div className="flex flex-col">
-                              <span className="font-bold text-slate-800 dark:text-zinc-100 text-sm group-hover:text-indigo-600 transition-colors line-clamp-1">
+                              <span className="font-bold text-slate-800 dark:text-zinc-100 text-sm group-hover:text-zinc-600 transition-colors line-clamp-1">
                                 {client.companyName || client.projectName || client.email || 'Unnamed Client'}
                               </span>
                               {client.email && (
@@ -687,7 +708,7 @@ export default function ClientsPage() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                              <div className="w-6 h-6 rounded-full bg-zinc-500/10 border border-zinc-500/30 flex items-center justify-center text-zinc-400 shrink-0">
                                 <Users className="w-3 h-3" />
                               </div>
                               <span className="text-sm font-medium text-slate-700 dark:text-zinc-200 truncate max-w-[120px]">
@@ -716,7 +737,7 @@ export default function ClientsPage() {
                           <td className="px-6 py-4">
                              <div className="flex flex-col gap-1.5 w-[150px]">
                                {client.services_requested && <span title={parseServices(client.services_requested) || ''} className="px-2 py-1 bg-sky-500/10 border border-sky-500/30 text-sky-400 rounded-md text-[10px] font-bold block truncate w-full">Req: {parseServices(client.services_requested)}</span>}
-                               {client.services_offered && <span title={parseServices(client.services_offered) || ''} className="px-2 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-md text-[10px] font-bold block truncate w-full">Off: {parseServices(client.services_offered)}</span>}
+                               {client.services_offered && <span title={parseServices(client.services_offered) || ''} className="px-2 py-1 bg-zinc-500/10 border border-zinc-500/30 text-zinc-400 rounded-md text-[10px] font-bold block truncate w-full">Off: {parseServices(client.services_offered)}</span>}
                              </div>
                           </td>
                           <td className="px-6 py-4 text-right">
@@ -724,7 +745,7 @@ export default function ClientsPage() {
                               <button 
                                 onClick={e => { e.preventDefault(); e.stopPropagation(); setExpandedRowId(p => p === client.id ? null : client.id); }} 
                                 title="Quick Actions" 
-                                className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-950 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
+                                className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-950 hover:bg-zinc-50 text-slate-400 hover:text-zinc-600 transition-colors"
                               >
                                 <ChevronRight className={cn("w-4 h-4 transition-transform", expandedRowId === client.id && "rotate-90")} />
                               </button>
@@ -751,7 +772,7 @@ export default function ClientsPage() {
                                   <button
                                     onClick={() => handleQuickAction(client.id, 'analyse')}
                                     disabled={!!actionLoading[client.id]}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-100 text-indigo-700 text-sm font-bold hover:bg-indigo-200 transition-colors"
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 text-zinc-700 text-sm font-bold hover:bg-zinc-200 transition-colors"
                                   >
                                     {actionLoading[client.id] === 'analyse' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
                                     Analyse Client
@@ -759,7 +780,7 @@ export default function ClientsPage() {
                                   <button
                                     onClick={() => handleQuickAction(client.id, 'extract')}
                                     disabled={!!actionLoading[client.id]}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 text-sm font-bold hover:bg-emerald-200 transition-colors"
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 text-zinc-700 text-sm font-bold hover:bg-zinc-200 transition-colors"
                                   >
                                     {actionLoading[client.id] === 'extract' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
                                     Extract Services
@@ -794,7 +815,7 @@ export default function ClientsPage() {
               {filteredClients.length === 0 && (
                 <div className="py-20 flex flex-col items-center justify-center text-center">
                   <div className="w-16 h-16 bg-black/5 dark:bg-white/5 rounded-full flex items-center justify-center mb-4 shadow-sm">
-                     <Search className="w-8 h-8 text-indigo-300" />
+                     <Search className="w-8 h-8 text-zinc-300" />
                   </div>
                   <h3 className="text-lg font-bold text-slate-700 dark:text-zinc-200">{language === 'es' ? 'No se encontraron clientes' : 'No clients found'}</h3>
                   <p className="text-slate-500 dark:text-zinc-400 mt-1 text-sm font-medium max-w-sm">{language === 'es' ? 'Intente ajustar su búsqueda.' : 'Try adjusting your search query or filters.'}</p>
@@ -821,7 +842,7 @@ export default function ClientsPage() {
                   <div className="p-3 flex-1 overflow-y-auto space-y-3 min-h-[200px] custom-scrollbar">
                     {colClients.map(client => (
                       <motion.div key={client.id} layoutId={`client-${client.id}`} onClick={() => router.push(`/admin/clients/${client.id}`)}
-                        className="p-4 bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-black/10 dark:border-white/10 cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400 transition-colors group">
+                        className="p-4 bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-black/10 dark:border-white/10 cursor-pointer hover:border-zinc-500 dark:hover:border-zinc-400 transition-colors group">
                         <div className="font-bold text-slate-900 dark:text-white text-sm line-clamp-1">{client.companyName || client.projectName || client.email}</div>
                         {client.assignedEmployeeName && <div className="text-[11px] text-slate-500 mt-2 flex items-center gap-1"><Users className="w-3 h-3"/>{client.assignedEmployeeName}</div>}
                       </motion.div>
@@ -921,16 +942,16 @@ export default function ClientsPage() {
               initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
               className="bg-white dark:bg-zinc-900/80 backdrop-blur-2xl border border-white rounded-[2rem] shadow-2xl w-full max-w-lg p-8 text-center relative overflow-hidden"
             >
-               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-indigo-500 to-cyan-500"></div>
+               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-zinc-500 to-slate-500"></div>
                <div className="flex justify-between items-center mb-8">
                  <h2 className="text-2xl font-black flex items-center gap-3 text-slate-800 dark:text-zinc-100">
-                    <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><FileScan className="w-6 h-6" /></div>
+                    <div className="p-2 bg-zinc-50 rounded-xl text-zinc-600"><FileScan className="w-6 h-6" /></div>
                     {language === 'es' ? 'Escaneo Inteligente' : 'Smart Scan'}
                  </h2>
                  <button onClick={() => setIsOCRModalOpen(false)} className="w-10 h-10 bg-white dark:bg-zinc-900 shadow-sm rounded-full flex items-center justify-center text-slate-400 hover:text-slate-800 dark:text-zinc-100 transition-colors">&times;</button>
                </div>
                
-               <div className="border-2 border-dashed border-indigo-200/50 rounded-3xl p-12 flex flex-col items-center justify-center bg-white dark:bg-zinc-900/50 relative hover:bg-white dark:bg-zinc-900/80 hover:border-indigo-400 transition-all group">
+               <div className="border-2 border-dashed border-zinc-200/50 rounded-3xl p-12 flex flex-col items-center justify-center bg-white dark:bg-zinc-900/50 relative hover:bg-white dark:bg-zinc-900/80 hover:border-zinc-400 transition-all group">
                    <input 
                      type="file" 
                      accept="image/*"
@@ -940,13 +961,13 @@ export default function ClientsPage() {
                    />
                    
                    {ocrLoading ? (
-                     <div className="flex flex-col items-center justify-center text-indigo-600">
+                     <div className="flex flex-col items-center justify-center text-zinc-600">
                        <Loader2 className="w-12 h-12 animate-spin mb-4" />
                        <p className="font-bold text-lg">{language === 'es' ? 'Extrayendo Datos...' : 'Extracting Data...'}</p>
-                       <p className="text-xs text-indigo-400 mt-1 font-medium">{language === 'es' ? 'El motor neuronal está procesando la imagen' : 'Neural engine is processing the image'}</p>
+                       <p className="text-xs text-zinc-400 mt-1 font-medium">{language === 'es' ? 'El motor neuronal está procesando la imagen' : 'Neural engine is processing the image'}</p>
                      </div>
                    ) : (
-                     <div className="flex flex-col items-center justify-center text-slate-500 dark:text-zinc-400 group-hover:text-indigo-600 transition-colors">
+                     <div className="flex flex-col items-center justify-center text-slate-500 dark:text-zinc-400 group-hover:text-zinc-600 transition-colors">
                        <UploadCloud className="w-12 h-12 mb-4" />
                        <p className="font-bold text-lg text-slate-700 dark:text-zinc-200">{language === 'es' ? 'Suelte la Tarjeta de Visita Aquí' : 'Drop Visiting Card Here'}</p>
                        <p className="text-xs mt-2 font-medium">{language === 'es' ? 'Extrae Nombre, Email, Sitio Web automáticamente' : 'Auto-extracts Name, Email, Website'}</p>
@@ -977,46 +998,46 @@ export default function ClientsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-700 dark:text-zinc-200 uppercase tracking-widest pl-1">{language === 'es' ? 'Nombre de Empresa' : 'Company Name'}</label>
-                      <input required className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm font-medium" value={formData.companyName} onChange={e => setFormData({...formData, companyName: e.target.value})} />
+                      <input required className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium" value={formData.companyName} onChange={e => setFormData({...formData, companyName: e.target.value})} />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-700 dark:text-zinc-200 uppercase tracking-widest pl-1">{language === 'es' ? 'URL del Sitio Web' : 'Website URL'}</label>
                       <div className="flex gap-2">
-                        <input required className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm font-medium" value={formData.websiteUrl} onChange={e => setFormData({...formData, websiteUrl: e.target.value})} />
-                        <button type="button" onClick={handleAutofill} disabled={isAutofilling} className="px-4 py-3 bg-indigo-50 text-indigo-600 rounded-2xl font-bold border border-indigo-100 hover:bg-indigo-100 transition-all shadow-sm flex items-center justify-center min-w-[120px] whitespace-nowrap">
+                        <input required className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium" value={formData.websiteUrl} onChange={e => setFormData({...formData, websiteUrl: e.target.value})} />
+                        <button type="button" onClick={handleAutofill} disabled={isAutofilling} className="px-4 py-3 bg-zinc-50 text-zinc-600 rounded-2xl font-bold border border-zinc-100 hover:bg-zinc-100 transition-all shadow-sm flex items-center justify-center min-w-[120px] whitespace-nowrap">
                           {isAutofilling ? <Loader2 className="w-5 h-5 animate-spin" /> : <>🪄 Autofill</>}
                         </button>
                       </div>
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-700 dark:text-zinc-200 uppercase tracking-widest pl-1">Email</label>
-                      <input required type="email" className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm font-medium" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                      <input required type="email" className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-700 dark:text-zinc-200 uppercase tracking-widest pl-1">{language === 'es' ? 'Nombre del Proyecto' : 'Project Name'}</label>
-                      <input className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm font-medium" value={formData.projectName} onChange={e => setFormData({...formData, projectName: e.target.value})} />
+                      <input className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium" value={formData.projectName} onChange={e => setFormData({...formData, projectName: e.target.value})} />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-700 dark:text-zinc-200 uppercase tracking-widest pl-1">{language === 'es' ? 'Nombre GMB' : 'GMB Name'}</label>
-                      <input className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm font-medium" value={formData.gmbName} onChange={e => setFormData({...formData, gmbName: e.target.value})} />
+                      <input className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium" value={formData.gmbName} onChange={e => setFormData({...formData, gmbName: e.target.value})} />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-700 dark:text-zinc-200 uppercase tracking-widest pl-1">{language === 'es' ? 'Estrategia SEO' : 'SEO Strategy'}</label>
-                      <input className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm font-medium" value={formData.seoStrategy} onChange={e => setFormData({...formData, seoStrategy: e.target.value})} />
+                      <input className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium" value={formData.seoStrategy} onChange={e => setFormData({...formData, seoStrategy: e.target.value})} />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-700 dark:text-zinc-200 uppercase tracking-widest pl-1">{language === 'es' ? 'Lema' : 'Tagline'}</label>
-                    <input className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm font-medium" value={formData.tagline} onChange={e => setFormData({...formData, tagline: e.target.value})} />
+                    <input className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium" value={formData.tagline} onChange={e => setFormData({...formData, tagline: e.target.value})} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-700 dark:text-zinc-200 uppercase tracking-widest pl-1">{language === 'es' ? 'Palabras Clave Objetivo (separadas por coma)' : 'Target Keywords (comma separated)'}</label>
-                    <textarea className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm font-medium min-h-[100px]" value={formData.targetKeywords} onChange={e => setFormData({...formData, targetKeywords: e.target.value})} />
+                    <textarea className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium min-h-[100px]" value={formData.targetKeywords} onChange={e => setFormData({...formData, targetKeywords: e.target.value})} />
                   </div>
                   
                   <div className="pt-6 flex justify-end gap-3 border-t border-slate-100 dark:border-zinc-800">
                     <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:bg-zinc-950 transition-colors shadow-sm">{language === 'es' ? 'Cancelar' : 'Cancel'}</button>
-                    <button type="submit" className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white rounded-xl font-bold hover:shadow-[0_8px_30px_rgba(79,70,229,0.3)] shadow-[0_4px_15px_rgba(79,70,229,0.2)] hover:-translate-y-0.5 transition-all">{language === 'es' ? 'Crear Cliente' : 'Create Client'}</button>
+                    <button type="submit" className="px-8 py-3 bg-gradient-to-r from-zinc-600 to-slate-600 text-white rounded-xl font-bold hover:shadow-[0_8px_30px_rgba(79,70,229,0.3)] shadow-[0_4px_15px_rgba(79,70,229,0.2)] hover:-translate-y-0.5 transition-all">{language === 'es' ? 'Crear Cliente' : 'Create Client'}</button>
                   </div>
                 </form>
               </div>
@@ -1039,7 +1060,7 @@ export default function ClientsPage() {
               {/* Header */}
               <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-cyan-500/20 text-cyan-400 rounded-xl">
+                  <div className="p-2.5 bg-slate-500/20 text-slate-400 rounded-xl">
                     <FileSpreadsheet className="w-5 h-5" />
                   </div>
                   <div>
@@ -1062,7 +1083,7 @@ export default function ClientsPage() {
                           value={sheetUrl}
                           onChange={e => setSheetUrl(e.target.value)}
                           placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv"
-                          className="flex-1 px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white placeholder-slate-500 text-sm outline-none focus:border-cyan-500 transition-all"
+                          className="flex-1 px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white placeholder-slate-500 text-sm outline-none focus:border-slate-500 transition-all"
                         />
                         <button
                           onClick={async () => {
@@ -1095,7 +1116,7 @@ export default function ClientsPage() {
                             }
                           }}
                           disabled={sheetImportState === 'fetching'}
-                          className="px-5 py-3 bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 rounded-xl font-bold hover:bg-cyan-500/30 transition-all flex items-center gap-2 text-sm disabled:opacity-50"
+                          className="px-5 py-3 bg-slate-500/20 border border-slate-500/30 text-slate-400 rounded-xl font-bold hover:bg-slate-500/30 transition-all flex items-center gap-2 text-sm disabled:opacity-50"
                         >
                           {sheetImportState === 'fetching' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                           Preview
@@ -1109,7 +1130,7 @@ export default function ClientsPage() {
                       <textarea
                         rows={8}
                         placeholder="S.No,Client Name,Website URL,Email,Contact,Country,Services,Description&#10;1,Acme Corp,https://acme.com,..."
-                        className="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white placeholder-slate-600 text-xs font-mono outline-none focus:border-cyan-500 transition-all resize-none"
+                        className="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white placeholder-slate-600 text-xs font-mono outline-none focus:border-slate-500 transition-all resize-none"
                         onChange={async e => {
                           const text = e.target.value.trim();
                           if (!text) return;
@@ -1136,7 +1157,7 @@ export default function ClientsPage() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-white font-bold">
-                        <Sparkles className="w-4 h-4 text-cyan-400" />
+                        <Sparkles className="w-4 h-4 text-slate-400" />
                         {sheetPreview.length} rows detected – Preview (first 5 shown)
                       </div>
                       <button onClick={() => setSheetImportState('idle')} className="text-xs text-slate-400 hover:text-white">← Back</button>
@@ -1184,7 +1205,7 @@ export default function ClientsPage() {
                             setSheetImportState('preview');
                           }
                         }}
-                        className="flex-1 py-3.5 bg-gradient-to-r from-cyan-600 to-indigo-600 text-white rounded-xl font-black hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
+                        className="flex-1 py-3.5 bg-gradient-to-r from-slate-600 to-zinc-600 text-white rounded-xl font-black hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
                       >
                         <UploadCloud className="w-4 h-4" /> Import All {sheetPreview.length} Clients + Auto-Research
                       </button>
@@ -1196,9 +1217,9 @@ export default function ClientsPage() {
                 {sheetImportState === 'importing' && (
                   <div className="flex flex-col items-center justify-center py-16 gap-5">
                     <div className="relative w-20 h-20">
-                      <div className="absolute inset-0 border-4 border-cyan-500/20 rounded-full" />
-                      <div className="absolute inset-0 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                      <FileSpreadsheet className="absolute inset-0 m-auto w-7 h-7 text-cyan-400" />
+                      <div className="absolute inset-0 border-4 border-slate-500/20 rounded-full" />
+                      <div className="absolute inset-0 border-4 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                      <FileSpreadsheet className="absolute inset-0 m-auto w-7 h-7 text-slate-400" />
                     </div>
                     <h3 className="text-xl font-black text-white">Importing & Running AI Research...</h3>
                     <p className="text-slate-400 text-sm text-center max-w-sm">Adding all rows as new clients. Duplicate detection is active. AI will auto-research each website in the background.</p>
@@ -1209,11 +1230,11 @@ export default function ClientsPage() {
                 {sheetImportState === 'done' && sheetImportResult && (
                   <div className="space-y-5">
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-5 flex items-center gap-4">
-                        <CheckCircle2 className="w-8 h-8 text-emerald-400 shrink-0" />
+                      <div className="bg-zinc-500/10 border border-zinc-500/30 rounded-2xl p-5 flex items-center gap-4">
+                        <CheckCircle2 className="w-8 h-8 text-zinc-400 shrink-0" />
                         <div>
-                          <p className="text-3xl font-black text-emerald-400">{sheetImportResult.added}</p>
-                          <p className="text-xs text-emerald-400/70 font-bold uppercase tracking-wider mt-1">Clients Added</p>
+                          <p className="text-3xl font-black text-zinc-400">{sheetImportResult.added}</p>
+                          <p className="text-xs text-zinc-400/70 font-bold uppercase tracking-wider mt-1">Clients Added</p>
                         </div>
                       </div>
                       <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 flex items-center gap-4">
@@ -1225,7 +1246,7 @@ export default function ClientsPage() {
                       </div>
                     </div>
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-                      <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-cyan-400" /> AI Auto-Research Running in Background</p>
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-slate-400" /> AI Auto-Research Running in Background</p>
                       <p className="text-sm text-slate-300">Each imported client's website is being scraped and researched automatically. Company details, services, and opportunities will populate on each client page within moments.</p>
                     </div>
                     {sheetImportResult.added_clients.length > 0 && (
@@ -1234,7 +1255,7 @@ export default function ClientsPage() {
                         <div className="divide-y divide-white/5 max-h-48 overflow-y-auto">
                           {sheetImportResult.added_clients.map((c, i) => (
                             <div key={i} className="px-4 py-2.5 flex items-center gap-3">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <CheckCircle2 className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                               <span className="text-sm text-white font-medium">{c.company || c.website}</span>
                               {c.website && <span className="text-xs text-slate-500 ml-auto truncate max-w-[180px]">{c.website}</span>}
                             </div>
@@ -1243,7 +1264,7 @@ export default function ClientsPage() {
                       </div>
                     )}
                     <div className="flex gap-3">
-                      <button onClick={() => { setIsSheetImportOpen(false); }} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:-translate-y-0.5 transition-all">
+                      <button onClick={() => { setIsSheetImportOpen(false); }} className="flex-1 py-3 bg-zinc-600 text-white rounded-xl font-bold hover:-translate-y-0.5 transition-all">
                         View Client List
                       </button>
                     </div>

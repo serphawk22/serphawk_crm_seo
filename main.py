@@ -6763,10 +6763,14 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
     if to_email:
         try:
             from modules.email_sender import send_email_outlook
+            import os
             dt_str = m.scheduled_at.strftime("%Y-%m-%d %H:%M") if m.scheduled_at else "TBD"
             subject = f"Meeting Scheduled: {m.title}"
             content = f"Hello,\n\nA meeting has been scheduled for {dt_str}.\nTopic: {m.title}\n\nThanks,\nSerpHawk CRM"
-            send_email_outlook(to_email, subject, content)
+            sender = os.environ.get("SENDER_EMAIL", "")
+            password = os.environ.get("SENDER_PASSWORD", "")
+            if sender and password:
+                send_email_outlook(to_email, subject, content, sender, password)
             
             session.add(SentEmail(
                 client_id=m.client_id,
