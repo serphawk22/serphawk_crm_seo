@@ -34,6 +34,7 @@ import { useRole } from '@/context/RoleContext';
 import PageGuide from '@/components/PageGuide';
 import dynamic from 'next/dynamic';
 import { ContextMenu } from '@/components/ContextMenu';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const ClientMapView = dynamic(() => import('./ClientMapView'), {
   ssr: false,
@@ -107,7 +108,7 @@ export default function ClientsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [loadTime, setLoadTime] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'map' | 'kanban' | 'graph' | 'pivot'>('list');
   const [isSheetImportOpen, setIsSheetImportOpen] = useState(false);
   const [sheetUrl, setSheetUrl] = useState('');
   const [sheetPreview, setSheetPreview] = useState<any[]>([]);
@@ -555,7 +556,34 @@ export default function ClientsPage() {
                 viewMode === 'list' ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-md" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
               )}
             >
-              List View
+              List
+            </button>
+            <button
+              onClick={() => setViewMode('kanban')}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                viewMode === 'kanban' ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-md" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
+              )}
+            >
+              Kanban
+            </button>
+            <button
+              onClick={() => setViewMode('graph')}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                viewMode === 'graph' ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-md" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
+              )}
+            >
+              Graph
+            </button>
+            <button
+              onClick={() => setViewMode('pivot')}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                viewMode === 'pivot' ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-md" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
+              )}
+            >
+              Pivot
             </button>
             <button
               onClick={() => setViewMode('map')}
@@ -564,7 +592,7 @@ export default function ClientsPage() {
                 viewMode === 'map' ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-md" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
               )}
             >
-              Map View
+              Map
             </button>
           </div>
           <div className="relative w-full md:w-[28rem]">
@@ -775,6 +803,77 @@ export default function ClientsPage() {
             </div>
           </div>
         </div>
+        )}
+
+        {viewMode === 'kanban' && (
+          <div className="flex gap-4 p-6 overflow-x-auto h-[600px] items-start custom-scrollbar">
+            {statuses.map(status => {
+              const colClients = filteredClients.filter(c => c.status === status.name);
+              return (
+                <div key={status.id} className="w-80 shrink-0 flex flex-col bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-2xl max-h-full">
+                  <div className="p-4 font-bold text-slate-800 dark:text-zinc-100 flex items-center justify-between border-b border-black/10 dark:border-white/10">
+                    <span className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full shadow-[0_0_4px_currentColor]" style={{ backgroundColor: status.color.replace('bg-', '') || '#6366f1' }}></div>
+                      {status.name}
+                    </span>
+                    <span className="px-2.5 py-1 rounded-full bg-black/10 dark:bg-white/10 text-xs text-slate-600 dark:text-zinc-300">{colClients.length}</span>
+                  </div>
+                  <div className="p-3 flex-1 overflow-y-auto space-y-3 min-h-[200px] custom-scrollbar">
+                    {colClients.map(client => (
+                      <motion.div key={client.id} layoutId={`client-${client.id}`} onClick={() => router.push(`/admin/clients/${client.id}`)}
+                        className="p-4 bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-black/10 dark:border-white/10 cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400 transition-colors group">
+                        <div className="font-bold text-slate-900 dark:text-white text-sm line-clamp-1">{client.companyName || client.projectName || client.email}</div>
+                        {client.assignedEmployeeName && <div className="text-[11px] text-slate-500 mt-2 flex items-center gap-1"><Users className="w-3 h-3"/>{client.assignedEmployeeName}</div>}
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {viewMode === 'graph' && (
+          <div className="p-8 h-full min-h-[600px]">
+            <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl shadow-sm border border-black/10 dark:border-white/10 h-[500px]">
+              <h3 className="text-lg font-bold mb-6 text-slate-900 dark:text-white">Clients by Status</h3>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={statuses.map(s => ({ name: s.name, count: filteredClients.filter(c => c.status === s.name).length }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} opacity={0.2} />
+                  <XAxis dataKey="name" stroke="#888" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#888" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip cursor={{fill: 'rgba(99,102,241,0.05)'}} contentStyle={{backgroundColor: 'var(--background)', borderColor: 'var(--border)', color: 'var(--text-primary)'}} />
+                  <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {viewMode === 'pivot' && (
+          <div className="p-6 h-full overflow-auto min-h-[600px] custom-scrollbar">
+            <table className="w-full text-left border-collapse bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm">
+              <thead>
+                <tr className="bg-black/5 dark:bg-white/5 border-b border-black/10 dark:border-white/10 text-xs uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                  <th className="p-4 font-bold">Assignee \ Status</th>
+                  {statuses.map(s => <th key={s.id} className="p-4 font-bold text-center">{s.name}</th>)}
+                  <th className="p-4 font-bold text-center border-l border-black/10 dark:border-white/10">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black/10 dark:divide-white/10">
+                {Array.from(new Set(filteredClients.map(c => c.assignedEmployeeName || 'Unassigned'))).map(assignee => {
+                  const empClients = filteredClients.filter(c => (c.assignedEmployeeName || 'Unassigned') === assignee);
+                  return (
+                    <tr key={assignee} className="hover:bg-black/5 dark:hover:bg-white/5">
+                      <td className="p-4 font-bold text-slate-900 dark:text-white">{assignee}</td>
+                      {statuses.map(s => <td key={s.id} className="p-4 text-center text-slate-600 dark:text-zinc-300">{empClients.filter(c => c.status === s.name).length || '-'}</td>)}
+                      <td className="p-4 text-center font-bold text-slate-900 dark:text-white border-l border-black/10 dark:border-white/10">{empClients.length}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
 
         {viewMode === 'map' && (
