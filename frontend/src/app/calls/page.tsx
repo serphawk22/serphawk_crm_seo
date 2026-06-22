@@ -165,30 +165,38 @@ function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void
     </div>
   );
 }
-
 export default function CallsPage() {
   const [calls, setCalls] = useState<CallEntry[]>([]);
   const [clients, setClients] = useState<any[]>([]);
+  const [leads, setLeads] = useState<any[]>([]);
+  const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [selectedClient, setSelectedClient] = useState("");
-  const [generatedPitch, setGeneratedPitch] = useState<{clientName: string, pitch: string} | null>(null);
+  const [selectedType, setSelectedType] = useState<"client" | "lead" | "contact">("client");
+  const [selectedEntityId, setSelectedEntityId] = useState("");
+  const [generatedPitch, setGeneratedPitch] = useState<{entityName: string, pitch: string} | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  const fetchCallsAndClients = async () => {
+  const fetchCallsAndEntities = async () => {
     try {
-      const [callsRes, clientsRes] = await Promise.all([
+      const [callsRes, clientsRes, leadsRes, contactsRes] = await Promise.all([
         fetch(`${API_BASE_URL}/calls`),
-        fetch(`${API_BASE_URL}/clients`)
+        fetch(`${API_BASE_URL}/clients`),
+        fetch(`${API_BASE_URL}/leads`),
+        fetch(`${API_BASE_URL}/contacts`)
       ]);
       const callsData = await callsRes.json();
       const clientsData = await clientsRes.json();
+      const leadsData = await leadsRes.json();
+      const contactsData = await contactsRes.json();
       setCalls(callsData.calls || []);
       setClients(clientsData.clients || []);
+      setLeads(leadsData.leads || []);
+      setContacts(contactsData.contacts || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -196,21 +204,30 @@ export default function CallsPage() {
     }
   };
 
-  useEffect(() => { fetchCallsAndClients(); }, []);
+  useEffect(() => { fetchCallsAndEntities(); }, []);
 
   const handleGeneratePitch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedClient) return;
+    if (!selectedEntityId) return;
     setGenerating(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/clients/${selectedClient}/simulate-call`, { method: "POST" });
+      const endpoint = `${API_BASE_URL}/${selectedType}s/${selectedEntityId}/simulate-call`;
+      const res = await fetch(endpoint, { method: "POST" });
       if (res.ok) {
         const data = await res.json();
-        const clientName = clients.find(c => c.id.toString() === selectedClient)?.companyName || 'Unknown Client';
-        setGeneratedPitch({ clientName, pitch: data.pitch });
-        fetchCallsAndClients();
+        let entityName = 'Unknown';
+        if (selectedType === 'client') {
+          entityName = clients.find(c => c.id.toString() === selectedEntityId)?.companyName || 'Unknown Client';
+        } else if (selectedType === 'lead') {
+          entityName = leads.find(l => l.id.toString() === selectedEntityId)?.company_name || 'Unknown Lead';
+        } else if (selectedType === 'contact') {
+          const c = contacts.find(c => c.id.toString() === selectedEntityId);
+          entityName = c ? `${c.first_name} ${c.last_name || ''}`.trim() : 'Unknown Contact';
+        }
+        setGeneratedPitch({ entityName, pitch: data.pitch });
+        fetchCallsAndEntities();
         setShowGenerateModal(false);
-        setSelectedClient("");
+        setSelectedEntityId("");
       }
     } catch (e) {
       console.error(e);
@@ -238,7 +255,7 @@ export default function CallsPage() {
       });
       setForm(EMPTY_FORM);
       setShowModal(false);
-      fetchCallsAndClients();
+      fetchCallsAndEntities();
     } finally {
       setSubmitting(false);
     }
@@ -362,7 +379,7 @@ export default function CallsPage() {
                     transition={{ duration: 0.25 }}
                     style={{ overflow: "hidden" }}
                   >
-                    <CallDetailPanel call={call} onSave={fetchCallsAndClients} />
+                    <CallDetailPanel call={call} onSave={fetchCallsAndEntities} />
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -477,22 +494,42 @@ export default function CallsPage() {
                 Generate AI Call Pitch
               </h2>
               <form onSubmit={handleGeneratePitch} className="space-y-6">
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">🏢 Select Client</label>
-                  <select 
-                    required 
-                    value={selectedClient} 
-                    onChange={(e) => setSelectedClient(e.target.value)}
-                    className="w-full px-4 py-3.5 bg-white dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
-                  >
-                    <option value="" disabled>Select a client...</option>
-                    {clients.map(c => (
-                      <option key={c.id} value={c.id}>{c.companyName || c.projectName || c.email}</option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">🏷️ Type</label>
+                    <select 
+                      value={selectedType} 
+                      onChange={(e) => { setSelectedType(e.target.value as any); setSelectedEntityId(""); }}
+                      className="w-full px-4 py-3.5 bg-white dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
+                    >
+                      <option value="client">Client</option>
+                      <option value="lead">Lead</option>
+                      <option value="contact">Contact</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">👤 Select</label>
+                    <select 
+                      required 
+                      value={selectedEntityId} 
+                      onChange={(e) => setSelectedEntityId(e.target.value)}
+                      className="w-full px-4 py-3.5 bg-white dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
+                    >
+                      <option value="" disabled>Select a {selectedType}...</option>
+                      {selectedType === 'client' && clients.map(c => (
+                        <option key={c.id} value={c.id}>{c.companyName || c.projectName || c.email}</option>
+                      ))}
+                      {selectedType === 'lead' && leads.map(l => (
+                        <option key={l.id} value={l.id}>{l.company_name || l.email}</option>
+                      ))}
+                      {selectedType === 'contact' && contacts.map(c => (
+                        <option key={c.id} value={c.id}>{c.first_name} {c.last_name || ''}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 
-                <button type="submit" disabled={generating || !selectedClient}
+                <button type="submit" disabled={generating || !selectedEntityId}
                   className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl font-bold shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Phone className="w-5 h-5" />}
@@ -516,7 +553,7 @@ export default function CallsPage() {
               <div className="flex justify-between items-center px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
                 <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800 dark:text-white">
                   <Phone className="w-5 h-5 text-green-500" />
-                  AI Call Pitch: {generatedPitch.clientName}
+                  AI Call Pitch: {generatedPitch.entityName}
                 </h2>
                 <button onClick={() => setGeneratedPitch(null)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
                   <X className="w-5 h-5" />
