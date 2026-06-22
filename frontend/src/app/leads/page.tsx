@@ -241,8 +241,6 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      </div>
-
       <div className="flex flex-1 overflow-hidden">
       {/* Table */}
       <div className="flex-1 overflow-auto bg-white dark:bg-[#1e293b]">
