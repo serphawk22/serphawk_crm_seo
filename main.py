@@ -1577,14 +1577,19 @@ def simulate_client_call(client_id: int, session: Session = Depends(get_session)
     cp = session.get(ClientProfile, client_id)
     if not cp: raise HTTPException(status_code=404, detail="Client not found")
     
-    notes = cp.notes or ""
-    activities = session.exec(select(ActivityLog).where(ActivityLog.client_id == client_id)).all()
+    # Fetch related remarks as notes
+    remarks_query = session.exec(select(Remark).where(Remark.clientId == client_id)).all()
+    notes = "\n".join([r.text for r in remarks_query]) if remarks_query else ""
+    activities = session.exec(select(ActivityLog).where(ActivityLog.clientId == client_id)).all()
     act_str = "\n".join([f"- {a.action}: {a.content}" for a in activities])
     
+    email = cp.user.email if cp.user else ""
+    keywords = ", ".join(cp.targetKeywords) if cp.targetKeywords else ""
+
     prompt = f"""You are an expert sales AI. Analyze the following client profile, notes, and activity logs.
 Client: {cp.companyName or cp.projectName}
-Email: {cp.email}
-Keywords: {cp.keywords}
+Email: {email}
+Keywords: {keywords}
 Notes: {notes}
 Recent Activity:
 {act_str}
