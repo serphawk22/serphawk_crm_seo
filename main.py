@@ -1634,6 +1634,19 @@ Please generate a 3-minute sales call simulation pitch that I can use to talk to
         session.add(call)
         session.commit()
         session.refresh(call)
+        
+        # Add Activity
+        act = ActivityLog(
+            action="Call Simulated",
+            method="POST",
+            content=f"Generated AI Call Pitch for {cp.companyName or cp.projectName}",
+            details=pitch[:500] + "..." if len(pitch) > 500 else pitch,
+            client_id=client_id,
+            user_id=1
+        )
+        session.add(act)
+        session.commit()
+        
         return {"ok": True, "call_id": call.id, "pitch": pitch}
     except Exception as e:
         print("Error in simulation:", e)
