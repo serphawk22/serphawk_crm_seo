@@ -23,6 +23,16 @@ interface Lead {
   created_at: string;
 }
 
+interface ActivityLogEntry {
+  id: number;
+  action: string;
+  method: string;
+  content: string;
+  details?: string;
+  leadId: number;
+  createdAt: string;
+}
+
 const INDUSTRIES = [
   "Technology", "Marketing", "E-commerce", "Healthcare", "Finance",
   "Real Estate", "Education", "Manufacturing", "Retail", "Legal",
@@ -59,8 +69,21 @@ export default function LeadsPage() {
   const [form, setForm] = useState({ ...emptyForm });
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('list');
+  const [activities, setActivities] = useState<ActivityLogEntry[]>([]);
 
-  useEffect(() => { fetchLeads(); }, []);
+  useEffect(() => { fetchLeads(); fetchActivities(); }, []);
+
+  const fetchActivities = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/activities`);
+      if (res.ok) {
+        const data = await res.json();
+        setActivities((data.activities || []).filter((a: any) => a.leadId));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const fetchLeads = async () => {
     setLoading(true);
@@ -218,6 +241,7 @@ export default function LeadsPage() {
         </div>
       </div>
 
+      <div className="flex flex-1 overflow-hidden">
       {/* Table */}
       <div className="flex-1 overflow-auto bg-white dark:bg-[#1e293b]">
         {loading ? (
@@ -383,6 +407,36 @@ export default function LeadsPage() {
             </tbody>
           </table>
         )}
+      </div>
+
+      {/* Activity Sidebar */}
+      <motion.div
+        initial="hidden" animate="show"
+        className="w-full xl:w-[400px] shrink-0 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] flex flex-col h-full overflow-hidden"
+      >
+        <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3 shrink-0">
+          <div className="p-2 bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded-xl"><Zap className="w-5 h-5" /></div>
+          <h3 className="text-lg font-bold text-slate-800 dark:text-white">Recent Activity</h3>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {activities.length === 0 ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-8">No activity yet.</p>
+          ) : (
+            activities.map(act => (
+              <Link href={act.leadId ? `/leads/${act.leadId}` : '#'} key={act.id} className="block p-4 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 transition-colors group">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-xs font-bold px-2 py-1 bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded-lg">{act.action}</span>
+                  <span className="text-[10px] text-slate-400 font-medium">{new Date(act.createdAt).toLocaleDateString()}</span>
+                </div>
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">{act.content}</p>
+                {act.details && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 line-clamp-1">{act.details}</p>
+                )}
+              </Link>
+            ))
+          )}
+        </div>
+      </motion.div>
       </div>
 
       {/* ADD / EDIT MODAL */}
