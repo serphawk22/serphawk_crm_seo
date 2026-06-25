@@ -1610,15 +1610,29 @@ def simulate_client_call(client_id: int, session: Session = Depends(get_session)
     email = cp.user.email if cp.user else ""
     keywords = ", ".join(cp.targetKeywords) if cp.targetKeywords else ""
 
-    prompt = f"""You are an expert sales AI. Analyze the following client profile, notes, and activity logs.
-Client: {cp.companyName or cp.projectName}
+    prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
+Your task is to write a highly tailored, direct sales script to be read over the phone to this specific client. 
+DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
+
+Client Profile:
+Company/Project: {cp.companyName or cp.projectName or 'Unknown'}
 Email: {email}
-Keywords: {keywords}
-Notes: {notes}
-Recent Activity:
+Keywords they are targeting: {keywords}
+Services they need/offer: {cp.services_offered or 'SEO and Marketing Services'}
+
+Notes from our CRM:
+{notes}
+
+Recent Activity with them:
 {act_str}
 
-Please generate a 3-minute sales call simulation pitch that I can use to talk to them. It should be engaging, addressing their needs, and moving them to the next stage."""
+Instructions:
+1. Write the exact word-for-word script that the sales person will read on the call.
+2. Directly reference their specific company name, their services/keywords, and especially any past notes or activities.
+3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
+4. Make it conversational, persuasive, and professional.
+5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
+6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
 
     from modules.llm_engine import get_openai_client
     try:
@@ -7469,7 +7483,45 @@ def simulate_lead_call(lead_id: int, session: Session = Depends(get_session)):
     if not lead: raise HTTPException(status_code=404, detail="Lead not found")
     
     client_name = lead.company_name or "Valued Lead"
-    pitch = _generate_sales_pitch(client_name)
+    industry = lead.industry or "Unknown Industry"
+    notes = lead.notes or "No prior notes."
+    
+    prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
+Your task is to write a highly tailored, direct sales script to be read over the phone to this specific lead. 
+DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
+
+Lead Profile:
+Company Name: {client_name}
+Industry: {industry}
+Website: {lead.website or 'Unknown'}
+Source: {lead.source or 'Unknown'}
+
+Notes from our CRM:
+{notes}
+
+Recent Activity:
+{lead.last_activity or 'No recent activity'}
+
+Instructions:
+1. Write the exact word-for-word script that the sales person will read on the call.
+2. Directly reference their specific company name, their industry, and any past notes or activities.
+3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
+4. Make it conversational, persuasive, and professional.
+5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
+6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
+
+    from modules.llm_engine import get_openai_client
+    try:
+        openai_client = get_openai_client()
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800
+        )
+        pitch = response.choices[0].message.content or ""
+    except Exception as e:
+        print("Error in lead simulation:", e)
+        raise HTTPException(status_code=500, detail=f"Failed to simulate call: {str(e)}")
         
     call = CallLog(
         phone_number=lead.phone or "Unknown",
@@ -7489,7 +7541,44 @@ def simulate_contact_call(contact_id: int, session: Session = Depends(get_sessio
     if not contact: raise HTTPException(status_code=404, detail="Contact not found")
     
     client_name = f"{contact.first_name} {contact.last_name or ''}".strip() or "Valued Contact"
-    pitch = _generate_sales_pitch(client_name)
+    department = contact.department or "Unknown Department"
+    designation = contact.designation or "Unknown Title"
+    notes = contact.notes or "No prior notes."
+    
+    prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
+Your task is to write a highly tailored, direct sales script to be read over the phone to this specific contact. 
+DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
+
+Contact Profile:
+Name: {client_name}
+Title/Designation: {designation}
+Department: {department}
+Email: {contact.email or 'Unknown'}
+LinkedIn: {contact.linkedin_url or 'Unknown'}
+
+Notes from our CRM:
+{notes}
+
+Instructions:
+1. Write the exact word-for-word script that the sales person will read on the call.
+2. Directly reference their specific name, their role/title, and any past notes.
+3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
+4. Make it conversational, persuasive, and professional.
+5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
+6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
+
+    from modules.llm_engine import get_openai_client
+    try:
+        openai_client = get_openai_client()
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800
+        )
+        pitch = response.choices[0].message.content or ""
+    except Exception as e:
+        print("Error in contact simulation:", e)
+        raise HTTPException(status_code=500, detail=f"Failed to simulate call: {str(e)}")
         
     call = CallLog(
         phone_number=contact.mobile_number or "Unknown",
