@@ -446,11 +446,11 @@ export default function ClientsPage() {
         const data = await res.json();
         setPitchModal({ isOpen: true, pitch: data.pitch, clientName });
       } else {
-        toast.error('Failed to generate simulation');
+        alert('Failed to generate simulation');
       }
     } catch (err) {
       console.error(err);
-      toast.error('Error connecting to AI');
+      alert('Error connecting to AI');
     } finally {
       setActionLoading(p => { const next = { ...p }; delete next[clientId]; return next; });
     }
@@ -1160,7 +1160,7 @@ export default function ClientsPage() {
               <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex justify-end gap-3">
                 <button onClick={() => {
                   navigator.clipboard.writeText(pitchModal.pitch);
-                  toast.success('Copied to clipboard!');
+                  alert('Copied to clipboard!');
                 }} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-white transition-colors">
                   Copy Pitch
                 </button>
