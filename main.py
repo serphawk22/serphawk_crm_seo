@@ -1656,7 +1656,7 @@ Please generate a 3-minute sales call simulation pitch that I can use to talk to
         return {"ok": True, "call_id": call.id, "pitch": pitch}
     except Exception as e:
         print("Error in simulation:", e)
-        raise HTTPException(status_code=500, detail="Failed to simulate call")
+        raise HTTPException(status_code=500, detail=f"Failed to simulate call: {str(e)}")
 
 @app.get("/clients/{client_id}/competitors/scan")
 def scan_competitors_openai(client_id: int, session: Session = Depends(get_session)):
