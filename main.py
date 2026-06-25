@@ -7608,9 +7608,10 @@ Instructions:
 
 @app.get("/work-queue")
 def get_work_queue(
+    user_id: int = Query(...),
+    role: str = Query(...),
     date_filter: str = Query("today"),
-    session: Session = Depends(get_session),
-    user: User = Depends(get_current_user)
+    session: Session = Depends(get_session)
 ):
     try:
         today_date = date.today()
@@ -7624,43 +7625,43 @@ def get_work_queue(
         start_dt = datetime.combine(target_date, datetime.min.time())
         end_dt = datetime.combine(target_date, datetime.max.time())
         
-        is_admin = user.role == "Admin"
+        is_admin = role == "Admin"
         
         # 1. Tasks
         tasks_q = session.query(Task).filter(Task.due_date >= start_dt, Task.due_date <= end_dt)
         if not is_admin:
-            tasks_q = tasks_q.filter(Task.assignee_id == user.id)
+            tasks_q = tasks_q.filter(Task.assignee_id == user_id)
         tasks = tasks_q.all()
         
         # 2. Meetings
         meetings_q = session.query(Meeting).filter(Meeting.scheduled_at >= start_dt, Meeting.scheduled_at <= end_dt)
         if not is_admin:
-            meetings_q = meetings_q.filter(Meeting.host_id == user.id)
+            meetings_q = meetings_q.filter(Meeting.host_id == user_id)
         meetings = meetings_q.all()
         
         # 3. Scheduled Calls
         calls_q = session.query(ScheduledCall).filter(ScheduledCall.scheduled_at >= start_dt, ScheduledCall.scheduled_at <= end_dt)
         if not is_admin:
-            calls_q = calls_q.filter(ScheduledCall.assigned_to == user.id)
+            calls_q = calls_q.filter(ScheduledCall.assigned_to == user_id)
         calls = calls_q.all()
         
         # 4. Leads (using created_at as proxy for activity if followup doesn't exist, wait Lead has no followup_date)
         # We'll just show leads created on that day
         leads_q = session.query(Lead).filter(Lead.created_at >= start_dt, Lead.created_at <= end_dt)
         if not is_admin:
-            leads_q = leads_q.filter(Lead.owner_id == user.id)
+            leads_q = leads_q.filter(Lead.owner_id == user_id)
         leads = leads_q.all()
         
         # 5. Contacts
         contacts_q = session.query(Contact).filter(Contact.created_at >= start_dt, Contact.created_at <= end_dt)
         if not is_admin:
-            contacts_q = contacts_q.filter(Contact.owner_id == user.id)
+            contacts_q = contacts_q.filter(Contact.owner_id == user_id)
         contacts = contacts_q.all()
         
         # 6. Deals
         deals_q = session.query(Deal).filter(Deal.created_at >= start_dt, Deal.created_at <= end_dt)
         if not is_admin:
-            deals_q = deals_q.filter(Deal.owner_id == user.id)
+            deals_q = deals_q.filter(Deal.owner_id == user_id)
         deals = deals_q.all()
         
         return {

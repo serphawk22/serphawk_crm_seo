@@ -29,7 +29,7 @@ export default function WorkQueuePage() {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE_URL}/work-queue?date_filter=${dateFilter}`, {
+      const res = await fetch(`${API_BASE_URL}/work-queue?date_filter=${dateFilter}&user_id=${user?.id || 0}&role=${role || 'Employee'}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const json = await res.json();
