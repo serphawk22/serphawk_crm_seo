@@ -7,7 +7,6 @@ import {
   Clock, CheckCircle, Search, Filter, Loader2, Play
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
-import AdminLayout from "../admin/components/AdminLayout";
 import { useLanguage } from "@/context/LanguageContext";
 import { useRole } from "@/context/RoleContext";
 
@@ -29,7 +28,7 @@ export default function WorkQueuePage() {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE_URL}/work-queue?date_filter=${dateFilter}`, {
+      const res = await fetch(`${API_BASE_URL}/work-queue?date_filter=${dateFilter}&user_id=${user?.id || 0}&role=${role || 'Employee'}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const json = await res.json();
@@ -170,7 +169,7 @@ export default function WorkQueuePage() {
   const filteredItems = getFilteredItems();
 
   return (
-    <AdminLayout>
+    <>
       <div className="p-6 max-w-7xl mx-auto min-h-screen">
         
         {/* Header */}
@@ -260,6 +259,6 @@ export default function WorkQueuePage() {
         </div>
 
       </div>
-    </AdminLayout>
+    </>
   );
 }
