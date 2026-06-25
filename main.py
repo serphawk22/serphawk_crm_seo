@@ -70,7 +70,9 @@ from database import (
     ConversationReply,
     Deal,
     Document,
+    EmailIntegration,
     EmailLog,
+    ExtractedEmail,
     Invoice,
     KeywordRankEntry,
     Lead,
@@ -7677,3 +7679,132 @@ def get_work_queue(
     except Exception as e:
         print("Work Queue Error:", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+# ──────────────────────────────────────────────────────
+# EMAIL TRACKER APIs
+# ──────────────────────────────────────────────────────
+
+from pydantic import BaseModel
+class EmailIntegrationCreate(BaseModel):
+    user_id: int
+    email_address: str
+    provider: str
+
+@app.post("/email-integrations")
+def connect_email_integration(data: EmailIntegrationCreate, session: Session = Depends(get_session)):
+    integration = EmailIntegration(
+        user_id=data.user_id,
+        email_address=data.email_address,
+        provider=data.provider,
+        status="Connected"
+    )
+    session.add(integration)
+    session.commit()
+    session.refresh(integration)
+    return {"ok": True, "integration": integration}
+
+@app.get("/email-integrations")
+def get_email_integrations(user_id: int, session: Session = Depends(get_session)):
+    integrations = session.query(EmailIntegration).filter(EmailIntegration.user_id == user_id).all()
+    return {"ok": True, "integrations": integrations}
+
+@app.post("/email-integrations/{integration_id}/sync")
+def sync_email_integration(integration_id: int, session: Session = Depends(get_session)):
+    integration = session.get(EmailIntegration, integration_id)
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integration not found")
+        
+    from modules.llm_engine import get_openai_client
+    import json
+    
+    prompt = """
+    Generate 3 realistic inbound emails that a digital marketing agency might receive.
+    Return ONLY a JSON object with a single key 'emails' containing an array of objects with the following keys:
+    - sender_name: string
+    - sender_email: string
+    - subject: string
+    - body_snippet: string (first 150 chars of the email)
+    - suggested_type: string (Lead, Client, Spam, Inquiry)
+    - ai_analysis: string (Brief 1 sentence explanation of why it was classified this way)
+    
+    Make at least one 'Lead' and one 'Spam'.
+    """
+    try:
+        openai_client = get_openai_client()
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        content = response.choices[0].message.content or "{}"
+        data = json.loads(content)
+        emails = data.get("emails", [])
+        
+        extracted = []
+        for e in emails:
+            new_email = ExtractedEmail(
+                integration_id=integration.id,
+                sender_name=e.get("sender_name", "Unknown"),
+                sender_email=e.get("sender_email", "unknown@example.com"),
+                subject=e.get("subject", "No Subject"),
+                body_snippet=e.get("body_snippet", ""),
+                suggested_type=e.get("suggested_type", "Unknown"),
+                ai_analysis=e.get("ai_analysis", "")
+            )
+            session.add(new_email)
+            extracted.append(new_email)
+            
+        integration.last_synced_at = datetime.utcnow()
+        session.commit()
+        
+        return {"ok": True, "count": len(extracted), "emails": extracted}
+    except Exception as e:
+        print("Error syncing emails:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/extracted-emails")
+def get_extracted_emails(user_id: int, session: Session = Depends(get_session)):
+    emails = session.query(ExtractedEmail).join(EmailIntegration).filter(
+        EmailIntegration.user_id == user_id,
+        ExtractedEmail.status == "Pending"
+    ).order_by(ExtractedEmail.created_at.desc()).all()
+    return {"ok": True, "emails": emails}
+
+class VerifyEmailRequest(BaseModel):
+    action: str # convert_to_lead, convert_to_client, dismiss
+
+@app.post("/extracted-emails/{email_id}/verify")
+def verify_extracted_email(email_id: int, data: VerifyEmailRequest, session: Session = Depends(get_session)):
+    email_obj = session.get(ExtractedEmail, email_id)
+    if not email_obj:
+        raise HTTPException(status_code=404, detail="Email not found")
+        
+    integration = session.get(EmailIntegration, email_obj.integration_id)
+    user_id = integration.user_id if integration else None
+    
+    if data.action == "dismiss":
+        email_obj.status = "Dismissed"
+    elif data.action == "convert_to_lead":
+        email_obj.status = "Verified_Lead"
+        lead = Lead(
+            company_name=email_obj.sender_name,
+            email=email_obj.sender_email,
+            source="Email Tracker",
+            owner_id=user_id,
+            status="New",
+            notes=email_obj.body_snippet
+        )
+        session.add(lead)
+    elif data.action == "convert_to_client":
+        email_obj.status = "Verified_Client"
+        client = ClientProfile(
+            companyName=email_obj.sender_name,
+            customFields={"email": email_obj.sender_email},
+            status="Active",
+            lead_source="Email Tracker",
+            assignedEmployeeId=user_id
+        )
+        session.add(client)
+        
+    session.commit()
+    return {"ok": True, "status": email_obj.status}

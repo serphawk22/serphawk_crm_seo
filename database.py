@@ -1047,6 +1047,33 @@ class Solution(SQLModel, table=True):
     author_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+# ──────────────────────────────────────────────────────
+# EMAIL TRACKER: Integrations & Extracted Emails
+# ──────────────────────────────────────────────────────
+
+class EmailIntegration(SQLModel, table=True):
+    __tablename__ = "email_integrations"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    email_address: str = Field(max_length=255)
+    provider: str = Field(max_length=50) # Gmail, Outlook, IMAP
+    status: str = Field(default="Connected") # Connected, Error, Disconnected
+    last_synced_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ExtractedEmail(SQLModel, table=True):
+    __tablename__ = "extracted_emails"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    integration_id: Optional[int] = Field(default=None, foreign_key="email_integrations.id")
+    sender_name: str = Field(max_length=255)
+    sender_email: str = Field(max_length=255)
+    subject: str = Field(max_length=500)
+    body_snippet: Optional[str] = Field(default=None, sa_column=Column(Text))
+    suggested_type: str = Field(default="Unknown") # Lead, Client, Spam, Inquiry
+    ai_analysis: Optional[str] = Field(default=None, sa_column=Column(Text))
+    status: str = Field(default="Pending") # Pending, Verified_Lead, Verified_Client, Dismissed
+    received_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 def create_db_and_tables():
