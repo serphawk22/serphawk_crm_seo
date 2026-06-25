@@ -1603,7 +1603,7 @@ def simulate_client_call(client_id: int, session: Session = Depends(get_session)
     
     # Fetch related remarks as notes
     remarks_query = session.exec(select(Remark).where(Remark.clientId == client_id)).all()
-    notes = "\n".join([r.text for r in remarks_query]) if remarks_query else ""
+    notes = "\n".join([r.content for r in remarks_query]) if remarks_query else ""
     activities = session.exec(select(ActivityLog).where(ActivityLog.clientId == client_id)).all()
     act_str = "\n".join([f"- {a.action}: {a.content}" for a in activities])
     
