@@ -486,6 +486,26 @@ class CallLog(SQLModel, table=True):
     createdAt: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ScheduledCall(SQLModel, table=True):
+    """
+    Scheduled future calls with optional AI-generated pitch
+    """
+    __tablename__ = "scheduled_calls"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str = Field(max_length=500)
+    scheduled_at: Optional[datetime] = Field(default=None)
+    entity_type: str = Field(default="client", max_length=50)  # client, lead, contact
+    entity_id: Optional[int] = Field(default=None)
+    entity_name: Optional[str] = Field(default=None, max_length=255)
+    entity_email: Optional[str] = Field(default=None, max_length=255)
+    pitch: Optional[str] = Field(default=None, sa_column=Column(Text))
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    assigned_to: Optional[str] = Field(default=None, max_length=255)
+    status: str = Field(default="Scheduled", max_length=50)  # Scheduled, Completed, Cancelled
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class SentEmail(SQLModel, table=True):
     """
     Stores all sent emails with bilingual body content

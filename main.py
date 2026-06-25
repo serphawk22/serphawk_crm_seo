@@ -55,6 +55,7 @@ from database import (
     ActivityLog,
     AnalyticsData,
     CallLog,
+    ScheduledCall,
     ChatMessage,
     ClientFileUpload,
     ClientNote,
@@ -3040,6 +3041,12 @@ def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
     c = CallLog(
         phone_number=body.phone_number,
         duration_seconds=body.duration_seconds,
+        description=getattr(body, "description", None),
+        work_done=getattr(body, "work_done", None),
+        assigned_to=getattr(body, "assigned_to", None),
+        followup_needed=getattr(body, "followup_needed", False),
+        followup_date=getattr(body, "followup_date", None),
+        client_id=getattr(body, "client_id", None),
     )
     session.add(c)
     session.commit()
@@ -3048,6 +3055,7 @@ def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
 
 
 @app.put("/calls/{call_id}")
+@app.patch("/calls/{call_id}")
 def update_call(
     call_id: int, body: Dict[str, Any], session: Session = Depends(get_session)
 ):
@@ -3070,7 +3078,10 @@ def add_call_summary(
     c = session.get(CallLog, call_id)
     if not c:
         raise HTTPException(status_code=404, detail="Call not found")
-    # CallLog model doesn't have a summary field yet; ignore gracefully
+    if hasattr(c, "summary"):
+        c.summary = body.summary if hasattr(body, "summary") else None
+        session.add(c)
+        session.commit()
     return {"ok": True}
 
 
@@ -3080,7 +3091,118 @@ def _call_dict(c: CallLog) -> dict:
         "phone_number": c.phone_number,
         "received_at": c.received_at.isoformat(),
         "duration_seconds": c.duration_seconds,
+        "summary": getattr(c, "summary", None),
+        "description": getattr(c, "description", None),
+        "work_done": getattr(c, "work_done", None),
+        "assigned_to": getattr(c, "assigned_to", None),
+        "followup_needed": getattr(c, "followup_needed", False),
+        "followup_date": getattr(c, "followup_date", None),
+        "client_id": getattr(c, "client_id", None),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scheduled Calls
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ScheduledCallCreateRequest(BaseModel):
+    title: str
+    scheduled_at: Optional[str] = None
+    entity_type: str = "client"
+    entity_id: Optional[int] = None
+    entity_name: Optional[str] = None
+    entity_email: Optional[str] = None
+    pitch: Optional[str] = None
+    notes: Optional[str] = None
+    assigned_to: Optional[str] = None
+
+def _sched_dict(s: ScheduledCall) -> dict:
+    return {
+        "id": s.id,
+        "title": s.title,
+        "scheduled_at": s.scheduled_at.isoformat() if s.scheduled_at else None,
+        "entity_type": s.entity_type,
+        "entity_id": s.entity_id,
+        "entity_name": s.entity_name,
+        "entity_email": s.entity_email,
+        "pitch": s.pitch,
+        "notes": s.notes,
+        "assigned_to": s.assigned_to,
+        "status": s.status,
+        "created_at": s.created_at.isoformat(),
+    }
+
+@app.get("/scheduled-calls")
+def list_scheduled_calls(session: Session = Depends(get_session)):
+    items = session.exec(select(ScheduledCall).order_by(ScheduledCall.scheduled_at.asc())).all()
+    return {"scheduled_calls": [_sched_dict(s) for s in items]}
+
+@app.post("/scheduled-calls")
+def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = Depends(get_session)):
+    dt = None
+    if body.scheduled_at:
+        try:
+            dt = datetime.fromisoformat(body.scheduled_at)
+        except Exception:
+            dt = None
+
+    sc = ScheduledCall(
+        title=body.title,
+        scheduled_at=dt,
+        entity_type=body.entity_type,
+        entity_id=body.entity_id,
+        entity_name=body.entity_name,
+        entity_email=body.entity_email,
+        pitch=body.pitch,
+        notes=body.notes,
+        assigned_to=body.assigned_to,
+    )
+    session.add(sc)
+    session.commit()
+    session.refresh(sc)
+
+    # Send email notification if entity_email provided
+    if body.entity_email:
+        try:
+            dt_str = dt.strftime("%Y-%m-%d %H:%M") if dt else "TBD"
+            pitch_section = f"\n\n📋 Pitch Prepared:\n{body.pitch}" if body.pitch else ""
+            subject = f"📞 Call Scheduled: {body.title}"
+            content = (
+                f"Hello {body.entity_name or ''},\n\n"
+                f"A call has been scheduled for you.\n\n"
+                f"📅 Date & Time: {dt_str}\n"
+                f"📌 Topic: {body.title}\n"
+                f"{pitch_section}\n\n"
+                f"Our team will reach out at the scheduled time.\n\n"
+                f"Thanks,\nSerpHawk CRM"
+            )
+            _send_notification_email(body.entity_email, subject, content)
+        except Exception as e:
+            print("Scheduled call email error:", e)
+
+    return {"scheduled_call": _sched_dict(sc)}
+
+@app.put("/scheduled-calls/{sc_id}")
+def update_scheduled_call(sc_id: int, body: Dict[str, Any], session: Session = Depends(get_session)):
+    sc = session.get(ScheduledCall, sc_id)
+    if not sc:
+        raise HTTPException(status_code=404, detail="Scheduled call not found")
+    for k, v in body.items():
+        if hasattr(sc, k):
+            setattr(sc, k, v)
+    session.add(sc)
+    session.commit()
+    session.refresh(sc)
+    return {"scheduled_call": _sched_dict(sc)}
+
+@app.delete("/scheduled-calls/{sc_id}")
+def delete_scheduled_call(sc_id: int, session: Session = Depends(get_session)):
+    sc = session.get(ScheduledCall, sc_id)
+    if not sc:
+        raise HTTPException(status_code=404, detail="Scheduled call not found")
+    session.delete(sc)
+    session.commit()
+    return {"ok": True}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
