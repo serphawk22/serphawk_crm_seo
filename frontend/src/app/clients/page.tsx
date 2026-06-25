@@ -61,7 +61,7 @@ const containerVariants = {
     transition: { staggerChildren: 0.1, delayChildren: 0.1 }
   }
 };
-
+  const [graphType, setGraphType] = useState<'status' | 'source' | 'industry'>('status');
 const itemVariants = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 100 } }
@@ -580,18 +580,47 @@ export default function ClientsPage() {
               })}
             </div>
           ) : viewMode === 'graph' ? (
-            <div className="p-8 h-full">
-              <div className="bg-white dark:bg-[#111111] p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-[#222222] h-[500px]">
-                <h3 className="text-lg font-bold mb-6 text-slate-900 dark:text-white">Clients by Status</h3>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={statuses.map(s => ({ name: s.name, count: filteredClients.filter(c => c.status === s.name).length }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
-                    <XAxis dataKey="name" stroke="#888" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#888" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
-                    <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#000', borderColor: '#222', color: '#fff'}} />
-                    <Bar dataKey="count" fill="currentColor" className="fill-blue-500 dark:fill-white" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+            <div className="p-8 h-full flex flex-col">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex bg-slate-100 dark:bg-[#1a1a1a] p-1 rounded-xl">
+                  <button onClick={() => setGraphType('status')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${graphType === 'status' ? 'bg-white dark:bg-[#222222] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>By Status</button>
+                  <button onClick={() => setGraphType('source')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${graphType === 'source' ? 'bg-white dark:bg-[#222222] text-amber-600 dark:text-amber-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>By Source</button>
+                  <button onClick={() => setGraphType('industry')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${graphType === 'industry' ? 'bg-white dark:bg-[#222222] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>By Industry</button>
+                </div>
+              </div>
+              <div className="bg-white dark:bg-[#111111] p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-[#222222] flex-1 min-h-0 flex flex-col">
+                <h3 className="text-lg font-bold mb-6 text-slate-900 dark:text-white">
+                  {graphType === 'status' ? 'Clients by Status' : graphType === 'source' ? 'Clients by Lead Source' : 'Clients by Industry'}
+                </h3>
+                <div className="flex-1 min-h-[400px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    {graphType === 'status' ? (
+                      <BarChart data={statuses.map(s => ({ name: s.name, count: filteredClients.filter(c => c.status === s.name).length }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
+                        <XAxis dataKey="name" stroke="#888" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#888" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                        <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#000', borderColor: '#222', color: '#fff'}} />
+                        <Bar dataKey="count" fill="currentColor" className="fill-blue-500 dark:fill-white" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    ) : graphType === 'source' ? (
+                      <BarChart data={Array.from(new Set(filteredClients.map(c => c.lead_source || 'Unknown'))).map(source => ({ name: source, count: filteredClients.filter(c => (c.lead_source || 'Unknown') === source).length }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
+                        <XAxis dataKey="name" stroke="#888" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#888" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                        <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#000', borderColor: '#222', color: '#fff'}} />
+                        <Bar dataKey="count" fill="currentColor" className="fill-amber-500 dark:fill-amber-400" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    ) : (
+                      <BarChart data={Array.from(new Set(filteredClients.map(c => c.industry || 'Unknown'))).map(ind => ({ name: ind, count: filteredClients.filter(c => (c.industry || 'Unknown') === ind).length }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
+                        <XAxis dataKey="name" stroke="#888" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#888" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                        <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#000', borderColor: '#222', color: '#fff'}} />
+                        <Bar dataKey="count" fill="currentColor" className="fill-purple-500 dark:fill-purple-400" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    )}
+                  </ResponsiveContainer>
+                </div>
               </div>
             </div>
           ) : viewMode === 'pivot' ? (

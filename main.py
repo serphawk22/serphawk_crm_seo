@@ -6794,6 +6794,8 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
             data["scheduled_at"] = datetime.fromisoformat(data["scheduled_at"])
         except Exception:
             data["scheduled_at"] = None
+    else:
+        data["scheduled_at"] = None
     m = Meeting(**data)
     session.add(m)
     session.commit()
@@ -6812,15 +6814,11 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
 
     if to_email:
         try:
-            from modules.email_sender import send_email_outlook
-            import os
             dt_str = m.scheduled_at.strftime("%Y-%m-%d %H:%M") if m.scheduled_at else "TBD"
             subject = f"Meeting Scheduled: {m.title}"
             content = f"Hello,\n\nA meeting has been scheduled for {dt_str}.\nTopic: {m.title}\n\nThanks,\nSerpHawk CRM"
-            sender = os.environ.get("SENDER_EMAIL", "")
-            password = os.environ.get("SENDER_PASSWORD", "")
-            if sender and password:
-                send_email_outlook(to_email, subject, content, sender, password)
+            
+            _send_notification_email(to_email, subject, content)
             
             session.add(SentEmail(
                 client_id=m.client_id,
@@ -6829,7 +6827,7 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
                 subject=subject,
                 body_content=content,
                 status="Sent",
-                provider="Outlook (Meeting)"
+                provider="System"
             ))
             session.commit()
         except Exception as e:
@@ -6850,11 +6848,14 @@ def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session
     if not m:
         raise HTTPException(status_code=404, detail="Meeting not found")
     updates = body.model_dump(exclude_unset=True)
-    if "scheduled_at" in updates and updates["scheduled_at"]:
-        try:
-            updates["scheduled_at"] = datetime.fromisoformat(updates["scheduled_at"])
-        except Exception:
-            updates.pop("scheduled_at")
+    if "scheduled_at" in updates:
+        if updates["scheduled_at"]:
+            try:
+                updates["scheduled_at"] = datetime.fromisoformat(updates["scheduled_at"])
+            except Exception:
+                updates["scheduled_at"] = None
+        else:
+            updates["scheduled_at"] = None
     for k, v in updates.items():
         setattr(m, k, v)
     m.updated_at = datetime.utcnow()
