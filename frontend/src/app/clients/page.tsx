@@ -61,7 +61,6 @@ const containerVariants = {
     transition: { staggerChildren: 0.1, delayChildren: 0.1 }
   }
 };
-  const [graphType, setGraphType] = useState<'status' | 'source' | 'industry'>('status');
 const itemVariants = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 100 } }
@@ -114,6 +113,7 @@ export default function ClientsPage() {
   const [loadTime, setLoadTime] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'map' | 'kanban' | 'graph' | 'pivot'>('list');
+  const [graphType, setGraphType] = useState<'status' | 'source' | 'industry'>('status');
   const [isSheetImportOpen, setIsSheetImportOpen] = useState(false);
   const [sheetUrl, setSheetUrl] = useState('');
   const [sheetPreview, setSheetPreview] = useState<any[]>([]);
