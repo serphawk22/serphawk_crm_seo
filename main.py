@@ -1621,14 +1621,14 @@ Recent Activity:
 Please generate a 3-minute sales call simulation pitch that I can use to talk to them. It should be engaging, addressing their needs, and moving them to the next stage."""
 
     from modules.llm_engine import get_openai_client
-    openai_client = get_openai_client()
     try:
+        openai_client = get_openai_client()
         response = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=800
         )
-        pitch = response.choices[0].message.content
+        pitch = response.choices[0].message.content or ""
         
         call = CallLog(
             phone_number=cp.phone or "Unknown",
@@ -1648,7 +1648,7 @@ Please generate a 3-minute sales call simulation pitch that I can use to talk to
             content=f"Generated AI Call Pitch for {cp.companyName or cp.projectName}",
             details=pitch[:500] + "..." if len(pitch) > 500 else pitch,
             clientId=client_id,
-            userId=1
+            userId=cp.userId  # Use actual user or None
         )
         session.add(act)
         session.commit()
@@ -7468,75 +7468,37 @@ def simulate_lead_call(lead_id: int, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
     if not lead: raise HTTPException(status_code=404, detail="Lead not found")
     
-    prompt = f"""You are an expert sales AI. Analyze the following lead.
-Company: {lead.company_name}
-Email: {lead.email}
-Phone: {lead.phone}
-Notes: {lead.notes or ""}
-Industry: {lead.industry or ""}
-
-Please generate a 3-minute sales call simulation pitch that I can use to talk to them. It should be engaging, addressing their needs, and moving them to the next stage."""
-
-    from modules.llm_engine import get_openai_client
-    openai_client = get_openai_client()
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=800
-        )
-        pitch = response.choices[0].message.content
+    client_name = lead.company_name or "Valued Lead"
+    pitch = _generate_sales_pitch(client_name)
         
-        call = CallLog(
-            phone_number=lead.phone or "Unknown",
-            duration_seconds=180,
-            summary=f"AI Pitch Simulation for Lead: {lead.company_name}",
-            description=pitch,
-        )
-        session.add(call)
-        session.commit()
-        session.refresh(call)
-        
-        return {"ok": True, "call_id": call.id, "pitch": pitch}
-    except Exception as e:
-        print("Error in simulation:", e)
-        raise HTTPException(status_code=500, detail="Failed to simulate call")
+    call = CallLog(
+        phone_number=lead.phone or "Unknown",
+        duration_seconds=180,
+        summary=f"Pitch Generation for {client_name}",
+        description=pitch,
+    )
+    session.add(call)
+    session.commit()
+    session.refresh(call)
+    
+    return {"ok": True, "call_id": call.id, "pitch": pitch}
 
 @app.post("/contacts/{contact_id}/simulate-call")
 def simulate_contact_call(contact_id: int, session: Session = Depends(get_session)):
     contact = session.get(Contact, contact_id)
     if not contact: raise HTTPException(status_code=404, detail="Contact not found")
     
-    prompt = f"""You are an expert sales AI. Analyze the following contact.
-Name: {contact.first_name} {contact.last_name or ""}
-Designation: {contact.designation or ""}
-Email: {contact.email}
-Phone: {contact.mobile_number}
-Notes: {contact.notes or ""}
-
-Please generate a 3-minute sales call simulation pitch that I can use to talk to them. It should be engaging, addressing their needs, and moving them to the next stage."""
-
-    from modules.llm_engine import get_openai_client
-    openai_client = get_openai_client()
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=800
-        )
-        pitch = response.choices[0].message.content
+    client_name = f"{contact.first_name} {contact.last_name or ''}".strip() or "Valued Contact"
+    pitch = _generate_sales_pitch(client_name)
         
-        call = CallLog(
-            phone_number=contact.mobile_number or "Unknown",
-            duration_seconds=180,
-            summary=f"AI Pitch Simulation for Contact: {contact.first_name}",
-            description=pitch,
-        )
-        session.add(call)
-        session.commit()
-        session.refresh(call)
-        
-        return {"ok": True, "call_id": call.id, "pitch": pitch}
-    except Exception as e:
-        print("Error in simulation:", e)
-        raise HTTPException(status_code=500, detail="Failed to simulate call")
+    call = CallLog(
+        phone_number=contact.mobile_number or "Unknown",
+        duration_seconds=180,
+        summary=f"Pitch Generation for {client_name}",
+        description=pitch,
+    )
+    session.add(call)
+    session.commit()
+    session.refresh(call)
+    
+    return {"ok": True, "call_id": call.id, "pitch": pitch}

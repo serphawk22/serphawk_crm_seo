@@ -209,10 +209,10 @@ export default function CallsPage() {
   };
 
   const handleGeneratePitch = async () => {
-    if (!genEntityId) return;
+    if (!schedForm.entity_id) return;
     setGenerating(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/${genType}s/${genEntityId}/simulate-call`, { method: "POST" });
+      const res = await fetch(`${API_BASE_URL}/${schedForm.entity_type}s/${schedForm.entity_id}/simulate-call`, { method: "POST" });
       if (res.ok) {
         const data = await res.json();
         setGeneratedPitch(data.pitch || "");
@@ -582,7 +582,8 @@ export default function CallsPage() {
                     </div>
                     {generatedPitch ? (
                       <div className="bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 border border-purple-100 dark:border-purple-900/30">
-                        <p className="text-sm text-slate-700 dark:text-zinc-200 font-medium leading-relaxed whitespace-pre-wrap line-clamp-6">{generatedPitch}</p>
+                        <textarea rows={8} value={generatedPitch} onChange={(e) => setGeneratedPitch(e.target.value)}
+                          className="w-full text-sm text-slate-700 dark:text-zinc-200 font-medium leading-relaxed bg-transparent outline-none resize-y" />
                       </div>
                     ) : (
                       <p className="text-xs text-slate-500 dark:text-zinc-400">Click generate to create an AI pitch — it will be saved with the scheduled call and emailed to the client.</p>
