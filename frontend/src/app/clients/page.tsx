@@ -28,7 +28,8 @@ import {
   Phone,
   Building2,
   Trash2,
-  Zap
+  Zap,
+  X
 } from 'lucide-react';
 import Link from 'next/link';
 import { API_BASE_URL } from '@/config';
