@@ -154,6 +154,7 @@ export default function ClientDetailPage() {
   });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({ companyName: '', projectName: '', websiteUrl: '' });
+  const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     await updateProfile({
@@ -919,10 +920,14 @@ export default function ClientDetailPage() {
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: 1.8 + idx * 0.05 }}
-                        className="p-3 bg-purple-50 border border-purple-200 rounded-xl"
+                        onClick={() => setSelectedActivity(item)}
+                        className="p-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl cursor-pointer transition-colors"
                       >
                         <p className="text-sm font-bold text-slate-800 dark:text-zinc-100">{item.action || item.content}</p>
-                        <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}</p>
+                        <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">
+                          {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}
+                          {item.method ? ` • via ${item.method}` : ''}
+                        </p>
                       </motion.div>
                     ))
                   )}
@@ -1016,7 +1021,7 @@ export default function ClientDetailPage() {
                     <motion.div key={`${ev.type}-${ev.id}`} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }}
                       className="relative flex items-start gap-4 pl-14">
                       <div className={`absolute left-3.5 w-5 h-5 rounded-full ${c.bg} ring-2 ${c.ring} flex items-center justify-center text-[10px]`}>{c.icon}</div>
-                      <div className="flex-1 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
+                      <div onClick={() => setSelectedActivity(ev)} className="flex-1 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer">
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{ev.type}</span>
@@ -1033,6 +1038,74 @@ export default function ClientDetailPage() {
             </div>
           </div>
         </motion.div>
+
+        {/* Activity Detail Modal */}
+        <AnimatePresence>
+          {selectedActivity && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 9999,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)'
+              }}
+              onClick={() => setSelectedActivity(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={e => e.stopPropagation()}
+                style={{
+                  background: 'white', border: '1px solid #e2e8f0',
+                  borderRadius: 24, padding: 32, width: '90%', maxWidth: 700,
+                  maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.1)'
+                }}
+                className="bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-800 dark:text-zinc-100 m-0">{selectedActivity.title || selectedActivity.action}</h3>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 m-0 mt-1">
+                      {selectedActivity.date || selectedActivity.createdAt ? new Date(selectedActivity.date || selectedActivity.createdAt).toLocaleString() : ''}
+                      {selectedActivity.method ? ` • via ${selectedActivity.method}` : ''}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedActivity(null)}
+                    className="bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 border-none rounded-full w-9 h-9 flex items-center justify-center cursor-pointer text-slate-500 dark:text-zinc-400 transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                
+                {(selectedActivity.detail || selectedActivity.content) && (
+                  <div style={{ marginBottom: 20 }}>
+                    <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 m-0 mb-2">Summary</p>
+                    <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-xl text-sm text-slate-600 dark:text-zinc-300">
+                      {selectedActivity.content || selectedActivity.detail}
+                    </div>
+                  </div>
+                )}
+
+                {selectedActivity.details && (
+                  <div>
+                    <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 m-0 mb-2">Details</p>
+                    <div className="bg-slate-100 dark:bg-zinc-950 p-4 rounded-xl text-sm text-slate-800 dark:text-zinc-200 whitespace-pre-wrap font-mono border border-slate-200 dark:border-zinc-800">
+                      {selectedActivity.details}
+                    </div>
+                  </div>
+                )}
+                
+                {!selectedActivity.detail && !selectedActivity.content && !selectedActivity.details && (
+                  <p className="text-center text-slate-400 italic p-5">No additional details available.</p>
+                )}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </div>
     </motion.div>

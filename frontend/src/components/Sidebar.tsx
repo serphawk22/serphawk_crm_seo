@@ -13,6 +13,7 @@ import {
   Radar,
   Mail,
   Zap,
+  LayoutList,
   Globe,
   BarChart2,
   Activity,
@@ -54,6 +55,7 @@ const sidebarSections = [
     items: [
       { name: "Dashboard", icon: LayoutDashboard, href: "/", roles: ["Admin", "Employee", "Client", "Intern", "SalesManager"] },
       { name: "Notifications", icon: Bell, href: "/notifications", roles: ["Admin", "Employee", "Client"], badge: NOTIFICATION_COUNT },
+      { name: "My Work Queue", icon: LayoutList, href: "/work-queue", roles: ["Admin", "Employee"] },
     ],
   },
   {

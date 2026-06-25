@@ -407,7 +407,7 @@ class ActivityLog(SQLModel, table=True):
     action: str # e.g., "Manual Activity", "Login", "Profile Update"
     method: Optional[str] = None # Email, Phone, In-person, WhatsApp, Website
     content: Optional[str] = Field(default=None, sa_column=Column(Text))
-    details: Optional[str] = None
+    details: Optional[str] = Field(default=None, sa_column=Column(Text))
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     
     # Relationships

@@ -41,7 +41,7 @@ def register_sent_emails_endpoint(app, get_session):
 
 import hashlib
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Form, UploadFile, File
@@ -1660,7 +1660,7 @@ Instructions:
             action="Call Simulated",
             method="POST",
             content=f"Generated AI Call Pitch for {cp.companyName or cp.projectName}",
-            details=pitch[:500] + "..." if len(pitch) > 500 else pitch,
+            details=pitch,
             clientId=client_id,
             userId=cp.userId  # Use actual user or None
         )
@@ -7605,3 +7605,74 @@ Instructions:
     session.refresh(call)
     
     return {"ok": True, "call_id": call.id, "pitch": pitch}
+
+@app.get("/work-queue")
+def get_work_queue(
+    date_filter: str = Query("today"),
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    try:
+        today_date = date.today()
+        if date_filter == "yesterday":
+            target_date = today_date - timedelta(days=1)
+        elif date_filter == "tomorrow":
+            target_date = today_date + timedelta(days=1)
+        else:
+            target_date = today_date
+            
+        start_dt = datetime.combine(target_date, datetime.min.time())
+        end_dt = datetime.combine(target_date, datetime.max.time())
+        
+        is_admin = user.role == "Admin"
+        
+        # 1. Tasks
+        tasks_q = session.query(Task).filter(Task.due_date >= start_dt, Task.due_date <= end_dt)
+        if not is_admin:
+            tasks_q = tasks_q.filter(Task.assignee_id == user.id)
+        tasks = tasks_q.all()
+        
+        # 2. Meetings
+        meetings_q = session.query(Meeting).filter(Meeting.scheduled_at >= start_dt, Meeting.scheduled_at <= end_dt)
+        if not is_admin:
+            meetings_q = meetings_q.filter(Meeting.host_id == user.id)
+        meetings = meetings_q.all()
+        
+        # 3. Scheduled Calls
+        calls_q = session.query(ScheduledCall).filter(ScheduledCall.scheduled_at >= start_dt, ScheduledCall.scheduled_at <= end_dt)
+        if not is_admin:
+            calls_q = calls_q.filter(ScheduledCall.assigned_to == user.id)
+        calls = calls_q.all()
+        
+        # 4. Leads (using created_at as proxy for activity if followup doesn't exist, wait Lead has no followup_date)
+        # We'll just show leads created on that day
+        leads_q = session.query(Lead).filter(Lead.created_at >= start_dt, Lead.created_at <= end_dt)
+        if not is_admin:
+            leads_q = leads_q.filter(Lead.owner_id == user.id)
+        leads = leads_q.all()
+        
+        # 5. Contacts
+        contacts_q = session.query(Contact).filter(Contact.created_at >= start_dt, Contact.created_at <= end_dt)
+        if not is_admin:
+            contacts_q = contacts_q.filter(Contact.owner_id == user.id)
+        contacts = contacts_q.all()
+        
+        # 6. Deals
+        deals_q = session.query(Deal).filter(Deal.created_at >= start_dt, Deal.created_at <= end_dt)
+        if not is_admin:
+            deals_q = deals_q.filter(Deal.owner_id == user.id)
+        deals = deals_q.all()
+        
+        return {
+            "ok": True,
+            "date": target_date.isoformat(),
+            "tasks": tasks,
+            "meetings": meetings,
+            "calls": calls,
+            "leads": leads,
+            "contacts": contacts,
+            "deals": deals
+        }
+    except Exception as e:
+        print("Work Queue Error:", e)
+        raise HTTPException(status_code=500, detail=str(e))
