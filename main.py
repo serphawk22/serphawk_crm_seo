@@ -6762,6 +6762,8 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
             data["scheduled_at"] = datetime.fromisoformat(data["scheduled_at"])
         except Exception:
             data["scheduled_at"] = None
+    else:
+        data["scheduled_at"] = None
     m = Meeting(**data)
     session.add(m)
     session.commit()
@@ -6814,11 +6816,14 @@ def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session
     if not m:
         raise HTTPException(status_code=404, detail="Meeting not found")
     updates = body.model_dump(exclude_unset=True)
-    if "scheduled_at" in updates and updates["scheduled_at"]:
-        try:
-            updates["scheduled_at"] = datetime.fromisoformat(updates["scheduled_at"])
-        except Exception:
-            updates.pop("scheduled_at")
+    if "scheduled_at" in updates:
+        if updates["scheduled_at"]:
+            try:
+                updates["scheduled_at"] = datetime.fromisoformat(updates["scheduled_at"])
+            except Exception:
+                updates["scheduled_at"] = None
+        else:
+            updates["scheduled_at"] = None
     for k, v in updates.items():
         setattr(m, k, v)
     m.updated_at = datetime.utcnow()
