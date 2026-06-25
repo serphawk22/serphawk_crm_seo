@@ -3043,7 +3043,7 @@ def list_calls(unsummarized: Optional[bool] = None, session: Session = Depends(g
     calls = session.exec(q).all()
     result = []
     for c in calls:
-        d = _call_dict(c)
+        d = _call_dict(c, session)
         if unsummarized is True and d.get("summary"):
             continue
         result.append(d)
@@ -3099,8 +3099,8 @@ def add_call_summary(
     return {"ok": True}
 
 
-def _call_dict(c: CallLog) -> dict:
-    return {
+def _call_dict(c: CallLog, session: Session = None) -> dict:
+    d = {
         "id": c.id,
         "phone_number": c.phone_number,
         "received_at": c.received_at.isoformat(),
@@ -3113,6 +3113,20 @@ def _call_dict(c: CallLog) -> dict:
         "followup_date": getattr(c, "followup_date", None),
         "client_id": getattr(c, "client_id", None),
     }
+    
+    if session and c.client_id:
+        from database import ClientProfile
+        cp = session.get(ClientProfile, c.client_id)
+        if cp:
+            d["entity_name"] = cp.companyName or cp.projectName
+            
+    if not d.get("entity_name") and c.summary:
+        if c.summary.startswith("AI Pitch Simulation for "):
+            d["entity_name"] = c.summary.replace("AI Pitch Simulation for ", "")
+        elif c.summary.startswith("Pitch Generation for "):
+            d["entity_name"] = c.summary.replace("Pitch Generation for ", "")
+            
+    return d
 
 
 # ─────────────────────────────────────────────────────────────────────────────

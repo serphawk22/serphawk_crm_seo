@@ -348,7 +348,8 @@ export default function CallsPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 flex-wrap mb-1">
-                        <span className="font-black text-slate-800 dark:text-zinc-100 text-lg">{call.phone_number}</span>
+                        <span className="font-black text-slate-800 dark:text-zinc-100 text-lg">{call.entity_name || call.phone_number}</span>
+                        {call.entity_name && <span className="text-sm font-bold text-slate-400">({call.phone_number})</span>}
                         {!call.summary && <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">Needs Summary</span>}
                         {call.followup_needed && <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">🔔 Follow-up</span>}
                         {call.assigned_to && <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2.5 py-1 rounded-full">👤 {call.assigned_to}</span>}
