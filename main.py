@@ -1378,6 +1378,16 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     session.add(cp)
     session.commit()
     session.refresh(cp)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        msg = f"🏢 New Client Onboarded! Company: {cp.companyName} | Link: {base_url}/clients/{cp.id}"
+        send_whatsapp_message(msg)
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"client": _client_dict(cp, session)}
 
 
@@ -2105,6 +2115,17 @@ def create_client_conversation(client_id: int, body: ConversationLogCreateReques
 
     session.commit()
     session.refresh(conv)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        preview = (body.description[:50] + '...') if body.description and len(body.description) > 50 else (body.description or '')
+        msg = f"💬 New Message from Client {client_name}: '{preview}' | Reply here: {base_url}/clients/{client_id}"
+        send_whatsapp_message(msg)
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"id": conv.id, "title": conv.title, "type": conv.type, "created_at": conv.created_at.isoformat()}
 
 
@@ -2120,6 +2141,19 @@ def add_conversation_reply(client_id: int, conv_id: int, body: ConversationReply
     session.add(reply)
     session.commit()
     session.refresh(reply)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        cp = session.get(ClientProfile, client_id)
+        client_name = cp.companyName if cp and cp.companyName else f"Client #{client_id}"
+        preview = (body.content[:50] + '...') if body.content and len(body.content) > 50 else (body.content or '')
+        msg = f"💬 New Reply from {body.author_name or client_name}: '{preview}' | Reply here: {base_url}/clients/{client_id}"
+        send_whatsapp_message(msg)
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"id": reply.id, "content": reply.content, "author_name": reply.author_name,
             "created_at": reply.created_at.isoformat()}
 
@@ -6517,6 +6551,16 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
     session.add(lead)
     session.commit()
     session.refresh(lead)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        msg = f"🚨 New Lead Added! Name: {lead.first_name} {lead.last_name} | Email: {lead.email} | Link: {base_url}/leads/{lead.id}"
+        send_whatsapp_message(msg)
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return lead
 
 @app.get("/leads/{lead_id}")
