@@ -1381,15 +1381,9 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     
     # ── WHATSAPP NOTIFICATION ──
     try:
-        from modules.whatsapp import send_whatsapp_message
+        from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        info_lines = []
-        for k, v in cp.dict().items():
-            if v and k not in ["id", "created_at", "updated_at"]:
-                info_lines.append(f"- {str(k).replace('_', ' ').title()}: {v}")
-        info_str = "\n".join(info_lines)
-        msg = f"🏢 *New Client Onboarded!*\n\n{info_str}\n\n🔗 Link: {base_url}/clients/{cp.id}"
-        send_whatsapp_message(msg)
+        send_ai_polished_whatsapp_message("New Client Onboarded", cp.dict(), f"{base_url}/clients/{cp.id}")
     except Exception as e:
         print("WhatsApp Error:", e)
         
@@ -2123,11 +2117,10 @@ def create_client_conversation(client_id: int, body: ConversationLogCreateReques
     
     # ── WHATSAPP NOTIFICATION ──
     try:
-        from modules.whatsapp import send_whatsapp_message
+        from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        preview = (body.description[:50] + '...') if body.description and len(body.description) > 50 else (body.description or '')
-        msg = f"💬 New Message from Client {client_name}: '{preview}' | Reply here: {base_url}/clients/{client_id}"
-        send_whatsapp_message(msg)
+        event_data = {"client_name": client_name, "type": body.type, "description": body.description}
+        send_ai_polished_whatsapp_message("New Client Chat Message", event_data, f"{base_url}/clients/{client_id}")
     except Exception as e:
         print("WhatsApp Error:", e)
         
@@ -2149,13 +2142,12 @@ def add_conversation_reply(client_id: int, conv_id: int, body: ConversationReply
     
     # ── WHATSAPP NOTIFICATION ──
     try:
-        from modules.whatsapp import send_whatsapp_message
+        from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
         cp = session.get(ClientProfile, client_id)
         client_name = cp.companyName if cp and cp.companyName else f"Client #{client_id}"
-        preview = (body.content[:50] + '...') if body.content and len(body.content) > 50 else (body.content or '')
-        msg = f"💬 New Reply from {body.author_name or client_name}: '{preview}' | Reply here: {base_url}/clients/{client_id}"
-        send_whatsapp_message(msg)
+        event_data = {"author": body.author_name or client_name, "content": body.content}
+        send_ai_polished_whatsapp_message("New Conversation Reply", event_data, f"{base_url}/clients/{client_id}")
     except Exception as e:
         print("WhatsApp Error:", e)
         
@@ -6559,15 +6551,9 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
     
     # ── WHATSAPP NOTIFICATION ──
     try:
-        from modules.whatsapp import send_whatsapp_message
+        from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        info_lines = []
-        for k, v in lead.dict().items():
-            if v and k not in ["id", "created_at", "updated_at"]:
-                info_lines.append(f"- {str(k).replace('_', ' ').title()}: {v}")
-        info_str = "\n".join(info_lines)
-        msg = f"🚨 *New Lead Added!*\n\n{info_str}\n\n🔗 Link: {base_url}/leads/{lead.id}"
-        send_whatsapp_message(msg)
+        send_ai_polished_whatsapp_message("New Lead Added", lead.dict(), f"{base_url}/leads/{lead.id}")
     except Exception as e:
         print("WhatsApp Error:", e)
         
@@ -7912,8 +7898,15 @@ def sync_email_integration(integration_id: int, session: Session = Depends(get_s
     for e in extracted:
         session.refresh(e)
         
-    return {"ok": True, "count": len(extracted), "emails": [e.dict() for e in extracted]}
+        # ── WHATSAPP NOTIFICATION ──
+        try:
+            from modules.whatsapp import send_ai_polished_whatsapp_message
+            base_url = "https://crm-seo.allytechcourses.com"
+            send_ai_polished_whatsapp_message("New Incoming Email", e.dict(), f"{base_url}/admin/settings?tab=email_tracker")
+        except Exception as ex:
+            print("WhatsApp Email Hook Error:", ex)
 
+    return {"ok": True, "count": len(extracted), "emails": [e.dict() for e in extracted]}
 @app.get("/extracted-emails")
 def get_extracted_emails(user_id: int, session: Session = Depends(get_session)):
     emails = session.query(ExtractedEmail).join(EmailIntegration).filter(
