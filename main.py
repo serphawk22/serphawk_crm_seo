@@ -219,6 +219,7 @@ class SmartResearchRequest(BaseModel):
     company_name: str
     company_url: Optional[str] = None
     client_id: Optional[int] = None  # If set, link extracted services to this CRM client
+    owner_name: Optional[str] = "Varshith"
 
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest):
@@ -375,15 +376,16 @@ Return ONLY valid JSON:
 
     # Step 4: Generate email draft (pass recommended services so they appear in draft)
     draft = {}
+    owner = body.owner_name or "Varshith"
     try:
         contact_for_email = {"name": contact_name, "role": contact_role} if contact_name else None
         recommended = services_result.get("recommended_services", [])
-        draft = generate_email(company_info, contact=contact_for_email, recommended_services=recommended)
+        draft = generate_email(company_info, contact=contact_for_email, recommended_services=recommended, owner_name=owner)
     except Exception:
         draft = {
             "subject": f"Growth Partnership Opportunity – {company_name}",
-            "english_body": f"Hi,\n\nI came across {company_name} and was impressed by what you do. I'd love to explore how our SEO and digital marketing services could help accelerate your growth.\n\nBest regards",
-            "spanish_body": f"Hola,\n\nEncontré {company_name} y me impresionó lo que hacen. Me encantaría explorar cómo nuestros servicios de SEO y marketing digital podrían ayudar a acelerar su crecimiento.\n\nSaludos",
+            "english_body": f"Hi,\n\nI came across {company_name} and was impressed by what you do. I'd love to explore how our SEO and digital marketing services could help accelerate your growth.\n\nBest regards,\n{owner}",
+            "spanish_body": f"Hola,\n\nEncontré {company_name} y me impresionó lo que hacen. Me encantaría explorar cómo nuestros servicios de SEO y marketing digital podrían ayudar a acelerar su crecimiento.\n\nSaludos cordiales,\n{owner}",
         }
 
     # Step 5: Extract structured services offered by this company
