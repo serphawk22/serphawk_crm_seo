@@ -2011,9 +2011,17 @@ def create_client_note(client_id: int, body: ClientNoteCreateRequest, session: S
     
     session.commit()
     session.refresh(note)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("New Note Added", {"client": client_name, "content": note.content, "author": author}, f"{base_url}/clients/{client_id}")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"id": note.id, "content": note.content, "tags": note.tags, "is_pinned": note.is_pinned,
             "author_name": note.author_name, "created_at": note.created_at.isoformat()}
-
 
 @app.put("/clients/{client_id}/notes/{note_id}")
 def update_client_note(client_id: int, note_id: int, body: ClientNoteUpdateRequest, session: Session = Depends(get_session)):
@@ -2029,6 +2037,15 @@ def update_client_note(client_id: int, note_id: int, body: ClientNoteUpdateReque
     note.updated_at = datetime.utcnow()
     session.add(note)
     session.commit()
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("Note Updated", {"content": note.content, "tags": note.tags, "is_pinned": note.is_pinned}, f"{base_url}/clients/{client_id}")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"ok": True}
 
 
@@ -2689,6 +2706,15 @@ def create_project(body: ProjectCreateRequest, session: Session = Depends(get_se
     session.add(p)
     session.commit()
     session.refresh(p)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("New Project Created", _project_dict(p), f"{base_url}/projects")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"project": _project_dict(p)}
 
 
@@ -2720,6 +2746,15 @@ def update_project(
     session.add(p)
     session.commit()
     session.refresh(p)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("Project Updated", _project_dict(p), f"{base_url}/projects")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"project": _project_dict(p)}
 
 
@@ -3100,6 +3135,16 @@ def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
     session.add(c)
     session.commit()
     session.refresh(c)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        call_link = f"{base_url}/calls" if not c.client_id else f"{base_url}/clients/{c.client_id}"
+        send_ai_polished_whatsapp_message("Call Logged", _call_dict(c), call_link)
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"call": _call_dict(c)}
 
 
@@ -3117,6 +3162,16 @@ def update_call(
     session.add(c)
     session.commit()
     session.refresh(c)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        call_link = f"{base_url}/calls" if not c.client_id else f"{base_url}/clients/{c.client_id}"
+        send_ai_polished_whatsapp_message("Call Updated", _call_dict(c), call_link)
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"call": _call_dict(c)}
 
 
@@ -3243,6 +3298,14 @@ def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = D
         except Exception as e:
             print("Scheduled call email error:", e)
 
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("Scheduled Call Created", _sched_dict(sc), f"{base_url}/calls")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"scheduled_call": _sched_dict(sc)}
 
 @app.put("/scheduled-calls/{sc_id}")
@@ -3256,6 +3319,15 @@ def update_scheduled_call(sc_id: int, body: Dict[str, Any], session: Session = D
     session.add(sc)
     session.commit()
     session.refresh(sc)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("Scheduled Call Updated", _sched_dict(sc), f"{base_url}/calls")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"scheduled_call": _sched_dict(sc)}
 
 @app.delete("/scheduled-calls/{sc_id}")
@@ -4290,6 +4362,15 @@ def create_task(body: TaskCreateRequest, session: Session = Depends(get_session)
         )
         session.add(notif)
         session.commit()
+        
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("New Task Created", _task_dict(t, session), f"{base_url}/tasks")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"task": _task_dict(t, session)}
 
 
@@ -4329,6 +4410,15 @@ def update_task(task_id: int, body: TaskUpdateRequest, session: Session = Depend
     session.add(t)
     session.commit()
     session.refresh(t)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("Task Updated", _task_dict(t, session), f"{base_url}/tasks")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"task": _task_dict(t, session)}
 
 
@@ -5850,7 +5940,27 @@ async def chatbot_message(
                 
             elif action_name == "trigger_whatsapp_support":
                 action_taken = "trigger_whatsapp"
-                # Frontend will catch this and render a WhatsApp link
+                
+                # 1. Update the reply for the user
+                result["reply"] = "To connect to a live agent, please contact 9502901416."
+                
+                # 2. Extract issue summary
+                issue_summary = params.get("issue_summary", result.get("reply", "No issue summary provided."))
+                
+                # 3. Send AI WhatsApp summary to admin
+                try:
+                    from modules.whatsapp import send_ai_polished_whatsapp_message
+                    payload = {
+                        "client_id": client_context["client_id"] if client_context else "Unknown",
+                        "company_name": client_context["company_name"] if client_context else "Unknown",
+                        "issue_summary": issue_summary,
+                        "chat_history": request.message
+                    }
+                    base_url = "https://crm-seo.allytechcourses.com"
+                    client_link = f"{base_url}/clients/{client_context['client_id']}" if client_context else base_url
+                    send_ai_polished_whatsapp_message("Support Escalation (Chatbot)", payload, client_link)
+                except Exception as e:
+                    print("WhatsApp Chatbot Handoff Error:", e)
                 
             elif action_name == "add_note_to_client":
                 target_client_id = request.client_id or params.get("client_id")
@@ -7026,6 +7136,14 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
             session.commit()
         except Exception as e:
             print("Failed to send meeting email:", e)
+            
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("New Meeting Scheduled", _meeting_dict(m, session), f"{base_url}/meetings")
+    except Exception as e:
+        print("WhatsApp Error:", e)
 
     return {"meeting": _meeting_dict(m, session)}
 
@@ -7056,6 +7174,15 @@ def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session
     session.add(m)
     session.commit()
     session.refresh(m)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("Meeting Updated", _meeting_dict(m, session), f"{base_url}/meetings")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"meeting": _meeting_dict(m, session)}
 
 @app.delete("/meetings/{meeting_id}")
