@@ -707,6 +707,7 @@ class ChatbotRequest(BaseModel):
     message: str
     client_id: Optional[int] = None
     current_route: Optional[str] = None
+    chat_history: Optional[str] = None
 
 
 class CreateUserRequest(BaseModel):
@@ -5954,7 +5955,7 @@ async def chatbot_message(
                         "client_id": client_context["client_id"] if client_context else "Unknown",
                         "company_name": client_context["company_name"] if client_context else "Unknown",
                         "issue_summary": issue_summary,
-                        "chat_history": request.message
+                        "chat_history": request.chat_history or request.message
                     }
                     base_url = "https://crm-seo.allytechcourses.com"
                     client_link = f"{base_url}/clients/{client_context['client_id']}" if client_context else base_url

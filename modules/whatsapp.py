@@ -67,16 +67,16 @@ def send_ai_polished_whatsapp_message(event_type: str, raw_data: dict, link: str
     client = openai.OpenAI(api_key=api_key)
     
     prompt = f"""
-    You are an executive assistant for a cold outreach CRM agency.
-    An event of type '{event_type}' just occurred. 
+    An event of type '{event_type}' just occurred in the CRM.
     Here is the raw JSON data associated with the event:
     {json.dumps(raw_data, indent=2, default=str)}
     
     Your task:
-    Write a highly detailed, polished, and beautifully formatted WhatsApp message to alert the business owner.
-    - Extract and highlight the most critical details (subject, services, company info, actionable items).
-    - Use appropriate emojis, bullet points, and bold text (*text*) to make it readable.
-    - Keep it professional, concise, but dense with value.
+    Write a SHORT, STRAIGHTFORWARD WhatsApp message to alert the business owner.
+    - Give exactly the relevant details for the action that happened.
+    - DO NOT include extra fluff like "Actionable items", "Next steps", "We have a fresh potential opportunity", or "Executive Assistant" sign-offs.
+    - DO NOT greet the owner or say "Hello".
+    - Just format the raw data cleanly with some emojis and bold text, and give the summary.
     - DO NOT include the link in your output. I will append the link manually at the end.
     - Just output the message directly. No preamble.
     """

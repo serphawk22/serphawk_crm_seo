@@ -72,7 +72,8 @@ export function Chatbot() {
         body: JSON.stringify({
           message: text,
           client_id: currentClientId,
-          current_route: pathname
+          current_route: pathname,
+          chat_history: messages.map(m => `${m.role}: ${m.text}`).join('\n') + `\nuser: ${text}`
         })
       });
       const data = await res.json();
@@ -152,12 +153,12 @@ export function Chatbot() {
                   {msg.text}
                   {msg.action === 'trigger_whatsapp' && (
                     <a 
-                      href="https://wa.me/918519990425" 
+                      href="https://wa.me/919502901416" 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="mt-3 block text-center bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-xl transition-colors shadow-sm"
                     >
-                      Chat on WhatsApp (+91 8519990425)
+                      Chat on WhatsApp (+91 9502901416)
                     </a>
                   )}
                 </div>
