@@ -1378,6 +1378,16 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     session.add(cp)
     session.commit()
     session.refresh(cp)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        msg = f"🏢 New Client Onboarded! Company: {cp.companyName} | Link: {base_url}/clients/{cp.id}"
+        send_whatsapp_message(msg)
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"client": _client_dict(cp, session)}
 
 
@@ -2105,6 +2115,17 @@ def create_client_conversation(client_id: int, body: ConversationLogCreateReques
 
     session.commit()
     session.refresh(conv)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        preview = (body.description[:50] + '...') if body.description and len(body.description) > 50 else (body.description or '')
+        msg = f"💬 New Message from Client {client_name}: '{preview}' | Reply here: {base_url}/clients/{client_id}"
+        send_whatsapp_message(msg)
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"id": conv.id, "title": conv.title, "type": conv.type, "created_at": conv.created_at.isoformat()}
 
 
@@ -2120,6 +2141,19 @@ def add_conversation_reply(client_id: int, conv_id: int, body: ConversationReply
     session.add(reply)
     session.commit()
     session.refresh(reply)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        cp = session.get(ClientProfile, client_id)
+        client_name = cp.companyName if cp and cp.companyName else f"Client #{client_id}"
+        preview = (body.content[:50] + '...') if body.content and len(body.content) > 50 else (body.content or '')
+        msg = f"💬 New Reply from {body.author_name or client_name}: '{preview}' | Reply here: {base_url}/clients/{client_id}"
+        send_whatsapp_message(msg)
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"id": reply.id, "content": reply.content, "author_name": reply.author_name,
             "created_at": reply.created_at.isoformat()}
 
@@ -6517,6 +6551,16 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
     session.add(lead)
     session.commit()
     session.refresh(lead)
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        msg = f"🚨 New Lead Added! Name: {lead.first_name} {lead.last_name} | Email: {lead.email} | Link: {base_url}/leads/{lead.id}"
+        send_whatsapp_message(msg)
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return lead
 
 @app.get("/leads/{lead_id}")
@@ -7684,24 +7728,73 @@ def get_work_queue(
 # EMAIL TRACKER APIs
 # ──────────────────────────────────────────────────────
 
-from pydantic import BaseModel
-class EmailIntegrationCreate(BaseModel):
-    user_id: int
-    email_address: str
-    provider: str
+import os
+import json
+from fastapi.responses import RedirectResponse
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
+import google.auth.transport.requests
+from google.oauth2.credentials import Credentials
 
-@app.post("/email-integrations")
-def connect_email_integration(data: EmailIntegrationCreate, session: Session = Depends(get_session)):
-    integration = EmailIntegration(
-        user_id=data.user_id,
-        email_address=data.email_address,
-        provider=data.provider,
-        status="Connected"
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
+def get_google_oauth_flow(state=None):
+    client_config = {
+        "web": {
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
+            "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
+    }
+    return Flow.from_client_config(
+        client_config,
+        scopes=['https://www.googleapis.com/auth/gmail.readonly'],
+        redirect_uri="http://localhost:8000/auth/google/callback"
     )
-    session.add(integration)
+
+@app.get("/auth/google/login")
+def google_oauth_login(user_id: int):
+    if not os.environ.get("GOOGLE_CLIENT_ID"):
+        return RedirectResponse(url=f"http://localhost:3000/admin/settings?error=Missing_Google_Keys")
+        
+    flow = get_google_oauth_flow()
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true',
+        prompt='consent',
+        state=str(user_id)
+    )
+    return RedirectResponse(url=authorization_url)
+
+@app.get("/auth/google/callback")
+def google_oauth_callback(state: str, code: str, session: Session = Depends(get_session)):
+    flow = get_google_oauth_flow()
+    flow.fetch_token(code=code)
+    credentials = flow.credentials
+    
+    service = build('gmail', 'v1', credentials=credentials)
+    profile = service.users().getProfile(userId='me').execute()
+    email_address = profile['emailAddress']
+    
+    user_id = int(state)
+    integration = session.query(EmailIntegration).filter_by(user_id=user_id, email_address=email_address).first()
+    
+    if not integration:
+        integration = EmailIntegration(
+            user_id=user_id,
+            email_address=email_address,
+            provider="Gmail",
+            status="Connected"
+        )
+        session.add(integration)
+        
+    integration.access_token = credentials.token
+    integration.refresh_token = credentials.refresh_token or integration.refresh_token
+    integration.token_expiry = credentials.expiry
     session.commit()
-    session.refresh(integration)
-    return {"ok": True, "integration": integration}
+    
+    return RedirectResponse(url="http://localhost:3000/admin/settings")
 
 @app.get("/email-integrations")
 def get_email_integrations(user_id: int, session: Session = Depends(get_session)):
@@ -7714,53 +7807,102 @@ def sync_email_integration(integration_id: int, session: Session = Depends(get_s
     if not integration:
         raise HTTPException(status_code=404, detail="Integration not found")
         
-    from modules.llm_engine import get_openai_client
-    import json
-    
-    prompt = """
-    Generate 3 realistic inbound emails that a digital marketing agency might receive.
-    Return ONLY a JSON object with a single key 'emails' containing an array of objects with the following keys:
-    - sender_name: string
-    - sender_email: string
-    - subject: string
-    - body_snippet: string (first 150 chars of the email)
-    - suggested_type: string (Lead, Client, Spam, Inquiry)
-    - ai_analysis: string (Brief 1 sentence explanation of why it was classified this way)
-    
-    Make at least one 'Lead' and one 'Spam'.
-    """
-    try:
-        openai_client = get_openai_client()
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-        content = response.choices[0].message.content or "{}"
-        data = json.loads(content)
-        emails = data.get("emails", [])
+    if not integration.access_token:
+        raise HTTPException(status_code=400, detail="Missing OAuth token. Please reconnect.")
         
-        extracted = []
-        for e in emails:
-            new_email = ExtractedEmail(
-                integration_id=integration.id,
-                sender_name=e.get("sender_name", "Unknown"),
-                sender_email=e.get("sender_email", "unknown@example.com"),
-                subject=e.get("subject", "No Subject"),
-                body_snippet=e.get("body_snippet", ""),
-                suggested_type=e.get("suggested_type", "Unknown"),
-                ai_analysis=e.get("ai_analysis", "")
-            )
-            session.add(new_email)
-            extracted.append(new_email)
-            
-        integration.last_synced_at = datetime.utcnow()
+    creds = Credentials(
+        token=integration.access_token,
+        refresh_token=integration.refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+        client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+    )
+    
+    if creds.expired and creds.refresh_token:
+        creds.refresh(google.auth.transport.requests.Request())
+        integration.access_token = creds.token
+        integration.token_expiry = creds.expiry
         session.commit()
         
-        return {"ok": True, "count": len(extracted), "emails": extracted}
-    except Exception as e:
-        print("Error syncing emails:", e)
-        raise HTTPException(status_code=500, detail=str(e))
+    service = build('gmail', 'v1', credentials=creds)
+    results = service.users().messages().list(userId='me', maxResults=5).execute()
+    messages = results.get('messages', [])
+    
+    if not messages:
+        return {"ok": True, "count": 0, "emails": []}
+        
+    extracted = []
+    from modules.llm_engine import get_openai_client
+    import re
+    
+    for msg in messages:
+        txt = service.users().messages().get(userId='me', id=msg['id'], format='full').execute()
+        payload = txt.get('payload', {})
+        headers = payload.get('headers', [])
+        
+        subject = "No Subject"
+        sender = "Unknown Sender"
+        
+        for d in headers:
+            if d['name'] == 'Subject':
+                subject = d['value']
+            if d['name'] == 'From':
+                sender = d['value']
+                
+        snippet = txt.get('snippet', '')
+        
+        prompt = f"""
+        Classify this inbound email for a digital marketing agency CRM.
+        Sender: {sender}
+        Subject: {subject}
+        Body: {snippet}
+        
+        Return ONLY a JSON object with:
+        - suggested_type: string (Lead, Client, Spam, Inquiry)
+        - ai_analysis: string (Brief 1 sentence explanation)
+        """
+        try:
+            openai_client = get_openai_client()
+            response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            data = json.loads(response.choices[0].message.content or "{}")
+            suggested_type = data.get("suggested_type", "Unknown")
+            ai_analysis = data.get("ai_analysis", "")
+        except Exception:
+            suggested_type = "Unknown"
+            ai_analysis = "Failed to classify"
+            
+        match = re.match(r"(.*)<(.*)>", sender)
+        if match:
+            sender_name = match.group(1).strip()
+            sender_email = match.group(2).strip()
+        else:
+            sender_name = sender
+            sender_email = sender
+
+        new_email = ExtractedEmail(
+            integration_id=integration.id,
+            sender_name=sender_name,
+            sender_email=sender_email,
+            subject=subject,
+            body_snippet=snippet,
+            suggested_type=suggested_type,
+            ai_analysis=ai_analysis
+        )
+        session.add(new_email)
+        extracted.append(new_email)
+        
+    integration.last_synced_at = datetime.utcnow()
+    session.commit()
+    
+    # Refresh objects so they have DB IDs
+    for e in extracted:
+        session.refresh(e)
+        
+    return {"ok": True, "count": len(extracted), "emails": [e.dict() for e in extracted]}
 
 @app.get("/extracted-emails")
 def get_extracted_emails(user_id: int, session: Session = Depends(get_session)):

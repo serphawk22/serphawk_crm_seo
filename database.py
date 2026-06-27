@@ -1058,6 +1058,12 @@ class EmailIntegration(SQLModel, table=True):
     email_address: str = Field(max_length=255)
     provider: str = Field(max_length=50) # Gmail, Outlook, IMAP
     status: str = Field(default="Connected") # Connected, Error, Disconnected
+    
+    # OAuth Tokens
+    access_token: Optional[str] = Field(default=None, sa_column=Column(Text))
+    refresh_token: Optional[str] = Field(default=None, sa_column=Column(Text))
+    token_expiry: Optional[datetime] = Field(default=None)
+    
     last_synced_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

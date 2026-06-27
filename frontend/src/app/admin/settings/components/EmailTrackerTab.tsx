@@ -42,24 +42,9 @@ export default function EmailTrackerTab() {
     }
   };
 
-  const connectEmail = async (provider: string) => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE_URL}/email-integrations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          user_id: user?.id,
-          email_address: user?.email || `user@${provider.toLowerCase()}.com`,
-          provider
-        })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setIntegrations([...integrations, data.integration]);
-      }
-    } catch (err) {
-      console.error(err);
+  const connectGoogleOAuth = () => {
+    if (user?.id) {
+      window.location.href = `${API_BASE_URL}/auth/google/login?user_id=${user.id}`;
     }
   };
 
@@ -127,14 +112,14 @@ export default function EmailTrackerTab() {
         {integrations.length === 0 ? (
           <div className="flex gap-4">
             <button 
-              onClick={() => connectEmail('Gmail')}
+              onClick={connectGoogleOAuth}
               className="flex-1 flex items-center justify-center gap-2 py-3 px-4 border-2 border-dashed border-slate-300 dark:border-zinc-700 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors font-bold text-slate-700 dark:text-zinc-300"
             >
-              Connect Gmail
+              Sign in with Google
             </button>
             <button 
-              onClick={() => connectEmail('Outlook')}
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 border-2 border-dashed border-slate-300 dark:border-zinc-700 rounded-xl hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors font-bold text-slate-700 dark:text-zinc-300"
+              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 border-2 border-dashed border-slate-300 dark:border-zinc-700 rounded-xl opacity-50 cursor-not-allowed font-bold text-slate-700 dark:text-zinc-300"
+              title="Coming soon"
             >
               Connect Outlook
             </button>
