@@ -70,7 +70,7 @@ def send_ai_polished_whatsapp_message(event_type: str, raw_data: dict, link: str
     You are an executive assistant for a cold outreach CRM agency.
     An event of type '{event_type}' just occurred. 
     Here is the raw JSON data associated with the event:
-    {json.dumps(raw_data, indent=2)}
+    {json.dumps(raw_data, indent=2, default=str)}
     
     Your task:
     Write a highly detailed, polished, and beautifully formatted WhatsApp message to alert the business owner.
