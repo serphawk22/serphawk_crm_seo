@@ -1383,7 +1383,12 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     try:
         from modules.whatsapp import send_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        msg = f"🏢 New Client Onboarded! Company: {cp.companyName} | Link: {base_url}/clients/{cp.id}"
+        info_lines = []
+        for k, v in cp.dict().items():
+            if v and k not in ["id", "created_at", "updated_at"]:
+                info_lines.append(f"- {str(k).replace('_', ' ').title()}: {v}")
+        info_str = "\n".join(info_lines)
+        msg = f"🏢 *New Client Onboarded!*\n\n{info_str}\n\n🔗 Link: {base_url}/clients/{cp.id}"
         send_whatsapp_message(msg)
     except Exception as e:
         print("WhatsApp Error:", e)
@@ -6556,7 +6561,12 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
     try:
         from modules.whatsapp import send_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        msg = f"🚨 New Lead Added! Name: {lead.first_name} {lead.last_name} | Email: {lead.email} | Link: {base_url}/leads/{lead.id}"
+        info_lines = []
+        for k, v in lead.dict().items():
+            if v and k not in ["id", "created_at", "updated_at"]:
+                info_lines.append(f"- {str(k).replace('_', ' ').title()}: {v}")
+        info_str = "\n".join(info_lines)
+        msg = f"🚨 *New Lead Added!*\n\n{info_str}\n\n🔗 Link: {base_url}/leads/{lead.id}"
         send_whatsapp_message(msg)
     except Exception as e:
         print("WhatsApp Error:", e)
