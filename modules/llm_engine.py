@@ -69,7 +69,7 @@ def analyze_content(text):
             "error": str(e)
         }
 
-def generate_email(analysis, contact=None, recommended_services=None):
+def generate_email(analysis, contact=None, recommended_services=None, owner_name="Varshith"):
     """
     Generates a personalized bilingual cold email using OpenAI.
     Returns english_body (para 1) and spanish_body (para 2) separately.
@@ -126,11 +126,11 @@ def generate_email(analysis, contact=None, recommended_services=None):
         3. Service Spotlight (3-5 sentences) — For EACH service in [{services_list_str}], write one clear sentence: what it does + the measurable result for them. Use concrete outcomes like "rank on page 1", "2x local visibility", "cut ad spend waste by 30%".
         4. Social proof (1 sentence) — Mention working with similar businesses to build trust.
         5. CTA (1 sentence) — Invite them to a free 15-minute strategy call. Make it effortless.
-        6. Sign-off: "Warm regards,\nTeam DaPros from Mexico | SERP Hawk Digital Agency"
+        6. Sign-off: "Best regards,\n{owner_name} | SERP Hawk Digital Agency"
 
         STYLE: 120-180 words total. Short paragraphs (2-3 sentences each), separated by blank lines. Conversational, confident, zero fluff. Services are the STAR — the reader should finish knowing exactly what you offer and why it matters for them.
 
-        Then provide the FULL Spanish translation with identical structure, signed as "Equipo DaPros de México | SERP Hawk Digital Agency".
+        Then provide the FULL Spanish translation with identical structure, signed as "Saludos cordiales,\n{owner_name} | SERP Hawk Digital Agency".
 
         Then provide a short, punchy WhatsApp message (English only) to send to them. Keep it under 50 words. It should be casual but professional, mention the opportunity, and ask for a quick chat.
 
