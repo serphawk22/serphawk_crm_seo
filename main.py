@@ -10,6 +10,7 @@ from fastapi.websockets import WebSocket, WebSocketDisconnect
 from sqlmodel import Session
 from modules.scraper import research_and_map_company
 from pydantic import BaseModel
+
 import os
 from dotenv import load_dotenv
 
@@ -184,6 +185,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Email Notification Helper
 # ─────────────────────────────────────────────────────────────────────────────
 def _send_notification_email(to_email: str, subject: str, body_html: str):
+
     """Best-effort email notification using N8N webhook."""
     try:
         import httpx, os
@@ -230,9 +232,12 @@ class SmartResearchRequest(BaseModel):
     company_url: Optional[str] = None
     client_id: Optional[int] = None  # If set, link extracted services to this CRM client
 
+    owner_name: Optional[str] = "Varshith"
+
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest):
     """
+
     Forwards the company URL to N8N webhook and bypasses Python automation.
     Waits for N8N to return the generated data.
     """
@@ -402,6 +407,7 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     session.add(sent_email)
     session.commit()
     session.refresh(sent_email)
+
 
     # Step 3.5: Send the actual email via N8N Webhook (unless skip_send is True)
     if not body.skip_send:
@@ -1212,6 +1218,16 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     session.add(cp)
     session.commit()
     session.refresh(cp)
+
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("New Client Onboarded", cp.dict(), f"{base_url}/clients/{cp.id}")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"client": _client_dict(cp, session)}
 
 
@@ -1834,9 +1850,18 @@ def create_client_note(client_id: int, body: ClientNoteCreateRequest, session: S
     
     session.commit()
     session.refresh(note)
+
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("New Note Added", {"client": client_name, "content": note.content, "author": author}, f"{base_url}/clients/{client_id}")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"id": note.id, "content": note.content, "tags": note.tags, "is_pinned": note.is_pinned,
             "author_name": note.author_name, "created_at": note.created_at.isoformat()}
-
 
 @app.put("/clients/{client_id}/notes/{note_id}")
 def update_client_note(client_id: int, note_id: int, body: ClientNoteUpdateRequest, session: Session = Depends(get_session)):
@@ -1852,6 +1877,16 @@ def update_client_note(client_id: int, note_id: int, body: ClientNoteUpdateReque
     note.updated_at = datetime.utcnow()
     session.add(note)
     session.commit()
+
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("Note Updated", {"content": note.content, "tags": note.tags, "is_pinned": note.is_pinned}, f"{base_url}/clients/{client_id}")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"ok": True}
 
 
@@ -1939,6 +1974,17 @@ def create_client_conversation(client_id: int, body: ConversationLogCreateReques
 
     session.commit()
     session.refresh(conv)
+
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        event_data = {"client_name": client_name, "type": body.type, "description": body.description}
+        send_ai_polished_whatsapp_message("New Client Chat Message", event_data, f"{base_url}/clients/{client_id}")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"id": conv.id, "title": conv.title, "type": conv.type, "created_at": conv.created_at.isoformat()}
 
 
@@ -1954,6 +2000,19 @@ def add_conversation_reply(client_id: int, conv_id: int, body: ConversationReply
     session.add(reply)
     session.commit()
     session.refresh(reply)
+
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        cp = session.get(ClientProfile, client_id)
+        client_name = cp.companyName if cp and cp.companyName else f"Client #{client_id}"
+        event_data = {"author": body.author_name or client_name, "content": body.content}
+        send_ai_polished_whatsapp_message("New Conversation Reply", event_data, f"{base_url}/clients/{client_id}")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"id": reply.id, "content": reply.content, "author_name": reply.author_name,
             "created_at": reply.created_at.isoformat()}
 
@@ -2490,6 +2549,16 @@ def create_project(body: ProjectCreateRequest, session: Session = Depends(get_se
     session.add(p)
     session.commit()
     session.refresh(p)
+
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("New Project Created", _project_dict(p), f"{base_url}/projects")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"project": _project_dict(p)}
 
 
@@ -2521,6 +2590,16 @@ def update_project(
     session.add(p)
     session.commit()
     session.refresh(p)
+
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("Project Updated", _project_dict(p), f"{base_url}/projects")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"project": _project_dict(p)}
 
 
@@ -2901,6 +2980,17 @@ def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
     session.add(c)
     session.commit()
     session.refresh(c)
+
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        call_link = f"{base_url}/calls" if not c.client_id else f"{base_url}/clients/{c.client_id}"
+        send_ai_polished_whatsapp_message("Call Logged", _call_dict(c), call_link)
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"call": _call_dict(c)}
 
 
@@ -2918,6 +3008,17 @@ def update_call(
     session.add(c)
     session.commit()
     session.refresh(c)
+
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        call_link = f"{base_url}/calls" if not c.client_id else f"{base_url}/clients/{c.client_id}"
+        send_ai_polished_whatsapp_message("Call Updated", _call_dict(c), call_link)
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"call": _call_dict(c)}
 
 
@@ -3044,6 +3145,15 @@ def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = D
         except Exception as e:
             print("Scheduled call email error:", e)
 
+
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("Scheduled Call Created", _sched_dict(sc), f"{base_url}/calls")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"scheduled_call": _sched_dict(sc)}
 
 @app.put("/scheduled-calls/{sc_id}")
@@ -3057,6 +3167,16 @@ def update_scheduled_call(sc_id: int, body: Dict[str, Any], session: Session = D
     session.add(sc)
     session.commit()
     session.refresh(sc)
+
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("Scheduled Call Updated", _sched_dict(sc), f"{base_url}/calls")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"scheduled_call": _sched_dict(sc)}
 
 @app.delete("/scheduled-calls/{sc_id}")
@@ -4091,6 +4211,16 @@ def create_task(body: TaskCreateRequest, session: Session = Depends(get_session)
         )
         session.add(notif)
         session.commit()
+
+        
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("New Task Created", _task_dict(t, session), f"{base_url}/tasks")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"task": _task_dict(t, session)}
 
 
@@ -4130,6 +4260,16 @@ def update_task(task_id: int, body: TaskUpdateRequest, session: Session = Depend
     session.add(t)
     session.commit()
     session.refresh(t)
+
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("Task Updated", _task_dict(t, session), f"{base_url}/tasks")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"task": _task_dict(t, session)}
 
 
@@ -5651,7 +5791,28 @@ async def chatbot_message(
                 
             elif action_name == "trigger_whatsapp_support":
                 action_taken = "trigger_whatsapp"
-                # Frontend will catch this and render a WhatsApp link
+
+                
+                # 1. Update the reply for the user
+                result["reply"] = "To connect to a live agent, please contact 9502901416."
+                
+                # 2. Extract issue summary
+                issue_summary = params.get("issue_summary", result.get("reply", "No issue summary provided."))
+                
+                # 3. Send AI WhatsApp summary to admin
+                try:
+                    from modules.whatsapp import send_ai_polished_whatsapp_message
+                    payload = {
+                        "client_id": client_context["client_id"] if client_context else "Unknown",
+                        "company_name": client_context["company_name"] if client_context else "Unknown",
+                        "issue_summary": issue_summary,
+                        "chat_history": request.message
+                    }
+                    base_url = "https://crm-seo.allytechcourses.com"
+                    client_link = f"{base_url}/clients/{client_context['client_id']}" if client_context else base_url
+                    send_ai_polished_whatsapp_message("Support Escalation (Chatbot)", payload, client_link)
+                except Exception as e:
+                    print("WhatsApp Chatbot Handoff Error:", e)
                 
             elif action_name == "add_note_to_client":
                 target_client_id = request.client_id or params.get("client_id")
@@ -6295,62 +6456,16 @@ async def automations_intelligence_scan(body: AutomationScanRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to scan: {str(e)}")
 
-# =====================================================================
-# ENHANCED CRM ARCHITECTURE - LEADS, ACCOUNTS, CONTACTS
-# =====================================================================
-import json
-import pandas as pd
-
-
-class LeadCreateRequest(BaseModel):
-    company_name: str
-    website: Optional[str] = None
-    industry: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
-    source: Optional[str] = None
-    owner_id: Optional[int] = None
-    status: str = "New"
-    notes: Optional[str] = None
-
-class AccountCreateRequest(BaseModel):
-    company_name: str
-    website: Optional[str] = None
-    industry: Optional[str] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
-    owner_id: Optional[int] = None
-
-class ContactCreateRequest(BaseModel):
-    first_name: str
-    last_name: Optional[str] = None
-    designation: Optional[str] = None
-    department: Optional[str] = None
-    email: Optional[str] = None
-    mobile_number: Optional[str] = None
-    alternate_number: Optional[str] = None
-    linkedin_url: Optional[str] = None
-    lead_id: Optional[int] = None
-    account_id: Optional[int] = None
-    client_id: Optional[int] = None
-    notes: Optional[str] = None
-    tags: Optional[List[str]] = []
-    owner_id: Optional[int] = None
-    create_new_lead: Optional[bool] = False
-
-# ---- LEADS API ----
-@app.get("/leads")
-def get_leads(session: Session = Depends(get_session)):
-    leads = session.exec(select(Lead).order_by(Lead.created_at.desc())).all()
-    return {"leads": leads}
-
-@app.post("/leads")
-def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)):
-    lead = Lead(**body.dict())
-    session.add(lead)
-    session.commit()
-    session.refresh(lead)
+# 
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("New Lead Added", lead.dict(), f"{base_url}/leads/{lead.id}")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return lead
 
 @app.get("/leads/{lead_id}")
@@ -6819,6 +6934,15 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
         except Exception as e:
             print("Failed to send meeting email:", e)
 
+            
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("New Meeting Scheduled", _meeting_dict(m, session), f"{base_url}/meetings")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+
     return {"meeting": _meeting_dict(m, session)}
 
 @app.get("/meetings/{meeting_id}")
@@ -6848,6 +6972,16 @@ def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session
     session.add(m)
     session.commit()
     session.refresh(m)
+
+    
+    # ── WHATSAPP NOTIFICATION ──
+    try:
+        from modules.whatsapp import send_ai_polished_whatsapp_message
+        base_url = "https://crm-seo.allytechcourses.com"
+        send_ai_polished_whatsapp_message("Meeting Updated", _meeting_dict(m, session), f"{base_url}/meetings")
+    except Exception as e:
+        print("WhatsApp Error:", e)
+        
     return {"meeting": _meeting_dict(m, session)}
 
 @app.delete("/meetings/{meeting_id}")
@@ -7518,24 +7652,74 @@ def get_work_queue(
 # EMAIL TRACKER APIs
 # ──────────────────────────────────────────────────────
 
-from pydantic import BaseModel
-class EmailIntegrationCreate(BaseModel):
-    user_id: int
-    email_address: str
-    provider: str
 
-@app.post("/email-integrations")
-def connect_email_integration(data: EmailIntegrationCreate, session: Session = Depends(get_session)):
-    integration = EmailIntegration(
-        user_id=data.user_id,
-        email_address=data.email_address,
-        provider=data.provider,
-        status="Connected"
+import os
+import json
+from fastapi.responses import RedirectResponse
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
+import google.auth.transport.requests
+from google.oauth2.credentials import Credentials
+
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
+def get_google_oauth_flow(state=None):
+    client_config = {
+        "web": {
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
+            "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
+    }
+    return Flow.from_client_config(
+        client_config,
+        scopes=['https://www.googleapis.com/auth/gmail.readonly'],
+        redirect_uri="http://localhost:8000/auth/google/callback"
     )
-    session.add(integration)
+
+@app.get("/auth/google/login")
+def google_oauth_login(user_id: int):
+    if not os.environ.get("GOOGLE_CLIENT_ID"):
+        return RedirectResponse(url=f"http://localhost:3000/admin/settings?error=Missing_Google_Keys")
+        
+    flow = get_google_oauth_flow()
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true',
+        prompt='consent',
+        state=str(user_id)
+    )
+    return RedirectResponse(url=authorization_url)
+
+@app.get("/auth/google/callback")
+def google_oauth_callback(state: str, code: str, session: Session = Depends(get_session)):
+    flow = get_google_oauth_flow()
+    flow.fetch_token(code=code)
+    credentials = flow.credentials
+    
+    service = build('gmail', 'v1', credentials=credentials)
+    profile = service.users().getProfile(userId='me').execute()
+    email_address = profile['emailAddress']
+    
+    user_id = int(state)
+    integration = session.query(EmailIntegration).filter_by(user_id=user_id, email_address=email_address).first()
+    
+    if not integration:
+        integration = EmailIntegration(
+            user_id=user_id,
+            email_address=email_address,
+            provider="Gmail",
+            status="Connected"
+        )
+        session.add(integration)
+        
+    integration.access_token = credentials.token
+    integration.refresh_token = credentials.refresh_token or integration.refresh_token
+    integration.token_expiry = credentials.expiry
     session.commit()
-    session.refresh(integration)
-    return {"ok": True, "integration": integration}
+    
+    return RedirectResponse(url="http://localhost:3000/admin/settings")
 
 @app.get("/email-integrations")
 def get_email_integrations(user_id: int, session: Session = Depends(get_session)):
@@ -7548,54 +7732,111 @@ def sync_email_integration(integration_id: int, session: Session = Depends(get_s
     if not integration:
         raise HTTPException(status_code=404, detail="Integration not found")
         
-    from modules.llm_engine import get_openai_client
-    import json
-    
-    prompt = """
-    Generate 3 realistic inbound emails that a digital marketing agency might receive.
-    Return ONLY a JSON object with a single key 'emails' containing an array of objects with the following keys:
-    - sender_name: string
-    - sender_email: string
-    - subject: string
-    - body_snippet: string (first 150 chars of the email)
-    - suggested_type: string (Lead, Client, Spam, Inquiry)
-    - ai_analysis: string (Brief 1 sentence explanation of why it was classified this way)
-    
-    Make at least one 'Lead' and one 'Spam'.
-    """
-    try:
-        openai_client = get_openai_client()
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-        content = response.choices[0].message.content or "{}"
-        data = json.loads(content)
-        emails = data.get("emails", [])
+
+    if not integration.access_token:
+        raise HTTPException(status_code=400, detail="Missing OAuth token. Please reconnect.")
         
-        extracted = []
-        for e in emails:
-            new_email = ExtractedEmail(
-                integration_id=integration.id,
-                sender_name=e.get("sender_name", "Unknown"),
-                sender_email=e.get("sender_email", "unknown@example.com"),
-                subject=e.get("subject", "No Subject"),
-                body_snippet=e.get("body_snippet", ""),
-                suggested_type=e.get("suggested_type", "Unknown"),
-                ai_analysis=e.get("ai_analysis", "")
-            )
-            session.add(new_email)
-            extracted.append(new_email)
-            
-        integration.last_synced_at = datetime.utcnow()
+    creds = Credentials(
+        token=integration.access_token,
+        refresh_token=integration.refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+        client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+    )
+    
+    if creds.expired and creds.refresh_token:
+        creds.refresh(google.auth.transport.requests.Request())
+        integration.access_token = creds.token
+        integration.token_expiry = creds.expiry
         session.commit()
         
-        return {"ok": True, "count": len(extracted), "emails": extracted}
-    except Exception as e:
-        print("Error syncing emails:", e)
-        raise HTTPException(status_code=500, detail=str(e))
+    service = build('gmail', 'v1', credentials=creds)
+    results = service.users().messages().list(userId='me', maxResults=5).execute()
+    messages = results.get('messages', [])
+    
+    if not messages:
+        return {"ok": True, "count": 0, "emails": []}
+        
+    extracted = []
+    from modules.llm_engine import get_openai_client
+    import re
+    
+    for msg in messages:
+        txt = service.users().messages().get(userId='me', id=msg['id'], format='full').execute()
+        payload = txt.get('payload', {})
+        headers = payload.get('headers', [])
+        
+        subject = "No Subject"
+        sender = "Unknown Sender"
+        
+        for d in headers:
+            if d['name'] == 'Subject':
+                subject = d['value']
+            if d['name'] == 'From':
+                sender = d['value']
+                
+        snippet = txt.get('snippet', '')
+        
+        prompt = f"""
+        Classify this inbound email for a digital marketing agency CRM.
+        Sender: {sender}
+        Subject: {subject}
+        Body: {snippet}
+        
+        Return ONLY a JSON object with:
+        - suggested_type: string (Lead, Client, Spam, Inquiry)
+        - ai_analysis: string (Brief 1 sentence explanation)
+        """
+        try:
+            openai_client = get_openai_client()
+            response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            data = json.loads(response.choices[0].message.content or "{}")
+            suggested_type = data.get("suggested_type", "Unknown")
+            ai_analysis = data.get("ai_analysis", "")
+        except Exception:
+            suggested_type = "Unknown"
+            ai_analysis = "Failed to classify"
+            
+        match = re.match(r"(.*)<(.*)>", sender)
+        if match:
+            sender_name = match.group(1).strip()
+            sender_email = match.group(2).strip()
+        else:
+            sender_name = sender
+            sender_email = sender
 
+        new_email = ExtractedEmail(
+            integration_id=integration.id,
+            sender_name=sender_name,
+            sender_email=sender_email,
+            subject=subject,
+            body_snippet=snippet,
+            suggested_type=suggested_type,
+            ai_analysis=ai_analysis
+        )
+        session.add(new_email)
+        extracted.append(new_email)
+        
+    integration.last_synced_at = datetime.utcnow()
+    session.commit()
+    
+    # Refresh objects so they have DB IDs
+    for e in extracted:
+        session.refresh(e)
+        
+        # ── WHATSAPP NOTIFICATION ──
+        try:
+            from modules.whatsapp import send_ai_polished_whatsapp_message
+            base_url = "https://crm-seo.allytechcourses.com"
+            send_ai_polished_whatsapp_message("New Incoming Email", e.dict(), f"{base_url}/admin/settings?tab=email_tracker")
+        except Exception as ex:
+            print("WhatsApp Email Hook Error:", ex)
+
+    return {"ok": True, "count": len(extracted), "emails": [e.dict() for e in extracted]}
 @app.get("/extracted-emails")
 def get_extracted_emails(user_id: int, session: Session = Depends(get_session)):
     emails = session.query(ExtractedEmail).join(EmailIntegration).filter(

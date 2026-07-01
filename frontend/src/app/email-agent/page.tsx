@@ -36,29 +36,61 @@ type RecommendedService = {
   expected_impact?: string;
 };
 
-
 interface ResearchResultData {
-  emails?: string;
-  phone?: string;
-  social_links?: {
+  company_info?: {
+    company_name?: string;
+    likely_industry?: string;
+    industry?: string;
+    what_they_do?: string;
+    summary?: string;
+    business_model?: string;
+    estimated_size?: string;
+    target_market?: string;
+    geographic_presence?: string;
     linkedin?: string;
-    instagram?: string;
-    facebook?: string;
+    best_conversion_opportunity?: string;
+    sales_follow_up_focus?: string;
+    website?: string;
+    extracted_emails?: string;
+    extracted_phone_numbers?: string;
+    extracted_linkedin?: string;
+    extracted_twitter?: string;
+    contacts?: Array<{
+      email?: string;
+      name?: string;
+      role?: string;
+      phone_number?: string;
+    }>;
   };
-  company_services?: string[];
-  cold_email_english?: string;
-  cold_email_spanish?: string;
-  
-  // Legacy fields
-  company_info?: any;
-  contact?: any;
-  recommended_services?: any;
-  draft?: any;
-  extracted_services?: any;
+  contact?: {
+    email?: string;
+    name?: string;
+    role?: string;
+    phone_number?: string;
+    whatsapp?: string;
+    linkedin?: string;
+    twitter?: string;
+  };
+  recommended_services?: Array<RecommendedService | string>;
+  email_hook?: string;
+  package_suggestion?: string;
+  draft?: {
+    english_body?: string;
+    spanish_body?: string;
+    body?: string;
+    subject?: string;
+  };
   assigned_sales_manager?: string;
   company_url?: string;
   client_id?: number;
   id?: string;
+  extracted_services?: Array<{
+    name: string;
+    brief: string;
+    category: string;
+    approx_cost: number;
+    cost_is_estimated: boolean;
+  }>;
 }
 
 interface ResearchResult {
@@ -83,6 +115,76 @@ function CopyButton({ text }: { text: string }) {
       {copied ? <Check className="w-3.5 h-3.5 text-slate-800 dark:text-zinc-100" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
   );
+}
+
+function buildProspectingPoints(result: ResearchResultData) {
+  const hasServices = (result.recommended_services || []).map((s) => typeof s === 'string' ? s : s.service_name).filter(Boolean) as string[];
+  
+  // Extract contact information with fallbacks
+  const primaryEmail = result.contact?.email || result.company_info?.extracted_emails?.split(",")[0]?.trim() || "No email found.";
+  const allEmails = result.company_info?.extracted_emails ? result.company_info.extracted_emails.split(",").map(e => e.trim()).slice(0, 2).join(", ") : primaryEmail;
+  
+  const primaryPhone = result.contact?.phone_number || result.contact?.whatsapp || result.company_info?.extracted_phone_numbers?.split(",")[0]?.trim() || "No phone available.";
+  const allPhones = result.company_info?.extracted_phone_numbers ? result.company_info.extracted_phone_numbers.split(",").map(p => p.trim()).slice(0, 2).join(", ") : primaryPhone;
+  
+  const linkedinProfile = result.contact?.linkedin || result.company_info?.linkedin || result.company_info?.extracted_linkedin?.split(",")[0]?.trim() || "No LinkedIn profile found.";
+  const allLinkedIn = result.company_info?.extracted_linkedin ? result.company_info.extracted_linkedin.split(",").map(l => l.trim()).slice(0, 2).join(", ") : linkedinProfile;
+  
+  const twitterProfile = result.contact?.twitter || result.company_info?.extracted_twitter?.split(",")[0]?.trim() || "No Twitter/X profile found.";
+  const allTwitter = result.company_info?.extracted_twitter ? result.company_info.extracted_twitter.split(",").map(t => t.trim()).slice(0, 2).join(", ") : twitterProfile;
+  
+  return [
+    {
+      title: "Company Summary",
+      body: result.company_info?.what_they_do || result.company_info?.summary || "Company description not available.",
+      icon: Briefcase,
+    },
+    {
+      title: "Services Offered",
+      body: hasServices.length > 0 ? hasServices.join(", ") : "No service matches available yet.",
+      icon: Package,
+    },
+    {
+      title: "Conversion Priority",
+      body: result.company_info?.best_conversion_opportunity || "Highest value opportunity not yet identified.",
+      icon: Target,
+    },
+    {
+      title: "Primary Contact",
+      body: result.contact?.name || "No contact name found.",
+      icon: AtSign,
+    },
+    {
+      title: "Email ID",
+      body: allEmails,
+      icon: Mail,
+    },
+    {
+      title: "Mobile / WhatsApp",
+      body: allPhones,
+      icon: Phone,
+    },
+    {
+      title: "LinkedIn",
+      body: allLinkedIn,
+      icon: Globe,
+    },
+    {
+      title: "Twitter / X",
+      body: allTwitter,
+      icon: Zap,
+    },
+    {
+      title: "Sales Manager",
+      body: result.assigned_sales_manager || "Assign a salesperson to this lead.",
+      icon: UserPlus,
+    },
+    {
+      title: "Follow-up Focus",
+      body: result.company_info?.sales_follow_up_focus || "Capture next steps as notes and turn them into tasks.",
+      icon: TrendingUp,
+    },
+  ];
 }
 
 function BottomUpFillMail() {
@@ -110,18 +212,18 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
   const [activeTab, setActiveTab] = useState<"english" | "spanish">("english");
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
+  const [followUpNote, setFollowUpNote] = useState("");
+  const [followUpTitle, setFollowUpTitle] = useState(`Follow up with ${companyName}`);
+  const [followUpStatus, setFollowUpStatus] = useState<string | null>(null);
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
-  const contactEmail = result.emails?.split(",")[0]?.trim() || result.contact?.email || result.company_info?.extracted_emails?.split(",")[0]?.trim();
+  const extractedEmail = result.company_info?.extracted_emails?.split(",")[0]?.trim();
+  const directContactEmail = Array.isArray((result.company_info as any)?.contacts) ? (result.company_info as any).contacts[0]?.email : (result.company_info as any)?.email;
+  const contactEmail = result.contact?.email || directContactEmail || extractedEmail;
 
-  let englishText = result.cold_email_english || result.draft?.english_body || result.draft?.body || "";
-  let spanishText = result.cold_email_spanish || result.draft?.spanish_body || "";
-  
-  const subjectMatch = englishText.match(/^Subject:\s*(.+)$/m);
-  const subject = subjectMatch ? subjectMatch[1].trim() : (result.draft?.subject || "Outreach Proposal");
-  englishText = englishText.replace(/^Subject:\s*.+\n+/m, "");
-  spanishText = spanishText.replace(/^Asunto:\s*.+\n+/m, "").replace(/^Subject:\s*.+\n+/m, "");
-
+  const englishText = result.draft?.english_body || result.draft?.body || "";
+  const spanishText = result.draft?.spanish_body || "";
   const gmailBodyText = spanishText && !englishText.includes(spanishText) 
     ? `${englishText}\n\n---\n\n${spanishText}`
     : englishText;
@@ -144,12 +246,29 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
     setSendError(null);
     try {
       await onSendAutomatically(result, companyName, companyUrl);
-      setSendSuccess("Mail sent");
+      setSendSuccess("Sent Automatically");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to send email";
       setSendError(message);
     }
     setSending(false);
+  };
+
+  const handleSaveFollowUp = async () => {
+    if (!followUpNote.trim()) {
+      setFollowUpStatus("Add a follow-up note first.");
+      return;
+    }
+    setSavingFollowUp(true);
+    setFollowUpStatus(null);
+    const saved = await onSaveFollowUp(result, followUpNote.trim(), followUpTitle);
+    setSavingFollowUp(false);
+    if (saved) {
+      setFollowUpStatus("Follow-up note saved successfully.");
+      setFollowUpNote("");
+    } else {
+      setFollowUpStatus("Unable to save follow-up. Please try again.");
+    }
   };
 
   return (
@@ -158,91 +277,225 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
       animate={{ opacity: 1, y: 0 }}
       className="space-y-4 w-full"
     >
-      {/* Contact Details & Socials */}
+      {/* Top row: Company Info + Contact */}
       <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-black text-lg shadow-inner">
-              {companyName.charAt(0).toUpperCase()}
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-800 dark:text-zinc-100 font-black text-lg shadow-inner">
+                {(result.company_info?.company_name || companyName).charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100">{result.company_info?.company_name || companyName}</h2>
+                <p className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
+                  {result.company_info?.likely_industry || result.company_info?.industry || "Business"}
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100">{companyName}</h2>
-              <p className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
-                Target Company
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
-            <div className="flex items-center gap-2 mb-3">
-              <Mail className="w-4 h-4 text-slate-400" />
-              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-widest">Emails Found</p>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              {result.emails && result.emails !== "Not Found" ? result.emails.split(',').map((e, i) => (
-                <a key={i} href={`mailto:${e.trim()}`} className="text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:underline">{e.trim()}</a>
-              )) : <p className="text-sm text-slate-500">No emails found.</p>}
-            </div>
+            {result.package_suggestion && (
+              <span className="px-3 py-1 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
+                <Package className="w-3 h-3" /> {result.package_suggestion}
+              </span>
+            )}
           </div>
 
-          <div className="bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
-            <div className="flex items-center gap-2 mb-3">
-              <Phone className="w-4 h-4 text-slate-400" />
-              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-widest">Phone Numbers</p>
-            </div>
-            {result.phone && result.phone !== "Not Found" ? (
-              <a href={`tel:${result.phone}`} className="text-sm font-bold text-slate-700 dark:text-zinc-200 hover:underline">{result.phone}</a>
-            ) : (
-              <p className="text-sm text-slate-500">Not Found</p>
-            )}
-          </div>
-        </div>
+          <p className="text-slate-500 dark:text-zinc-400 text-sm leading-relaxed mb-5">
+            {result.company_info?.summary || result.company_info?.what_they_do || "Company information loading..."}
+          </p>
 
-        <div className="mt-4 bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
-          <div className="flex items-center gap-2 mb-3">
-            <Globe className="w-4 h-4 text-slate-400" />
-            <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-widest">Social Links</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {result.social_links?.linkedin && result.social_links.linkedin !== "Not Found" && (
-              <a href={result.social_links.linkedin} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-[#0a66c2]/10 text-[#0a66c2] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn</a>
-            )}
-            {result.social_links?.instagram && result.social_links.instagram !== "Not Found" && (
-              <a href={result.social_links.instagram} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-pink-500/10 text-pink-600 rounded-md text-xs font-bold hover:bg-pink-500/20 transition-colors">Instagram</a>
-            )}
-            {result.social_links?.facebook && result.social_links.facebook !== "Not Found" && (
-              <a href={result.social_links.facebook} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-blue-600/10 text-blue-700 rounded-md text-xs font-bold hover:bg-blue-600/20 transition-colors">Facebook</a>
-            )}
-            {(!result.social_links || Object.values(result.social_links).every(v => !v || v === "Not Found")) && (
-              <span className="text-sm text-slate-500">No social profiles detected.</span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Services List */}
-      {result.company_services && result.company_services.length > 0 && (
-        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center gap-2 mb-5">
-            <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-100">
-              <Package className="w-4 h-4" />
-            </div>
-            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Company Services & Products</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {result.company_services.map((svc, i) => (
-              <div key={i} className="px-3 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-sm font-medium text-slate-700 dark:text-zinc-200 shadow-sm">
-                {svc}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: "Model", value: result.company_info?.business_model, icon: Briefcase },
+              { label: "Size", value: result.company_info?.estimated_size, icon: Building2 },
+              { label: "Market", value: result.company_info?.target_market, icon: Target },
+              { label: "Reach", value: result.company_info?.geographic_presence, icon: Globe },
+            ].filter(f => f.value).map(({ label, value, icon: Icon }) => (
+              <div key={label} className="p-3 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Icon className="w-3 h-3 text-slate-400" />
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
+                </div>
+                <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 truncate">{value}</p>
               </div>
             ))}
           </div>
         </div>
+
+        {/* Extracted Company Info */}
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-5">
+            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
+              <AtSign className="w-4 h-4" />
+            </div>
+            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Extracted Company Info</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Emails</p>
+              <div className="flex flex-col gap-1">
+                {result.company_info?.extracted_emails ? result.company_info.extracted_emails.split(',').map((e: string, i: number) => (
+                  <a key={i} href={`mailto:${e.trim()}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-mono break-all">{e.trim()}</a>
+                )) : <p className="text-sm text-slate-500 dark:text-zinc-500 font-mono">None</p>}
+              </div>
+            </div>
+            <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Phones</p>
+              <div className="flex flex-col gap-1">
+                {result.company_info?.extracted_phone_numbers ? result.company_info.extracted_phone_numbers.split(',').map((p: string, i: number) => (
+                  <a key={i} href={`tel:${p.trim()}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-mono break-all">{p.trim()}</a>
+                )) : <p className="text-sm text-slate-500 dark:text-zinc-500 font-mono">None</p>}
+              </div>
+            </div>
+            <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm lg:col-span-2">
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-2">Company Socials</p>
+              <div className="flex flex-wrap gap-2">
+                {result.company_info?.company_social_media?.linkedin ? <a href={result.company_info.company_social_media.linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn</a> : null}
+                {result.company_info?.company_social_media?.twitter ? <a href={result.company_info.company_social_media.twitter} target="_blank" rel="noreferrer" className="px-3 py-1 bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300 rounded-md text-xs font-bold hover:bg-slate-200 transition-colors">X / Twitter</a> : null}
+                {result.company_info?.company_social_media?.instagram ? <a href={result.company_info.company_social_media.instagram} target="_blank" rel="noreferrer" className="px-3 py-1 bg-pink-500/10 text-pink-600 dark:bg-pink-500/20 dark:text-pink-400 rounded-md text-xs font-bold hover:bg-pink-500/20 transition-colors">Instagram</a> : null}
+                {result.company_info?.company_social_media?.facebook ? <a href={result.company_info.company_social_media.facebook} target="_blank" rel="noreferrer" className="px-3 py-1 bg-blue-600/10 text-blue-700 dark:bg-blue-600/20 dark:text-blue-400 rounded-md text-xs font-bold hover:bg-blue-600/20 transition-colors">Facebook</a> : null}
+                {result.company_info?.extracted_linkedin && !result.company_info?.company_social_media?.linkedin ? <a href={result.company_info.extracted_linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn (Fallback)</a> : null}
+                {(!result.company_info?.company_social_media || Object.values(result.company_info.company_social_media).every(v => !v)) && !result.company_info?.extracted_linkedin && <span className="text-sm text-slate-500 dark:text-zinc-500">No social profiles detected.</span>}
+              </div>
+            </div>
+          </div>
+
+          {/* Key Decision Makers */}
+          {result.company_info?.contacts && Array.isArray(result.company_info.contacts) && result.company_info.contacts.length > 0 ? (
+            <div className="bg-slate-50 dark:bg-zinc-950 rounded-xl border border-slate-100 dark:border-zinc-800 overflow-x-auto mt-4">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-zinc-700 text-[10px] text-slate-500 dark:text-zinc-400 uppercase tracking-widest bg-slate-100 dark:bg-zinc-900/50">
+                    <th className="py-3 px-4 font-bold">Name & Role</th>
+                    <th className="py-3 px-4 font-bold">Contact</th>
+                    <th className="py-3 px-4 font-bold">Socials</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.company_info.contacts.map((p: any, i: number) => (
+                    <tr key={i} className="border-b border-slate-100 dark:border-zinc-800 last:border-0 hover:bg-white dark:hover:bg-zinc-900 transition-colors">
+                      <td className="py-4 px-4 align-top">
+                        <div className="font-bold text-sm text-slate-800 dark:text-zinc-100">{p.name || 'Unknown Name'}</div>
+                        {p.role && <div className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{p.role}</div>}
+                      </td>
+                      <td className="py-4 px-4 align-top">
+                        {p.email && (
+                          <div className="flex items-center gap-2 mb-1">
+                            <Mail size={12} className="text-slate-400" />
+                            <a href={`mailto:${p.email}`} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline break-all">{p.email}</a>
+                          </div>
+                        )}
+                        {p.phone_number && (
+                          <div className="flex items-center gap-2">
+                            <Phone size={12} className="text-slate-400" />
+                            <a href={`tel:${p.phone_number}`} className="text-xs text-slate-600 dark:text-zinc-300 hover:underline">{p.phone_number}</a>
+                          </div>
+                        )}
+                        {!p.email && !p.phone_number && <span className="text-xs text-slate-400">Not found</span>}
+                      </td>
+                      <td className="py-4 px-4 align-top">
+                        <div className="flex flex-wrap gap-2">
+                          {p.personal_social_media?.linkedin ? (
+                            <a href={p.personal_social_media.linkedin} target="_blank" rel="noreferrer" className="px-2 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded text-[10px] font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn</a>
+                          ) : null}
+                          {p.personal_social_media?.twitter ? (
+                            <a href={p.personal_social_media.twitter} target="_blank" rel="noreferrer" className="px-2 py-1 bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300 rounded text-[10px] font-bold hover:bg-slate-200 transition-colors">X/Twitter</a>
+                          ) : null}
+                          {!p.personal_social_media?.linkedin && !p.personal_social_media?.twitter && <span className="text-xs text-slate-400">-</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-24 text-slate-400">
+              <AtSign className="w-8 h-8 opacity-30" />
+              <p className="text-xs mt-2">No key decision makers found</p>
+            </div>
+          )}
+        </div>
+
+      {/* Recommended Services */}
+      {result.recommended_services && result.recommended_services.length > 0 && (
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-5">
+            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
+              <Zap className="w-4 h-4" />
+            </div>
+            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Recommended Services</p>
+          </div>
+          {result.email_hook && (
+            <p className="text-sm text-slate-800 dark:text-zinc-100 italic mb-5 bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
+              &ldquo;{result.email_hook}&rdquo;
+            </p>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {result.recommended_services && result.recommended_services.map((svc, i: number) => {
+              const service = typeof svc === 'string' ? { service_name: svc } : svc;
+              return (
+                <div key={i} className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl hover:border-slate-300 dark:border-zinc-600 hover:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 transition-all">
+                  <div className="flex items-start gap-3">
+                    <div className="p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 shrink-0 mt-0.5">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-800 dark:text-zinc-100 text-sm">{service.service_name}</p>
+                      <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{service.why_relevant}</p>
+                      {service.expected_impact && (
+                        <p className="text-[10px] text-green-400 font-bold mt-2 flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" /> {service.expected_impact}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
-      {/* Drafts Section */}
-      {(result.cold_email_english || result.cold_email_spanish || result.draft) && (
+      {/* Extracted Client Services */}
+      {result.extracted_services && result.extracted_services.length > 0 && (
+        <div className="bg-white dark:bg-zinc-900 border border-emerald-500/30 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-5">
+            <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">
+              <Store className="w-4 h-4" />
+            </div>
+            <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Services Offered by This Company</p>
+            <span className="ml-auto text-[9px] font-black text-emerald-500/60 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+              {result.extracted_services.length} detected
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {result.extracted_services.map((svc, i) => (
+              <div key={i} className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                    {svc.category}
+                  </span>
+                  {svc.approx_cost > 0 && (
+                    <span className="ml-auto text-[9px] font-black text-amber-400 flex items-center gap-0.5">
+                      <DollarSign className="w-2.5 h-2.5" />
+                      {svc.approx_cost.toLocaleString()}
+                      {svc.cost_is_estimated ? ' est.' : ''}
+                    </span>
+                  )}
+                </div>
+                <p className="font-bold text-slate-800 dark:text-zinc-100 text-sm mb-1">{svc.name}</p>
+                {svc.brief && <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">{svc.brief}</p>}
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[10px] text-emerald-500/50 font-medium">
+            ✦ These services have been saved to the client profile and Marketplace catalog.
+          </p>
+        </div>
+      )}
+
+
+      {result.draft && (
         <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
@@ -251,80 +504,153 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
               </div>
               <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Generated Email Draft</p>
             </div>
-            <CopyButton text={activeTab === "english" ? englishText : spanishText} />
+            <CopyButton text={activeTab === "english" ? (result.draft.english_body || result.draft.body || "") : (result.draft.spanish_body || "")} />
           </div>
 
-          {subject && (
+          {result.draft.subject && (
             <div className="mb-4 p-3 bg-slate-50 dark:bg-zinc-950 rounded-xl border border-slate-100 dark:border-zinc-800 flex items-center justify-between">
               <div>
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Subject</p>
-                <p className="text-sm font-bold text-slate-800 dark:text-zinc-100">{subject}</p>
+                <p className="text-sm font-bold text-slate-800 dark:text-zinc-100">{result.draft.subject}</p>
               </div>
-              <CopyButton text={subject} />
+              <CopyButton text={result.draft.subject} />
             </div>
           )}
 
           <div className="flex gap-2 mb-4">
-            <button
-              onClick={() => setActiveTab("english")}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${
-                activeTab === "english" ? "bg-white dark:bg-zinc-900 text-black dark:text-white border-slate-300 dark:border-zinc-600 shadow-sm" : "bg-slate-50 dark:bg-zinc-950 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700 hover:bg-white dark:bg-zinc-900"
-              }`}
-            >
-              English
-            </button>
-            <button
-              onClick={() => setActiveTab("spanish")}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${
-                activeTab === "spanish" ? "bg-white dark:bg-zinc-900 text-black dark:text-white border-slate-300 dark:border-zinc-600 shadow-sm" : "bg-slate-50 dark:bg-zinc-950 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700 hover:bg-white dark:bg-zinc-900"
-              }`}
-            >
-              Español
-            </button>
+            {[
+              { key: "english" as const, label: "English" },
+              { key: "spanish" as const, label: "Español" },
+              ...(result.draft?.whatsapp_draft ? [{ key: "whatsapp" as const, label: "WhatsApp" }] : []),
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border ${
+                  activeTab === tab.key ? "bg-white dark:bg-zinc-900 text-black dark:text-white border-slate-300 dark:border-zinc-600 shadow-sm" : "bg-slate-50 dark:bg-zinc-950 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700 hover:bg-white dark:bg-zinc-900"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
           <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl p-5 text-sm text-slate-700 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed max-h-80 overflow-auto font-mono custom-scrollbar">
-            {activeTab === "english" ? (englishText || "No English draft generated") : (spanishText || "No Spanish draft generated")}
+            {activeTab === "english"
+              ? (result.draft.english_body || result.draft.body || "No English draft generated")
+              : activeTab === "spanish"
+              ? (result.draft.spanish_body || "No Spanish draft generated")
+              : (result.draft.whatsapp_draft || "No WhatsApp draft generated")}
           </div>
 
           {contactEmail && (
-            <div className="mt-6 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4">
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100">
-                    <Send className="w-4 h-4 text-slate-500 dark:text-zinc-400" />
-                    <span>Ready to send to: {contactEmail}</span>
+            <div className="space-y-6">
+              <div className="grid gap-3 md:grid-cols-3">
+                {buildProspectingPoints(result).map((point, idx) => {
+                  const Icon = point.icon;
+                  return (
+                    <div key={idx} className="rounded-3xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 p-4 text-sm text-slate-700 dark:text-zinc-200 shadow-sm">
+                      <div className="flex items-center gap-2 mb-3 text-slate-500 dark:text-zinc-400">
+                        <Icon className="w-4 h-4" />
+                        <span className="font-bold uppercase tracking-[0.18em] text-[10px]">{point.title}</span>
+                      </div>
+                      <p className="leading-snug text-slate-600 dark:text-zinc-300 font-medium">{point.body}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 space-y-4">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100">
+                      <Send className="w-4 h-4 text-slate-500 dark:text-zinc-400" />
+                      <span>Ready to send to: {contactEmail}</span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">Use your Gmail credentials to send the outreach email instantly.</p>
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">Trigger webhook or send via Gmail manually.</p>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={handleSendAutomatically}
+                      disabled={sending || !!sendSuccess}
+                      className="px-4 py-2 rounded-xl bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-indigo-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                    >
+                      {sending ? <Clock className="w-3.5 h-3.5 animate-spin" /> : sendSuccess ? <CheckCircle className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
+                      Send Automatically
+                    </button>
+                    <button
+                      onClick={handleSend}
+                      disabled={sending || !!sendSuccess}
+                      className="px-4 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 font-bold text-xs flex items-center gap-2 hover:bg-slate-50 dark:bg-zinc-950 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      Send via System
+                    </button>
+                    <a
+                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${contactEmail || ''}&su=${encodeURIComponent(result.draft?.subject || '')}&body=${encodeURIComponent(gmailBodyText)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => onSendManually(result, companyName, companyUrl, true, "Gmail").catch(console.error)}
+                      className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-amber-600 transition-all shrink-0"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      Send through Gmail
+                    </a>
+                    {result.draft?.whatsapp_draft && result.contact?.phone_number && (
+                      <a
+                        href={`https://wa.me/${result.contact.phone_number.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(result.draft.whatsapp_draft)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => onSendManually(result, companyName, companyUrl, true, "WhatsApp").catch(console.error)}
+                        className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-emerald-600 transition-all shrink-0"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" /> Send via WhatsApp
+                      </a>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={handleSendAutomatically}
-                    disabled={sending || !!sendSuccess}
-                    className="px-4 py-2 rounded-xl bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-indigo-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                  >
-                    {sending ? <Clock className="w-3.5 h-3.5 animate-spin" /> : sendSuccess ? <CheckCircle className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
-                    Trigger Webhook
-                  </button>
-                  <a
-                    href={`https://mail.google.com/mail/?view=cm&fs=1&to=${contactEmail || ''}&su=${encodeURIComponent(subject || '')}&body=${encodeURIComponent(gmailBodyText)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => onSendManually(result, companyName, companyUrl, true, "Gmail").catch(console.error)}
-                    className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-amber-600 transition-all shrink-0"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    Send through Gmail
-                  </a>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Next Follow-up Note</label>
+                    <input
+                      type="text"
+                      value={followUpTitle}
+                      onChange={(e) => setFollowUpTitle(e.target.value)}
+                      className="mt-2 w-full rounded-xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-white"
+                      placeholder="Follow-up title"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Note for the sales team</label>
+                    <textarea
+                      value={followUpNote}
+                      onChange={(e) => setFollowUpNote(e.target.value)}
+                      rows={4}
+                      className="mt-2 w-full rounded-2xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 px-3 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-white resize-none"
+                      placeholder="Capture the follow-up summary, next steps, or internal action items."
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <button
+                      onClick={handleSaveFollowUp}
+                      disabled={savingFollowUp || !followUpNote.trim()}
+                      className="px-4 py-2 rounded-xl bg-sky-500 text-slate-800 dark:text-zinc-100 font-bold text-xs hover:bg-sky-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {savingFollowUp ? "Saving..." : "Save Follow-Up"}
+                    </button>
+                    {followUpStatus && (
+                      <p className="text-xs text-slate-500 dark:text-zinc-400">{followUpStatus}</p>
+                    )}
+                  </div>
+                  {sendError && (
+                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+                      {sendError}
+                    </div>
+                  )}
                 </div>
               </div>
-              
-              {sendError && (
-                <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-                  {sendError}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -465,34 +791,27 @@ export default function EmailAgentPage() {
 
   const sendEmail = async (result: ResearchResultData, name: string, url: string, manual: boolean, skip_send: boolean = false, action_type: string = "System"): Promise<SendEmailResult> => {
     try {
-      const serviceNames = result.company_services ? result.company_services.join(", ") : "";
-      
-      const emailToSend = result.emails?.split(",")[0]?.trim() || result.contact?.email || result.company_info?.extracted_emails?.split(",")[0]?.trim();
-      if (!emailToSend || emailToSend === "Not Found") {
+      const serviceNames = (result.recommended_services || []).map((s) => (typeof s === 'string' ? s : s.service_name || '')).filter(Boolean).join(", ");
+      const fallbackEmail = Array.isArray(result.company_info?.contacts) ? result.company_info.contacts[0]?.email : undefined;
+      const extractedEmail = result.company_info?.extracted_emails?.split(",")[0]?.trim();
+      const emailToSend = result.contact?.email || fallbackEmail || extractedEmail || undefined;
+      if (!emailToSend) {
         throw new Error("No recipient email available to send.");
       }
-      
-      let englishText = result.cold_email_english || result.draft?.english_body || result.draft?.body || "";
-      let spanishText = result.cold_email_spanish || result.draft?.spanish_body || "";
-      const subjectMatch = englishText.match(/^Subject:\s*(.+)$/m);
-      const subject = subjectMatch ? subjectMatch[1].trim() : (result.draft?.subject || "Outreach Proposal");
-      englishText = englishText.replace(/^Subject:\s*.+\n+/m, "");
-      spanishText = spanishText.replace(/^Asunto:\s*.+\n+/m, "").replace(/^Subject:\s*.+\n+/m, "");
-
       const res = await fetch(`${API_BASE_URL}/send-manual`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to_email: emailToSend,
           company_name: result.company_info?.company_name || name,
-          subject: subject,
-          english_body: englishText,
-          spanish_body: spanishText,
+          subject: result.draft?.subject || "",
+          english_body: result.draft?.english_body || result.draft?.body || "",
+          spanish_body: result.draft?.spanish_body || "",
           recommended_services: serviceNames,
-          contact_name: null,
-          contact_role: null,
-          website_url: url,
-          phone_number: result.phone !== "Not Found" ? result.phone : null,
+          contact_name: result.contact?.name || null,
+          contact_role: result.contact?.role || null,
+          website_url: result.company_url || result.company_info?.website || url || null,
+          phone_number: result.contact?.phone_number || null,
           manual,
           skip_send,
           action_type,
