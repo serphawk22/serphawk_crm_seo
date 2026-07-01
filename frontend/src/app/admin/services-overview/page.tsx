@@ -40,7 +40,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] ?? { label: status, color: 'text-slate-600', bg: 'bg-slate-100', border: 'border-slate-200', icon: AlertCircle, progress: 0 };
+  const cfg = STATUS_CONFIG[status] ?? { label: status, color: 'text-slate-600 dark:text-zinc-300', bg: 'bg-slate-100 dark:bg-zinc-800', border: 'border-slate-200 dark:border-zinc-700', icon: AlertCircle, progress: 0 };
   const Icon = cfg.icon;
   return (
     <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-black border', cfg.color, cfg.bg, cfg.border)}>
@@ -57,9 +57,9 @@ function ProgressBar({ status }: { status: string }) {
     <div className="space-y-1.5">
       <div className="flex justify-between items-center">
         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Progress</span>
-        <span className="text-[11px] font-black text-slate-600">{pct}%</span>
+        <span className="text-[11px] font-black text-slate-600 dark:text-zinc-300">{pct}%</span>
       </div>
-      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+      <div className="h-2 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${pct}%` }}
@@ -118,7 +118,7 @@ export default function ServicesOverviewPage() {
               <LayoutGrid className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-slate-800">Services Overview</h1>
+              <h1 className="text-2xl font-black text-slate-800 dark:text-zinc-100">Services Overview</h1>
               <p className="text-slate-400 text-sm font-medium mt-0.5">All client service requests — click any row for full details</p>
             </div>
           </div>
@@ -154,7 +154,7 @@ export default function ServicesOverviewPage() {
             </div>
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{s.label}</p>
-              <p className="text-xl font-black text-slate-800">{s.value}</p>
+              <p className="text-xl font-black text-slate-800 dark:text-zinc-100">{s.value}</p>
             </div>
           </div>
         ))}
@@ -169,7 +169,7 @@ export default function ServicesOverviewPage() {
             placeholder="Search by service, client name or email..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm text-slate-700 dark:text-zinc-200 placeholder:text-slate-400 focus:outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
           />
         </div>
         <div className="flex gap-1.5 flex-wrap">
@@ -181,7 +181,7 @@ export default function ServicesOverviewPage() {
                 'px-3 py-2 rounded-lg text-[12px] font-bold border transition-all',
                 filterStatus === s
                   ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                  : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-200 hover:text-indigo-600'
+                  : 'bg-white dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700 hover:border-indigo-200 hover:text-indigo-600'
               )}
             >
               {s}{s !== 'All' && byStatus[s] ? ` (${byStatus[s]})` : ''}
@@ -199,13 +199,13 @@ export default function ServicesOverviewPage() {
       ) : filtered.length === 0 ? (
         <div className="glass-card p-20 flex flex-col items-center gap-4 text-slate-400">
           <Package className="w-12 h-12 text-slate-200" />
-          <p className="font-black text-slate-600 text-lg">No requests found</p>
+          <p className="font-black text-slate-600 dark:text-zinc-300 text-lg">No requests found</p>
           <p className="text-sm">Try adjusting your filters.</p>
         </div>
       ) : (
         <div className="glass-card overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_1fr_40px] gap-4 px-5 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+          <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_1fr_40px] gap-4 px-5 py-3 bg-slate-50 dark:bg-zinc-950 border-b border-slate-100 dark:border-zinc-800 text-[10px] font-black text-slate-400 uppercase tracking-widest">
             <span>Service</span>
             <span>Client</span>
             <span>Assigned To</span>
@@ -225,16 +225,16 @@ export default function ServicesOverviewPage() {
                   className="w-full grid grid-cols-[2fr_2fr_1.5fr_1fr_1fr_40px] gap-4 px-5 py-4 items-center hover:bg-indigo-50/50 transition-colors text-left group"
                 >
                   <div className="min-w-0">
-                    <p className="font-bold text-slate-800 text-sm truncate group-hover:text-indigo-700 transition-colors">{req.service_name}</p>
+                    <p className="font-bold text-slate-800 dark:text-zinc-100 text-sm truncate group-hover:text-indigo-700 transition-colors">{req.service_name}</p>
                     <p className="text-[10px] text-slate-400 font-medium mt-0.5">{new Date(req.requested_at).toLocaleDateString()}</p>
                   </div>
                   <div className="min-w-0">
-                    <p className="font-semibold text-slate-700 text-sm truncate">{req.client_name || '—'}</p>
+                    <p className="font-semibold text-slate-700 dark:text-zinc-200 text-sm truncate">{req.client_name || '—'}</p>
                     <p className="text-[10px] text-slate-400 font-medium truncate">{req.client_email}</p>
                   </div>
                   <div>
                     {req.assigned_employee_name
-                      ? <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-bold"><UserCheck className="w-3 h-3 text-indigo-500" />{req.assigned_employee_name}</span>
+                      ? <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 rounded-lg text-[11px] font-bold"><UserCheck className="w-3 h-3 text-indigo-500" />{req.assigned_employee_name}</span>
                       : <span className="text-[11px] text-slate-300 font-medium">Unassigned</span>
                     }
                   </div>
@@ -271,17 +271,17 @@ export default function ServicesOverviewPage() {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', stiffness: 320, damping: 36 }}
-              className="fixed top-0 right-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 flex flex-col overflow-hidden"
+              className="fixed top-0 right-0 h-full w-full max-w-lg bg-white dark:bg-zinc-900 shadow-2xl z-50 flex flex-col overflow-hidden"
             >
               {/* Drawer header */}
-              <div className="flex items-start justify-between p-6 border-b border-slate-100 shrink-0">
+              <div className="flex items-start justify-between p-6 border-b border-slate-100 dark:border-zinc-800 shrink-0">
                 <div>
                   <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1">Service Request #{selected.id}</p>
-                  <h2 className="text-xl font-black text-slate-800">{selected.service_name}</h2>
+                  <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100">{selected.service_name}</h2>
                 </div>
                 <button
                   onClick={() => setSelected(null)}
-                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:bg-zinc-800 transition-all"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -291,7 +291,7 @@ export default function ServicesOverviewPage() {
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
                 {/* Status + Progress */}
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-4">
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Current Status</span>
                     <StatusBadge status={selected.status} />
@@ -306,13 +306,13 @@ export default function ServicesOverviewPage() {
                       return (
                         <React.Fragment key={s}>
                           <div className="flex flex-col items-center gap-1">
-                            <div className={cn('w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all', done ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-200')}>
+                            <div className={cn('w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all', done ? 'bg-indigo-600 border-indigo-600' : 'bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700')}>
                               {done && <CheckCircle className="w-3.5 h-3.5 text-white" />}
                             </div>
                             <span className={cn('text-[9px] font-bold whitespace-nowrap', done ? 'text-indigo-600' : 'text-slate-300')}>{s}</span>
                           </div>
                           {i < arr.length - 1 && (
-                            <div className={cn('flex-1 h-0.5 mb-4 transition-all', done && i < currentIdx ? 'bg-indigo-600' : 'bg-slate-200')} />
+                            <div className={cn('flex-1 h-0.5 mb-4 transition-all', done && i < currentIdx ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-zinc-700')} />
                           )}
                         </React.Fragment>
                       );
@@ -325,13 +325,13 @@ export default function ServicesOverviewPage() {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Users className="w-3.5 h-3.5 text-indigo-500" /> Client
                   </p>
-                  <div className="p-4 rounded-2xl border border-slate-100 bg-white flex items-center justify-between">
+                  <div className="p-4 rounded-2xl border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-black text-sm">
                         {selected.client_name?.[0]?.toUpperCase() ?? '?'}
                       </div>
                       <div>
-                        <p className="font-bold text-slate-800 text-sm">{selected.client_name || '—'}</p>
+                        <p className="font-bold text-slate-800 dark:text-zinc-100 text-sm">{selected.client_name || '—'}</p>
                         <p className="text-[11px] text-slate-400">{selected.client_email}</p>
                       </div>
                     </div>
@@ -349,7 +349,7 @@ export default function ServicesOverviewPage() {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <DollarSign className="w-3.5 h-3.5 text-emerald-500" /> Pricing
                   </p>
-                  <div className="p-4 rounded-2xl border border-slate-100 bg-white">
+                  <div className="p-4 rounded-2xl border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
                     {selected.quoted_amount != null ? (
                       <div className="flex items-center justify-between">
                         <div>
@@ -359,7 +359,7 @@ export default function ServicesOverviewPage() {
                         {selected.quote_sent_at && (
                           <div className="text-right">
                             <p className="text-[10px] text-slate-400 font-medium">Quote Sent</p>
-                            <p className="text-sm font-bold text-slate-600">{new Date(selected.quote_sent_at).toLocaleDateString()}</p>
+                            <p className="text-sm font-bold text-slate-600 dark:text-zinc-300">{new Date(selected.quote_sent_at).toLocaleDateString()}</p>
                           </div>
                         )}
                       </div>
@@ -367,9 +367,9 @@ export default function ServicesOverviewPage() {
                       <p className="text-sm text-slate-400 font-medium italic">No quote issued yet.</p>
                     )}
                     {selected.quote_message && (
-                      <div className="mt-3 pt-3 border-t border-slate-100">
+                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Quote Note</p>
-                        <p className="text-sm text-slate-600 font-medium leading-relaxed">{selected.quote_message}</p>
+                        <p className="text-sm text-slate-600 dark:text-zinc-300 font-medium leading-relaxed">{selected.quote_message}</p>
                       </div>
                     )}
                     {selected.quote_doc_url && (
@@ -385,7 +385,7 @@ export default function ServicesOverviewPage() {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Briefcase className="w-3.5 h-3.5 text-violet-500" /> Team Handling
                   </p>
-                  <div className="p-4 rounded-2xl border border-slate-100 bg-white space-y-3">
+                  <div className="p-4 rounded-2xl border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 space-y-3">
                     {selected.assigned_employee_name ? (
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-violet-100 border border-violet-200 flex items-center justify-center text-violet-700 font-black text-sm">
@@ -393,16 +393,16 @@ export default function ServicesOverviewPage() {
                         </div>
                         <div>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Assigned Employee</p>
-                          <p className="font-bold text-slate-800 text-sm">{selected.assigned_employee_name}</p>
+                          <p className="font-bold text-slate-800 dark:text-zinc-100 text-sm">{selected.assigned_employee_name}</p>
                         </div>
                       </div>
                     ) : (
                       <p className="text-sm text-slate-400 font-medium italic">No employee assigned yet.</p>
                     )}
                     {selected.team_info && (
-                      <div className="pt-3 border-t border-slate-100">
+                      <div className="pt-3 border-t border-slate-100 dark:border-zinc-800">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Team Notes</p>
-                        <p className="text-sm text-slate-600 font-medium leading-relaxed">{selected.team_info}</p>
+                        <p className="text-sm text-slate-600 dark:text-zinc-300 font-medium leading-relaxed">{selected.team_info}</p>
                       </div>
                     )}
                   </div>
@@ -413,14 +413,14 @@ export default function ServicesOverviewPage() {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Calendar className="w-3.5 h-3.5 text-sky-500" /> Timeline
                   </p>
-                  <div className="p-4 rounded-2xl border border-slate-100 bg-white grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-2xl border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 grid grid-cols-2 gap-4">
                     {[
                       { label: 'Requested',  value: selected.requested_at  },
                       { label: 'Quote Sent', value: selected.quote_sent_at },
                     ].map(({ label, value }) => (
                       <div key={label}>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{label}</p>
-                        <p className="text-sm font-bold text-slate-700">
+                        <p className="text-sm font-bold text-slate-700 dark:text-zinc-200">
                           {value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                         </p>
                       </div>
@@ -430,10 +430,10 @@ export default function ServicesOverviewPage() {
               </div>
 
               {/* Drawer footer */}
-              <div className="p-4 border-t border-slate-100 shrink-0 flex gap-3">
+              <div className="p-4 border-t border-slate-100 dark:border-zinc-800 shrink-0 flex gap-3">
                 <Link
                   href="/admin/requests"
-                  className="flex-1 text-center px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors"
+                  className="flex-1 text-center px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 font-bold text-sm hover:bg-slate-50 dark:bg-zinc-950 transition-colors"
                 >
                   Manage in Request Board
                 </Link>

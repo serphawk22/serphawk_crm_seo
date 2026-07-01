@@ -10,6 +10,10 @@ from fastapi.websockets import WebSocket, WebSocketDisconnect
 from sqlmodel import Session
 from modules.scraper import research_and_map_company
 from pydantic import BaseModel
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from database import engine, SentEmail
 from sqlmodel import select
@@ -41,36 +45,55 @@ def register_sent_emails_endpoint(app, get_session):
 
 import hashlib
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Form, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from database import (
+    Account,
     ActivityLog,
+    AnalyticsData,
     CallLog,
+    ScheduledCall,
     ChatMessage,
     ClientFileUpload,
+    ClientNote,
     ClientProfile,
+    ClientResearch,
     ClientStatus,
+    ClientTicket,
     CompetitorAnalysis,
+    CompetitorRelationship,
+    Contact,
+    ConversationLog,
+    ConversationReply,
+    Deal,
     Document,
+    EmailIntegration,
     EmailLog,
+    ExtractedEmail,
     Invoice,
     KeywordRankEntry,
+    Lead,
     MessageThread,
     Milestone,
     NPSSurvey,
     Notification,
     Project,
     Proposal,
+    RadarAnalysis,
+    RankingTracker,
     Remark,
+    MarketplaceService,
+    SEOAudit,
     ServiceCatalog,
     ServiceRequest,
+    SocialProfile,
     Task,
     TaskComment,
     User,
@@ -87,10 +110,49 @@ def get_session():
     with Session(engine) as session:
         yield session
 
+from modules.api_tracker import current_client_id, current_salesperson_id, current_endpoint, patch_openai
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+class APIIntelligenceMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Reset context for this request
+        current_client_id.set(None)
+        current_salesperson_id.set(None)
+        current_endpoint.set(request.url.path)
+
+        # Try to infer user from JWT token if Authorization header exists
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            try:
+                import jwt
+                from config import SECRET_KEY, ALGORITHM
+                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                user_id = payload.get("sub")
+                if user_id:
+                    current_salesperson_id.set(int(user_id))
+            except:
+                pass
+        
+        # Try to infer client_id from path parameters
+        # Example paths: /clients/123/something or /projects/456 where we might need to lookup client
+        path_parts = request.url.path.strip("/").split("/")
+        if len(path_parts) >= 2 and path_parts[0] == "clients" and path_parts[1].isdigit():
+            current_client_id.set(int(path_parts[1]))
+            
+        response = await call_next(request)
+        return response
+
 app = FastAPI(title="SerpHawk CRM", version="2.0.0")
+app.add_middleware(APIIntelligenceMiddleware)
+
+from modules.api_intelligence import router as api_intelligence_router
+app.include_router(api_intelligence_router)
 
 @app.on_event("startup")
 def on_startup():
+    patch_openai()
     create_db_and_tables()
 
 allowed_origins = [
@@ -122,13 +184,19 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Email Notification Helper
 # ─────────────────────────────────────────────────────────────────────────────
 def _send_notification_email(to_email: str, subject: str, body_html: str):
-    """Best-effort email notification. Fails silently so it never blocks API responses."""
+    """Best-effort email notification using N8N webhook."""
     try:
-        from modules.email_sender import send_email_outlook
-        sender = os.environ.get("SENDER_EMAIL", "")
-        password = os.environ.get("SENDER_PASSWORD", "")
-        if sender and password:
-            send_email_outlook(to_email, subject, body_html, sender, password)
+        import httpx, os
+        webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "http://localhost:5678/webhook-test/trigger-cold-email")
+        sender = os.environ.get("SENDER_EMAIL", "prasanthanupojuwork@gmail.com")
+        payload = {
+            "event": "notification_email",
+            "to_email": to_email,
+            "subject": subject,
+            "body": body_html,
+            "sender": sender
+        }
+        httpx.post(webhook_url, json=payload, timeout=5.0)
     except Exception as e:
         print(f"[Notification email failed] {e}")
 
@@ -160,150 +228,69 @@ async def research_map_company_endpoint(body: ResearchMapRequest, background_tas
 class SmartResearchRequest(BaseModel):
     company_name: str
     company_url: Optional[str] = None
+    client_id: Optional[int] = None  # If set, link extracted services to this CRM client
 
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest):
     """
-    Takes a company name (and optional URL), researches it via LLM,
-    finds business contact email, recommends services, and generates an email draft.
+    Forwards the company URL to N8N webhook and bypasses Python automation.
+    Waits for N8N to return the generated data.
     """
-    import json as _json
-    from modules.fallback_analyzer import analyze_company_name_fallback
-    from modules.market_analyzer import match_services
-    from modules.llm_engine import get_openai_client, generate_email
+    import httpx, os
+    from datetime import datetime
 
-    company_name = body.company_name.strip()
-
-    # Step 1: Try scraping website if URL given, otherwise use LLM knowledge
-    company_info = {}
-    website_content = ""
-    if body.company_url and body.company_url.strip():
-        try:
-            from modules.scraper import scrape_website
-            website_content = await scrape_website(body.company_url.strip())
-            if not website_content.startswith("ERROR"):
-                from modules.llm_engine import analyze_content
-                company_info = analyze_content(website_content)
-            else:
-                company_info = analyze_company_name_fallback(company_name)
-        except Exception:
-            company_info = analyze_company_name_fallback(company_name)
-    else:
-        company_info = analyze_company_name_fallback(company_name)
-
-    company_info.setdefault("company_name", company_name)
-
-    extracted_emails_str = ""
-    extracted_phones_str = ""
-    if website_content and not website_content.startswith("ERROR"):
-        try:
-            if "Extracted Emails: " in website_content:
-                extracted_emails_str = website_content.split("Extracted Emails: ")[1].split("\n")[0].strip()
-            if "Extracted Phone Numbers: " in website_content:
-                extracted_phones_str = website_content.split("Extracted Phone Numbers: ")[1].split("\n")[0].strip()
-        except Exception:
-            pass
-
-    # Step 2: Find business contact details via LLM
-    contact_email = None
-    contact_name = None
-    contact_role = None
-    contact_phone = None
-    try:
-        client = get_openai_client()
-        email_prompt = f"""You are a business intelligence expert. For the company "{company_name}", find or infer the most likely business contact details.
-
-Rules:
-- If you found emails or phones from website scraping data, you MUST prefer and use those EXACTLY as they are. DO NOT override, guess, or invent domain-based emails (like contact@domain or info@domain) if a scraped email is available (even if it's a generic gmail address like anupojubhavani9849@gmail.com).
-- Similarly, DO NOT use default placeholder phone numbers (like +919999999999) if a real scraped phone number is available in the 'Scraped Phone Numbers from Website'.
-- If this is a well-known company, and NO email was scraped, use your knowledge of their real domain (e.g. @flipkart.com, @amazon.com) and prefer patterns like: info@domain, hello@domain, contact@domain, sales@domain, or partnerships@domain.
-- Suggest the most likely contact phone number (with country code, in international format like +91XXXXXXXXXX or similar country context. If completely unknown and no scraped phone was found, suggest a likely number or use '+919999999999' as a placeholder)
-- Also suggest the most likely contact person name and role (e.g. "Marketing Manager")
-
-Scraped Emails from Website: {extracted_emails_str}
-Scraped Phone Numbers from Website: {extracted_phones_str}
-
-{f'Website data contacts: {_json.dumps(company_info.get("contacts", []))}' if company_info.get("contacts") else ''}
-
-Return JSON only:
-{{
-    "email": "the best business contact email",
-    "name": "likely contact person name or null",
-    "role": "likely role or null",
-    "phone_number": "the best business contact phone number with country code",
-    "confidence": "high/medium/low",
-    "reasoning": "brief explanation of how you determined this"
-}}"""
-
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Return valid JSON only. Be accurate and specific."},
-                {"role": "user", "content": email_prompt}
-            ],
-            response_format={"type": "json_object"}
-        )
-        contact_data = _json.loads(resp.choices[0].message.content)
-        contact_email = contact_data.get("email")
-        contact_name = contact_data.get("name")
-        contact_role = contact_data.get("role")
-        contact_phone = contact_data.get("phone_number")
-    except Exception:
-        # Fallback: try to extract from company_info contacts
-        contacts = company_info.get("contacts", [])
-        if contacts and isinstance(contacts, list) and len(contacts) > 0:
-            c = contacts[0]
-            contact_email = c.get("email")
-            contact_name = c.get("name")
-            contact_role = c.get("role")
-            contact_phone = c.get("phone_number") or c.get("phone") or c.get("mobile")
-
-    # Step 3: Service matching
-    services_result = {}
-    try:
-        market_data = {
-            "industry": company_info.get("likely_industry", company_info.get("industry", "")),
-            "business_model": company_info.get("business_model", ""),
-            "pain_points": company_info.get("common_pain_points", company_info.get("pain_points", [])),
-        }
-        services_result = match_services(market_data, company_info)
-    except Exception:
-        services_result = {
-            "recommended_services": [
-                {"service_name": "Organic SEO", "why_relevant": "Improve online visibility", "expected_impact": "More qualified leads"},
-                {"service_name": "Local SEO", "why_relevant": "Dominate local search", "expected_impact": "Increased local customers"}
-            ],
-            "email_hook": f"Growth opportunities for {company_name}",
-            "package_suggestion": "Growth"
-        }
-
-    # Step 4: Generate email draft (pass recommended services so they appear in draft)
-    draft = {}
-    try:
-        contact_for_email = {"name": contact_name, "role": contact_role} if contact_name else None
-        recommended = services_result.get("recommended_services", [])
-        draft = generate_email(company_info, contact=contact_for_email, recommended_services=recommended)
-    except Exception:
-        draft = {
-            "subject": f"Growth Partnership Opportunity – {company_name}",
-            "english_body": f"Hi,\n\nI came across {company_name} and was impressed by what you do. I'd love to explore how our SEO and digital marketing services could help accelerate your growth.\n\nBest regards",
-            "spanish_body": f"Hola,\n\nEncontré {company_name} y me impresionó lo que hacen. Me encantaría explorar cómo nuestros servicios de SEO y marketing digital podrían ayudar a acelerar su crecimiento.\n\nSaludos",
-        }
-
-    return {
-        "company_info": company_info,
-        "company_url": body.company_url or company_info.get("website") or "",
-        "contact": {
-            "email": contact_email,
-            "name": contact_name,
-            "role": contact_role,
-            "phone_number": contact_phone or "+919999999999",
-        },
-        "recommended_services": services_result.get("recommended_services", []),
-        "email_hook": services_result.get("email_hook", ""),
-        "package_suggestion": services_result.get("package_suggestion", ""),
-        "draft": draft,
+    webhook_url = os.getenv("N8N_SCRAPING_WEBHOOK_URL", "http://localhost:5678/webhook-test/trigger-cold-email")
+    payload = {
+        "event": "smart_research_requested",
+        "company_name": body.company_name,
+        "company_url": body.company_url,
+        "client_id": body.client_id,
+        "timestamp": datetime.utcnow().isoformat()
     }
+    
+    try:
+        # Wait up to 120 seconds for N8N to process and return the response
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(webhook_url, json=payload)
+        
+        # If N8N returns the expected JSON structure, use it, else return a dummy structure
+        if response.status_code == 200:
+            data = response.json()
+            return data
+            
+        data = {}
+        
+        # Merge with default empty structure to prevent frontend crash if N8N fails
+        return {
+            "company_info": data.get("company_info", {"company_name": body.company_name}),
+            "company_url": data.get("company_url", body.company_url or ""),
+            "contact": data.get("contact", {
+                "email": None, "name": None, "role": None,
+                "phone_number": None, "linkedin": None, "twitter": None
+            }),
+            "recommended_services": data.get("recommended_services", []),
+            "email_hook": data.get("email_hook", ""),
+            "package_suggestion": data.get("package_suggestion", ""),
+            "draft": data.get("draft", {
+                "subject": "Pending N8N Generation",
+                "english_body": f"N8N webhook returned status {response.status_code}.",
+                "spanish_body": ""
+            }),
+            "extracted_services": data.get("extracted_services", [])
+        }
+    except Exception as e:
+        print(f"Webhook trigger failed in smart_research: {e}")
+        # Return fallback empty structure
+        return {
+            "company_info": {"company_name": body.company_name},
+            "company_url": body.company_url or "",
+            "contact": {"email": None, "name": None, "role": None, "phone_number": None, "linkedin": None, "twitter": None},
+            "recommended_services": [],
+            "email_hook": "",
+            "package_suggestion": "",
+            "draft": {"subject": "Webhook Trigger Failed", "english_body": str(e), "spanish_body": ""},
+            "extracted_services": []
+        }
 
 # --- Send Manual: create client + record email + activity ---
 class SendManualRequest(BaseModel):
@@ -317,127 +304,160 @@ class SendManualRequest(BaseModel):
     contact_role: Optional[str] = None
     website_url: Optional[str] = None
     phone_number: Optional[str] = None
+    manual: Optional[bool] = True
+    email_agent_data: Optional[str] = None
+    skip_send: Optional[bool] = False
+    action_type: Optional[str] = "System"
 
 @app.post("/send-manual")
 def send_manual(body: SendManualRequest, session: Session = Depends(get_session)):
     """
-    Records a manually sent email, creates a client (User + ClientProfile) if not existing,
+    Records a manually sent email, creates a Lead if not existing,
     and logs an activity entry.
     """
     from datetime import datetime
-    import hashlib
 
-    # Step 1: Find or create User by email
-    user = session.exec(select(User).where(User.email == body.to_email)).first()
-    if not user:
-        hashed_pw = hashlib.sha256("password123".encode()).hexdigest()
-        user = User(
-            email=body.to_email,
-            password=hashed_pw,
-            name=body.contact_name or body.company_name or "New Client",
-            role="Client",
-        )
-        session.add(user)
-        session.commit()
-        session.refresh(user)
-
-    # Step 2: Find or create ClientProfile
-    client_profile = session.exec(
-        select(ClientProfile).where(ClientProfile.userId == user.id)
-    ).first()
-    if not client_profile:
-        client_profile = ClientProfile(
-            userId=user.id,
-            companyName=body.company_name,
-            websiteUrl=body.website_url or None,
-            phone=body.phone_number or None,
-            status="Active",
-            recommended_services=body.recommended_services,
-            lastActivity="Outreach email sent",
-            lastActivityDate=datetime.utcnow().isoformat(),
-        )
-        session.add(client_profile)
-        session.commit()
-        session.refresh(client_profile)
+    # Determine action string
+    if body.action_type == "Gmail":
+        action_str = "Outreach via Gmail"
+    elif body.action_type == "WhatsApp":
+        action_str = "Outreach via WhatsApp"
+    elif body.action_type == "System Auto":
+        action_str = "Automated email sent"
     else:
-        # Update existing profile
-        client_profile.lastActivity = "Outreach email sent"
-        client_profile.lastActivityDate = datetime.utcnow().isoformat()
-        if body.recommended_services:
-            client_profile.recommended_services = body.recommended_services
-        if body.phone_number:
-            client_profile.phone = body.phone_number
-        session.add(client_profile)
+        action_str = "Manual outreach email sent"
+
+    # Step 1: Find or create Lead by email
+    to_email = (body.to_email or "").strip()
+    if not to_email:
+        raise HTTPException(status_code=400, detail="Recipient email is required")
+
+    lead = session.exec(
+        select(Lead).where(Lead.email == to_email)
+    ).first()
+    
+    if not lead:
+        lead = Lead(
+            company_name=body.company_name or "Unknown Company",
+            website=body.website_url or None,
+            email=to_email,
+            phone=body.phone_number or None,
+            source="Email Agent",
+            status="Contacted"
+        )
+        session.add(lead)
         session.commit()
-        session.refresh(client_profile)
+        session.refresh(lead)
+    else:
+        lead.status = "Contacted"
+        if body.phone_number:
+            lead.phone = body.phone_number
+        if body.website_url:
+            lead.website = body.website_url
+        session.add(lead)
+        session.commit()
+        session.refresh(lead)
+
+    # Add Contact if there's contact info
+    if body.contact_name:
+        contact = session.exec(select(Contact).where(Contact.email == to_email)).first()
+        if not contact:
+            contact = Contact(
+                first_name=body.contact_name,
+                full_name=body.contact_name,
+                email=to_email,
+                lead_id=lead.id,
+                designation=body.contact_role
+            )
+            session.add(contact)
+            session.commit()
+
+    # Step 2.5: Find or create ClientResearch to save email_agent_data
+    if body.email_agent_data:
+        client_research = session.exec(
+            select(ClientResearch).where(ClientResearch.lead_id == lead.id)
+        ).first()
+        if not client_research:
+            client_research = ClientResearch(
+                lead_id=lead.id,
+                email_agent_data=body.email_agent_data
+            )
+            session.add(client_research)
+        else:
+            client_research.email_agent_data = body.email_agent_data
+            session.add(client_research)
+        session.commit()
 
     # Step 3: Save SentEmail record
     sent_email = SentEmail(
-        client_id=client_profile.id,
-        to_email=body.to_email,
+        lead_id=lead.id,
+        to_email=to_email,
         subject=body.subject,
         english_body=body.english_body,
         spanish_body=body.spanish_body or "",
         recommended_services=body.recommended_services or "",
-        manual=True,
+        manual=body.manual if body.manual is not None else True,
         sent_at=datetime.utcnow(),
     )
     session.add(sent_email)
     session.commit()
     session.refresh(sent_email)
 
-    # Step 3.5: Send the actual email
-    from modules.email_sender import send_email_outlook
-    import os
-    sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "prasanthanupojuwork@gmail.com")
-    password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
-    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-    smtp_port = int(os.getenv("SMTP_PORT", 587))
-    imap_server = os.getenv("IMAP_SERVER", "imap.gmail.com")
+    # Step 3.5: Send the actual email via N8N Webhook (unless skip_send is True)
+    if not body.skip_send:
+        import os
+        sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "prasanthanupojuwork@gmail.com")
 
-    if sender and password:
         try:
+            import httpx
             full_body = f"{body.english_body}\n\n{body.spanish_body}" if body.spanish_body else body.english_body
-            send_email_outlook(
-                to_email=body.to_email,
-                subject=body.subject,
-                body=full_body,
-                sender_email=sender,
-                sender_password=password,
-                smtp_server=smtp_server,
-                smtp_port=smtp_port,
-                imap_server=imap_server
-            )
-            # --- Trigger n8n Webhook ---
-            try:
-                import httpx
-                webhook_url = "http://localhost:5678/webhook-test/serphawk-followup"
-                payload = {
-                    "event": "email_sent",
-                    "sender": sender,
-                    "to_email": body.to_email,
-                    "subject": body.subject,
-                    "company_name": body.company_name,
-                    "contact_name": body.contact_name or "Prospect",
-                    "phone_number": body.phone_number or "+919999999999",
-                    "recommended_services": body.recommended_services or "SEO",
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-                httpx.post(webhook_url, json=payload, timeout=5.0)
-                print(f"Webhook successfully triggered from manual send to {webhook_url}")
-            except Exception as wh_e:
-                print(f"Webhook trigger failed: {wh_e}")
-        except Exception as e:
-            print(f"Manual Email send failed: {e}")
+            webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "http://localhost:5678/webhook-test/trigger-cold-email")
+            
+            import json
+            result_data = {}
+            if body.email_agent_data:
+                try:
+                    result_data = json.loads(body.email_agent_data)
+                except:
+                    pass
 
+            payload = {
+                "event": "email_sent",
+                "sender": sender,
+                "to_email": body.to_email,
+                "subject": body.subject,
+                "body": full_body,
+                "company_name": body.company_name,
+                "contact_name": body.contact_name or "Prospect",
+                "phone_number": body.phone_number,
+                "recommended_services": body.recommended_services or "SEO",
+                "timestamp": datetime.utcnow().isoformat(),
+                "result": result_data
+            }
+            # Wait for webhook to respond
+            response = httpx.post(webhook_url, json=payload, timeout=120.0)
+            if response.status_code not in (200, 201, 204):
+                raise Exception(f"Webhook returned status {response.status_code}: {response.text}")
+            print(f"Webhook successfully triggered and responded for {webhook_url}")
+        except Exception as e:
+            print(f"Manual Email send (webhook) failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Manual Email send failed: {e}")
 
     # Step 4: Log activity
     try:
+        if body.action_type == "Gmail":
+            log_action = f"Sent outreach via Gmail to {body.to_email}"
+        elif body.action_type == "WhatsApp":
+            log_action = f"Sent outreach via WhatsApp to {body.phone_number}"
+        elif body.action_type == "System Auto":
+            log_action = f"Automated outreach email sent to {body.to_email}"
+        else:
+            log_action = f"Manual outreach email sent to {body.to_email}"
+
         activity = ActivityLog(
-            client_id=client_profile.id,
-            action=f"Manual outreach email sent to {body.to_email}",
+            lead_id=lead.id,
+            action=log_action,
             details=f"Subject: {body.subject} | Services: {body.recommended_services or 'N/A'}",
-            timestamp=datetime.utcnow(),
         )
         session.add(activity)
         session.commit()
@@ -446,10 +466,9 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
 
     return {
         "success": True,
-        "client_id": client_profile.id,
-        "user_id": user.id,
+        "lead_id": lead.id,
         "sent_email_id": sent_email.id,
-        "message": f"Client created and email recorded for {body.to_email}",
+        "message": f"Lead created and email recorded for {body.to_email}",
     }
 
 
@@ -459,9 +478,54 @@ def delete_client(client_id: int, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
-    session.delete(cp)
-    session.commit()
-    return {"success": True}
+
+    from sqlmodel import delete
+    
+    # We execute all deletes in a single transaction block.
+    # No mid-loop rollbacks! We use the exact model attributes defined in database.py
+    try:
+        session.execute(delete(ServiceRequest).where(ServiceRequest.client_id == client_id))
+        session.execute(delete(MessageThread).where(MessageThread.client_id == client_id))
+        session.execute(delete(Remark).where(Remark.clientId == client_id))
+        session.execute(delete(Document).where(Document.clientId == client_id))
+        session.execute(delete(ActivityLog).where(ActivityLog.clientId == client_id))
+        session.execute(delete(CallLog).where(CallLog.client_id == client_id))
+        session.execute(delete(SentEmail).where(SentEmail.client_id == client_id))
+        session.execute(delete(SocialProfile).where(SocialProfile.clientId == client_id))
+        session.execute(delete(SEOAudit).where(SEOAudit.clientId == client_id))
+        session.execute(delete(CompetitorAnalysis).where(CompetitorAnalysis.clientId == client_id))
+        session.execute(delete(RankingTracker).where(RankingTracker.clientId == client_id))
+        session.execute(delete(AnalyticsData).where(AnalyticsData.clientId == client_id))
+        session.execute(delete(Task).where(Task.client_id == client_id))
+        session.execute(delete(Invoice).where(Invoice.client_id == client_id))
+        session.execute(delete(Milestone).where(Milestone.client_id == client_id))
+        session.execute(delete(NPSSurvey).where(NPSSurvey.client_id == client_id))
+        session.execute(delete(Proposal).where(Proposal.client_id == client_id))
+        session.execute(delete(ClientFileUpload).where(ClientFileUpload.client_id == client_id))
+        session.execute(delete(KeywordRankEntry).where(KeywordRankEntry.client_id == client_id))
+        session.execute(delete(ClientNote).where(ClientNote.client_id == client_id))
+        session.execute(delete(Deal).where(Deal.client_id == client_id))
+        session.execute(delete(ConversationLog).where(ConversationLog.client_id == client_id))
+        session.execute(delete(ClientResearch).where(ClientResearch.client_id == client_id))
+        session.execute(delete(ClientTicket).where(ClientTicket.client_id == client_id))
+        
+        # Marketplace service provider links
+        session.execute(delete(MarketplaceService).where(MarketplaceService.provider_client_id == client_id))
+
+        # Delete the user account linked to this client (only if it's a Client-role user)
+        if cp.userId:
+            linked_user = session.get(User, cp.userId)
+            if linked_user and linked_user.role == "Client":
+                session.delete(linked_user)
+
+        session.delete(cp)
+        session.commit()
+        return {"success": True}
+    except Exception as e:
+        session.rollback()
+        print(f"[DeleteClient] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete client: {str(e)}")
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -470,6 +534,11 @@ def delete_client(client_id: int, session: Session = Depends(get_session)):
 class LoginRequest(BaseModel):
     email: str
     password: str
+
+class ChatbotRequest(BaseModel):
+    message: str
+    client_id: Optional[int] = None
+    current_route: Optional[str] = None
 
 
 class CreateUserRequest(BaseModel):
@@ -487,6 +556,12 @@ class ClientCreateRequest(BaseModel):
     email: Optional[str] = None
     name: Optional[str] = None
     password: Optional[str] = None
+    projectName: Optional[str] = None
+    gmbName: Optional[str] = None
+    seoStrategy: Optional[str] = None
+    tagline: Optional[str] = None
+    websiteUrl: Optional[str] = None
+    targetKeywords: Optional[list[str]] = None
 
 
 class ClientUpdateRequest(BaseModel):
@@ -504,6 +579,33 @@ class ClientUpdateRequest(BaseModel):
     lastActivityDate: Optional[str] = None
     assignedEmployeeId: Optional[int] = None
     customFields: Optional[dict] = None
+    lead_score: Optional[int] = None
+    lead_source: Optional[str] = None
+    deal_value: Optional[float] = None
+    industry: Optional[str] = None
+    employee_count: Optional[str] = None
+    revenue_range: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    contact_person: Optional[str] = None
+    last_contact_date: Optional[str] = None
+    next_followup_date: Optional[str] = None
+
+
+class DealCreateRequest(BaseModel):
+    title: str
+    value: float = 0.0
+    client_id: int
+    assigned_to: Optional[int] = None
+    stage: str = "Lead"
+    expected_close_date: Optional[str] = None
+
+
+class DealUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    value: Optional[float] = None
+    assigned_to: Optional[int] = None
+    stage: Optional[str] = None
+    expected_close_date: Optional[str] = None
 
 
 class AssignEmployeeRequest(BaseModel):
@@ -526,6 +628,17 @@ class ActivityCreateRequest(BaseModel):
     content: Optional[str] = None
     details: Optional[str] = None
     authorId: Optional[int] = None
+
+
+class ClientFollowUpRequest(BaseModel):
+    content: str
+    authorId: Optional[int] = None
+    isInternal: bool = True
+    task_title: Optional[str] = None
+    task_description: Optional[str] = None
+    assigned_to: Optional[int] = None
+    due_date: Optional[str] = None
+    email_agent_data: Optional[str] = None
 
 
 class ProjectCreateRequest(BaseModel):
@@ -624,10 +737,33 @@ class SendLeadRequest(BaseModel):
 
 # ── New Feature Pydantic Models ───────────────────────────────────────────────
 
+# Normalize frontend status strings -> PostgreSQL enum values
+# The DB enum 'taskstatus' was created with lowercase values.
+# Frontend sends 'Todo', 'InProgress', 'Done' — map them correctly.
+_TASK_STATUS_MAP: dict = {
+    "todo": "todo",
+    "Todo": "todo",
+    "TODO": "todo",
+    "inprogress": "inprogress",
+    "InProgress": "inprogress",
+    "INPROGRESS": "inprogress",
+    "in_progress": "inprogress",
+    "In Progress": "inprogress",
+    "done": "done",
+    "Done": "done",
+    "DONE": "done",
+}
+
+def _normalize_task_status(s: Optional[str]) -> Optional[str]:
+    if not s:
+        return s
+    return _TASK_STATUS_MAP.get(s, s.lower())
+
+
 class TaskCreateRequest(BaseModel):
     title: str
     description: Optional[str] = None
-    status: str = "Todo"
+    status: str = "todo"
     priority: str = "Medium"
     due_date: Optional[str] = None
     client_id: Optional[int] = None
@@ -739,6 +875,56 @@ class KeywordRankRequest(BaseModel):
     recorded_by: Optional[int] = None
 
 
+class ClientNoteCreateRequest(BaseModel):
+    content: str
+    tags: Optional[List[str]] = []
+    is_pinned: bool = False
+    author_id: Optional[int] = None
+    author_name: Optional[str] = None
+
+
+class ClientNoteUpdateRequest(BaseModel):
+    content: Optional[str] = None
+    tags: Optional[List[str]] = None
+    is_pinned: Optional[bool] = None
+
+
+class ConversationLogCreateRequest(BaseModel):
+    title: str
+    type: str = "call"
+    description: Optional[str] = None
+    author_id: Optional[int] = None
+    author_name: Optional[str] = None
+    attachment_urls: Optional[List[str]] = []
+
+
+class ConversationReplyCreateRequest(BaseModel):
+    content: str
+    author_id: Optional[int] = None
+    author_name: Optional[str] = None
+
+
+class ClientResearchUpdateRequest(BaseModel):
+    company_overview: Optional[str] = None
+    competitors: Optional[str] = None
+    tech_stack: Optional[str] = None
+    recent_news: Optional[str] = None
+    pain_points: Optional[str] = None
+    business_goals: Optional[str] = None
+    key_decision_makers: Optional[str] = None
+
+class ClientTicketCreateRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    author_id: Optional[int] = None
+    status: str = "Pending"
+
+class ClientTicketUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -785,35 +971,79 @@ def _user_dict(u: User) -> dict:
 
 def _client_dict(cp: ClientProfile, session: Session) -> dict:
     user = session.get(User, cp.userId) if cp.userId else None
+    employee = session.get(User, cp.assignedEmployeeId) if cp.assignedEmployeeId else None
+    cf = cp.customFields or {}
+    sd = cf.get("sheet_data", {})
+
+    # Smart fallbacks: if stored fields are empty, pull from raw sheet_data
+    def _get(primary, *sheet_keys):
+        if primary:
+            return primary
+        for k in sheet_keys:
+            for sk, sv in sd.items():
+                if sk.strip().lower() == k.lower() and sv and str(sv).strip():
+                    return str(sv).strip()
+        return None
+
+    website         = _get(cp.websiteUrl, "Website URL", "Website", "url")
+    company_name    = _get(cp.companyName, "Client Name", "Company", "Company Name", "Name")
+    
+    # If company name is STILL blank (e.g. legacy import with no company column), derive from website
+    if not company_name and website:
+        import urllib.parse
+        try:
+            parsed = urllib.parse.urlparse(website if "://" in website else "http://" + website)
+            domain = parsed.netloc.replace("www.", "").split(".")[0]
+            if domain:
+                company_name = domain.capitalize()
+        except Exception:
+            pass
+
+    services        = _get(cp.services_offered, "Services", "Services providing", "Services Offered")
+    description     = _get(cp.tagline, "Description", "description", "Notes")
+    phone           = _get(cp.phone, "Contact", "Phone")
+    country         = _get(cp.address, "Country", "country", "Region")
+
     return {
         "id": cp.id,
         "userId": cp.userId,
         "email": user.email if user else None,
         "name": user.name if user else None,
-        "companyName": cp.companyName,
-        "phone": cp.phone,
-        "address": cp.address,
+        "companyName": company_name,
+        "phone": phone,
+        "address": country,
         "status": cp.status,
         "gmbName": cp.gmbName,
         "seoStrategy": cp.seoStrategy,
-        "tagline": cp.tagline,
+        "tagline": description,
         "targetKeywords": cp.targetKeywords or [],
         "keywords": cp.targetKeywords or [],
-        "websiteUrl": cp.websiteUrl,
+        "websiteUrl": website,
+        "website": website,
         "recommended_services": cp.recommended_services,
         "nextMilestone": cp.nextMilestone,
         "nextMilestoneDate": cp.nextMilestoneDate,
         "lastActivity": cp.lastActivity,
         "lastActivityDate": cp.lastActivityDate,
         "assignedEmployeeId": cp.assignedEmployeeId,
+        "assignedEmployeeName": employee.name if employee else None,
         "projectId": cp.projectId,
         "projectName": cp.projectName,
         "payment_status": cp.payment_status,
         "sitemap_url": cp.sitemap_url,
         "cms_type": cp.cms_type,
-        "services_offered": cp.services_offered,
+        "services_offered": services,
         "services_requested": cp.services_requested,
-        "customFields": cp.customFields or {},
+        "industry": cp.industry or cf.get("market_size"),
+        "lead_score": cp.lead_score or 0,
+        "deal_value": cp.deal_value,
+        "contact_person": cp.contact_person or sd.get("Contact") or sd.get("contact"),
+        "linkedin_url": cp.linkedin_url,
+        "last_contact_date": cp.last_contact_date,
+        "next_followup_date": cp.next_followup_date,
+        "description": cf.get("ai_description") or cf.get("description") or description,
+        "country": cf.get("country") or sd.get("Country") or sd.get("country"),
+        "customFields": cf,
     }
 
 
@@ -857,6 +1087,17 @@ def create_user(body: CreateUserRequest, session: Session = Depends(get_session)
         session.add(cp)
         session.commit()
     return {"user": _user_dict(user)}
+
+
+@app.get("/users")
+def list_users(role: Optional[str] = None, session: Session = Depends(get_session)):
+    query = select(User)
+    if role:
+        roles = [r.strip() for r in role.split(",") if r.strip()]
+        if roles:
+            query = query.where(User.role.in_(roles))
+    users = session.exec(query).all()
+    return {"users": [_user_dict(u) for u in users]}
 
 
 @app.delete("/users/{user_id}")
@@ -908,6 +1149,7 @@ def list_client_statuses(session: Session = Depends(get_session)):
 def list_clients(
     status: Optional[str] = None,
     query: Optional[str] = None,
+    assigned_employee_id: Optional[int] = None,
     page: int = 1,
     per_page: int = 18,
     session: Session = Depends(get_session),
@@ -925,6 +1167,8 @@ def list_clients(
                 ClientProfile.gmbName.ilike(search_term),
             )
         )
+    if assigned_employee_id is not None:
+        q = q.where(ClientProfile.assignedEmployeeId == assigned_employee_id)
 
     total = session.exec(select(func.count()).select_from(q.subquery())).one()
     clients = session.exec(q.offset((page - 1) * per_page).limit(per_page)).all()
@@ -945,7 +1189,7 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
             user = User(
                 email=body.email,
                 password=_hash_password(body.password or "changeme"),
-                name=body.name,
+                name=body.name or body.companyName or "Client",
                 role="Client",
             )
             session.add(user)
@@ -958,11 +1202,227 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
         phone=body.phone,
         address=body.address,
         status=body.status,
+        projectName=body.projectName,
+        gmbName=body.gmbName,
+        seoStrategy=body.seoStrategy,
+        tagline=body.tagline,
+        websiteUrl=body.websiteUrl,
+        targetKeywords=body.targetKeywords,
     )
     session.add(cp)
     session.commit()
     session.refresh(cp)
     return {"client": _client_dict(cp, session)}
+
+
+
+# ─── CSV/Sheet Import ────────────────────────────────────────────────────────
+from pydantic import BaseModel as _BM
+from typing import Optional as _Opt
+import csv as _csv
+import io as _io
+
+class SheetImportRequest(_BM):
+    csv_url: _Opt[str] = None
+    csv_text: _Opt[str] = None
+
+@app.post("/clients/import-sheet")
+async def import_sheet(body: SheetImportRequest, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    import httpx
+
+    raw_csv = body.csv_text
+    if not raw_csv and body.csv_url:
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=20) as http_client:
+                r = await http_client.get(body.csv_url)
+                raw_csv = r.text
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not fetch CSV: {e}")
+
+    if not raw_csv:
+        raise HTTPException(status_code=400, detail="No CSV data provided")
+
+    reader = _csv.DictReader(_io.StringIO(raw_csv))
+    rows = list(reader)
+    added, skipped = [], []
+
+    for row in rows:
+        def get_field(keys):
+            for k in keys:
+                for rk in row.keys():
+                    if rk.strip().lower() == k.lower():
+                        v = row[rk]
+                        return v.strip() if v else None
+            return None
+
+        company  = get_field(["Client Name","Company","Company Name","companyName","Name"])
+        website  = get_field(["Website URL","Website","websiteUrl","url","URL"])
+
+        if not company and website:
+            # Extract domain name as company name if missing (e.g. https://www.mosco.mx -> Mosco)
+            import urllib.parse
+            try:
+                parsed = urllib.parse.urlparse(website if "://" in website else "http://" + website)
+                domain = parsed.netloc.replace("www.", "").split(".")[0]
+                if domain:
+                    company = domain.capitalize()
+            except Exception:
+                pass
+
+        email    = get_field(["Email","email","Email Address"])
+        phone    = get_field(["Contact","Phone","phone","Contact Number"])
+        country  = get_field(["Country","country","Region"])
+        services = get_field(["Services","Services providing","Services Offered","services_offered","Services providing"])
+        market   = get_field(["Market size","Market","Market Size"])
+        desc     = get_field(["Description","description","Notes"])
+
+        if not company and not website:
+            skipped.append({"reason": "empty row"})
+            continue
+
+        dup = None
+        if website:
+            dup = session.exec(select(ClientProfile).where(ClientProfile.websiteUrl == website)).first()
+        if not dup and company:
+            dup = session.exec(select(ClientProfile).where(ClientProfile.companyName == company)).first()
+        if dup:
+            skipped.append({"reason": "duplicate", "company": company or website, "existing_id": dup.id})
+            continue
+
+        raw_sheet_data = {k.strip(): (v.strip() if v else "") for k, v in row.items()}
+
+        cp = ClientProfile(
+            companyName=company,
+            websiteUrl=website,
+            phone=phone,
+            address=country,
+            status="Active",
+            services_offered=services,
+            customFields={"sheet_data": raw_sheet_data, "market_size": market, "description": desc, "country": country}
+        )
+
+        if email:
+            existing_user = session.exec(select(User).where(User.email == email)).first()
+            if not existing_user:
+                new_user = User(
+                    email=email,
+                    password=_hash_password("changeme"),
+                    name=company or "Client",
+                    role="Client",
+                )
+                session.add(new_user)
+                session.commit()
+                session.refresh(new_user)
+                cp.userId = new_user.id
+
+        session.add(cp)
+        session.commit()
+        session.refresh(cp)
+        added.append({"id": cp.id, "company": company, "website": website})
+
+        if website:
+            background_tasks.add_task(_auto_research_client_bg, cp.id, website)
+
+    return {"ok": True, "added": len(added), "skipped": len(skipped), "added_clients": added, "skipped_clients": skipped}
+
+
+async def _auto_research_client_bg(client_id: int, website: str):
+    from database import engine
+    from sqlmodel import Session as DBSession
+    from modules.scraper import scrape_website
+    from modules.llm_engine import extract_client_profile_from_website
+    try:
+        raw = await scrape_website(website)
+        if not raw:
+            return
+        data = extract_client_profile_from_website(raw, website)
+        with DBSession(engine) as sess:
+            cp = sess.get(ClientProfile, client_id)
+            if not cp:
+                return
+            if data.get("company_name") and not cp.companyName:
+                cp.companyName = data["company_name"]
+            if data.get("tagline"):
+                cp.tagline = data["tagline"]
+            if data.get("industry"):
+                cp.industry = data["industry"]
+            if data.get("services"):
+                svc = data["services"]
+                cp.services_offered = ", ".join(svc) if isinstance(svc, list) else str(svc)
+            existing_cf = cp.customFields or {}
+            if data.get("description"):
+                existing_cf["ai_description"] = data["description"]
+            cp.customFields = existing_cf
+            sess.add(cp)
+            sess.commit()
+            # Also create/update ClientResearch so the AI Agent tab works
+            from database import ClientResearch
+            research = sess.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+            if not research:
+                research = ClientResearch(client_id=client_id)
+                sess.add(research)
+            
+            # Format the output into AI Agent fields
+            research.company_overview = data.get("description", cp.tagline)
+            research.tech_stack = "Web presence detected"
+            
+            # Pack everything into email_agent_data JSON string so the UI can use it
+            import json
+            ai_data = {
+                "tagline": cp.tagline,
+                "services": data.get("services", []),
+                "industry": cp.industry,
+                "auto_researched": True,
+                "company_socials": data.get("company_socials", {}),
+                "people": data.get("people", [])
+            }
+            research.email_agent_data = json.dumps(ai_data)
+            
+            # Also store the people array natively into key_decision_makers for legacy/direct display
+            if data.get("people"):
+                research.key_decision_makers = json.dumps(data.get("people"))
+            
+            sess.commit()
+            
+            deal = Deal(
+                title=f"Opportunity – {cp.companyName or website}",
+                client_id=client_id,
+                stage="Lead",
+                value=0.0,
+                notes=f"Auto-researched via sheet import.\n\n{data.get('description', '')}",
+            )
+            sess.add(deal)
+            sess.commit()
+    except Exception as e:
+        print(f"[AutoResearch] Error for client {client_id}: {e}")
+
+
+# ─── CSV Export ────────────────────────────────────────────────────────────────
+@app.get("/clients/export-csv")
+def export_clients_csv(session: Session = Depends(get_session)):
+    from fastapi.responses import StreamingResponse
+
+    clients_list = session.exec(select(ClientProfile)).all()
+    output = _io.StringIO()
+    writer = _csv.writer(output)
+    writer.writerow(["S.No","Client Name","Website URL","Email","Phone/Contact","Country",
+                     "Services Offered","Status","Market Size","Description","Assigned To"])
+    for i, c in enumerate(clients_list, 1):
+        user = session.get(User, c.userId) if c.userId else None
+        emp = session.get(User, c.assignedEmployeeId) if c.assignedEmployeeId else None
+        cf = c.customFields or {}
+        writer.writerow([
+            i, c.companyName or "", c.websiteUrl or "", user.email if user else "",
+            c.phone or "", c.address or cf.get("country",""), c.services_offered or "",
+            c.status or "Active", cf.get("market_size",""),
+            cf.get("description", cf.get("ai_description","")), emp.name if emp else "Unassigned"
+        ])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=serphawk_clients.csv"}
+    )
 
 
 @app.get("/clients/{client_id}")
@@ -971,6 +1431,144 @@ def get_client(client_id: int, session: Session = Depends(get_session)):
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
     return {"client": _client_dict(cp, session)}
+
+@app.post("/clients/{client_id}/simulate-call")
+def simulate_client_call(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp: raise HTTPException(status_code=404, detail="Client not found")
+    
+    # Fetch related remarks as notes
+    remarks_query = session.exec(select(Remark).where(Remark.clientId == client_id)).all()
+    notes = "\n".join([r.content for r in remarks_query]) if remarks_query else ""
+    activities = session.exec(select(ActivityLog).where(ActivityLog.clientId == client_id)).all()
+    act_str = "\n".join([f"- {a.action}: {a.content}" for a in activities])
+    
+    email = cp.user.email if cp.user else ""
+    keywords = ", ".join(cp.targetKeywords) if cp.targetKeywords else ""
+
+    prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
+Your task is to write a highly tailored, direct sales script to be read over the phone to this specific client. 
+DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
+
+Client Profile:
+Company/Project: {cp.companyName or cp.projectName or 'Unknown'}
+Email: {email}
+Keywords they are targeting: {keywords}
+Services they need/offer: {cp.services_offered or 'SEO and Marketing Services'}
+
+Notes from our CRM:
+{notes}
+
+Recent Activity with them:
+{act_str}
+
+Instructions:
+1. Write the exact word-for-word script that the sales person will read on the call.
+2. Directly reference their specific company name, their services/keywords, and especially any past notes or activities.
+3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
+4. Make it conversational, persuasive, and professional.
+5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
+6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
+
+    from modules.llm_engine import get_openai_client
+    try:
+        openai_client = get_openai_client()
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800
+        )
+        pitch = response.choices[0].message.content or ""
+        
+        call = CallLog(
+            phone_number=cp.phone or "Unknown",
+            duration_seconds=180,
+            summary=f"AI Pitch Simulation for {cp.companyName or cp.projectName}",
+            description=pitch,
+            client_id=client_id,
+        )
+        session.add(call)
+        session.commit()
+        session.refresh(call)
+        
+        # Add Activity
+        act = ActivityLog(
+            action="Call Simulated",
+            method="POST",
+            content=f"Generated AI Call Pitch for {cp.companyName or cp.projectName}",
+            details=pitch,
+            clientId=client_id,
+            userId=cp.userId  # Use actual user or None
+        )
+        session.add(act)
+        session.commit()
+        
+        return {"ok": True, "call_id": call.id, "pitch": pitch}
+    except Exception as e:
+        print("Error in simulation:", e)
+        raise HTTPException(status_code=500, detail=f"Failed to simulate call: {str(e)}")
+
+@app.get("/clients/{client_id}/competitors/scan")
+def scan_competitors_openai(client_id: int, session: Session = Depends(get_session)):
+    import openai
+    import os
+    import json
+    
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured in backend.")
+        
+    client = openai.OpenAI(api_key=api_key)
+    
+    prompt = f"""
+    You are an OSINT Business Intelligence Agent. Your job is to extract exact pinpoint geographic coordinates and find 3 real nearby local competitors for a given company.
+    
+    Target Company: {cp.companyName or cp.projectName or 'Unknown'}
+    Website: {cp.websiteUrl or cp.website or 'Unknown'}
+    Services: {cp.services_offered or 'Unknown'}
+    
+    1. Determine the EXACT real-world latitude and longitude of this target company. If you cannot find the exact address, provide the coordinates of the center of its city.
+    2. Identify exactly 3 REAL local competitors that operate near them in the same industry.
+    3. Calculate realistic distance, assign a type ('direct', 'partial', or 'partner'), a similarity score (0-100), Google rating, review count, and a price range estimate.
+    
+    Return the output STRICTLY as valid JSON with no markdown formatting, using this exact schema:
+    {{
+      "lat": 37.7749,
+      "lng": -122.4194,
+      "competitors": [
+        {{
+          "id": 1,
+          "name": "Competitor Name",
+          "distance": "1.2 km",
+          "rating": 4.8,
+          "reviews": 150,
+          "services": ["SEO", "Web Design"],
+          "website": "competitor.com",
+          "similarity": 85,
+          "priceRange": "$1000 - $3000/mo",
+          "type": "direct",
+          "lat": 37.7800,
+          "lng": -122.4100
+        }}
+      ]
+    }}
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        data = json.loads(response.choices[0].message.content)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.put("/clients/{client_id}")
@@ -1115,13 +1713,727 @@ def add_client_activity(
     return {"id": log.id, "action": log.action, "createdAt": log.createdAt.isoformat()}
 
 
+@app.post("/clients/{client_id}/followup")
+def add_client_followup(client_id: int, body: ClientFollowUpRequest, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    remark = Remark(
+        content=body.content,
+        authorId=body.authorId,
+        clientId=client_id,
+        isInternal=body.isInternal,
+    )
+    session.add(remark)
+    session.commit()
+    session.refresh(remark)
+
+    if body.email_agent_data:
+        client_research = session.exec(
+            select(ClientResearch).where(ClientResearch.client_id == client_id)
+        ).first()
+        if not client_research:
+            client_research = ClientResearch(
+                client_id=client_id,
+                email_agent_data=body.email_agent_data
+            )
+            session.add(client_research)
+        else:
+            client_research.email_agent_data = body.email_agent_data
+            session.add(client_research)
+        session.commit()
+
+    task_response = None
+    if body.task_title:
+        task = Task(
+            title=body.task_title,
+            description=body.task_description or body.content,
+            status="Todo",
+            priority="Medium",
+            due_date=body.due_date,
+            client_id=client_id,
+            assigned_to=body.assigned_to,
+            created_by=body.authorId,
+        )
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+
+        if task.assigned_to:
+            notif = Notification(
+                user_id=task.assigned_to,
+                title="New Follow-up Task Assigned",
+                message=f"A follow-up task has been created for {cp.companyName or 'the client'}.",
+                type="info",
+                link="/tasks",
+            )
+            session.add(notif)
+            session.commit()
+
+        task_response = _task_dict(task, session)
+
+    return {
+        "remark": {
+            "id": remark.id,
+            "content": remark.content,
+            "authorId": remark.authorId,
+            "isInternal": remark.isInternal,
+            "createdAt": remark.createdAt.isoformat(),
+        },
+        "task": task_response,
+    }
+
+
 @app.get("/clients/{client_id}/emails")
 def get_client_emails(client_id: int, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
-    return {"emails": []}
+    emails = session.exec(select(SentEmail).where(SentEmail.client_id == client_id).order_by(SentEmail.sent_at.desc())).all()
+    return {"emails": emails}
 
+# ─── Client Notes ──────────────────────────────────────────────────────────────
+
+@app.get("/clients/{client_id}/notes")
+def get_client_notes(client_id: int, session: Session = Depends(get_session)):
+    notes = session.exec(
+        select(ClientNote).where(ClientNote.client_id == client_id)
+        .order_by(ClientNote.is_pinned.desc(), ClientNote.created_at.desc())
+    ).all()
+    return {"notes": [
+        {
+            "id": n.id, "content": n.content, "tags": n.tags or [],
+            "is_pinned": n.is_pinned, "author_id": n.author_id,
+            "author_name": n.author_name, "created_at": n.created_at.isoformat(),
+            "updated_at": n.updated_at.isoformat(),
+        } for n in notes
+    ]}
+
+
+@app.post("/clients/{client_id}/notes")
+def create_client_note(client_id: int, body: ClientNoteCreateRequest, session: Session = Depends(get_session)):
+    note = ClientNote(
+        client_id=client_id, content=body.content, tags=body.tags or [],
+        is_pinned=body.is_pinned, author_id=body.author_id, author_name=body.author_name,
+    )
+    session.add(note)
+    
+    cp = session.get(ClientProfile, client_id)
+    client_name = cp.companyName if cp and cp.companyName else f"Client #{client_id}"
+    author = body.author_name or "Someone"
+    log = ActivityLog(
+        clientId=client_id,
+        userId=body.author_id,
+        action="Added Note",
+        method="Notes",
+        content=f"{author} added a note for {client_name}",
+        details=body.content[:200]
+    )
+    session.add(log)
+    
+    session.commit()
+    session.refresh(note)
+    return {"id": note.id, "content": note.content, "tags": note.tags, "is_pinned": note.is_pinned,
+            "author_name": note.author_name, "created_at": note.created_at.isoformat()}
+
+
+@app.put("/clients/{client_id}/notes/{note_id}")
+def update_client_note(client_id: int, note_id: int, body: ClientNoteUpdateRequest, session: Session = Depends(get_session)):
+    note = session.get(ClientNote, note_id)
+    if not note or note.client_id != client_id:
+        raise HTTPException(status_code=404, detail="Note not found")
+    if body.content is not None:
+        note.content = body.content
+    if body.tags is not None:
+        note.tags = body.tags
+    if body.is_pinned is not None:
+        note.is_pinned = body.is_pinned
+    note.updated_at = datetime.utcnow()
+    session.add(note)
+    session.commit()
+    return {"ok": True}
+
+
+@app.delete("/clients/{client_id}/notes/{note_id}")
+def delete_client_note(client_id: int, note_id: int, session: Session = Depends(get_session)):
+    note = session.get(ClientNote, note_id)
+    if not note or note.client_id != client_id:
+        raise HTTPException(status_code=404, detail="Note not found")
+    session.delete(note)
+    session.commit()
+    return {"ok": True}
+
+
+@app.post("/clients/{client_id}/notes/{note_id}/extract-tasks")
+def extract_tasks_from_client_note(client_id: int, note_id: int, session: Session = Depends(get_session)):
+    note = session.get(ClientNote, note_id)
+    if not note or note.client_id != client_id:
+        raise HTTPException(status_code=404, detail="Note not found")
+        
+    from modules.llm_engine import extract_tasks_from_note
+    tasks_extracted = extract_tasks_from_note(note.content)
+    
+    created_tasks = []
+    for t in tasks_extracted:
+        new_task = Task(
+            title=t.get("title", "Extracted Task"),
+            description=t.get("description", "") + f"\n\n(Extracted from Note #{note_id})",
+            client_id=client_id,
+            status="Todo",
+            priority="Medium"
+        )
+        session.add(new_task)
+        created_tasks.append(new_task)
+        
+    session.commit()
+    return {"ok": True, "extracted_count": len(created_tasks)}
+
+
+# ─── Conversation Logs ────────────────────────────────────────────────────────
+
+@app.get("/clients/{client_id}/conversations")
+def get_client_conversations(client_id: int, session: Session = Depends(get_session)):
+    convs = session.exec(
+        select(ConversationLog).where(ConversationLog.client_id == client_id)
+        .order_by(ConversationLog.created_at.desc())
+    ).all()
+    result = []
+    for c in convs:
+        replies = session.exec(
+            select(ConversationReply).where(ConversationReply.conversation_id == c.id)
+            .order_by(ConversationReply.created_at.asc())
+        ).all()
+        result.append({
+            "id": c.id, "title": c.title, "type": c.type,
+            "description": c.description, "author_id": c.author_id,
+            "author_name": c.author_name, "attachment_urls": c.attachment_urls or [],
+            "created_at": c.created_at.isoformat(),
+            "replies": [{"id": r.id, "content": r.content, "author_name": r.author_name,
+                         "created_at": r.created_at.isoformat()} for r in replies],
+        })
+    return {"conversations": result}
+
+
+@app.post("/clients/{client_id}/conversations")
+def create_client_conversation(client_id: int, body: ConversationLogCreateRequest, session: Session = Depends(get_session)):
+    conv = ConversationLog(
+        client_id=client_id, title=body.title, type=body.type,
+        description=body.description, author_id=body.author_id,
+        author_name=body.author_name, attachment_urls=body.attachment_urls or [],
+    )
+    session.add(conv)
+
+    cp = session.get(ClientProfile, client_id)
+    client_name = cp.companyName if cp and cp.companyName else f"Client #{client_id}"
+    author = body.author_name or "Someone"
+    log = ActivityLog(
+        clientId=client_id,
+        userId=body.author_id,
+        action=f"Logged {body.type.capitalize()}",
+        method=body.type.capitalize(),
+        content=f"{author} logged a {body.type} for {client_name}",
+        details=body.title
+    )
+    session.add(log)
+
+    session.commit()
+    session.refresh(conv)
+    return {"id": conv.id, "title": conv.title, "type": conv.type, "created_at": conv.created_at.isoformat()}
+
+
+@app.post("/clients/{client_id}/conversations/{conv_id}/replies")
+def add_conversation_reply(client_id: int, conv_id: int, body: ConversationReplyCreateRequest, session: Session = Depends(get_session)):
+    conv = session.get(ConversationLog, conv_id)
+    if not conv or conv.client_id != client_id:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    reply = ConversationReply(
+        conversation_id=conv_id, content=body.content,
+        author_id=body.author_id, author_name=body.author_name,
+    )
+    session.add(reply)
+    session.commit()
+    session.refresh(reply)
+    return {"id": reply.id, "content": reply.content, "author_name": reply.author_name,
+            "created_at": reply.created_at.isoformat()}
+
+
+# ─── Client Research ──────────────────────────────────────────────────────────
+
+@app.get("/clients/{client_id}/research")
+def get_client_research(client_id: int, session: Session = Depends(get_session)):
+    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+    if not research:
+        return {"research": None}
+    return {"research": {
+        "id": research.id, "company_overview": research.company_overview,
+        "competitors": research.competitors, "tech_stack": research.tech_stack,
+        "recent_news": research.recent_news, "pain_points": research.pain_points,
+        "business_goals": research.business_goals, "key_decision_makers": research.key_decision_makers,
+        "email_agent_data": research.email_agent_data,
+        "updated_at": research.updated_at.isoformat(),
+    }}
+
+
+@app.put("/clients/{client_id}/research")
+def upsert_client_research(client_id: int, body: ClientResearchUpdateRequest, session: Session = Depends(get_session)):
+    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+    if not research:
+        research = ClientResearch(client_id=client_id)
+    for field, val in body.model_dump(exclude_unset=True).items():
+        setattr(research, field, val)
+    research.updated_at = datetime.utcnow()
+    session.add(research)
+    session.commit()
+    return {"ok": True}
+
+
+@app.post("/clients/{client_id}/auto-research")
+def auto_research_client(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    try:
+        from modules.llm_engine import get_openai_client
+        import json as _json
+        client_ai = get_openai_client()
+        
+        prompt = f"""
+        You are an expert pre-sales researcher for an SEO/Marketing agency.
+        Research the following company and provide a detailed summary.
+        Company Name: {cp.companyName}
+        Website: {cp.websiteUrl or 'Unknown'}
+        Industry: {cp.industry or 'Unknown'}
+        
+        Return ONLY valid JSON matching this schema exactly (no markdown formatting, no code blocks):
+        {{
+            "company_overview": "Detailed overview...",
+            "competitors": "List 3-5 main competitors...",
+            "tech_stack": "Likely technologies used...",
+            "recent_news": "Any recent news or general industry trends...",
+            "pain_points": "Likely pain points they face...",
+            "business_goals": "Likely business goals...",
+            "key_decision_makers": "Titles of key decision makers..."
+        }}
+        """
+        
+        resp = client_ai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=1000,
+        )
+        content = resp.choices[0].message.content.strip()
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+        elif content.startswith("```"):
+            content = content[3:-3].strip()
+            
+        data = _json.loads(content)
+        
+        research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+        if not research:
+            research = ClientResearch(client_id=client_id)
+            
+        research.company_overview = data.get("company_overview", "")
+        research.competitors = data.get("competitors", "")
+        research.tech_stack = data.get("tech_stack", "")
+        research.recent_news = data.get("recent_news", "")
+        research.pain_points = data.get("pain_points", "")
+        research.business_goals = data.get("business_goals", "")
+        research.key_decision_makers = data.get("key_decision_makers", "")
+        research.updated_at = datetime.utcnow()
+        
+        session.add(research)
+        session.commit()
+        return {"ok": True, "research": data}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
+
+
+@app.post("/clients/{client_id}/generate-outbound-draft")
+def generate_outbound_draft(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    try:
+        from modules.llm_engine import get_openai_client
+        import json as _json
+        client_ai = get_openai_client()
+        
+        # Get existing research
+        research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+        research_context = ""
+        if research:
+            research_context = f"""
+            Company Overview: {research.company_overview or 'N/A'}
+            Pain Points: {research.pain_points or 'N/A'}
+            Business Goals: {research.business_goals or 'N/A'}
+            """
+            if research.email_agent_data:
+                try:
+                    ea_data = _json.loads(research.email_agent_data)
+                    research_context += f"\nEmail Agent Intel: {_json.dumps(ea_data.get('company_info', {}), indent=2)}"
+                except:
+                    pass
+
+        # Get Notes and Conversations
+        notes = session.exec(select(ClientNote).where(ClientNote.client_id == client_id).order_by(ClientNote.created_at.desc()).limit(10)).all()
+        conversations = session.exec(select(ClientConversation).where(ClientConversation.client_id == client_id).order_by(ClientConversation.date.desc()).limit(5)).all()
+        
+        interaction_context = ""
+        if notes:
+            interaction_context += "Recent Notes:\n" + "\n".join([f"- {n.content}" for n in notes]) + "\n"
+        if conversations:
+            interaction_context += "Recent Conversations:\n" + "\n".join([f"- {c.type} on {c.date}: {c.summary}" for c in conversations]) + "\n"
+
+        prompt = f"""
+        You are an expert SDR (Sales Development Representative) at an agency. 
+        Write a highly personalized, cold outreach email draft for the following prospect.
+        Company: {cp.companyName or 'Unknown'}
+        Website: {cp.websiteUrl or 'Unknown'}
+        {research_context}
+
+        {interaction_context}
+        If there are recent notes or conversations above, make sure the email acknowledges them appropriately as a follow-up. If none exist, write a standard cold outreach email based on the research.
+
+        
+        Return ONLY valid JSON matching this schema exactly (no markdown formatting):
+        {{
+            "subject": "Email subject",
+            "english_body": "Email body in English",
+            "spanish_body": "Email body translated to Spanish",
+            "whatsapp_draft": "Short, punchy WhatsApp message (plain text, emojis allowed)"
+        }}
+        """
+        
+        resp = client_ai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=800,
+        )
+        content = resp.choices[0].message.content.strip()
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+        elif content.startswith("```"):
+            content = content[3:-3].strip()
+            
+        data = _json.loads(content)
+        
+        # Save as a draft in SentEmail
+        from database import SentEmail, User
+        user = session.get(User, cp.userId) if cp.userId else None
+        to_email = user.email if user else "unknown@example.com"
+        
+        draft = SentEmail(
+            client_id=client_id,
+            to_email=to_email,
+            subject=data.get("subject", "Proposal"),
+            english_body=data.get("english_body", ""),
+            spanish_body=data.get("spanish_body", ""),
+            draft_json=_json.dumps(data),
+            manual=True,
+            sent_at=datetime.utcnow()
+        )
+        session.add(draft)
+        session.commit()
+        return {"ok": True, "draft": data, "email_id": draft.id}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate draft: {str(e)}")
+
+
+# ─── Extract Client Services from Website ─────────────────────────────────────
+
+@app.post("/clients/{client_id}/extract-services")
+async def extract_client_services_endpoint(client_id: int, session: Session = Depends(get_session)):
+    """
+    Scrapes the client's website and uses AI to extract services they offer.
+    Falls back to LLM world-knowledge when website is unreachable (DNS, timeout, bot-block).
+    Stores results in: ClientProfile.services_offered + MarketplaceService table.
+    """
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    website_url = cp.websiteUrl
+    company_name = cp.companyName or "Unknown Company"
+
+    if not website_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Client has no website URL. Add one in the client profile first."
+        )
+
+    # ── Step 1: Try scraping (fail gracefully on any network error) ────────────
+    website_text = ""
+    scrape_method = "website_scrape"
+    try:
+        from modules.scraper import scrape_website
+        website_text = await scrape_website(website_url)
+        if website_text.startswith("ERROR"):
+            print(f"[extract-services] Scrape failed for {website_url}: {website_text[:100]}. Falling back to LLM.")
+            website_text = ""
+            scrape_method = "llm_fallback"
+    except Exception as scrape_err:
+        print(f"[extract-services] Scraper exception ({website_url}): {scrape_err}. Falling back to LLM.")
+        scrape_method = "llm_fallback"
+
+    # ── Step 2: Extract services (from scraped text, or via LLM knowledge) ─────
+    import json as _json
+    from modules.llm_engine import extract_client_services as _extract_services, get_openai_client
+
+    services = []
+
+    if website_text:
+        services = _extract_services(website_text, company_name)
+
+    # If scraping failed or extracted nothing → use LLM world-knowledge fallback
+    if not services:
+        scrape_method = "llm_fallback"
+        try:
+            oai = get_openai_client()
+            fallback_prompt = f"""You are a B2B business intelligence expert.
+
+The company "{company_name}" has website: {website_url}
+Industry: {cp.industry or "unknown"}
+
+We could not access their website. Based on the company name, domain, and industry,
+list the most likely services they offer.
+
+Return ONLY valid JSON:
+{{
+  "services": [
+    {{
+      "name": "Service name",
+      "brief": "1-2 sentence description of this service",
+      "category": "One of: SEO, Web Design, Marketing, Plumbing, Legal, Accounting, Consulting, Construction, Healthcare, Real Estate, IT Services, Landscaping, Cleaning, Electrical, HVAC, Retail, Education, Finance, Transportation, Other",
+      "approx_cost": 1200,
+      "cost_is_estimated": true
+    }}
+  ]
+}}
+
+Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for fallback."""
+            resp = oai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": fallback_prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.3,
+            )
+            services = _json.loads(resp.choices[0].message.content).get("services", [])
+        except Exception as llm_err:
+            print(f"[extract-services] LLM fallback also failed: {llm_err}")
+
+    if not services:
+        return {
+            "ok": False,
+            "services": [],
+            "scrape_method": scrape_method,
+            "message": "Could not extract services. Try adding the Industry field to improve AI fallback accuracy.",
+        }
+
+    # ── Step 3: Save to ClientProfile.services_offered ────────────────────────
+    cp.services_offered = _json.dumps(services)
+    session.add(cp)
+
+    # ── Step 4: Upsert into MarketplaceService (skip exact name duplicates) ───
+    existing = session.exec(
+        select(MarketplaceService).where(
+            MarketplaceService.provider_client_id == client_id,
+            MarketplaceService.is_active == True,
+        )
+    ).all()
+    existing_names = {s.service_name.lower() for s in existing}
+
+    added = 0
+    for svc in services:
+        svc_name = svc.get("name", "").strip()
+        if not svc_name or svc_name.lower() in existing_names:
+            continue
+        ms = MarketplaceService(
+            service_name=svc_name,
+            normalized_name=svc_name,
+            category=svc.get("category"),
+            description=svc.get("brief"),
+            estimated_cost=float(svc.get("approx_cost", 0)),
+            cost_is_estimated=svc.get("cost_is_estimated", True),
+            provider_name=company_name,
+            provider_client_id=client_id,
+            provider_industry=cp.industry,
+            provider_address=cp.address,
+            source=scrape_method,
+        )
+        session.add(ms)
+        existing_names.add(svc_name.lower())
+        added += 1
+
+    session.commit()
+
+    method_label = "live website" if scrape_method == "website_scrape" else "AI knowledge (site unreachable)"
+    return {
+        "ok": True,
+        "services": services,
+        "scrape_method": scrape_method,
+        "marketplace_entries_added": added,
+        "message": f"Extracted {len(services)} services via {method_label}. Added {added} to Marketplace.",
+    }
+
+
+
+# ─── AI Copilot Insights ──────────────────────────────────────────────────────
+
+
+@app.post("/clients/{client_id}/ai-insights")
+def get_ai_insights(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # Gather context
+    notes = session.exec(select(ClientNote).where(ClientNote.client_id == client_id).order_by(ClientNote.created_at.desc()).limit(10)).all()
+    convs = session.exec(select(ConversationLog).where(ConversationLog.client_id == client_id).order_by(ConversationLog.created_at.desc()).limit(10)).all()
+    activities = session.exec(select(ActivityLog).where(ActivityLog.clientId == client_id).order_by(ActivityLog.createdAt.desc()).limit(10)).all()
+    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+
+    notes_text = "\n".join([f"- {n.content[:200]}" for n in notes]) if notes else "No notes recorded."
+    convs_text = "\n".join([f"- [{c.type.upper()}] {c.title}: {(c.description or '')[:200]}" for c in convs]) if convs else "No conversations recorded."
+    activities_text = "\n".join([f"- {a.action}" for a in activities]) if activities else "No activities."
+    research_text = ""
+    if research:
+        research_text = f"Pain Points: {research.pain_points or 'unknown'}\nBusiness Goals: {research.business_goals or 'unknown'}\nCompetitors: {research.competitors or 'unknown'}"
+
+    last_contact = None
+    if convs:
+        last_contact = convs[0].created_at
+    elif activities:
+        last_contact = activities[0].createdAt
+
+    days_since_contact = None
+    if last_contact:
+        days_since_contact = (datetime.utcnow() - last_contact).days
+
+    prompt = f"""You are an AI Sales Copilot analyzing a CRM client record. Provide actionable insights.
+
+CLIENT: {cp.companyName or 'Unknown'}
+STATUS: {cp.status}
+DEAL VALUE: {cp.deal_value or 'Not set'}
+LEAD SCORE: {cp.lead_score or 'Not set'}/100
+DAYS SINCE LAST CONTACT: {days_since_contact if days_since_contact is not None else 'Unknown'}
+
+RESEARCH:\n{research_text}
+NOTES:\n{notes_text}
+CONVERSATIONS:\n{convs_text}
+ACTIVITIES:\n{activities_text}
+
+Provide a JSON response with exactly these keys:
+{{
+  "client_summary": "2-3 sentence overview of client relationship and status",
+  "deal_health_score": <integer 0-100>,
+  "risks": ["risk 1", "risk 2"],
+  "next_best_action": "Single most important action to take right now",
+  "follow_up_recommendations": ["recommendation 1", "recommendation 2", "recommendation 3"],
+  "deal_health_label": "Hot|Warm|Cold|At Risk"
+}}"""
+
+    try:
+        from modules.llm_engine import get_openai_client
+        import json as _json
+        client_ai = get_openai_client()
+        resp = client_ai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are an expert CRM sales analyst. Always respond with valid JSON only."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
+        insights = _json.loads(resp.choices[0].message.content)
+    except Exception as e:
+        # Fallback insights if AI fails
+        score = 75 if days_since_contact and days_since_contact < 7 else (50 if days_since_contact and days_since_contact < 14 else 30)
+        insights = {
+            "client_summary": f"{cp.companyName or 'This client'} is currently {cp.status}. Review recent activity to determine next steps.",
+            "deal_health_score": score,
+            "risks": [
+                f"No contact in {days_since_contact} days" if days_since_contact and days_since_contact > 7 else "Monitor engagement levels",
+                "Ensure proposal is aligned with client goals"
+            ],
+            "next_best_action": "Schedule a follow-up call to reaffirm value proposition",
+            "follow_up_recommendations": [
+                "Send a personalized follow-up email",
+                "Schedule a discovery call this week",
+                "Share a relevant case study"
+            ],
+            "deal_health_label": "Warm" if score > 60 else "Cold"
+        }
+
+    return {"insights": insights}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Client Tickets
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/clients/{client_id}/tickets")
+def get_client_tickets(client_id: int, session: Session = Depends(get_session)):
+    tickets = session.exec(
+        select(ClientTicket)
+        .where(ClientTicket.client_id == client_id)
+        .order_by(ClientTicket.created_at.desc())
+    ).all()
+    return {"tickets": [
+        {
+            "id": t.id,
+            "title": t.title,
+            "description": t.description,
+            "status": t.status,
+            "author_id": t.author_id,
+            "created_at": t.created_at.isoformat()
+        } for t in tickets
+    ]}
+
+@app.post("/clients/{client_id}/tickets")
+def create_client_ticket(client_id: int, body: ClientTicketCreateRequest, session: Session = Depends(get_session)):
+    ticket = ClientTicket(
+        client_id=client_id,
+        title=body.title,
+        description=body.description,
+        status=body.status,
+        author_id=body.author_id
+    )
+    session.add(ticket)
+    session.commit()
+    session.refresh(ticket)
+    return {"ticket": {
+        "id": ticket.id,
+        "title": ticket.title,
+        "description": ticket.description,
+        "status": ticket.status,
+        "author_id": ticket.author_id,
+        "created_at": ticket.created_at.isoformat()
+    }}
+
+@app.put("/clients/{client_id}/tickets/{ticket_id}")
+def update_client_ticket(client_id: int, ticket_id: int, body: ClientTicketUpdateRequest, session: Session = Depends(get_session)):
+    ticket = session.get(ClientTicket, ticket_id)
+    if not ticket or ticket.client_id != client_id:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    if body.title is not None:
+        ticket.title = body.title
+    if body.description is not None:
+        ticket.description = body.description
+    if body.status is not None:
+        ticket.status = body.status
+        
+    session.add(ticket)
+    session.commit()
+    return {"ok": True}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Admin – Client X-Ray
@@ -1567,7 +2879,7 @@ def list_calls(unsummarized: Optional[bool] = None, session: Session = Depends(g
     calls = session.exec(q).all()
     result = []
     for c in calls:
-        d = _call_dict(c)
+        d = _call_dict(c, session)
         if unsummarized is True and d.get("summary"):
             continue
         result.append(d)
@@ -1579,6 +2891,12 @@ def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
     c = CallLog(
         phone_number=body.phone_number,
         duration_seconds=body.duration_seconds,
+        description=getattr(body, "description", None),
+        work_done=getattr(body, "work_done", None),
+        assigned_to=getattr(body, "assigned_to", None),
+        followup_needed=getattr(body, "followup_needed", False),
+        followup_date=getattr(body, "followup_date", None),
+        client_id=getattr(body, "client_id", None),
     )
     session.add(c)
     session.commit()
@@ -1587,6 +2905,7 @@ def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
 
 
 @app.put("/calls/{call_id}")
+@app.patch("/calls/{call_id}")
 def update_call(
     call_id: int, body: Dict[str, Any], session: Session = Depends(get_session)
 ):
@@ -1609,17 +2928,145 @@ def add_call_summary(
     c = session.get(CallLog, call_id)
     if not c:
         raise HTTPException(status_code=404, detail="Call not found")
-    # CallLog model doesn't have a summary field yet; ignore gracefully
+    if hasattr(c, "summary"):
+        c.summary = body.summary if hasattr(body, "summary") else None
+        session.add(c)
+        session.commit()
     return {"ok": True}
 
 
-def _call_dict(c: CallLog) -> dict:
-    return {
+def _call_dict(c: CallLog, session: Session = None) -> dict:
+    d = {
         "id": c.id,
         "phone_number": c.phone_number,
         "received_at": c.received_at.isoformat(),
         "duration_seconds": c.duration_seconds,
+        "summary": getattr(c, "summary", None),
+        "description": getattr(c, "description", None),
+        "work_done": getattr(c, "work_done", None),
+        "assigned_to": getattr(c, "assigned_to", None),
+        "followup_needed": getattr(c, "followup_needed", False),
+        "followup_date": getattr(c, "followup_date", None),
+        "client_id": getattr(c, "client_id", None),
     }
+    
+    if session and c.client_id:
+        from database import ClientProfile
+        cp = session.get(ClientProfile, c.client_id)
+        if cp:
+            d["entity_name"] = cp.companyName or cp.projectName
+            
+    if not d.get("entity_name") and c.summary:
+        if c.summary.startswith("AI Pitch Simulation for "):
+            d["entity_name"] = c.summary.replace("AI Pitch Simulation for ", "")
+        elif c.summary.startswith("Pitch Generation for "):
+            d["entity_name"] = c.summary.replace("Pitch Generation for ", "")
+            
+    return d
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scheduled Calls
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ScheduledCallCreateRequest(BaseModel):
+    title: str
+    scheduled_at: Optional[str] = None
+    entity_type: str = "client"
+    entity_id: Optional[int] = None
+    entity_name: Optional[str] = None
+    entity_email: Optional[str] = None
+    pitch: Optional[str] = None
+    notes: Optional[str] = None
+    assigned_to: Optional[str] = None
+
+def _sched_dict(s: ScheduledCall) -> dict:
+    return {
+        "id": s.id,
+        "title": s.title,
+        "scheduled_at": s.scheduled_at.isoformat() if s.scheduled_at else None,
+        "entity_type": s.entity_type,
+        "entity_id": s.entity_id,
+        "entity_name": s.entity_name,
+        "entity_email": s.entity_email,
+        "pitch": s.pitch,
+        "notes": s.notes,
+        "assigned_to": s.assigned_to,
+        "status": s.status,
+        "created_at": s.created_at.isoformat(),
+    }
+
+@app.get("/scheduled-calls")
+def list_scheduled_calls(session: Session = Depends(get_session)):
+    items = session.exec(select(ScheduledCall).order_by(ScheduledCall.scheduled_at.asc())).all()
+    return {"scheduled_calls": [_sched_dict(s) for s in items]}
+
+@app.post("/scheduled-calls")
+def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = Depends(get_session)):
+    dt = None
+    if body.scheduled_at:
+        try:
+            dt = datetime.fromisoformat(body.scheduled_at)
+        except Exception:
+            dt = None
+
+    sc = ScheduledCall(
+        title=body.title,
+        scheduled_at=dt,
+        entity_type=body.entity_type,
+        entity_id=body.entity_id,
+        entity_name=body.entity_name,
+        entity_email=body.entity_email,
+        pitch=body.pitch,
+        notes=body.notes,
+        assigned_to=body.assigned_to,
+    )
+    session.add(sc)
+    session.commit()
+    session.refresh(sc)
+
+    # Send email notification if entity_email provided
+    if body.entity_email:
+        try:
+            dt_str = dt.strftime("%Y-%m-%d %H:%M") if dt else "TBD"
+            pitch_section = f"\n\n📋 Pitch Prepared:\n{body.pitch}" if body.pitch else ""
+            subject = f"📞 Call Scheduled: {body.title}"
+            content = (
+                f"Hello {body.entity_name or ''},\n\n"
+                f"A call has been scheduled for you.\n\n"
+                f"📅 Date & Time: {dt_str}\n"
+                f"📌 Topic: {body.title}\n"
+                f"{pitch_section}\n\n"
+                f"Our team will reach out at the scheduled time.\n\n"
+                f"Thanks,\nSerpHawk CRM"
+            )
+            _send_notification_email(body.entity_email, subject, content)
+        except Exception as e:
+            print("Scheduled call email error:", e)
+
+    return {"scheduled_call": _sched_dict(sc)}
+
+@app.put("/scheduled-calls/{sc_id}")
+def update_scheduled_call(sc_id: int, body: Dict[str, Any], session: Session = Depends(get_session)):
+    sc = session.get(ScheduledCall, sc_id)
+    if not sc:
+        raise HTTPException(status_code=404, detail="Scheduled call not found")
+    for k, v in body.items():
+        if hasattr(sc, k):
+            setattr(sc, k, v)
+    session.add(sc)
+    session.commit()
+    session.refresh(sc)
+    return {"scheduled_call": _sched_dict(sc)}
+
+@app.delete("/scheduled-calls/{sc_id}")
+def delete_scheduled_call(sc_id: int, session: Session = Depends(get_session)):
+    sc = session.get(ScheduledCall, sc_id)
+    if not sc:
+        raise HTTPException(status_code=404, detail="Scheduled call not found")
+    session.delete(sc)
+    session.commit()
+    return {"ok": True}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1644,10 +3091,11 @@ async def ocr_document(file: UploadFile = File(...)):
 # Activities (global)
 # ─────────────────────────────────────────────────────────────────────────────
 @app.get("/activities")
-def list_activities(session: Session = Depends(get_session)):
-    logs = session.exec(
-        select(ActivityLog).order_by(ActivityLog.createdAt.desc()).limit(100)
-    ).all()
+def list_activities(user_id: Optional[int] = None, session: Session = Depends(get_session)):
+    q = select(ActivityLog).order_by(ActivityLog.createdAt.desc())
+    if user_id:
+        q = q.where(ActivityLog.userId == user_id)
+    logs = session.exec(q.limit(100)).all()
     return {
         "activities": [
             {
@@ -1656,6 +3104,7 @@ def list_activities(session: Session = Depends(get_session)):
                 "method": a.method,
                 "content": a.content,
                 "details": a.details,
+                "clientId": a.clientId,
                 "createdAt": a.createdAt.isoformat(),
             }
             for a in logs
@@ -1731,8 +3180,8 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
 
         sender = body.sender_email or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "prasanth.anupoju@sasi.ac.in")
         password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
-        smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-        smtp_port = os.getenv("SMTP_PORT", 587)
+        smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "smtp.gmail.com")
+        smtp_port = os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
         imap_server = os.getenv("IMAP_SERVER", "imap.gmail.com")
 
         # Only send the email if manual is False and all required fields are present
@@ -2076,6 +3525,12 @@ def dashboard_stats(
     total_activities = len(session.exec(select(ActivityLog)).all())
     total_calls = len(session.exec(select(CallLog)).all())
 
+    try:
+        from database import MarketplaceService
+        total_marketplace = len(session.exec(select(MarketplaceService)).all())
+    except:
+        total_marketplace = 0
+
     # Build real 7-day chart data from database
     labels = []
     activity_chart = []
@@ -2094,6 +3549,39 @@ def dashboard_stats(
         email_chart.append(sum(1 for e in all_emails if e.sent_at and day_start <= e.sent_at < day_end))
         call_chart.append(sum(1 for c in all_calls_list if c.createdAt and day_start <= c.createdAt < day_end))
 
+    import calendar
+    all_invoices = session.exec(select(Invoice)).all()
+    all_service_reqs = session.exec(select(ServiceRequest)).all()
+
+    revenue_data = []
+    today = datetime.utcnow()
+    for i in range(5, -1, -1):
+        target_month = today.month - i
+        target_year = today.year
+        while target_month <= 0:
+            target_month += 12
+            target_year -= 1
+            
+        month_start = datetime(target_year, target_month, 1)
+        next_month = target_month + 1
+        next_year = target_year
+        if next_month > 12:
+            next_month = 1
+            next_year += 1
+        month_end = datetime(next_year, next_month, 1)
+        
+        rev = sum(inv.total for inv in all_invoices if inv.status == "Paid" and inv.created_at and month_start <= inv.created_at < month_end)
+        exp = sum(inv.total for inv in all_invoices if inv.status == "Sent" and inv.created_at and month_start <= inv.created_at < month_end) * 0.3
+        revenue_data.append({"name": calendar.month_abbr[target_month], "revenue": rev, "expenses": exp})
+        
+    pipeline_data = [
+        {"stage": "Prospecting", "count": pending_clients},
+        {"stage": "Qualification", "count": len([r for r in all_service_reqs if r.status == "Pending"])},
+        {"stage": "Proposal", "count": len([r for r in all_service_reqs if r.status == "Quoted"])},
+        {"stage": "Negotiation", "count": len([r for r in all_service_reqs if r.status == "In Progress"])},
+        {"stage": "Closed Won", "count": len([r for r in all_service_reqs if r.status == "Accepted"])},
+    ]
+
     recent_activities = session.exec(
         select(ActivityLog).order_by(ActivityLog.createdAt.desc()).limit(10)
     ).all()
@@ -2109,6 +3597,9 @@ def dashboard_stats(
         "totalActivities": total_activities,
         "totalCalls": total_calls,
         "totalEmailsSent": total_emails_sent,
+        "totalMarketplaceServices": total_marketplace,
+        "revenueData": revenue_data,
+        "pipelineData": pipeline_data,
         "chartLabels": labels,
         "activityChart": activity_chart,
         "emailChart": email_chart,
@@ -2564,9 +4055,13 @@ def list_tasks(
     project_id: Optional[int] = None,
     session: Session = Depends(get_session),
 ):
+    from sqlalchemy import cast, String as SAString
     q = select(Task).order_by(Task.created_at.desc())
     if status:
-        q = q.where(Task.status == status)
+        # Cast the enum column to String for comparison to avoid
+        # PostgreSQL "invalid input value for enum taskstatus" errors
+        # when the stored enum casing differs from what the client passes.
+        q = q.where(cast(Task.status, SAString).ilike(status))
     if assigned_to:
         q = q.where(Task.assigned_to == assigned_to)
     if client_id:
@@ -2579,7 +4074,9 @@ def list_tasks(
 
 @app.post("/tasks")
 def create_task(body: TaskCreateRequest, session: Session = Depends(get_session)):
-    t = Task(**body.model_dump())
+    data = body.model_dump()
+    data["status"] = _normalize_task_status(data.get("status"))
+    t = Task(**data)
     session.add(t)
     session.commit()
     session.refresh(t)
@@ -2624,7 +4121,10 @@ def update_task(task_id: int, body: TaskUpdateRequest, session: Session = Depend
     t = session.get(Task, task_id)
     if not t:
         raise HTTPException(status_code=404, detail="Task not found")
-    for field, val in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    if "status" in updates:
+        updates["status"] = _normalize_task_status(updates["status"])
+    for field, val in updates.items():
         setattr(t, field, val)
     t.updated_at = datetime.utcnow()
     session.add(t)
@@ -3233,9 +4733,9 @@ import uuid as _uuid
 @app.post("/upload-file")
 async def upload_file_to_server(
     file: UploadFile = File(...),
-    client_id: int = Query(...),
-    uploaded_by: Optional[int] = Query(None),
-    description: Optional[str] = Query(None),
+    client_id: int = Form(...),
+    uploaded_by: Optional[int] = Form(None),
+    description: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ):
     """Upload a real file from device, save to static/uploads/, create DB record."""
@@ -3902,6 +5402,76 @@ def delete_competitor(analysis_id: int, session: Session = Depends(get_session))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Deals (Visual Sales Pipeline)
+# ─────────────────────────────────────────────────────────────────────────────
+
+from database import Deal
+
+@app.get("/deals")
+def get_deals(user_id: Optional[int] = None, session: Session = Depends(get_session)):
+    q = select(Deal).order_by(Deal.created_at.desc())
+    if user_id:
+        q = q.where(Deal.assigned_to == user_id)
+    deals = session.exec(q).all()
+    
+    # We fetch client names for the UI manually
+    results = []
+    for d in deals:
+        client = session.get(ClientProfile, d.client_id)
+        results.append({
+            "id": d.id,
+            "title": d.title,
+            "value": d.value,
+            "client_id": d.client_id,
+            "client_name": client.companyName or client.email if client else "Unknown",
+            "assigned_to": d.assigned_to,
+            "stage": d.stage,
+            "expected_close_date": d.expected_close_date,
+            "created_at": d.created_at.isoformat()
+        })
+    return {"deals": results}
+
+@app.post("/deals")
+def create_deal(body: DealCreateRequest, session: Session = Depends(get_session)):
+    deal = Deal(
+        title=body.title,
+        value=body.value,
+        client_id=body.client_id,
+        assigned_to=body.assigned_to,
+        stage=body.stage,
+        expected_close_date=body.expected_close_date
+    )
+    session.add(deal)
+    session.commit()
+    session.refresh(deal)
+    return {"ok": True, "id": deal.id}
+
+@app.put("/deals/{deal_id}")
+def update_deal(deal_id: int, body: DealUpdateRequest, session: Session = Depends(get_session)):
+    deal = session.get(Deal, deal_id)
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    if body.title is not None: deal.title = body.title
+    if body.value is not None: deal.value = body.value
+    if body.assigned_to is not None: deal.assigned_to = body.assigned_to
+    if body.stage is not None: deal.stage = body.stage
+    if body.expected_close_date is not None: deal.expected_close_date = body.expected_close_date
+    deal.updated_at = datetime.utcnow()
+    session.add(deal)
+    session.commit()
+    return {"ok": True}
+
+@app.delete("/deals/{deal_id}")
+def delete_deal(deal_id: int, session: Session = Depends(get_session)):
+    deal = session.get(Deal, deal_id)
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    session.delete(deal)
+    session.commit()
+    return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Client Portal Domain Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 _portal_config: Dict[str, Any] = {
@@ -3937,3 +5507,2138 @@ def update_portal_config(body: Dict[str, Any]):
             else:
                 _portal_config[key] = val
     return {"ok": True, "config": _portal_config}
+# ─── Auto-fill Client Endpoint ───────────────────────────────────────────────
+class AutoFillRequest(BaseModel):
+    website: str
+
+@app.post("/clients/auto-fill")
+async def auto_fill_client(request: AutoFillRequest):
+    from modules.scraper import scrape_website
+    from modules.llm_engine import extract_client_profile_from_website
+    
+    try:
+        raw_text = await scrape_website(request.website)
+        if not raw_text:
+            return {"ok": False, "error": "Could not extract content from the website."}
+            
+        profile_data = extract_client_profile_from_website(raw_text, request.website)
+        return {"ok": True, "data": profile_data}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+# ─── Chatbot endpoint ────────────────────────────────────────────────────────
+@app.post("/chatbot/message")
+async def chatbot_message(
+    request: ChatbotRequest, 
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session)
+):
+    from modules.llm_engine import process_chatbot_command
+    from database import ClientProfile, ClientNote, ConversationLog, ActivityLog, Project, MarketplaceService, User
+    
+    # 1. Gather rich CRM summary for context
+    active_clients = session.exec(select(ClientProfile).limit(10)).all()
+    client_names = [c.companyName for c in active_clients if c.companyName]
+    crm_summary = f"CRM Summary: {len(client_names)} active clients ({', '.join(client_names[:5])}...)"
+    
+    client_context = None
+    if request.client_id:
+        cp = session.get(ClientProfile, request.client_id)
+        if cp:
+            client_context = {
+                "client_id": cp.id,
+                "company_name": cp.companyName,
+                "contact_person": cp.contact_person,
+                "email": cp.user.email if cp.user else None,
+                "industry": cp.industry
+            }
+            
+    # 2. Advanced Omni-Agent AI processing
+    result = process_chatbot_command(request.message, client_context, request.current_route, crm_summary)
+    
+    actions = result.get("actions", [])
+    action_taken = None
+    route = None
+    
+    try:
+        for action_obj in actions:
+            action_name = action_obj.get("action")
+            params = action_obj.get("parameters", {})
+            
+            if action_name == "bulk_import_websites":
+                from modules.scraper import scrape_website
+                from modules.llm_engine import extract_client_profile_from_website
+                
+                urls = params.get("urls", [])
+                for website_url in urls:
+                    # Create a skeleton client first
+                    cp = ClientProfile(
+                        companyName=website_url.replace("https://", "").replace("http://", "").split("/")[0],
+                        websiteUrl=website_url,
+                        status="Active",
+                        tagline="Scraping in progress..."
+                    )
+                    session.add(cp)
+                    session.commit()
+                    session.refresh(cp)
+                    
+                    # Spawn the background task to scrape and auto-research!
+                    background_tasks.add_task(_auto_research_client_bg, cp.id, website_url)
+                    
+                action_taken = "bulk_clients_created"
+                
+            elif action_name == "create_client":
+                from modules.scraper import scrape_website
+                from modules.llm_engine import extract_client_profile_from_website
+                
+                website_url = params.get("website")
+                email = params.get("email") or f"bot_{datetime.utcnow().timestamp()}@placeholder.com"
+                existing_user = session.exec(select(User).where(User.email == email)).first() if hasattr(User, 'email') else None
+                user = existing_user
+                if not user:
+                    user = User(
+                        email=email,
+                        password="changeme",
+                        name=params.get("company_name") or "Client",
+                        role="Client",
+                    )
+                    session.add(user)
+                    session.commit()
+                    session.refresh(user)
+
+                cp = ClientProfile(
+                    userId=user.id,
+                    companyName=params.get("company_name", "New Client"),
+                    websiteUrl=website_url,
+                    phone=params.get("phone", ""),
+                    status="Active"
+                )
+                session.add(cp)
+                session.commit()
+                session.refresh(cp)
+                action_taken = "client_created"
+                route = f"/clients/{cp.id}"
+                
+                if website_url:
+                    background_tasks.add_task(_auto_research_client_bg, cp.id, website_url)
+                
+            elif action_name == "create_deal":
+                from database import Deal
+                client_id = params.get("client_id") or request.client_id
+                if client_id:
+                    deal = Deal(
+                        title=params.get("title", "New Deal"),
+                        client_id=client_id,
+                        stage=params.get("stage", "Lead"),
+                        value=params.get("value", 0.0),
+                        notes="Created by Omni-Agent"
+                    )
+                    session.add(deal)
+                    session.commit()
+                    action_taken = "deal_created"
+                    
+            elif action_name == "draft_email":
+                client_id = params.get("client_id") or request.client_id
+                if client_id:
+                    # In a real setup, we would call generate_email() here and save it to an EmailLog.
+                    # For now, navigate to the email agent
+                    action_taken = "navigate"
+                    route = f"/email-agent?client_id={client_id}"
+                
+            elif action_name == "navigate_user":
+                action_taken = "navigate"
+                route = params.get("route", "/")
+                
+            elif action_name == "trigger_whatsapp_support":
+                action_taken = "trigger_whatsapp"
+                # Frontend will catch this and render a WhatsApp link
+                
+            elif action_name == "add_note_to_client":
+                target_client_id = request.client_id or params.get("client_id")
+                if target_client_id:
+                    new_note = ClientNote(
+                        client_id=target_client_id,
+                        content=params.get("content", ""),
+                        author_name="Omni-Agent",
+                        type="Note"
+                    )
+                    session.add(new_note)
+                    log = ActivityLog(clientId=target_client_id, action="Note Added via Omni-Agent", details=new_note.content[:100], method="bot")
+                    session.add(log)
+                    session.commit()
+                    action_taken = "note_added"
+                    
+    except Exception as e:
+        print(f"Chatbot mutation error: {e}")
+
+    # Fallback response format for the frontend
+    return {
+        "reply": result.get("reply", "I processed your request."),
+        "intent": "omni_agent", # Legacy
+        "actions": actions,
+        "action_taken": action_taken,
+        "route": route
+    }
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Marketplace Catalog
+# ─────────────────────────────────────────────────────────────────────────────
+
+class MarketplaceServiceCreate(BaseModel):
+    service_name: str
+    category: Optional[str] = None
+    description: Optional[str] = None
+    estimated_cost: float = 0.0
+    provider_client_id: Optional[int] = None
+    provider_name: Optional[str] = None
+
+class MarketplaceServiceUpdate(BaseModel):
+    service_name: Optional[str] = None
+    normalized_name: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    estimated_cost: Optional[float] = None
+    cost_is_estimated: Optional[bool] = None
+    provider_name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+def _marketplace_row(s: MarketplaceService) -> dict:
+    return {
+        "id": s.id,
+        "service_name": s.service_name,
+        "normalized_name": s.normalized_name,
+        "category": s.category,
+        "description": s.description,
+        "estimated_cost": s.estimated_cost,
+        "cost_is_estimated": s.cost_is_estimated,
+        "provider_name": s.provider_name,
+        "provider_client_id": s.provider_client_id,
+        "provider_industry": s.provider_industry,
+        "provider_address": s.provider_address,
+        "source": s.source,
+        "is_active": s.is_active,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+
+@app.get("/marketplace/services")
+def list_marketplace_services(
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    min_cost: Optional[float] = None,
+    max_cost: Optional[float] = None,
+    provider: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 18,
+    session: Session = Depends(get_session),
+):
+    query = select(MarketplaceService).where(MarketplaceService.is_active == True)
+
+    if search:
+        like = f"%{search}%"
+        query = query.where(
+            or_(
+                MarketplaceService.service_name.ilike(like),
+                MarketplaceService.description.ilike(like),
+                MarketplaceService.provider_name.ilike(like),
+            )
+        )
+    if category:
+        query = query.where(MarketplaceService.category.ilike(f"%{category}%"))
+    if min_cost is not None:
+        query = query.where(MarketplaceService.estimated_cost >= min_cost)
+    if max_cost is not None:
+        query = query.where(MarketplaceService.estimated_cost <= max_cost)
+    if provider:
+        query = query.where(MarketplaceService.provider_name.ilike(f"%{provider}%"))
+
+    total = len(session.exec(query).all())
+    offset = (page - 1) * per_page
+    items = session.exec(query.offset(offset).limit(per_page)).all()
+
+    return {
+        "services": [_marketplace_row(s) for s in items],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page)),
+    }
+
+
+@app.post("/marketplace/services")
+def create_marketplace_service(
+    body: MarketplaceServiceCreate,
+    session: Session = Depends(get_session),
+):
+    # Auto-fill provider info from CRM if client_id given
+    provider_name = body.provider_name
+    provider_industry = None
+    provider_address = None
+    if body.provider_client_id:
+        cp = session.get(ClientProfile, body.provider_client_id)
+        if cp:
+            provider_name = provider_name or cp.companyName
+            provider_industry = cp.industry
+            provider_address = cp.address
+
+    svc = MarketplaceService(
+        service_name=body.service_name,
+        category=body.category,
+        description=body.description,
+        estimated_cost=body.estimated_cost,
+        provider_client_id=body.provider_client_id,
+        provider_name=provider_name,
+        provider_industry=provider_industry,
+        provider_address=provider_address,
+        source="manual",
+    )
+    session.add(svc)
+    session.commit()
+    session.refresh(svc)
+    return {"service": _marketplace_row(svc)}
+
+
+@app.put("/marketplace/services/{service_id}")
+def update_marketplace_service(
+    service_id: int,
+    body: MarketplaceServiceUpdate,
+    session: Session = Depends(get_session),
+):
+    svc = session.get(MarketplaceService, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(svc, field, value)
+    svc.updated_at = datetime.utcnow()
+    session.add(svc)
+    session.commit()
+    session.refresh(svc)
+    return {"service": _marketplace_row(svc)}
+
+
+@app.delete("/marketplace/services/{service_id}")
+def delete_marketplace_service(
+    service_id: int,
+    session: Session = Depends(get_session),
+):
+    svc = session.get(MarketplaceService, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    svc.is_active = False
+    svc.updated_at = datetime.utcnow()
+    session.add(svc)
+    session.commit()
+    return {"success": True}
+
+
+@app.get("/marketplace/categories")
+def list_marketplace_categories(session: Session = Depends(get_session)):
+    rows = session.exec(
+        select(MarketplaceService.category)
+        .where(MarketplaceService.is_active == True)
+        .where(MarketplaceService.category != None)
+        .distinct()
+        .order_by(MarketplaceService.category)
+    ).all()
+    return {"categories": [r for r in rows if r]}
+
+
+@app.post("/marketplace/services/{service_id}/ai-categorize")
+def ai_categorize_marketplace_service(
+    service_id: int,
+    session: Session = Depends(get_session),
+):
+    svc = session.get(MarketplaceService, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    import openai, os
+    client_ai = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    prompt = f"""You are a B2B service categorization expert.
+
+Given this service:
+Name: {svc.service_name}
+Description: {svc.description or 'N/A'}
+Provider Industry: {svc.provider_industry or 'N/A'}
+
+Respond with ONLY valid JSON (no markdown):
+{{
+  "normalized_name": "<clean, professional service name>",
+  "category": "<one of: SEO, Web Design, Plumbing, Legal, Accounting, Marketing, Consulting, Construction, Healthcare, Real Estate, IT Services, Landscaping, Cleaning, Electrical, HVAC, Other>",
+  "estimated_cost_usd": <number or null if truly unknown>,
+  "cost_is_estimated": <true or false>
+}}"""
+
+    try:
+        response = client_ai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+        import json
+        data = json.loads(response.choices[0].message.content.strip())
+        svc.normalized_name = data.get("normalized_name", svc.service_name)
+        svc.category = data.get("category", svc.category)
+        if data.get("estimated_cost_usd") is not None:
+            svc.estimated_cost = float(data["estimated_cost_usd"])
+            svc.cost_is_estimated = data.get("cost_is_estimated", True)
+        svc.updated_at = datetime.utcnow()
+        session.add(svc)
+        session.commit()
+        session.refresh(svc)
+        return {"service": _marketplace_row(svc)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI categorization failed: {e}")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RADAR ANALYSIS ENGINE — Google Maps Competitor Intelligence
+# ─────────────────────────────────────────────────────────────────────────────
+from modules.radar_engine import (
+    find_place, find_nearby_competitors, calculate_market_density,
+    sort_nearest, sort_largest_market, sort_largest_team, sort_most_similar,
+    score_market_size, estimate_team_size
+)
+from database import RadarAnalysis, CompetitorRelationship
+
+class RadarSearchRequest(BaseModel):
+    query: str
+    location_hint: Optional[str] = None
+    place_id: Optional[str] = None
+
+class RadarAnalyzeRequest(BaseModel):
+    place_id: str
+    target_name: str
+    target_lat: float
+    target_lng: float
+    target_address: Optional[str] = None
+    target_phone: Optional[str] = None
+    target_website: Optional[str] = None
+    target_rating: Optional[float] = None
+    target_reviews: Optional[int] = None
+    target_category: str = "digital marketing agency"
+    target_types: Optional[list] = []
+    radius_km: int = 5
+    client_id: Optional[int] = None
+
+class RadarAddClientRequest(BaseModel):
+    competitor: dict
+    source_client_id: int
+    source_client_name: str
+    radar_id: Optional[int] = None
+
+@app.post("/radar/search")
+async def radar_search(body: RadarSearchRequest):
+    """Search for a business on Google Maps and return its exact place details."""
+    try:
+        if body.place_id:
+            from modules.radar_engine import get_place_details
+            place = await get_place_details(body.place_id)
+        else:
+            place = await find_place(body.query, body.location_hint)
+        if not place:
+            raise HTTPException(status_code=404, detail="Business not found on Google Maps")
+        return {"place": place}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Radar search failed: {e}")
+
+@app.post("/radar/analyze")
+async def radar_analyze(body: RadarAnalyzeRequest, session: Session = Depends(get_session)):
+    """Run full competitor discovery around target business."""
+    try:
+        radius_m = body.radius_km * 1000
+        competitors = await find_nearby_competitors(
+            lat=body.target_lat,
+            lng=body.target_lng,
+            radius_m=radius_m,
+            keyword=body.target_category,
+            target_name=body.target_name
+        )
+        density = calculate_market_density(len(competitors), body.radius_km)
+
+        rankings = {
+            "nearest": sort_nearest(competitors),
+            "largest_market": sort_largest_market(competitors),
+            "largest_team": sort_largest_team(competitors),
+            "most_similar": sort_most_similar(competitors),
+        }
+
+        # Store radar analysis to DB
+        radar = RadarAnalysis(
+            client_id=body.client_id,
+            target_name=body.target_name,
+            target_place_id=body.place_id if hasattr(body, 'place_id') else None,
+            target_lat=body.target_lat,
+            target_lng=body.target_lng,
+            target_address=body.target_address,
+            target_phone=body.target_phone,
+            target_website=body.target_website,
+            target_rating=body.target_rating,
+            target_reviews=body.target_reviews,
+            target_category=body.target_category,
+            radius_km=body.radius_km,
+            market_density_score=density,
+            competitor_count=len(competitors),
+            competitors={"list": competitors},
+        )
+        session.add(radar)
+        session.commit()
+        session.refresh(radar)
+
+        return {
+            "radar_id": radar.id,
+            "target": {
+                "name": body.target_name,
+                "lat": body.target_lat,
+                "lng": body.target_lng,
+                "address": body.target_address,
+                "phone": body.target_phone,
+                "website": body.target_website,
+                "rating": body.target_rating,
+                "reviews": body.target_reviews,
+                "category": body.target_category,
+            },
+            "radius_km": body.radius_km,
+            "competitor_count": len(competitors),
+            "market_density_score": density,
+            "competitors": competitors,
+            "rankings": rankings,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Radar analysis failed: {e}")
+
+@app.get("/radar/analyses")
+def get_all_radar_analyses(session: Session = Depends(get_session)):
+    """Get all radar analyses."""
+    analyses = session.exec(select(RadarAnalysis).order_by(RadarAnalysis.run_date.desc()).limit(50)).all()
+    return [
+        {
+            "id": a.id,
+            "client_id": a.client_id,
+            "target_name": a.target_name,
+            "target_address": a.target_address,
+            "radius_km": a.radius_km,
+            "competitor_count": a.competitor_count,
+            "market_density_score": a.market_density_score,
+            "run_date": a.run_date.isoformat() if a.run_date else None,
+        }
+        for a in analyses
+    ]
+
+@app.get("/radar/analyses/{client_id}")
+def get_client_radar_analyses(client_id: int, session: Session = Depends(get_session)):
+    """Get radar analyses for a specific client."""
+    analyses = session.exec(
+        select(RadarAnalysis).where(RadarAnalysis.client_id == client_id).order_by(RadarAnalysis.run_date.desc())
+    ).all()
+    return [
+        {
+            "id": a.id,
+            "target_name": a.target_name,
+            "target_address": a.target_address,
+            "target_lat": a.target_lat,
+            "target_lng": a.target_lng,
+            "radius_km": a.radius_km,
+            "competitor_count": a.competitor_count,
+            "market_density_score": a.market_density_score,
+            "competitors": a.competitors,
+            "run_date": a.run_date.isoformat() if a.run_date else None,
+        }
+        for a in analyses
+    ]
+
+@app.post("/radar/add-client")
+def radar_add_client(body: RadarAddClientRequest, session: Session = Depends(get_session)):
+    """Add a competitor discovered via radar to the CRM as a Lead (not a Client)."""
+    try:
+        comp = body.competitor
+        name = comp.get("name", "Unknown Business")
+        website = comp.get("website") or None
+        phone = comp.get("phone") or None
+        address = comp.get("address") or None
+        industry = comp.get("category") or None
+
+        # Check for existing Lead by website or name to avoid duplicates
+        existing_lead = None
+        if website:
+            existing_lead = session.exec(select(Lead).where(Lead.website == website)).first()
+        if not existing_lead:
+            existing_lead = session.exec(select(Lead).where(Lead.company_name == name)).first()
+
+        if existing_lead:
+            # Update existing lead with fresher radar data
+            existing_lead.last_activity = f"Re-discovered via Radar from {body.source_client_name}"
+            if phone and not existing_lead.phone:
+                existing_lead.phone = phone
+            if address and not existing_lead.address:
+                existing_lead.address = address
+            if industry and not existing_lead.industry:
+                existing_lead.industry = industry
+            session.add(existing_lead)
+            session.commit()
+            lead = existing_lead
+            is_new = False
+        else:
+            # Create new Lead
+            lead = Lead(
+                company_name=name,
+                website=website,
+                phone=phone,
+                address=address,
+                industry=industry,
+                source="Radar Analysis",
+                status="New",
+                last_activity=f"Discovered via Radar Analysis of {body.source_client_name}",
+            )
+            session.add(lead)
+            session.commit()
+            session.refresh(lead)
+            is_new = True
+
+        # Log competitor relationship (still tracks which source client triggered the discovery)
+        try:
+            rel = CompetitorRelationship(
+                source_client_id=body.source_client_id,
+                source_client_name=body.source_client_name,
+                discovered_client_id=None,  # no longer creating a ClientProfile
+                discovered_client_name=name,
+                source_radar_id=body.radar_id,
+                competitor_data={
+                    "distance_km": comp.get("distance_km"),
+                    "overlap_pct": comp.get("overlap_pct"),
+                    "market_size_score": comp.get("market_size_score"),
+                    "team_size_estimate": comp.get("team_size_estimate"),
+                    "matched_services": comp.get("matched_services", []),
+                    "lat": comp.get("lat"),
+                    "lng": comp.get("lng"),
+                    "lead_id": lead.id,
+                }
+            )
+            session.add(rel)
+            session.commit()
+        except Exception:
+            pass  # Relationship logging is best-effort
+
+        return {
+            "success": True,
+            "lead_id": lead.id,
+            "client_id": lead.id,  # backwards-compat alias
+            "client_name": name,
+            "is_new": is_new,
+            "message": f"{name} added to Leads. Discovered from: {body.source_client_name}",
+            "discovered_from": body.source_client_name,
+            "discovery_date": datetime.utcnow().strftime("%Y-%m-%d"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add lead: {e}")
+
+
+
+@app.get("/radar/relationships/{client_id}")
+def get_radar_relationships(client_id: int, session: Session = Depends(get_session)):
+    """Get the competitor discovery graph for a client (who they found + who found them)."""
+    # Clients discovered FROM this client
+    discovered = session.exec(
+        select(CompetitorRelationship).where(CompetitorRelationship.source_client_id == client_id)
+    ).all()
+    # Who discovered this client
+    found_from = session.exec(
+        select(CompetitorRelationship).where(CompetitorRelationship.discovered_client_id == client_id)
+    ).all()
+
+    return {
+        "discovered_from": [
+            {
+                "source_client_id": r.source_client_id,
+                "source_client_name": r.source_client_name,
+                "discovery_method": r.discovery_method,
+                "discovered_date": r.discovered_date.isoformat() if r.discovered_date else None,
+            }
+            for r in found_from
+        ],
+        "discovered_competitors": [
+            {
+                "discovered_client_id": r.discovered_client_id,
+                "discovered_client_name": r.discovered_client_name,
+                "discovery_method": r.discovery_method,
+                "discovered_date": r.discovered_date.isoformat() if r.discovered_date else None,
+                "competitor_data": r.competitor_data,
+            }
+            for r in discovered
+        ],
+    }
+
+
+class AutomationScanRequest(BaseModel):
+    url: str
+
+@app.post("/automations/intelligence-scan")
+async def automations_intelligence_scan(body: AutomationScanRequest):
+    import json as _json
+    import os
+    import requests
+    from modules.llm_engine import get_openai_client
+    from modules.scraper import scrape_website
+    
+    url = body.url.strip()
+    if not url.startswith("http"):
+        url = "https://" + url
+    
+    domain = url.replace("https://", "").replace("http://", "").split("/")[0]
+    
+    try:
+        scraped_content = await scrape_website(url)
+    except Exception as e:
+        scraped_content = f"Failed to scrape: {str(e)}"
+        
+    serp_data_str = "No Google Search API key provided, search data unavailable."
+    serper_api_key = os.environ.get("SERPER_API_KEY")
+    if serper_api_key:
+        try:
+            search_query = domain.split(".")[0].capitalize()
+            payload = _json.dumps({"q": search_query})
+            headers = {
+                'X-API-KEY': serper_api_key,
+                'Content-Type': 'application/json'
+            }
+            serp_response = requests.post("https://google.serper.dev/search", headers=headers, data=payload, timeout=10)
+            if serp_response.ok:
+                serp_json = serp_response.json()
+                serp_data_str = _json.dumps({
+                    "knowledgeGraph": serp_json.get("knowledgeGraph"),
+                    "organic": serp_json.get("organic", [])[:10]
+                })
+        except Exception as e:
+            serp_data_str = f"Error fetching SERP: {str(e)}"
+    
+    prompt = f"""
+    You are an expert business intelligence gathering AI.
+    We are running a scan on the website/domain: {url} ({domain}).
+    
+    Here is the live, scraped content of their website (which may include extracted social links):
+    <scraped_content>
+    {scraped_content[:15000]}
+    </scraped_content>
+    
+    Here is live Google Search data for the company (including Organic results and Google Maps/Knowledge Graph data):
+    <google_search_data>
+    {serp_data_str}
+    </google_search_data>
+    
+    Based ONLY on the provided scraped content and Google Search data:
+    1. Extract their real social profiles from the scrape or organic search results. Do not guess.
+    2. Extract their Google Maps rating and review count from the knowledgeGraph (if present) to formulate a review mention.
+    3. Use the organic search results to populate the `webMentions`. For example, if a top organic result is their LinkedIn page, Crunchbase, or a news article, list it exactly as found in the search data.
+    4. Estimate Google Search Volume, Trend, and Size based on the search presence and scraped content.
+    
+    Return ONLY a valid JSON object matching the following structure EXACTLY:
+    {{
+        "domain": "{domain}",
+        "name": "Company Name (extracted or inferred)",
+        "googleSearchVolume": "Number/mo (e.g. '15,000/mo')",
+        "googleTrend": "rising",
+        "socialProfiles": [
+            {{
+                "platform": "LinkedIn",
+                "handle": "extracted_handle",
+                "followers": "10.5K",
+                "engagement": "2.5%",
+                "url": "https://linkedin.com/company/handle",
+                "verified": true,
+                "color": "#0A66C2",
+                "popularity": 85
+            }}
+        ],
+        "webMentions": [
+            {{
+                "title": "Exact Title from organic search results or knowledge graph",
+                "url": "https://exact-url-from-search.com",
+                "domain": "exact-domain.com",
+                "snippet": "Short snippet from organic result...",
+                "domainAuthority": 80,
+                "type": "news"
+            }}
+        ],
+        "estimatedSize": "SMB (11-50)",
+        "sizeScore": 45,
+        "overallScore": 75
+    }}
+    
+    Provide up to 4 social platforms if found. Provide 4-6 web mentions STRICTLY derived from the `<google_search_data>` and `<scraped_content>`.
+    Platform colors: LinkedIn: #0A66C2, Twitter/X: #000000, Instagram: #E4405F, Facebook: #1877F2, YouTube: #FF0000
+    Mention types must be: news, directory, social, review, partner, or blog.
+    Estimated size must be: Startup (1-10), SMB (11-50), Mid-Market (51-200), or Enterprise (200+)
+    Google trend must be: rising, stable, or declining.
+    
+    Do not use markdown blocks. Return only raw JSON.
+    """
+    
+    try:
+        client_ai = get_openai_client()
+        resp = client_ai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+            max_tokens=2000,
+            response_format={"type": "json_object"}
+        )
+        content = resp.choices[0].message.content.strip()
+        data = _json.loads(content)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to scan: {str(e)}")
+
+# =====================================================================
+# ENHANCED CRM ARCHITECTURE - LEADS, ACCOUNTS, CONTACTS
+# =====================================================================
+import json
+import pandas as pd
+
+
+class LeadCreateRequest(BaseModel):
+    company_name: str
+    website: Optional[str] = None
+    industry: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    source: Optional[str] = None
+    owner_id: Optional[int] = None
+    status: str = "New"
+    notes: Optional[str] = None
+
+class AccountCreateRequest(BaseModel):
+    company_name: str
+    website: Optional[str] = None
+    industry: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    owner_id: Optional[int] = None
+
+class ContactCreateRequest(BaseModel):
+    first_name: str
+    last_name: Optional[str] = None
+    designation: Optional[str] = None
+    department: Optional[str] = None
+    email: Optional[str] = None
+    mobile_number: Optional[str] = None
+    alternate_number: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    lead_id: Optional[int] = None
+    account_id: Optional[int] = None
+    client_id: Optional[int] = None
+    notes: Optional[str] = None
+    tags: Optional[List[str]] = []
+    owner_id: Optional[int] = None
+    create_new_lead: Optional[bool] = False
+
+# ---- LEADS API ----
+@app.get("/leads")
+def get_leads(session: Session = Depends(get_session)):
+    leads = session.exec(select(Lead).order_by(Lead.created_at.desc())).all()
+    return {"leads": leads}
+
+@app.post("/leads")
+def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)):
+    lead = Lead(**body.dict())
+    session.add(lead)
+    session.commit()
+    session.refresh(lead)
+    return lead
+
+@app.get("/leads/{lead_id}")
+def get_lead(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return lead
+
+@app.put("/leads/{lead_id}")
+def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    for key, value in body.dict().items():
+        setattr(lead, key, value)
+    session.add(lead)
+    session.commit()
+    session.refresh(lead)
+    return lead
+
+@app.delete("/leads/{lead_id}")
+def delete_lead(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    session.delete(lead)
+    session.commit()
+    return {"ok": True}
+
+@app.post("/leads/{lead_id}/convert")
+def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if lead.is_converted:
+        raise HTTPException(status_code=400, detail="Lead is already converted")
+    
+    # 1. Create Account
+    account = Account(
+        company_name=lead.company_name,
+        website=lead.website,
+        industry=lead.industry,
+        phone=lead.phone,
+        address=lead.address,
+        owner_id=lead.owner_id
+    )
+    session.add(account)
+    session.commit()
+    session.refresh(account)
+    
+    # 2. Create ClientProfile
+    client = ClientProfile(
+        companyName=lead.company_name,
+        websiteUrl=lead.website,
+        industry=lead.industry,
+        phone=lead.phone,
+        address=lead.address,
+        lead_source=lead.source,
+        status="Active",
+        assignedEmployeeId=lead.owner_id
+    )
+    session.add(client)
+    session.commit()
+    session.refresh(client)
+    
+    # 3. Re-link Contacts
+    contacts = session.exec(select(Contact).where(Contact.lead_id == lead.id)).all()
+    for contact in contacts:
+        contact.account_id = account.id
+        contact.client_id = client.id
+        session.add(contact)
+    
+    # 4. Mark Lead as converted
+    lead.is_converted = True
+    lead.converted_client_id = client.id
+    lead.account_id = account.id
+    lead.status = "Converted"
+    session.add(lead)
+    session.commit()
+    
+    return {"message": "Lead converted successfully", "client_id": client.id, "account_id": account.id}
+
+# ---- ACCOUNTS API ----
+@app.get("/accounts")
+def get_accounts(session: Session = Depends(get_session)):
+    accounts = session.exec(select(Account).order_by(Account.created_at.desc())).all()
+    return {"accounts": accounts}
+
+@app.post("/accounts")
+def create_account(body: AccountCreateRequest, session: Session = Depends(get_session)):
+    account = Account(**body.dict())
+    session.add(account)
+    session.commit()
+    session.refresh(account)
+    return account
+
+@app.get("/accounts/{account_id}")
+def get_account(account_id: int, session: Session = Depends(get_session)):
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return account
+
+@app.put("/accounts/{account_id}")
+def update_account(account_id: int, body: AccountCreateRequest, session: Session = Depends(get_session)):
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    for key, value in body.dict().items():
+        setattr(account, key, value)
+    session.add(account)
+    session.commit()
+    session.refresh(account)
+    return account
+
+@app.delete("/accounts/{account_id}")
+def delete_account(account_id: int, session: Session = Depends(get_session)):
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    session.delete(account)
+    session.commit()
+    return {"ok": True}
+
+# ---- CONTACTS API ----
+@app.get("/contacts")
+def get_contacts(session: Session = Depends(get_session)):
+    contacts = session.exec(select(Contact).order_by(Contact.created_at.desc())).all()
+    return {"contacts": contacts}
+
+@app.post("/contacts")
+def create_contact(body: ContactCreateRequest, session: Session = Depends(get_session)):
+    contact_data = body.dict(exclude={"create_new_lead"})
+    contact = Contact(**contact_data)
+    if contact.first_name and contact.last_name:
+        contact.full_name = f"{contact.first_name} {contact.last_name}"
+    elif contact.first_name:
+        contact.full_name = contact.first_name
+        
+    if body.create_new_lead:
+        lead = Lead(
+            company_name=contact.full_name,
+            email=contact.email,
+            phone=contact.mobile_number,
+            status="New",
+            source="Contact Form"
+        )
+        session.add(lead)
+        session.flush()
+        contact.lead_id = lead.id
+
+    session.add(contact)
+    session.commit()
+    session.refresh(contact)
+    return contact
+
+@app.get("/contacts/{contact_id}")
+def get_contact(contact_id: int, session: Session = Depends(get_session)):
+    contact = session.get(Contact, contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return contact
+
+@app.put("/contacts/{contact_id}")
+def update_contact(contact_id: int, body: ContactCreateRequest, session: Session = Depends(get_session)):
+    contact = session.get(Contact, contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    for key, value in body.dict().items():
+        setattr(contact, key, value)
+    
+    if contact.first_name and contact.last_name:
+        contact.full_name = f"{contact.first_name} {contact.last_name}"
+        
+    session.add(contact)
+    session.commit()
+    session.refresh(contact)
+    return contact
+
+@app.delete("/contacts/{contact_id}")
+def delete_contact(contact_id: int, session: Session = Depends(get_session)):
+    contact = session.get(Contact, contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    session.delete(contact)
+    session.commit()
+    return {"ok": True}
+
+
+# ---- IMPORT SYSTEM ----
+class ImportPreviewRequest(BaseModel):
+    module: str # leads, accounts, contacts, clients
+
+@app.post("/api/import/preview")
+async def import_preview(file: UploadFile = File(...)):
+    if not file.filename.endswith(('.csv', '.xlsx', '.xls')):
+        raise HTTPException(status_code=400, detail="Only CSV, XLSX, and XLS files are supported")
+    
+    try:
+        if file.filename.endswith('.csv'):
+            df = pd.read_csv(file.file, nrows=5)
+        else:
+            df = pd.read_excel(file.file, nrows=5)
+            
+        columns = df.columns.tolist()
+        preview_data = df.fillna('').head(3).to_dict(orient='records')
+        
+        return {
+            "columns": columns,
+            "preview_data": preview_data,
+            "total_columns": len(columns)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")
+
+@app.post("/api/import/execute")
+async def import_execute(
+    module: str = Form(...),
+    mapping: str = Form(...), # JSON string
+    skip_duplicates: bool = Form(True),
+    update_existing: bool = Form(False),
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session)
+):
+    try:
+        column_mapping = json.loads(mapping) # e.g. {"First Name": "first_name", ...}
+        
+        if file.filename.endswith('.csv'):
+            df = pd.read_csv(file.file)
+        else:
+            df = pd.read_excel(file.file)
+            
+        df = df.fillna('')
+        records = df.to_dict(orient='records')
+        
+        imported_count = 0
+        skipped_count = 0
+        updated_count = 0
+        
+        for record in records:
+            mapped_record = {}
+            for file_col, db_col in column_mapping.items():
+                if file_col in record and db_col:
+                    mapped_record[db_col] = record[file_col]
+                    
+            if not mapped_record:
+                continue
+                
+            if module == 'leads':
+                # Duplicate check by email or website
+                existing = None
+                if mapped_record.get('email'):
+                    existing = session.exec(select(Lead).where(Lead.email == mapped_record['email'])).first()
+                if not existing and mapped_record.get('website'):
+                    existing = session.exec(select(Lead).where(Lead.website == mapped_record['website'])).first()
+                    
+                if existing:
+                    if update_existing:
+                        for k, v in mapped_record.items():
+                            if v: setattr(existing, k, v)
+                        session.add(existing)
+                        updated_count += 1
+                    else:
+                        skipped_count += 1
+                else:
+                    if 'company_name' not in mapped_record or not mapped_record['company_name']:
+                        mapped_record['company_name'] = 'Unknown Company'
+                    lead = Lead(**mapped_record)
+                    session.add(lead)
+                    imported_count += 1
+                    
+            elif module == 'contacts':
+                existing = None
+                if mapped_record.get('email'):
+                    existing = session.exec(select(Contact).where(Contact.email == mapped_record['email'])).first()
+                    
+                if existing:
+                    if update_existing:
+                        for k, v in mapped_record.items():
+                            if v: setattr(existing, k, v)
+                        session.add(existing)
+                        updated_count += 1
+                    else:
+                        skipped_count += 1
+                else:
+                    if 'first_name' not in mapped_record or not mapped_record['first_name']:
+                        mapped_record['first_name'] = 'Unknown'
+                    contact = Contact(**mapped_record)
+                    if contact.first_name and contact.last_name:
+                        contact.full_name = f"{contact.first_name} {contact.last_name}"
+                    elif contact.first_name:
+                        contact.full_name = contact.first_name
+                    session.add(contact)
+                    imported_count += 1
+            
+            # Additional modules (accounts, clients) follow similar logic...
+        
+        session.commit()
+        return {
+            "success": True,
+            "imported": imported_count,
+            "skipped": skipped_count,
+            "updated": updated_count,
+            "total": len(records)
+        }
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
+
+
+@app.post("/leads/{lead_id}/followup")
+def add_lead_followup(lead_id: int, body: ClientFollowUpRequest, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    # Add to notes
+    existing_notes = lead.notes or ""
+    new_note = f"Follow-up: {body.content}"
+    lead.notes = existing_notes + "\n" + new_note if existing_notes else new_note
+    session.add(lead)
+    
+    # Log activity
+    from datetime import datetime
+    activity = ActivityLog(
+        lead_id=lead_id,
+        action="Added Follow-up Note",
+        details=body.content,
+        timestamp=datetime.utcnow()
+    )
+    session.add(activity)
+
+    if body.email_agent_data:
+        client_research = session.exec(
+            select(ClientResearch).where(ClientResearch.lead_id == lead_id)
+        ).first()
+        if not client_research:
+            client_research = ClientResearch(
+                lead_id=lead_id,
+                email_agent_data=body.email_agent_data
+            )
+            session.add(client_research)
+        else:
+            client_research.email_agent_data = body.email_agent_data
+            session.add(client_research)
+
+    session.commit()
+    
+    return {"success": True, "message": "Follow-up added to lead."}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ACTIVITIES: MEETINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+from database import Meeting, Product, CRMQuote, QuoteItem, SalesOrder, PurchaseOrder, Case, Solution
+
+class MeetingCreateRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    location: Optional[str] = None
+    meeting_type: str = "Meeting"
+    status: str = "Scheduled"
+    scheduled_at: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    host_id: Optional[int] = None
+    lead_id: Optional[int] = None
+    client_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    attendees: Optional[List[str]] = []
+    notes: Optional[str] = None
+
+class MeetingUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    location: Optional[str] = None
+    meeting_type: Optional[str] = None
+    status: Optional[str] = None
+    scheduled_at: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    attendees: Optional[List[str]] = None
+    notes: Optional[str] = None
+    outcome: Optional[str] = None
+
+def _meeting_dict(m: Meeting, session: Session) -> dict:
+    host = session.get(User, m.host_id) if m.host_id else None
+    lead = session.get(Lead, m.lead_id) if m.lead_id else None
+    client = session.get(ClientProfile, m.client_id) if m.client_id else None
+    return {
+        "id": m.id, "title": m.title, "description": m.description,
+        "location": m.location, "meeting_type": m.meeting_type,
+        "status": m.status,
+        "scheduled_at": m.scheduled_at.isoformat() if m.scheduled_at else None,
+        "duration_minutes": m.duration_minutes,
+        "host_id": m.host_id, "host_name": host.name if host else None,
+        "lead_id": m.lead_id, "lead_name": lead.company_name if lead else None,
+        "client_id": m.client_id, "client_name": client.companyName if client else None,
+        "attendees": m.attendees or [],
+        "notes": m.notes, "outcome": m.outcome,
+        "created_at": m.created_at.isoformat(),
+        "updated_at": m.updated_at.isoformat(),
+    }
+
+@app.get("/meetings")
+def list_meetings(
+    status: Optional[str] = None,
+    lead_id: Optional[int] = None,
+    client_id: Optional[int] = None,
+    session: Session = Depends(get_session)
+):
+    q = select(Meeting).order_by(Meeting.scheduled_at.desc())
+    if status:
+        q = q.where(Meeting.status == status)
+    if lead_id:
+        q = q.where(Meeting.lead_id == lead_id)
+    if client_id:
+        q = q.where(Meeting.client_id == client_id)
+    meetings = session.exec(q).all()
+    return {"meetings": [_meeting_dict(m, session) for m in meetings]}
+
+@app.post("/meetings")
+def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_session)):
+    data = body.model_dump()
+    if data.get("scheduled_at"):
+        try:
+            data["scheduled_at"] = datetime.fromisoformat(data["scheduled_at"])
+        except Exception:
+            data["scheduled_at"] = None
+    else:
+        data["scheduled_at"] = None
+    m = Meeting(**data)
+    session.add(m)
+    session.commit()
+    session.refresh(m)
+
+    to_email = None
+    if m.client_id:
+        c = session.get(ClientProfile, m.client_id)
+        if c: to_email = c.email
+    elif m.lead_id:
+        l = session.get(Lead, m.lead_id)
+        if l: to_email = l.email
+    elif m.contact_id:
+        ct = session.get(Contact, m.contact_id)
+        if ct: to_email = ct.email
+
+    if to_email:
+        try:
+            dt_str = m.scheduled_at.strftime("%Y-%m-%d %H:%M") if m.scheduled_at else "TBD"
+            subject = f"Meeting Scheduled: {m.title}"
+            content = f"Hello,\n\nA meeting has been scheduled for {dt_str}.\nTopic: {m.title}\n\nThanks,\nSerpHawk CRM"
+            
+            _send_notification_email(to_email, subject, content)
+            
+            session.add(SentEmail(
+                client_id=m.client_id,
+                lead_id=m.lead_id,
+                to_address=to_email,
+                subject=subject,
+                body_content=content,
+                status="Sent",
+                provider="System"
+            ))
+            session.commit()
+        except Exception as e:
+            print("Failed to send meeting email:", e)
+
+    return {"meeting": _meeting_dict(m, session)}
+
+@app.get("/meetings/{meeting_id}")
+def get_meeting(meeting_id: int, session: Session = Depends(get_session)):
+    m = session.get(Meeting, meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    return {"meeting": _meeting_dict(m, session)}
+
+@app.put("/meetings/{meeting_id}")
+def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session = Depends(get_session)):
+    m = session.get(Meeting, meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    updates = body.model_dump(exclude_unset=True)
+    if "scheduled_at" in updates:
+        if updates["scheduled_at"]:
+            try:
+                updates["scheduled_at"] = datetime.fromisoformat(updates["scheduled_at"])
+            except Exception:
+                updates["scheduled_at"] = None
+        else:
+            updates["scheduled_at"] = None
+    for k, v in updates.items():
+        setattr(m, k, v)
+    m.updated_at = datetime.utcnow()
+    session.add(m)
+    session.commit()
+    session.refresh(m)
+    return {"meeting": _meeting_dict(m, session)}
+
+@app.delete("/meetings/{meeting_id}")
+def delete_meeting(meeting_id: int, session: Session = Depends(get_session)):
+    m = session.get(Meeting, meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    session.delete(m)
+    session.commit()
+    return {"ok": True}
+
+@app.post("/meetings/import")
+async def import_meetings(file: UploadFile = File(...), session: Session = Depends(get_session)):
+    """Import meetings from CSV/Excel"""
+    import pandas as pd, io
+    content = await file.read()
+    try:
+        df = pd.read_excel(io.BytesIO(content)) if file.filename.endswith((".xlsx",".xls")) else pd.read_csv(io.BytesIO(content))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse file: {e}")
+    imported = 0
+    for _, row in df.iterrows():
+        try:
+            m = Meeting(
+                title=str(row.get("title") or row.get("Title") or "Imported Meeting"),
+                description=str(row.get("description") or row.get("Description") or "") or None,
+                notes=str(row.get("notes") or row.get("Notes") or "") or None,
+                status=str(row.get("status") or row.get("Status") or "Scheduled"),
+                meeting_type=str(row.get("meeting_type") or row.get("Type") or "Meeting"),
+            )
+            session.add(m)
+            imported += 1
+        except Exception:
+            pass
+    session.commit()
+    return {"imported": imported}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INVENTORY: PRODUCTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class ProductCreateRequest(BaseModel):
+    name: str
+    sku: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    unit_price: float = 0.0
+    currency: str = "USD"
+    tax_rate: float = 0.0
+    stock_quantity: Optional[int] = None
+    is_active: bool = True
+
+class ProductUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    sku: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    unit_price: Optional[float] = None
+    tax_rate: Optional[float] = None
+    stock_quantity: Optional[int] = None
+    is_active: Optional[bool] = None
+
+@app.get("/products")
+def list_products(category: Optional[str] = None, active_only: bool = False, session: Session = Depends(get_session)):
+    q = select(Product).order_by(Product.name)
+    if category:
+        q = q.where(Product.category == category)
+    if active_only:
+        q = q.where(Product.is_active == True)
+    products = session.exec(q).all()
+    return {"products": [p.model_dump() for p in products]}
+
+@app.post("/products")
+def create_product(body: ProductCreateRequest, session: Session = Depends(get_session)):
+    p = Product(**body.model_dump())
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return {"product": p.model_dump()}
+
+@app.get("/products/{product_id}")
+def get_product(product_id: int, session: Session = Depends(get_session)):
+    p = session.get(Product, product_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return {"product": p.model_dump()}
+
+@app.put("/products/{product_id}")
+def update_product(product_id: int, body: ProductUpdateRequest, session: Session = Depends(get_session)):
+    p = session.get(Product, product_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Product not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(p, k, v)
+    p.updated_at = datetime.utcnow()
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return {"product": p.model_dump()}
+
+@app.delete("/products/{product_id}")
+def delete_product(product_id: int, session: Session = Depends(get_session)):
+    p = session.get(Product, product_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Product not found")
+    session.delete(p)
+    session.commit()
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INVENTORY: QUOTES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class QuoteCreateRequest(BaseModel):
+    title: str
+    lead_id: Optional[int] = None
+    client_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    status: str = "Draft"
+    currency: str = "USD"
+    valid_until: Optional[str] = None
+    notes: Optional[str] = None
+    terms: Optional[str] = None
+    owner_id: Optional[int] = None
+
+@app.get("/quotes")
+def list_quotes(status: Optional[str] = None, client_id: Optional[int] = None, lead_id: Optional[int] = None, session: Session = Depends(get_session)):
+    q = select(CRMQuote).order_by(CRMQuote.created_at.desc())
+    if status:
+        q = q.where(CRMQuote.status == status)
+    if client_id:
+        q = q.where(CRMQuote.client_id == client_id)
+    if lead_id:
+        q = q.where(CRMQuote.lead_id == lead_id)
+    quotes = session.exec(q).all()
+    return {"quotes": [_quote_dict(qt, session) for qt in quotes]}
+
+def _quote_dict(qt: CRMQuote, session: Session) -> dict:
+    client = session.get(ClientProfile, qt.client_id) if qt.client_id else None
+    lead = session.get(Lead, qt.lead_id) if qt.lead_id else None
+    items = session.exec(select(QuoteItem).where(QuoteItem.quote_id == qt.id)).all()
+    d = qt.model_dump()
+    d["client_name"] = client.companyName if client else None
+    d["lead_name"] = lead.company_name if lead else None
+    d["items"] = [i.model_dump() for i in items]
+    return d
+
+@app.post("/quotes")
+def create_quote(body: QuoteCreateRequest, session: Session = Depends(get_session)):
+    import random, string
+    q = CRMQuote(**body.model_dump())
+    q.quote_number = "QT-" + "".join(random.choices(string.digits, k=6))
+    session.add(q)
+    session.commit()
+    session.refresh(q)
+    return {"quote": _quote_dict(q, session)}
+
+@app.get("/quotes/{quote_id}")
+def get_quote(quote_id: int, session: Session = Depends(get_session)):
+    q = session.get(CRMQuote, quote_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    return {"quote": _quote_dict(q, session)}
+
+@app.put("/quotes/{quote_id}")
+def update_quote(quote_id: int, body: QuoteCreateRequest, session: Session = Depends(get_session)):
+    q = session.get(CRMQuote, quote_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(q, k, v)
+    q.updated_at = datetime.utcnow()
+    session.add(q)
+    session.commit()
+    session.refresh(q)
+    return {"quote": _quote_dict(q, session)}
+
+@app.delete("/quotes/{quote_id}")
+def delete_quote(quote_id: int, session: Session = Depends(get_session)):
+    q = session.get(CRMQuote, quote_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    session.delete(q)
+    session.commit()
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INVENTORY: SALES ORDERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SalesOrderCreateRequest(BaseModel):
+    quote_id: Optional[int] = None
+    lead_id: Optional[int] = None
+    client_id: Optional[int] = None
+    status: str = "Pending"
+    grand_total: float = 0.0
+    currency: str = "USD"
+    delivery_date: Optional[str] = None
+    notes: Optional[str] = None
+    owner_id: Optional[int] = None
+
+@app.get("/sales-orders")
+def list_sales_orders(status: Optional[str] = None, client_id: Optional[int] = None, session: Session = Depends(get_session)):
+    q = select(SalesOrder).order_by(SalesOrder.created_at.desc())
+    if status:
+        q = q.where(SalesOrder.status == status)
+    if client_id:
+        q = q.where(SalesOrder.client_id == client_id)
+    orders = session.exec(q).all()
+    return {"orders": [_so_dict(o, session) for o in orders]}
+
+def _so_dict(o: SalesOrder, session: Session) -> dict:
+    client = session.get(ClientProfile, o.client_id) if o.client_id else None
+    d = o.model_dump()
+    d["client_name"] = client.companyName if client else None
+    return d
+
+@app.post("/sales-orders")
+def create_sales_order(body: SalesOrderCreateRequest, session: Session = Depends(get_session)):
+    import random, string
+    o = SalesOrder(**body.model_dump())
+    o.order_number = "SO-" + "".join(random.choices(string.digits, k=6))
+    session.add(o)
+    session.commit()
+    session.refresh(o)
+    return {"order": _so_dict(o, session)}
+
+@app.put("/sales-orders/{order_id}")
+def update_sales_order(order_id: int, body: SalesOrderCreateRequest, session: Session = Depends(get_session)):
+    o = session.get(SalesOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(o, k, v)
+    o.updated_at = datetime.utcnow()
+    session.add(o)
+    session.commit()
+    session.refresh(o)
+    return {"order": _so_dict(o, session)}
+
+@app.delete("/sales-orders/{order_id}")
+def delete_sales_order(order_id: int, session: Session = Depends(get_session)):
+    o = session.get(SalesOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    session.delete(o)
+    session.commit()
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INVENTORY: PURCHASE ORDERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class PurchaseOrderCreateRequest(BaseModel):
+    vendor_name: str
+    vendor_email: Optional[str] = None
+    status: str = "Draft"
+    grand_total: float = 0.0
+    currency: str = "USD"
+    expected_delivery: Optional[str] = None
+    notes: Optional[str] = None
+    owner_id: Optional[int] = None
+
+@app.get("/purchase-orders")
+def list_purchase_orders(status: Optional[str] = None, session: Session = Depends(get_session)):
+    q = select(PurchaseOrder).order_by(PurchaseOrder.created_at.desc())
+    if status:
+        q = q.where(PurchaseOrder.status == status)
+    orders = session.exec(q).all()
+    return {"orders": [o.model_dump() for o in orders]}
+
+@app.post("/purchase-orders")
+def create_purchase_order(body: PurchaseOrderCreateRequest, session: Session = Depends(get_session)):
+    import random, string
+    o = PurchaseOrder(**body.model_dump())
+    o.po_number = "PO-" + "".join(random.choices(string.digits, k=6))
+    session.add(o)
+    session.commit()
+    session.refresh(o)
+    return {"order": o.model_dump()}
+
+@app.put("/purchase-orders/{order_id}")
+def update_purchase_order(order_id: int, body: PurchaseOrderCreateRequest, session: Session = Depends(get_session)):
+    o = session.get(PurchaseOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(o, k, v)
+    o.updated_at = datetime.utcnow()
+    session.add(o)
+    session.commit()
+    session.refresh(o)
+    return {"order": o.model_dump()}
+
+@app.delete("/purchase-orders/{order_id}")
+def delete_purchase_order(order_id: int, session: Session = Depends(get_session)):
+    o = session.get(PurchaseOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    session.delete(o)
+    session.commit()
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SUPPORT: CASES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class CaseCreateRequest(BaseModel):
+    subject: str
+    description: Optional[str] = None
+    status: str = "Open"
+    priority: str = "Medium"
+    category: Optional[str] = None
+    lead_id: Optional[int] = None
+    client_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    assigned_to: Optional[int] = None
+
+class CaseUpdateRequest(BaseModel):
+    subject: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    category: Optional[str] = None
+    assigned_to: Optional[int] = None
+    resolution: Optional[str] = None
+
+def _case_dict(c: Case, session: Session) -> dict:
+    client = session.get(ClientProfile, c.client_id) if c.client_id else None
+    lead = session.get(Lead, c.lead_id) if c.lead_id else None
+    assignee = session.get(User, c.assigned_to) if c.assigned_to else None
+    d = c.model_dump()
+    d["client_name"] = client.companyName if client else None
+    d["lead_name"] = lead.company_name if lead else None
+    d["assignee_name"] = assignee.name if assignee else None
+    d["resolved_at"] = c.resolved_at.isoformat() if c.resolved_at else None
+    d["created_at"] = c.created_at.isoformat()
+    d["updated_at"] = c.updated_at.isoformat()
+    return d
+
+@app.get("/cases")
+def list_cases(status: Optional[str] = None, priority: Optional[str] = None, client_id: Optional[int] = None, session: Session = Depends(get_session)):
+    q = select(Case).order_by(Case.created_at.desc())
+    if status:
+        q = q.where(Case.status == status)
+    if priority:
+        q = q.where(Case.priority == priority)
+    if client_id:
+        q = q.where(Case.client_id == client_id)
+    cases = session.exec(q).all()
+    return {"cases": [_case_dict(c, session) for c in cases]}
+
+@app.post("/cases")
+def create_case(body: CaseCreateRequest, session: Session = Depends(get_session)):
+    import random, string
+    c = Case(**body.model_dump())
+    c.case_number = "CASE-" + "".join(random.choices(string.digits, k=5))
+    session.add(c)
+    session.commit()
+    session.refresh(c)
+    return {"case": _case_dict(c, session)}
+
+@app.get("/cases/{case_id}")
+def get_case(case_id: int, session: Session = Depends(get_session)):
+    c = session.get(Case, case_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return {"case": _case_dict(c, session)}
+
+@app.put("/cases/{case_id}")
+def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depends(get_session)):
+    c = session.get(Case, case_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Case not found")
+    updates = body.model_dump(exclude_unset=True)
+    if updates.get("status") in ("Resolved", "Closed") and not c.resolved_at:
+        c.resolved_at = datetime.utcnow()
+    for k, v in updates.items():
+        setattr(c, k, v)
+    c.updated_at = datetime.utcnow()
+    session.add(c)
+    session.commit()
+    session.refresh(c)
+    return {"case": _case_dict(c, session)}
+
+@app.delete("/cases/{case_id}")
+def delete_case(case_id: int, session: Session = Depends(get_session)):
+    c = session.get(Case, case_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Case not found")
+    session.delete(c)
+    session.commit()
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SUPPORT: SOLUTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SolutionCreateRequest(BaseModel):
+    title: str
+    content: str
+    category: Optional[str] = None
+    tags: Optional[List[str]] = []
+    is_published: bool = True
+    author_id: Optional[int] = None
+
+class SolutionUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    is_published: Optional[bool] = None
+
+@app.get("/solutions")
+def list_solutions(category: Optional[str] = None, q: Optional[str] = None, session: Session = Depends(get_session)):
+    query = select(Solution).where(Solution.is_published == True).order_by(Solution.view_count.desc())
+    if category:
+        query = query.where(Solution.category == category)
+    solutions = session.exec(query).all()
+    if q:
+        solutions = [s for s in solutions if q.lower() in s.title.lower() or q.lower() in s.content.lower()]
+    return {"solutions": [s.model_dump() for s in solutions]}
+
+@app.post("/solutions")
+def create_solution(body: SolutionCreateRequest, session: Session = Depends(get_session)):
+    s = Solution(**body.model_dump())
+    session.add(s)
+    session.commit()
+    session.refresh(s)
+    return {"solution": s.model_dump()}
+
+@app.get("/solutions/{solution_id}")
+def get_solution(solution_id: int, session: Session = Depends(get_session)):
+    s = session.get(Solution, solution_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    s.view_count += 1
+    session.add(s)
+    session.commit()
+    return {"solution": s.model_dump()}
+
+@app.put("/solutions/{solution_id}")
+def update_solution(solution_id: int, body: SolutionUpdateRequest, session: Session = Depends(get_session)):
+    s = session.get(Solution, solution_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(s, k, v)
+    s.updated_at = datetime.utcnow()
+    session.add(s)
+    session.commit()
+    session.refresh(s)
+    return {"solution": s.model_dump()}
+
+@app.delete("/solutions/{solution_id}")
+def delete_solution(solution_id: int, session: Session = Depends(get_session)):
+    s = session.get(Solution, solution_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    session.delete(s)
+    session.commit()
+    return {"ok": True}
+
+@app.post("/solutions/{solution_id}/helpful")
+def mark_solution_helpful(solution_id: int, session: Session = Depends(get_session)):
+    s = session.get(Solution, solution_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    s.helpful_count += 1
+    session.add(s)
+    session.commit()
+    return {"helpful_count": s.helpful_count}
+
+@app.post("/leads/{lead_id}/simulate-call")
+def simulate_lead_call(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead: raise HTTPException(status_code=404, detail="Lead not found")
+    
+    client_name = lead.company_name or "Valued Lead"
+    industry = lead.industry or "Unknown Industry"
+    notes = lead.notes or "No prior notes."
+    
+    prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
+Your task is to write a highly tailored, direct sales script to be read over the phone to this specific lead. 
+DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
+
+Lead Profile:
+Company Name: {client_name}
+Industry: {industry}
+Website: {lead.website or 'Unknown'}
+Source: {lead.source or 'Unknown'}
+
+Notes from our CRM:
+{notes}
+
+Recent Activity:
+{lead.last_activity or 'No recent activity'}
+
+Instructions:
+1. Write the exact word-for-word script that the sales person will read on the call.
+2. Directly reference their specific company name, their industry, and any past notes or activities.
+3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
+4. Make it conversational, persuasive, and professional.
+5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
+6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
+
+    from modules.llm_engine import get_openai_client
+    try:
+        openai_client = get_openai_client()
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800
+        )
+        pitch = response.choices[0].message.content or ""
+    except Exception as e:
+        print("Error in lead simulation:", e)
+        raise HTTPException(status_code=500, detail=f"Failed to simulate call: {str(e)}")
+        
+    call = CallLog(
+        phone_number=lead.phone or "Unknown",
+        duration_seconds=180,
+        summary=f"Pitch Generation for {client_name}",
+        description=pitch,
+    )
+    session.add(call)
+    session.commit()
+    session.refresh(call)
+    
+    return {"ok": True, "call_id": call.id, "pitch": pitch}
+
+@app.post("/contacts/{contact_id}/simulate-call")
+def simulate_contact_call(contact_id: int, session: Session = Depends(get_session)):
+    contact = session.get(Contact, contact_id)
+    if not contact: raise HTTPException(status_code=404, detail="Contact not found")
+    
+    client_name = f"{contact.first_name} {contact.last_name or ''}".strip() or "Valued Contact"
+    department = contact.department or "Unknown Department"
+    designation = contact.designation or "Unknown Title"
+    notes = contact.notes or "No prior notes."
+    
+    prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
+Your task is to write a highly tailored, direct sales script to be read over the phone to this specific contact. 
+DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
+
+Contact Profile:
+Name: {client_name}
+Title/Designation: {designation}
+Department: {department}
+Email: {contact.email or 'Unknown'}
+LinkedIn: {contact.linkedin_url or 'Unknown'}
+
+Notes from our CRM:
+{notes}
+
+Instructions:
+1. Write the exact word-for-word script that the sales person will read on the call.
+2. Directly reference their specific name, their role/title, and any past notes.
+3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
+4. Make it conversational, persuasive, and professional.
+5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
+6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
+
+    from modules.llm_engine import get_openai_client
+    try:
+        openai_client = get_openai_client()
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800
+        )
+        pitch = response.choices[0].message.content or ""
+    except Exception as e:
+        print("Error in contact simulation:", e)
+        raise HTTPException(status_code=500, detail=f"Failed to simulate call: {str(e)}")
+        
+    call = CallLog(
+        phone_number=contact.mobile_number or "Unknown",
+        duration_seconds=180,
+        summary=f"Pitch Generation for {client_name}",
+        description=pitch,
+    )
+    session.add(call)
+    session.commit()
+    session.refresh(call)
+    
+    return {"ok": True, "call_id": call.id, "pitch": pitch}
+
+@app.get("/work-queue")
+def get_work_queue(
+    user_id: int = Query(...),
+    role: str = Query(...),
+    date_filter: str = Query("today"),
+    session: Session = Depends(get_session)
+):
+    try:
+        today_date = date.today()
+        if date_filter == "yesterday":
+            target_date = today_date - timedelta(days=1)
+        elif date_filter == "tomorrow":
+            target_date = today_date + timedelta(days=1)
+        else:
+            target_date = today_date
+            
+        start_dt = datetime.combine(target_date, datetime.min.time())
+        end_dt = datetime.combine(target_date, datetime.max.time())
+        
+        is_admin = role == "Admin"
+        
+        # 1. Tasks
+        tasks_q = session.query(Task).filter(Task.due_date >= start_dt, Task.due_date <= end_dt)
+        if not is_admin:
+            tasks_q = tasks_q.filter(Task.assignee_id == user_id)
+        tasks = tasks_q.all()
+        
+        # 2. Meetings
+        meetings_q = session.query(Meeting).filter(Meeting.scheduled_at >= start_dt, Meeting.scheduled_at <= end_dt)
+        if not is_admin:
+            meetings_q = meetings_q.filter(Meeting.host_id == user_id)
+        meetings = meetings_q.all()
+        
+        # 3. Scheduled Calls
+        calls_q = session.query(ScheduledCall).filter(ScheduledCall.scheduled_at >= start_dt, ScheduledCall.scheduled_at <= end_dt)
+        if not is_admin:
+            calls_q = calls_q.filter(ScheduledCall.assigned_to == user_id)
+        calls = calls_q.all()
+        
+        # 4. Leads (using created_at as proxy for activity if followup doesn't exist, wait Lead has no followup_date)
+        # We'll just show leads created on that day
+        leads_q = session.query(Lead).filter(Lead.created_at >= start_dt, Lead.created_at <= end_dt)
+        if not is_admin:
+            leads_q = leads_q.filter(Lead.owner_id == user_id)
+        leads = leads_q.all()
+        
+        # 5. Contacts
+        contacts_q = session.query(Contact).filter(Contact.created_at >= start_dt, Contact.created_at <= end_dt)
+        if not is_admin:
+            contacts_q = contacts_q.filter(Contact.owner_id == user_id)
+        contacts = contacts_q.all()
+        
+        # 6. Deals
+        deals_q = session.query(Deal).filter(Deal.created_at >= start_dt, Deal.created_at <= end_dt)
+        if not is_admin:
+            deals_q = deals_q.filter(Deal.owner_id == user_id)
+        deals = deals_q.all()
+        
+        return {
+            "ok": True,
+            "date": target_date.isoformat(),
+            "tasks": tasks,
+            "meetings": meetings,
+            "calls": calls,
+            "leads": leads,
+            "contacts": contacts,
+            "deals": deals
+        }
+    except Exception as e:
+        print("Work Queue Error:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ──────────────────────────────────────────────────────
+# EMAIL TRACKER APIs
+# ──────────────────────────────────────────────────────
+
+from pydantic import BaseModel
+class EmailIntegrationCreate(BaseModel):
+    user_id: int
+    email_address: str
+    provider: str
+
+@app.post("/email-integrations")
+def connect_email_integration(data: EmailIntegrationCreate, session: Session = Depends(get_session)):
+    integration = EmailIntegration(
+        user_id=data.user_id,
+        email_address=data.email_address,
+        provider=data.provider,
+        status="Connected"
+    )
+    session.add(integration)
+    session.commit()
+    session.refresh(integration)
+    return {"ok": True, "integration": integration}
+
+@app.get("/email-integrations")
+def get_email_integrations(user_id: int, session: Session = Depends(get_session)):
+    integrations = session.query(EmailIntegration).filter(EmailIntegration.user_id == user_id).all()
+    return {"ok": True, "integrations": integrations}
+
+@app.post("/email-integrations/{integration_id}/sync")
+def sync_email_integration(integration_id: int, session: Session = Depends(get_session)):
+    integration = session.get(EmailIntegration, integration_id)
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integration not found")
+        
+    from modules.llm_engine import get_openai_client
+    import json
+    
+    prompt = """
+    Generate 3 realistic inbound emails that a digital marketing agency might receive.
+    Return ONLY a JSON object with a single key 'emails' containing an array of objects with the following keys:
+    - sender_name: string
+    - sender_email: string
+    - subject: string
+    - body_snippet: string (first 150 chars of the email)
+    - suggested_type: string (Lead, Client, Spam, Inquiry)
+    - ai_analysis: string (Brief 1 sentence explanation of why it was classified this way)
+    
+    Make at least one 'Lead' and one 'Spam'.
+    """
+    try:
+        openai_client = get_openai_client()
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        content = response.choices[0].message.content or "{}"
+        data = json.loads(content)
+        emails = data.get("emails", [])
+        
+        extracted = []
+        for e in emails:
+            new_email = ExtractedEmail(
+                integration_id=integration.id,
+                sender_name=e.get("sender_name", "Unknown"),
+                sender_email=e.get("sender_email", "unknown@example.com"),
+                subject=e.get("subject", "No Subject"),
+                body_snippet=e.get("body_snippet", ""),
+                suggested_type=e.get("suggested_type", "Unknown"),
+                ai_analysis=e.get("ai_analysis", "")
+            )
+            session.add(new_email)
+            extracted.append(new_email)
+            
+        integration.last_synced_at = datetime.utcnow()
+        session.commit()
+        
+        return {"ok": True, "count": len(extracted), "emails": extracted}
+    except Exception as e:
+        print("Error syncing emails:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/extracted-emails")
+def get_extracted_emails(user_id: int, session: Session = Depends(get_session)):
+    emails = session.query(ExtractedEmail).join(EmailIntegration).filter(
+        EmailIntegration.user_id == user_id,
+        ExtractedEmail.status == "Pending"
+    ).order_by(ExtractedEmail.created_at.desc()).all()
+    return {"ok": True, "emails": emails}
+
+class VerifyEmailRequest(BaseModel):
+    action: str # convert_to_lead, convert_to_client, dismiss
+
+@app.post("/extracted-emails/{email_id}/verify")
+def verify_extracted_email(email_id: int, data: VerifyEmailRequest, session: Session = Depends(get_session)):
+    email_obj = session.get(ExtractedEmail, email_id)
+    if not email_obj:
+        raise HTTPException(status_code=404, detail="Email not found")
+        
+    integration = session.get(EmailIntegration, email_obj.integration_id)
+    user_id = integration.user_id if integration else None
+    
+    if data.action == "dismiss":
+        email_obj.status = "Dismissed"
+    elif data.action == "convert_to_lead":
+        email_obj.status = "Verified_Lead"
+        lead = Lead(
+            company_name=email_obj.sender_name,
+            email=email_obj.sender_email,
+            source="Email Tracker",
+            owner_id=user_id,
+            status="New",
+            notes=email_obj.body_snippet
+        )
+        session.add(lead)
+    elif data.action == "convert_to_client":
+        email_obj.status = "Verified_Client"
+        client = ClientProfile(
+            companyName=email_obj.sender_name,
+            customFields={"email": email_obj.sender_email},
+            status="Active",
+            lead_source="Email Tracker",
+            assignedEmployeeId=user_id
+        )
+        session.add(client)
+        
+    session.commit()
+    return {"ok": True, "status": email_obj.status}

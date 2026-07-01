@@ -204,11 +204,11 @@ export default function DocumentsPage() {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto p-6">
-      <div className="bg-white p-8 rounded-xl border shadow-sm">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
+      <div className="bg-white dark:bg-zinc-900 p-8 rounded-xl border shadow-sm">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-50 mb-2 flex items-center gap-2">
           <FileText className="w-6 h-6 text-blue-600" /> Document OCR
         </h1>
-        <p className="text-gray-500 mb-8">Upload an ID card or business card to automatically extract details.</p>
+        <p className="text-gray-500 dark:text-zinc-400 mb-8">Upload an ID card or business card to automatically extract details.</p>
 
         <PageGuide
           pageKey="documents"
@@ -250,7 +250,7 @@ export default function DocumentsPage() {
                   <button
                     onClick={startCamera}
                     disabled={analyzing}
-                    className="flex-1 py-3 border border-gray-300 text-gray-700 rounded-lg font-bold hover:bg-gray-50 flex items-center justify-center gap-2"
+                    className="flex-1 py-3 border border-gray-300 text-gray-700 dark:text-zinc-200 rounded-lg font-bold hover:bg-gray-50 dark:bg-zinc-950 flex items-center justify-center gap-2"
                   >
                     <Camera className="w-4 h-4" /> Use Camera
                   </button>
@@ -294,58 +294,58 @@ export default function DocumentsPage() {
           {/* Results Section */}
           <div className="space-y-4">
             {result ? (
-              <div className="bg-gray-50 p-6 rounded-xl border space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <h3 className="font-bold text-gray-900 flex items-center gap-2 border-b pb-2">
+              <div className="bg-gray-50 dark:bg-zinc-950 p-6 rounded-xl border space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <h3 className="font-bold text-gray-900 dark:text-zinc-50 flex items-center gap-2 border-b pb-2">
                   <Check className="w-4 h-4 text-green-600" /> Extracted Details
                 </h3>
 
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1 mb-1">
+                    <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase flex items-center gap-1 mb-1">
                       <User className="w-3 h-3" /> Name
                     </label>
                     <input
-                      className="w-full p-2 border rounded-lg bg-white"
+                      className="w-full p-2 border rounded-lg bg-white dark:bg-zinc-900"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1 mb-1">
+                    <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase flex items-center gap-1 mb-1">
                       <Building className="w-3 h-3" /> Company
                     </label>
                     <input
-                      className="w-full p-2 border rounded-lg bg-white"
+                      className="w-full p-2 border rounded-lg bg-white dark:bg-zinc-900"
                       value={formData.company_name}
                       onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1 mb-1">
+                    <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase flex items-center gap-1 mb-1">
                       <Phone className="w-3 h-3" /> Mobile
                     </label>
                     <input
-                      className="w-full p-2 border rounded-lg bg-white"
+                      className="w-full p-2 border rounded-lg bg-white dark:bg-zinc-900"
                       value={formData.mobile}
                       onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1 mb-1">
+                    <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase flex items-center gap-1 mb-1">
                       <Mail className="w-3 h-3" /> Email
                     </label>
                     <input
-                      className="w-full p-2 border rounded-lg bg-white"
+                      className="w-full p-2 border rounded-lg bg-white dark:bg-zinc-900"
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1 mb-1">
+                    <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase flex items-center gap-1 mb-1">
                       <Globe className="w-3 h-3" /> Website
                     </label>
                     <input
-                      className="w-full p-2 border rounded-lg bg-white"
+                      className="w-full p-2 border rounded-lg bg-white dark:bg-zinc-900"
                       value={formData.website}
                       onChange={(e) => setFormData({ ...formData, website: e.target.value })}
                     />
@@ -368,7 +368,7 @@ export default function DocumentsPage() {
                 {!formData.email && <p className="text-[10px] text-red-500 text-center mt-1">Email is required to save as lead</p>}
               </div>
             ) : (
-              <div className="h-full flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-100 rounded-xl p-8 text-center bg-gray-50">
+              <div className="h-full flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-100 dark:border-zinc-800 rounded-xl p-8 text-center bg-gray-50 dark:bg-zinc-950">
                 {analyzing ? (
                   <div className="space-y-4">
                     <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500" />

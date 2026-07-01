@@ -50,7 +50,7 @@ const itemVariants = {
 };
 
 const CommentSkeleton = () => (
-  <div className="p-5 bg-white/40 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm animate-pulse">
+  <div className="p-5 bg-white dark:bg-zinc-900/40 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm animate-pulse">
     <div className="flex justify-between mb-4">
       <div className="h-4 w-24 bg-slate-300/50 rounded-full"></div>
       <div className="h-4 w-32 bg-slate-300/50 rounded-full"></div>
@@ -63,7 +63,7 @@ const CommentSkeleton = () => (
 );
 
 const ActivitySkeletonTab = () => (
-  <div className="flex gap-4 p-5 bg-white/40 backdrop-blur-md border border-white/60 shadow-sm rounded-2xl animate-pulse relative overflow-hidden">
+  <div className="flex gap-4 p-5 bg-white dark:bg-zinc-900/40 backdrop-blur-md border border-white/60 shadow-sm rounded-2xl animate-pulse relative overflow-hidden">
     <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-300/50"></div>
     <div className="bg-indigo-100/50 p-3 rounded-xl h-12 w-12 flex-shrink-0"></div>
     <div className="flex-1 space-y-3 py-1">
@@ -103,7 +103,7 @@ function PaymentStatusWidget({ status }: { status: string }) {
   const config = paymentStatusColors[validStatus];
   return (
     <div className={`flex items-center gap-4 p-6 rounded-2xl border border-white/60 shadow-sm ${config.bg}`}> 
-      <div className="bg-white p-3 rounded-xl shadow-sm">{config.icon}</div>
+      <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl shadow-sm">{config.icon}</div>
       <div>
         <div className="text-xs font-black uppercase tracking-widest text-slate-400 mb-1">Payment Status</div>
         <div className={`text-lg font-bold ${config.text}`}>{config.label}</div>
@@ -154,6 +154,7 @@ export default function ClientDetailPage() {
   });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({ companyName: '', projectName: '', websiteUrl: '' });
+  const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     await updateProfile({
@@ -191,9 +192,9 @@ export default function ClientDetailPage() {
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/employees`);
+      const res = await fetch(`${API_BASE_URL}/users?role=Employee,SalesManager`);
       const data = await res.json();
-      setEmployees(data.employees || []);
+      setEmployees(data.users || []);
     } catch (err) {
       console.error(err);
     }
@@ -405,6 +406,25 @@ export default function ClientDetailPage() {
     }
   };
 
+  const handleSimulateCall = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${id}/simulate-call`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        alert(`AI Pitch Generated:\n\n${data.pitch}`);
+        fetchActivities();
+      } else {
+        alert('Failed to generate simulation');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error connecting to AI');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSaveMetrics = async () => {
     setLoading(true);
     try {
@@ -433,7 +453,7 @@ export default function ClientDetailPage() {
           <div className="absolute inset-0 border-4 border-indigo-100 rounded-full"></div>
           <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
         </div>
-        <h2 className="text-xl font-bold text-slate-800 animate-pulse mt-4">Pulling Intelligence Data...</h2>
+        <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100 animate-pulse mt-4">Pulling Intelligence Data...</h2>
       </div>
     );
   }
@@ -456,7 +476,7 @@ export default function ClientDetailPage() {
           <motion.div 
             animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.5, 0.3] }}
             transition={{ duration: 8, repeat: Infinity }}
-            className="absolute top-0 right-0 w-96 h-96 bg-white/20 rounded-full blur-3xl"
+            className="absolute top-0 right-0 w-96 h-96 bg-white dark:bg-zinc-900/20 rounded-full blur-3xl"
           ></motion.div>
           <motion.div 
             animate={{ scale: [1, 0.9, 1], opacity: [0.2, 0.4, 0.2] }}
@@ -487,15 +507,15 @@ export default function ClientDetailPage() {
               transition={{ delay: 0.4, duration: 0.6 }}
               className="grid grid-cols-3 gap-6 mt-8"
             >
-              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
+              <div className="bg-white dark:bg-zinc-900/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
                 <p className="text-white/70 text-sm font-bold uppercase tracking-wider mb-2">Active Services</p>
                 <p className="text-3xl font-black text-cyan-200">{serviceRequests.filter(r => r.status !== 'Pending').length || 0}</p>
               </div>
-              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
+              <div className="bg-white dark:bg-zinc-900/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
                 <p className="text-white/70 text-sm font-bold uppercase tracking-wider mb-2">Total Revenue</p>
                 <p className="text-3xl font-black text-cyan-200">{client.customFields?.total_revenue || '—'}</p>
               </div>
-              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
+              <div className="bg-white dark:bg-zinc-900/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
                 <p className="text-white/70 text-sm font-bold uppercase tracking-wider mb-2">Growth Rate</p>
                 <p className="text-3xl font-black text-cyan-200">{client.customFields?.growth_rate || '—'}</p>
               </div>
@@ -525,9 +545,9 @@ export default function ClientDetailPage() {
         >
           <div className="flex items-center gap-3 mb-8">
             <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
-            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-wider">Your Performance Story</h2>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">Your Performance Story</h2>
             {(role === 'Admin' || role === 'Employee') && (
-              <button onClick={() => setIsEditingMetrics(true)} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-bold rounded-lg transition-all">
+              <button onClick={() => setIsEditingMetrics(true)} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:bg-zinc-700 border border-slate-300 dark:border-zinc-600 text-slate-700 dark:text-zinc-200 text-xs font-bold rounded-lg transition-all">
                 <Edit2 size={12} /> Edit Metrics
               </button>
             )}
@@ -540,16 +560,16 @@ export default function ClientDetailPage() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.9, duration: 0.6 }}
               whileHover={{ y: -8 }}
-              className="bg-white border border-slate-200 rounded-3xl p-8 group overflow-hidden shadow-sm"
+              className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 group overflow-hidden shadow-sm"
             >
               <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-green-400/20 to-emerald-400/20 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-500"></div>
               <div className="relative z-10">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-green-100 text-green-600 rounded-xl"><TrendingUp size={24} /></div>
-                  <h3 className="text-xl font-black text-slate-800">Growth Momentum</h3>
+                  <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100">Growth Momentum</h3>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500 font-bold mb-2">This Month's Revenue</p>
+                  <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold mb-2">This Month's Revenue</p>
                   <p className="text-4xl font-black text-green-600">{client.customFields?.monthly_revenue || '—'}</p>
                   <p className="text-sm text-green-700 mt-2 font-bold">{client.customFields?.revenue_growth_pct || 'No data yet'}</p>
                 </div>
@@ -562,16 +582,16 @@ export default function ClientDetailPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1, duration: 0.6 }}
               whileHover={{ y: -8 }}
-              className="bg-white border border-slate-200 rounded-3xl p-8 group overflow-hidden shadow-sm"
+              className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 group overflow-hidden shadow-sm"
             >
               <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-blue-400/20 to-cyan-400/20 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-500"></div>
               <div className="relative z-10">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-blue-100 text-blue-600 rounded-xl"><Zap size={24} /></div>
-                  <h3 className="text-xl font-black text-slate-800">Conversion Power</h3>
+                  <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100">Conversion Power</h3>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500 font-bold mb-2">Total Conversions</p>
+                  <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold mb-2">Total Conversions</p>
                   <p className="text-4xl font-black text-blue-600">{client.customFields?.total_conversions || '—'}</p>
                   <p className="text-sm text-blue-700 mt-2 font-bold">{client.customFields?.avg_conversion_value || 'No data yet'}</p>
                 </div>
@@ -584,16 +604,16 @@ export default function ClientDetailPage() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 1.1, duration: 0.6 }}
               whileHover={{ y: -8 }}
-              className="bg-white border border-slate-200 rounded-3xl p-8 group overflow-hidden shadow-sm"
+              className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 group overflow-hidden shadow-sm"
             >
               <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-500"></div>
               <div className="relative z-10">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-purple-100 text-purple-600 rounded-xl"><DollarSign size={24} /></div>
-                  <h3 className="text-xl font-black text-slate-800">ROI Victory</h3>
+                  <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100">ROI Victory</h3>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500 font-bold mb-2">Return on Investment</p>
+                  <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold mb-2">Return on Investment</p>
                   <p className="text-4xl font-black text-purple-600">{client.customFields?.roi_multiple || '—'}</p>
                   <p className="text-sm text-purple-700 mt-2 font-bold">{client.customFields?.roi_detail || 'No data yet'}</p>
                 </div>
@@ -611,7 +631,7 @@ export default function ClientDetailPage() {
         >
           <div className="flex items-center gap-3 mb-8">
             <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
-            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-wider">Your Partnership</h2>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">Your Partnership</h2>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -620,7 +640,7 @@ export default function ClientDetailPage() {
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 1.3, duration: 0.6 }}
-              className="group relative bg-white border border-slate-200 rounded-3xl p-10 overflow-hidden shadow-sm"
+              className="group relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-10 overflow-hidden shadow-sm"
             >
               {/* Animated glow */}
               <motion.div
@@ -637,8 +657,8 @@ export default function ClientDetailPage() {
                     <Briefcase size={32} className="text-white" />
                   </motion.div>
                   <div>
-                    <h3 className="text-2xl font-black text-slate-800">Company Profile</h3>
-                    <p className="text-sm text-slate-500 font-bold">Your business details</p>
+                    <h3 className="text-2xl font-black text-slate-800 dark:text-zinc-100">Company Profile</h3>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold">Your business details</p>
                   </div>
                 </div>
 
@@ -647,19 +667,19 @@ export default function ClientDetailPage() {
                   {isEditingProfile ? (
                     <form onSubmit={handleSaveProfile} className="space-y-4">
                       <motion.div className="p-4 bg-cyan-50 border border-cyan-200 rounded-2xl">
-                        <label className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 block">Company Name</label>
-                        <input className="w-full px-3 py-2 rounded-xl border border-cyan-200 font-black text-cyan-700 bg-white" value={profileForm.companyName} onChange={e => setProfileForm({ ...profileForm, companyName: e.target.value })} />
+                        <label className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2 block">Company Name</label>
+                        <input className="w-full px-3 py-2 rounded-xl border border-cyan-200 font-black text-cyan-700 bg-white dark:bg-zinc-900" value={profileForm.companyName} onChange={e => setProfileForm({ ...profileForm, companyName: e.target.value })} />
                       </motion.div>
                       <motion.div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl">
-                        <label className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 block">Project Name</label>
-                        <input className="w-full px-3 py-2 rounded-xl border border-blue-200 font-black text-blue-700 bg-white" value={profileForm.projectName} onChange={e => setProfileForm({ ...profileForm, projectName: e.target.value })} />
+                        <label className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2 block">Project Name</label>
+                        <input className="w-full px-3 py-2 rounded-xl border border-blue-200 font-black text-blue-700 bg-white dark:bg-zinc-900" value={profileForm.projectName} onChange={e => setProfileForm({ ...profileForm, projectName: e.target.value })} />
                       </motion.div>
                       <motion.div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl">
-                        <label className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 block">Website</label>
-                        <input className="w-full px-3 py-2 rounded-xl border border-purple-200 font-black text-purple-700 bg-white" value={profileForm.websiteUrl} onChange={e => setProfileForm({ ...profileForm, websiteUrl: e.target.value })} />
+                        <label className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2 block">Website</label>
+                        <input className="w-full px-3 py-2 rounded-xl border border-purple-200 font-black text-purple-700 bg-white dark:bg-zinc-900" value={profileForm.websiteUrl} onChange={e => setProfileForm({ ...profileForm, websiteUrl: e.target.value })} />
                       </motion.div>
                       <div className="flex gap-2 pt-2">
-                        <button type="button" onClick={() => setIsEditingProfile(false)} className="px-4 py-2 rounded-xl bg-slate-200 text-slate-700 font-bold">Cancel</button>
+                        <button type="button" onClick={() => setIsEditingProfile(false)} className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-zinc-700 text-slate-700 dark:text-zinc-200 font-bold">Cancel</button>
                         <button type="submit" className="px-6 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 text-white font-bold">Save</button>
                       </div>
                     </form>
@@ -667,21 +687,21 @@ export default function ClientDetailPage() {
                     <>
                       <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.4 }} className="p-4 bg-cyan-50 border border-cyan-200 rounded-2xl hover:bg-cyan-100 transition-all flex justify-between items-center">
                         <div>
-                          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Company Name</p>
+                          <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2">Company Name</p>
                           <p className="text-xl font-black text-cyan-700">{client.companyName}</p>
                         </div>
                         <button onClick={() => { setIsEditingProfile(true); setProfileForm({ companyName: client.companyName || '', projectName: client.projectName || '', websiteUrl: client.website || client.websiteUrl || '' }); }} className="ml-4 p-2 rounded-full bg-cyan-100 hover:bg-cyan-200"><Edit2 className="w-4 h-4 text-cyan-700" /></button>
                       </motion.div>
                       <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.45 }} className="p-4 bg-blue-50 border border-blue-200 rounded-2xl hover:bg-blue-100 transition-all flex justify-between items-center">
                         <div>
-                          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Project Name</p>
+                          <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2">Project Name</p>
                           <p className="text-xl font-black text-blue-700">{client.projectName || 'Active Project'}</p>
                         </div>
                         <button onClick={() => { setIsEditingProfile(true); setProfileForm({ companyName: client.companyName || '', projectName: client.projectName || '', websiteUrl: client.website || client.websiteUrl || '' }); }} className="ml-4 p-2 rounded-full bg-blue-100 hover:bg-blue-200"><Edit2 className="w-4 h-4 text-blue-700" /></button>
                       </motion.div>
                       <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.5 }} className="p-4 bg-purple-50 border border-purple-200 rounded-2xl hover:bg-purple-100 transition-all flex justify-between items-center">
                         <div>
-                          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Website</p>
+                          <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2">Website</p>
                           <p className="text-lg font-black text-purple-700 truncate">{client.website || client.websiteUrl || 'www.yourwebsite.com'}</p>
                         </div>
                         <button onClick={() => { setIsEditingProfile(true); setProfileForm({ companyName: client.companyName || '', projectName: client.projectName || '', websiteUrl: client.website || client.websiteUrl || '' }); }} className="ml-4 p-2 rounded-full bg-purple-100 hover:bg-purple-200"><Edit2 className="w-4 h-4 text-purple-700" /></button>
@@ -697,7 +717,7 @@ export default function ClientDetailPage() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 1.3, duration: 0.6 }}
-              className="group relative bg-white border border-slate-200 rounded-3xl p-10 overflow-hidden shadow-sm"
+              className="group relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-10 overflow-hidden shadow-sm"
             >
               {/* Animated glow */}
               <motion.div
@@ -714,14 +734,14 @@ export default function ClientDetailPage() {
                     <Users size={32} className="text-white" />
                   </motion.div>
                   <div>
-                    <h3 className="text-2xl font-black text-slate-800">Active Services</h3>
-                    <p className="text-sm text-slate-500 font-bold">What we're doing for you</p>
+                    <h3 className="text-2xl font-black text-slate-800 dark:text-zinc-100">Active Services</h3>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold">What we're doing for you</p>
                   </div>
                 </div>
 
                 <div className="space-y-3 mb-6">
                   {serviceRequests.length === 0 ? (
-                    <p className="text-sm text-slate-500 italic py-2">No active services yet.</p>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 italic py-2">No active services yet.</p>
                   ) : (
                     serviceRequests.map((svc: any, idx: number) => (
                       <motion.div
@@ -736,8 +756,8 @@ export default function ClientDetailPage() {
                           transition={{ duration: 2, repeat: Infinity, delay: idx * 0.2 }}
                           className="w-3 h-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full shrink-0"
                         />
-                        <span className="font-bold text-slate-800 flex-1">{svc.service_name}</span>
-                        <span className="text-xs text-slate-500 font-medium">{svc.status}</span>
+                        <span className="font-bold text-slate-800 dark:text-zinc-100 flex-1">{svc.service_name}</span>
+                        <span className="text-xs text-slate-500 dark:text-zinc-400 font-medium">{svc.status}</span>
                         <CheckCircle size={14} className="text-green-400" />
                       </motion.div>
                     ))
@@ -764,7 +784,7 @@ export default function ClientDetailPage() {
         >
           <div className="flex items-center gap-3 mb-8">
             <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
-            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-wider">Next Steps Forward</h2>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">Next Steps Forward</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -774,14 +794,14 @@ export default function ClientDetailPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.5 }}
               whileHover={{ y: -8 }}
-              className="group relative bg-white border border-slate-200 rounded-3xl p-8 overflow-hidden cursor-pointer shadow-sm"
+              className="group relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 overflow-hidden cursor-pointer shadow-sm"
             >
               <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <div className="relative z-10">
                 <div className="flex items-start justify-between mb-6">
                   <div>
-                    <h3 className="text-xl font-black text-slate-800 mb-2">{client.nextMilestone || 'Next Campaign Phase'}</h3>
-                    <p className="text-sm text-slate-500">{client.nextMilestoneDate || 'No deadline set'}</p>
+                    <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">{client.nextMilestone || 'Next Campaign Phase'}</h3>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400">{client.nextMilestoneDate || 'No deadline set'}</p>
                   </div>
                   <div className="p-3 bg-green-100 text-green-600 rounded-xl"><Zap size={24} /></div>
                 </div>
@@ -791,7 +811,7 @@ export default function ClientDetailPage() {
                   transition={{ delay: 1.6, duration: 0.8 }}
                   className="h-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full mb-3"
                 />
-                <p className="text-sm font-bold text-slate-600">
+                <p className="text-sm font-bold text-slate-600 dark:text-zinc-300">
                   {client.customFields?.campaign_phase_note || (client.nextMilestone ? `${client.customFields?.campaign_progress || 0}% Complete` : 'Not yet configured')}
                 </p>
               </div>
@@ -803,23 +823,30 @@ export default function ClientDetailPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.55 }}
               whileHover={{ y: -8 }}
-              className="group relative bg-white border border-slate-200 rounded-3xl p-8 overflow-hidden cursor-pointer shadow-sm"
+              className="group relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 overflow-hidden shadow-sm"
             >
               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative z-10">
-                <div className="flex items-start justify-between mb-6">
-                  <div>
-                    <h3 className="text-xl font-black text-slate-800 mb-2">Untapped Revenue</h3>
-                    <p className="text-sm text-slate-500">Growth opportunities ahead</p>
+              <div className="relative z-10 flex flex-col h-full justify-between">
+                <div>
+                  <div className="flex items-start justify-between mb-6">
+                    <div>
+                      <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">Untapped Revenue</h3>
+                      <p className="text-sm text-slate-500 dark:text-zinc-400">Growth opportunities ahead</p>
+                    </div>
+                    <div className="p-3 bg-orange-100 text-orange-600 rounded-xl"><TrendingUp size={24} /></div>
                   </div>
-                  <div className="p-3 bg-orange-100 text-orange-600 rounded-xl"><TrendingUp size={24} /></div>
+                  <p className="text-lg font-bold text-slate-600 dark:text-zinc-300 mb-6">
+                    {client.customFields?.untapped_revenue_note || 'No data yet — admin can set this'}
+                  </p>
                 </div>
-                <p className="text-lg font-bold text-slate-600 mb-4">
-                  {client.customFields?.untapped_revenue_note || 'No data yet — admin can set this'}
-                </p>
-                <Link href="/store" className="block w-full py-2 text-center bg-orange-600/80 hover:bg-orange-600 text-white rounded-xl font-bold text-sm transition-all">
-                  See Opportunities →
-                </Link>
+                <div className="flex gap-3">
+                  <Link href="/store" className="flex-1 py-3 text-center bg-orange-600/10 hover:bg-orange-600/20 text-orange-600 rounded-xl font-bold text-sm transition-all border border-orange-200">
+                    See Opportunities
+                  </Link>
+                  <button onClick={handleSimulateCall} disabled={loading} className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-orange-500/20 transition-all disabled:opacity-50">
+                    {loading ? 'Thinking...' : 'AI Call Simulation'}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -834,7 +861,7 @@ export default function ClientDetailPage() {
         >
           <div className="flex items-center gap-3 mb-8">
             <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
-            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-wider">Detailed Insights</h2>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">Detailed Insights</h2>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -844,25 +871,25 @@ export default function ClientDetailPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.7 }}
               whileHover={{ y: -8 }}
-              className="group bg-white border border-slate-200 rounded-3xl p-8 overflow-hidden shadow-sm"
+              className="group bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 overflow-hidden shadow-sm"
             >
               <div className="absolute top-0 left-0 w-32 h-32 bg-blue-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <div className="relative z-10">
-                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+                <h3 className="text-lg font-black text-slate-800 dark:text-zinc-100 mb-6 flex items-center gap-2">
                   <Eye size={24} className="text-blue-600" />
                   Performance Overview
                 </h3>
                 <div className="space-y-3">
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                    <p className="text-xs text-slate-500 font-bold mb-1">Total Visitors</p>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-1">Total Visitors</p>
                     <p className="text-2xl font-black text-blue-700">{client.customFields?.total_visitors || '—'}</p>
                   </div>
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                    <p className="text-xs text-slate-500 font-bold mb-1">Engagement Rate</p>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-1">Engagement Rate</p>
                     <p className="text-2xl font-black text-blue-700">{client.customFields?.engagement_rate || '—'}</p>
                   </div>
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                    <p className="text-xs text-slate-500 font-bold mb-1">Avg Time on Site</p>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-1">Avg Time on Site</p>
                     <p className="text-2xl font-black text-blue-700">{client.customFields?.avg_time_on_site || '—'}</p>
                   </div>
                 </div>
@@ -875,17 +902,17 @@ export default function ClientDetailPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.75 }}
               whileHover={{ y: -8 }}
-              className="group bg-white border border-slate-200 rounded-3xl p-8 overflow-hidden shadow-sm"
+              className="group bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 overflow-hidden shadow-sm"
             >
               <div className="absolute top-0 left-0 w-32 h-32 bg-purple-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <div className="relative z-10">
-                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+                <h3 className="text-lg font-black text-slate-800 dark:text-zinc-100 mb-6 flex items-center gap-2">
                   <Activity size={24} className="text-purple-600" />
                   Recent Activity
                 </h3>
                 <div className="space-y-3">
                   {activities.length === 0 ? (
-                    <p className="text-sm text-slate-500 italic">No activities recorded yet.</p>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 italic">No activities recorded yet.</p>
                   ) : (
                     activities.slice(0, 3).map((item: any, idx: number) => (
                       <motion.div
@@ -893,10 +920,14 @@ export default function ClientDetailPage() {
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: 1.8 + idx * 0.05 }}
-                        className="p-3 bg-purple-50 border border-purple-200 rounded-xl"
+                        onClick={() => setSelectedActivity(item)}
+                        className="p-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl cursor-pointer transition-colors"
                       >
-                        <p className="text-sm font-bold text-slate-800">{item.action || item.content}</p>
-                        <p className="text-xs text-slate-500 font-medium">{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}</p>
+                        <p className="text-sm font-bold text-slate-800 dark:text-zinc-100">{item.action || item.content}</p>
+                        <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">
+                          {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}
+                          {item.method ? ` • via ${item.method}` : ''}
+                        </p>
                       </motion.div>
                     ))
                   )}
@@ -910,11 +941,11 @@ export default function ClientDetailPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.8 }}
               whileHover={{ y: -8 }}
-              className="group bg-white border border-slate-200 rounded-3xl p-8 overflow-hidden shadow-sm"
+              className="group bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 overflow-hidden shadow-sm"
             >
               <div className="absolute top-0 left-0 w-32 h-32 bg-pink-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <div className="relative z-10">
-                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+                <h3 className="text-lg font-black text-slate-800 dark:text-zinc-100 mb-6 flex items-center gap-2">
                   <Users size={24} className="text-pink-600" />
                   Your Team
                 </h3>
@@ -923,13 +954,13 @@ export default function ClientDetailPage() {
                     const assignedEmp = employees.find((e: any) => e.id === client.assignedEmployeeId);
                     return assignedEmp ? (
                       <div className="p-4 bg-pink-50 border border-pink-200 rounded-xl">
-                        <p className="text-xs text-slate-500 font-bold mb-2">Account Manager</p>
+                        <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-2">Account Manager</p>
                         <p className="text-sm font-black text-pink-700">{assignedEmp.name}</p>
                         <p className="text-xs text-slate-400 mt-1">{assignedEmp.email}</p>
                       </div>
                     ) : (
                       <div className="p-4 bg-pink-50 border border-pink-200 rounded-xl">
-                        <p className="text-xs text-slate-500 font-bold mb-2">Account Manager</p>
+                        <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-2">Account Manager</p>
                         <p className="text-sm font-medium text-slate-400 italic">Not assigned yet</p>
                       </div>
                     );
@@ -950,7 +981,7 @@ export default function ClientDetailPage() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.9 }} className="mb-16">
           <div className="flex items-center gap-3 mb-6">
             <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
-            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-wider">Activity Timeline</h2>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">Activity Timeline</h2>
           </div>
           {/* Filters */}
           <div className="flex flex-wrap gap-2 mb-6">
@@ -964,7 +995,7 @@ export default function ClientDetailPage() {
               { key: 'activity', label: 'Activities' },
             ].map(f => (
               <button key={f.key} onClick={() => setTimelineFilter(f.key)}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${timelineFilter === f.key ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}>
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${timelineFilter === f.key ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:bg-slate-50 dark:bg-zinc-950'}`}>
                 {f.label}
               </button>
             ))}
@@ -983,19 +1014,19 @@ export default function ClientDetailPage() {
                     invoice: { bg: 'bg-emerald-100', ring: 'ring-emerald-300', icon: '💰' },
                     milestone: { bg: 'bg-pink-100', ring: 'ring-pink-300', icon: '🎯' },
                     file: { bg: 'bg-sky-100', ring: 'ring-sky-300', icon: '📁' },
-                    activity: { bg: 'bg-slate-100', ring: 'ring-slate-300', icon: '⚡' },
+                    activity: { bg: 'bg-slate-100 dark:bg-zinc-800', ring: 'ring-slate-300', icon: '⚡' },
                   };
                   const c = colors[ev.type] || colors.activity;
                   return (
                     <motion.div key={`${ev.type}-${ev.id}`} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }}
                       className="relative flex items-start gap-4 pl-14">
                       <div className={`absolute left-3.5 w-5 h-5 rounded-full ${c.bg} ring-2 ${c.ring} flex items-center justify-center text-[10px]`}>{c.icon}</div>
-                      <div className="flex-1 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
+                      <div onClick={() => setSelectedActivity(ev)} className="flex-1 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer">
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{ev.type}</span>
-                            <p className="text-sm font-bold text-slate-800 mt-0.5">{ev.title}</p>
-                            {ev.detail && <p className="text-xs text-slate-500 mt-1">{ev.detail}</p>}
+                            <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{ev.title}</p>
+                            {ev.detail && <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{ev.detail}</p>}
                           </div>
                           <span className="text-[10px] text-slate-400 font-medium shrink-0">{ev.date ? new Date(ev.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
                         </div>
@@ -1008,6 +1039,74 @@ export default function ClientDetailPage() {
           </div>
         </motion.div>
 
+        {/* Activity Detail Modal */}
+        <AnimatePresence>
+          {selectedActivity && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 9999,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)'
+              }}
+              onClick={() => setSelectedActivity(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={e => e.stopPropagation()}
+                style={{
+                  background: 'white', border: '1px solid #e2e8f0',
+                  borderRadius: 24, padding: 32, width: '90%', maxWidth: 700,
+                  maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.1)'
+                }}
+                className="bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-800 dark:text-zinc-100 m-0">{selectedActivity.title || selectedActivity.action}</h3>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 m-0 mt-1">
+                      {selectedActivity.date || selectedActivity.createdAt ? new Date(selectedActivity.date || selectedActivity.createdAt).toLocaleString() : ''}
+                      {selectedActivity.method ? ` • via ${selectedActivity.method}` : ''}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedActivity(null)}
+                    className="bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 border-none rounded-full w-9 h-9 flex items-center justify-center cursor-pointer text-slate-500 dark:text-zinc-400 transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                
+                {(selectedActivity.detail || selectedActivity.content) && (
+                  <div style={{ marginBottom: 20 }}>
+                    <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 m-0 mb-2">Summary</p>
+                    <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-xl text-sm text-slate-600 dark:text-zinc-300">
+                      {selectedActivity.content || selectedActivity.detail}
+                    </div>
+                  </div>
+                )}
+
+                {selectedActivity.details && (
+                  <div>
+                    <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 m-0 mb-2">Details</p>
+                    <div className="bg-slate-100 dark:bg-zinc-950 p-4 rounded-xl text-sm text-slate-800 dark:text-zinc-200 whitespace-pre-wrap font-mono border border-slate-200 dark:border-zinc-800">
+                      {selectedActivity.details}
+                    </div>
+                  </div>
+                )}
+                
+                {!selectedActivity.detail && !selectedActivity.content && !selectedActivity.details && (
+                  <p className="text-center text-slate-400 italic p-5">No additional details available.</p>
+                )}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
       </div>
     </motion.div>
 
@@ -1017,11 +1116,11 @@ export default function ClientDetailPage() {
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white border border-slate-200 rounded-3xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl"
+          className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl"
         >
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-black text-slate-800">Edit Performance Metrics</h3>
-            <button onClick={() => setIsEditingMetrics(false)} className="p-2 text-slate-500 hover:text-slate-800 transition-colors">
+            <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100">Edit Performance Metrics</h3>
+            <button onClick={() => setIsEditingMetrics(false)} className="p-2 text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:text-zinc-100 transition-colors">
               <X size={20} />
             </button>
           </div>
@@ -1035,7 +1134,7 @@ export default function ClientDetailPage() {
                 <input
                   value={metricsForm[key] || ''}
                   onChange={e => setMetricsForm(p => ({ ...p, [key]: e.target.value }))}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-600 rounded-xl px-4 py-2.5 text-slate-800 dark:text-zinc-100 text-sm focus:outline-none focus:border-cyan-500"
                 />
               </div>
             ))}
@@ -1057,7 +1156,7 @@ export default function ClientDetailPage() {
                 <input
                   value={metricsForm[key] || ''}
                   onChange={e => setMetricsForm(p => ({ ...p, [key]: e.target.value }))}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-green-500"
+                  className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-600 rounded-xl px-4 py-2.5 text-slate-800 dark:text-zinc-100 text-sm focus:outline-none focus:border-green-500"
                 />
               </div>
             ))}
@@ -1072,7 +1171,7 @@ export default function ClientDetailPage() {
                 type="number" min="0" max="100"
                 value={metricsForm.campaign_progress || ''}
                 onChange={e => setMetricsForm(p => ({ ...p, campaign_progress: e.target.value }))}
-                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-orange-400"
+                className="w-full bg-white dark:bg-zinc-900/10 border border-white/20 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-orange-400"
               />
             </div>
             <div>
@@ -1080,7 +1179,7 @@ export default function ClientDetailPage() {
               <input
                 value={metricsForm.campaign_phase_note || ''}
                 onChange={e => setMetricsForm(p => ({ ...p, campaign_phase_note: e.target.value }))}
-                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-orange-400"
+                className="w-full bg-white dark:bg-zinc-900/10 border border-white/20 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-orange-400"
               />
             </div>
             <div className="col-span-2">
@@ -1088,7 +1187,7 @@ export default function ClientDetailPage() {
               <input
                 value={metricsForm.untapped_revenue_note || ''}
                 onChange={e => setMetricsForm(p => ({ ...p, untapped_revenue_note: e.target.value }))}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-orange-500"
+                className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-600 rounded-xl px-4 py-2.5 text-slate-800 dark:text-zinc-100 text-sm focus:outline-none focus:border-orange-500"
               />
             </div>
           </div>
@@ -1106,7 +1205,7 @@ export default function ClientDetailPage() {
                 <input
                   value={metricsForm[key] || ''}
                   onChange={e => setMetricsForm(p => ({ ...p, [key]: e.target.value }))}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 text-sm focus:outline-none focus:border-purple-500"
+                  className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-600 rounded-xl px-4 py-2.5 text-slate-800 dark:text-zinc-100 text-sm focus:outline-none focus:border-purple-500"
                 />
               </div>
             ))}
@@ -1115,7 +1214,7 @@ export default function ClientDetailPage() {
           <div className="flex gap-3">
             <button
               onClick={() => setIsEditingMetrics(false)}
-              className="flex-1 py-3 border border-slate-300 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-100 transition-all"
+              className="flex-1 py-3 border border-slate-300 dark:border-zinc-600 text-slate-600 dark:text-zinc-300 rounded-xl font-bold text-sm hover:bg-slate-100 dark:bg-zinc-800 transition-all"
             >
               Cancel
             </button>

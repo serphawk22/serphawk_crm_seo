@@ -64,17 +64,17 @@ export default function NotificationsPage() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 max-w-2xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight flex items-center gap-3">
+          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight flex items-center gap-3">
             <Bell className="w-7 h-7" /> Notifications
             {unread > 0 && (
               <span className="bg-red-500 text-white text-xs font-black px-2 py-0.5 rounded-full">{unread}</span>
             )}
           </h1>
-          <p className="text-gray-500 font-medium">All your alerts, updates, and reminders.</p>
+          <p className="text-gray-500 dark:text-zinc-400 font-medium">All your alerts, updates, and reminders.</p>
         </div>
         {unread > 0 && (
           <button onClick={markAllRead} disabled={markingAll}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-200 transition-all">
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-xl font-semibold text-sm hover:bg-gray-200 transition-all">
             {markingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCheck className="w-4 h-4" />}
             Mark all read
           </button>
@@ -110,19 +110,19 @@ export default function NotificationsPage() {
                 onClick={() => !n.is_read && markRead(n.id)}
                 className={cn(
                   "rounded-2xl border p-4 transition-all cursor-pointer",
-                  n.is_read ? "bg-white opacity-60" : cn(cfg.bg, cfg.border, "hover:opacity-90"),
+                  n.is_read ? "bg-white dark:bg-zinc-900 opacity-60" : cn(cfg.bg, cfg.border, "hover:opacity-90"),
                 )}
               >
                 <div className="flex items-start gap-3">
-                  <div className={cn("p-2 rounded-xl shrink-0", n.is_read ? "bg-gray-100" : cfg.bg)}>
+                  <div className={cn("p-2 rounded-xl shrink-0", n.is_read ? "bg-gray-100 dark:bg-zinc-800" : cfg.bg)}>
                     <cfg.icon className={cn("w-4 h-4", n.is_read ? "text-gray-400" : cfg.color)} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <p className={cn("font-bold text-sm", n.is_read ? "text-gray-500" : "text-gray-900")}>{n.title}</p>
+                      <p className={cn("font-bold text-sm", n.is_read ? "text-gray-500 dark:text-zinc-400" : "text-gray-900 dark:text-zinc-50")}>{n.title}</p>
                       {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />}
                     </div>
-                    <p className="text-sm text-gray-600">{n.message}</p>
+                    <p className="text-sm text-gray-600 dark:text-zinc-300">{n.message}</p>
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-xs text-gray-400">{new Date(n.created_at).toLocaleString()}</span>
                       {n.link && (

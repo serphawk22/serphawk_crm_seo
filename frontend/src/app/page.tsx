@@ -7,13 +7,15 @@ import {
   Users, Send, Clock, Briefcase, Target, Zap, Activity,
   Globe, CheckCircle, FolderKanban, Mail, ArrowUpRight,
   Bot, UserCheck, GraduationCap, Phone, Sparkles, FileText, ChevronRight, MessageCircle,
-  Shield, Lock, FileCheck, Bell, DollarSign, TrendingUp, Eye, Download, AlertTriangle, CheckCircle2, Circle, Timer, Rocket
+  Shield, Lock, FileCheck, Bell, DollarSign, TrendingUp, Eye, Download, AlertTriangle, CheckCircle2, Circle, Timer, Rocket, Kanban
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { fetchWithCache } from "@/lib/cache";
 import { useRole } from "@/context/RoleContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { cn } from "@/lib/utils";
 import PageGuide from '@/components/PageGuide';
+import { AdminDashboard } from "@/components/AdminDashboard";
 import Link from "next/link";
 
 const containerVariants = {
@@ -32,6 +34,7 @@ interface AdminStats {
   total: number; active: number; pending: number; hold: number;
   totalProjects: number; totalEmailsSent: number; totalActivities: number;
   totalCalls: number; totalEmployees: number; totalInterns: number;
+  totalMarketplaceServices: number;
   chartLabels: string[]; activityChart: number[]; emailChart: number[]; callChart: number[];
   recentActivities: RecentActivity[];
 }
@@ -54,19 +57,6 @@ interface ClientStats {
 }
 type StatsData = AdminStats | ClientStats | null;
 
-const NAV_CARDS = [
-  { href: "/clients", icon: Users, gradient: "from-indigo-500 to-indigo-600", title: "Clients Hub", description: "The Foundation: Manage every client profile, track growth protocols, milestones, and maintain professional relationships in one central hub.", roles: ["Admin", "Employee"] },
-  { href: "/email-agent", icon: Bot, gradient: "from-violet-500 to-purple-600", title: "Email Agent", description: "Growth Engine: AI-powered outreach that auto-analyzes leads and drafts personalized bilingual emails to scale your revenue automatically.", roles: ["Admin", "Employee"] },
-  { href: "/calls", icon: Phone, gradient: "from-amber-500 to-orange-600", title: "Call Center", description: "Touchpoint Intelligence: Log every conversation, track follow-ups, and ensure no lead is ever left without a clear next step or work assignment.", roles: ["Admin", "Employee"] },
-  { href: "/projects", icon: FolderKanban, gradient: "from-sky-400 to-cyan-500", title: "Project Board", description: "Execution Layer: Oversee complex workflows, assign specialized team members, and ensure every milestone is delivered with precision and quality.", roles: ["Admin", "Employee", "Intern"] },
-  { href: "/interns", icon: GraduationCap, gradient: "from-rose-400 to-rose-500", title: "Talent Pool", description: "Scale Support: Manage your interns, assign learning tasks, and monitor their contribution to the core team's productivity and growth.", roles: ["Admin", "Employee"] },
-  { href: "/admin/services-overview", icon: Briefcase, gradient: "from-fuchsia-500 to-pink-600", title: "Services Overview", description: "Master Board: Organization-wide view of all active service lines, client consumers, and assigned execution teams.", roles: ["Admin", "Employee"] },
-  { href: "/setup", icon: Globe, gradient: "from-indigo-500 to-indigo-600", title: "Initial Setup", description: "Connect your website and social media profiles for automated cross-channel analysis.", roles: ["Client"] },
-  { href: "/audit", icon: Activity, gradient: "from-emerald-500 to-teal-500", title: "One-Click Audit", description: "Run deep technical SEO scans and compare your performance against top competitors.", roles: ["Client", "Admin", "Employee"] },
-  { href: "/messages", icon: Send, gradient: "from-violet-500 to-purple-600", title: "Team Comm Hub", description: "Direct communication with your assigned SEO specialists, shared files, and priority queues.", roles: ["Client", "Admin", "Employee"] },
-  { href: "/monitor", icon: Target, gradient: "from-amber-500 to-orange-600", title: "Live Monitor", description: "Real-time ranking tracker and performance analytics synced with GA4 and GSC.", roles: ["Client"] },
-  { href: "/store", icon: Briefcase, gradient: "from-indigo-500 to-violet-600", title: "Growth Services", description: "Explore our exclusive catalog of growth services. Request anything and receive a personalized quote from your dedicated team.", roles: ["Client"] },
-];
 
 // Inline mini bar chart (no external library needed)
 function MiniBarChart({ data, labels, color }: { data: number[]; labels: string[]; color: string }) {
@@ -104,13 +94,13 @@ function StatCard({ title, value, sub, icon: Icon, gradient, href }: {
           <div className={cn("p-2.5 rounded-xl bg-gradient-to-br shadow-lg", gradient)}>
             <Icon className="w-4 h-4 text-white" />
           </div>
-          {href && <ArrowUpRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 transition-colors" />}
+          {href && <ArrowUpRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 dark:text-zinc-400 transition-colors" />}
         </div>
-        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{title}</p>
-        <h3 className="text-2xl font-black text-slate-800 tracking-tight">{value}</h3>
+        <p className="text-[11px] font-black text-slate-600 dark:text-zinc-300 uppercase tracking-widest mb-0.5">{title}</p>
+        <h3 className="text-2xl font-black text-slate-900 dark:text-zinc-50 tracking-tight">{value}</h3>
         <div className="mt-2 inline-flex items-center gap-1.5">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
-          <p className="text-[10px] font-bold text-slate-400">{sub}</p>
+          <p className="text-[12px] font-bold text-slate-500 dark:text-zinc-400">{sub}</p>
         </div>
       </div>
     </motion.div>
@@ -136,9 +126,27 @@ export default function HomePage() {
 
 function Dashboard() {
   const { role, email, user } = useRole();
+  const { t, language } = useLanguage();
   const [stats, setStats] = useState<StatsData>(null);
   const [loading, setLoading] = useState(true);
   const isAdmin = role === "Admin" || role === "Employee";
+
+  const NAV_CARDS = [
+    { href: "/clients", icon: Users, gradient: "from-indigo-500 to-indigo-600", title: language === 'es' ? "Centro de Clientes" : "Clients Hub", description: language === 'es' ? "La Fundación: Gestione cada perfil de cliente, realice un seguimiento de los protocolos de crecimiento, hitos y mantenga relaciones profesionales en un solo lugar." : "The Foundation: Manage every client profile, track growth protocols, milestones, and maintain professional relationships in one central hub.", roles: ["Admin", "Employee", "SalesManager"] },
+    { href: "/sales-manager", icon: UserCheck, gradient: "from-fuchsia-500 to-pink-600", title: language === 'es' ? "Centro de Gerente de Ventas" : "Sales Manager Hub", description: language === 'es' ? "Espacio de trabajo para el propietario de los ingresos en cuentas asignadas, registros de comunicación, traspasos de facturas y escalado administrativo." : "Revenue owner workspace for assigned accounts, communication logs, invoice handoffs, and admin escalation.", roles: ["Admin", "Employee", "SalesManager"] },
+    { href: "/admin/sales-team", icon: UserCheck, gradient: "from-teal-500 to-emerald-500", title: language === 'es' ? "Equipo de Ventas" : "Sales Team", description: language === 'es' ? "Espacio de trabajo del administrador para agregar vendedores, gestionar cuentas y crear acceso de inicio de sesión para los Gerentes de Ventas." : "Admin workspace for adding salespeople, managing accounts, and creating Sales Manager login access.", roles: ["Admin"] },
+    { href: "/email-agent", icon: Bot, gradient: "from-violet-500 to-purple-600", title: language === 'es' ? "Agente de Email" : "Email Agent", description: language === 'es' ? "Motor de Crecimiento: Alcance automatizado por IA que analiza prospectos y redacta correos personalizados bilingües para escalar sus ingresos." : "Growth Engine: AI-powered outreach that auto-analyzes leads and drafts personalized bilingual emails to scale your revenue automatically.", roles: ["Admin", "Employee", "SalesManager"] },
+    { href: "/calls", icon: Phone, gradient: "from-amber-500 to-orange-600", title: language === 'es' ? "Centro de Llamadas" : "Call Center", description: language === 'es' ? "Inteligencia de Puntos de Contacto: Registre cada conversación, haga seguimiento y asegúrese de que ningún prospecto quede sin un próximo paso claro." : "Touchpoint Intelligence: Log every conversation, track follow-ups, and ensure no lead is ever left without a clear next step or work assignment.", roles: ["Admin", "Employee", "SalesManager"] },
+    { href: "/projects", icon: FolderKanban, gradient: "from-sky-400 to-cyan-500", title: language === 'es' ? "Tablero de Proyectos" : "Project Board", description: language === 'es' ? "Capa de Ejecución: Supervise flujos de trabajo complejos, asigne miembros del equipo y asegúrese de que cada hito se entregue con precisión." : "Execution Layer: Oversee complex workflows, assign specialized team members, and ensure every milestone is delivered with precision and quality.", roles: ["Admin", "Employee", "Intern"] },
+    { href: "/interns", icon: GraduationCap, gradient: "from-rose-400 to-rose-500", title: language === 'es' ? "Grupo de Talentos" : "Talent Pool", description: language === 'es' ? "Soporte de Escala: Administre a sus pasantes, asigne tareas de aprendizaje y monitoree su contribución." : "Scale Support: Manage your interns, assign learning tasks, and monitor their contribution to the core team's productivity and growth.", roles: ["Admin", "Employee"] },
+    { href: "/admin/services-overview", icon: Briefcase, gradient: "from-fuchsia-500 to-pink-600", title: language === 'es' ? "Resumen de Servicios" : "Services Overview", description: language === 'es' ? "Tablero Principal: Vista de toda la organización de las líneas de servicio activas, clientes consumidores y equipos de ejecución asignados." : "Master Board: Organization-wide view of all active service lines, client consumers, and assigned execution teams.", roles: ["Admin", "Employee"] },
+    { href: "/setup", icon: Globe, gradient: "from-indigo-500 to-indigo-600", title: language === 'es' ? "Configuración Inicial" : "Initial Setup", description: language === 'es' ? "Conecte su sitio web y perfiles de redes sociales para análisis automático multicanal." : "Connect your website and social media profiles for automated cross-channel analysis.", roles: ["Client"] },
+    { href: "/audit", icon: Activity, gradient: "from-emerald-500 to-teal-500", title: language === 'es' ? "Auditoría en 1 Clic" : "One-Click Audit", description: language === 'es' ? "Ejecute escaneos profundos de SEO técnico y compare su rendimiento con el de sus principales competidores." : "Run deep technical SEO scans and compare your performance against top competitors.", roles: ["Client", "Admin", "Employee"] },
+    { href: "/messages", icon: Send, gradient: "from-violet-500 to-purple-600", title: language === 'es' ? "Centro de Comunicación" : "Team Comm Hub", description: language === 'es' ? "Comunicación directa con especialistas SEO, archivos compartidos y colas prioritarias." : "Direct communication with your assigned SEO specialists, shared files, and priority queues.", roles: ["Client", "Admin", "Employee"] },
+    { href: "/monitor", icon: Target, gradient: "from-amber-500 to-orange-600", title: language === 'es' ? "Monitor en Vivo" : "Live Monitor", description: language === 'es' ? "Rastreador de clasificación en tiempo real y análisis de rendimiento sincronizado con GA4 y GSC." : "Real-time ranking tracker and performance analytics synced with GA4 and GSC.", roles: ["Client"] },
+    { href: "/store", icon: Briefcase, gradient: "from-indigo-500 to-violet-600", title: language === 'es' ? "Servicios de Crecimiento" : "Growth Services", description: language === 'es' ? "Explore nuestro catálogo exclusivo de servicios de crecimiento. Solicite cualquier cosa y reciba una cotización personalizada." : "Explore our exclusive catalog of growth services. Request anything and receive a personalized quote from your dedicated team.", roles: ["Client"] },
+    { href: "/pipeline", icon: Kanban, gradient: "from-blue-500 to-indigo-600", title: language === 'es' ? "Pipeline de Ventas" : "Sales Pipeline", description: language === 'es' ? "Pipeline visual Kanban." : "Visual drag-and-drop Kanban board for managing deals.", roles: ["Admin", "Employee", "SalesManager"] },
+  ];
 
   useEffect(() => {
     if (!role) return;
@@ -155,13 +163,47 @@ function Dashboard() {
 
   if (loading) {
     return (
-      <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
-        <div className="relative w-16 h-16">
-          <div className="absolute inset-0 rounded-full border border-indigo-500/20" />
-          <div className="absolute inset-0 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-          <div className="absolute inset-3 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-full animate-pulse" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "var(--background)" }}>
+        <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 55% 55% at 50% 50%, rgba(37,99,235,0.07) 0%, transparent 70%)" }} />
+        <svg className="absolute inset-0 w-full h-full opacity-[0.025]" xmlns="http://www.w3.org/2000/svg">
+          <defs><pattern id="ddots" width="28" height="28" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#2563eb" /></pattern></defs>
+          <rect width="100%" height="100%" fill="url(#ddots)" />
+        </svg>
+        <div className="relative flex flex-col items-center gap-9">
+          <div className="relative" style={{ width: 160, height: 160 }}>
+            <motion.div animate={{ rotate: 360 }} transition={{ duration: 5, repeat: Infinity, ease: "linear" }} className="absolute inset-0" style={{ borderRadius: "50%", border: "1.5px solid rgba(37,99,235,0.14)" }}>
+              <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-blue-600 shadow-[0_0_12px_rgba(37,99,235,0.7)]" />
+            </motion.div>
+            <motion.div animate={{ rotate: -360 }} transition={{ duration: 3.5, repeat: Infinity, ease: "linear" }} className="absolute inset-[20px]" style={{ borderRadius: "50%", border: "1.5px solid rgba(99,102,241,0.16)" }}>
+              <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.7)]" />
+            </motion.div>
+            <motion.div animate={{ rotate: 360 }} transition={{ duration: 2.2, repeat: Infinity, ease: "linear" }} className="absolute inset-[38px]" style={{ borderRadius: "50%", border: "1.5px solid rgba(139,92,246,0.16)" }}>
+              <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.8)]" />
+            </motion.div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <motion.div animate={{ scale: [1, 1.07, 1], boxShadow: ["0 0 0px rgba(37,99,235,0.3)", "0 0 28px rgba(37,99,235,0.55)", "0 0 0px rgba(37,99,235,0.3)"] }} transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }} className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #2563eb 0%, #6366f1 100%)" }}>
+                <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
+                  <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
+                  <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.45" />
+                  <circle cx="12" cy="12" r="2" fill="white" />
+                </svg>
+              </motion.div>
+            </div>
+          </div>
+          <div className="flex flex-col items-center gap-2 text-center">
+            <motion.span className="text-lg font-extrabold tracking-tight" style={{ color: "var(--text-primary)" }} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+              SERP Hawk{" "}<span style={{ background: "linear-gradient(90deg,#2563eb,#6366f1)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>CRM</span>
+            </motion.span>
+            <motion.p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }} animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}>
+              Loading your dashboard…
+            </motion.p>
+          </div>
+          <div className="w-52">
+            <div className="h-0.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
+              <motion.div className="h-full rounded-full" style={{ background: "linear-gradient(90deg,#2563eb,#6366f1,#8b5cf6)", width: "40%" }} animate={{ x: ["-100%", "350%"] }} transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }} />
+            </div>
+          </div>
         </div>
-        <p className="text-slate-400 text-sm font-semibold animate-pulse">Loading Dashboard...</p>
       </div>
     );
   }
@@ -172,7 +214,7 @@ function Dashboard() {
       <motion.div initial="hidden" animate="show" variants={containerVariants}>
         <motion.div variants={itemVariants} className="glass-card p-10 text-center">
           <span className="text-[10px] tracking-widest font-black text-amber-600 uppercase">Warning</span>
-          <h1 className="text-3xl font-black text-slate-800 mt-1 mb-3">Session Error</h1>
+          <h1 className="text-3xl font-black text-slate-800 dark:text-zinc-100 mt-1 mb-3">Session Error</h1>
           <p className="text-slate-400 font-medium">Unable to load your profile. Please refresh or log in again.</p>
         </motion.div>
       </motion.div>
@@ -185,231 +227,7 @@ function Dashboard() {
 
   return (
     <motion.div initial="hidden" animate="show" variants={containerVariants} className={cn(isAdmin ? "space-y-6" : "")}>
-      {/* ═══ ADMIN WELCOME HEADER ═══ */}
-      {isAdmin && (
-        <motion.div variants={itemVariants} className="relative overflow-hidden rounded-3xl">
-          {/* Glass card */}
-          <div className="glass-card relative p-8 md:p-10 overflow-hidden">
-            {/* Glow blobs */}
-            <div className="absolute -top-16 -right-16 w-64 h-64 bg-indigo-100 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-10 left-1/3 w-48 h-48 bg-violet-100 rounded-full blur-3xl pointer-events-none" />
-            {/* Top border */}
-            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-indigo-300 to-transparent" />
-
-            <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-                  <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.25em]">Live Operations</span>
-                </div>
-                <h1 className="text-4xl md:text-5xl font-black text-slate-800 leading-tight tracking-tight">
-                  Operations{" "}
-                  <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-500 bg-clip-text text-transparent animate-gradient">
-                    Center
-                  </span>
-                </h1>
-                <p className="text-slate-500 font-medium text-base">
-                  Welcome back, <span className="text-indigo-600 font-bold">{user?.name || role}</span>. Your metrics are synced.
-                </p>
-              </div>
-              <div className="flex gap-3 shrink-0 w-full md:w-auto">
-                <Link href="/clients" className="px-5 py-2.5 rounded-xl font-bold text-sm text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-slate-800 hover:border-slate-300 transition-all">
-                  View Clients
-                </Link>
-                <Link href="/email-agent" className="btn-glow-indigo px-5 py-2.5 rounded-xl font-bold text-sm text-white flex items-center gap-2">
-                  <Sparkles className="w-4 h-4" /> Launch Agent
-                </Link>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ── ADMIN VIEW ─────────────────────────────────────────────────── */}
-      {isAdmin && adminStats && (
-        <>
-          <PageGuide
-            pageKey="dashboard-admin"
-            title="Welcome to Operations Center"
-            description="This is your command hub — everything you need to run the business is accessible from here."
-            steps={[
-              { icon: '📊', text: 'The stat cards at the top show live metrics: clients, projects, emails, calls, and revenue.' },
-              { icon: '📇', text: 'Navigation cards below let you jump to any section: Client Hub, Email Agent, Call Center, etc.' },
-              { icon: '⚙️', text: 'Use the sidebar to navigate between pages, or click the quick-access cards here.' },
-              { icon: '🔔', text: 'Check Notifications (bell icon) for real-time alerts about client activity and proposals.' },
-            ]}
-          />
-
-          {/* Row 1: 4+4 stat pills in dark glass */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-            <StatCard title="Clients" value={adminStats.total} sub="Total" icon={Users} gradient="from-indigo-500 to-indigo-600" href="/clients" />
-            <StatCard title="Active" value={adminStats.active} sub="Live" icon={Zap} gradient="from-emerald-400 to-emerald-500" href="/clients" />
-            <StatCard title="Projects" value={adminStats.totalProjects} sub="Ongoing" icon={FolderKanban} gradient="from-sky-400 to-cyan-500" href="/projects" />
-            <StatCard title="Emails" value={adminStats.totalEmailsSent} sub="Sent" icon={Send} gradient="from-violet-500 to-purple-600" href="/email-agent" />
-            <StatCard title="Activities" value={adminStats.totalActivities} sub="Logs" icon={Activity} gradient="from-blue-500 to-indigo-600" href="/email-agent" />
-            <StatCard title="Calls" value={adminStats.totalCalls} sub="Logged" icon={Phone} gradient="from-amber-400 to-orange-500" href="/calls" />
-            <StatCard title="Employees" value={adminStats.totalEmployees} sub="Staff" icon={UserCheck} gradient="from-teal-500 to-emerald-500" href="/employees" />
-            <StatCard title="Interns" value={adminStats.totalInterns} sub="Pool" icon={GraduationCap} gradient="from-rose-400 to-rose-500" href="/interns" />
-          </div>
-
-          {/* Row 2: Three metric charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Activity chart */}
-            <motion.div variants={itemVariants} className="glass-card glass-card-hover p-6 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-100 rounded-full blur-2xl pointer-events-none" />
-              <div className="flex items-center justify-between mb-5 relative z-10">
-                <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Activity Logs</p>
-                  <p className="text-3xl font-black text-slate-800 mt-0.5">{adminStats.totalActivities}</p>
-                </div>
-                <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600">
-                  <Activity className="w-5 h-5" />
-                </div>
-              </div>
-              <MiniBarChart
-                data={adminStats.activityChart ?? [0,0,0,0,0,0,0]}
-                labels={adminStats.chartLabels ?? ["","","","","","",""]}
-                color="bg-indigo-500"
-              />
-            </motion.div>
-
-            {/* Email chart */}
-            <motion.div variants={itemVariants} className="glass-card glass-card-hover p-6 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-100 rounded-full blur-2xl pointer-events-none" />
-              <div className="flex items-center justify-between mb-5 relative z-10">
-                <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Emails Outbound</p>
-                  <p className="text-3xl font-black text-slate-800 mt-0.5">{adminStats.totalEmailsSent}</p>
-                </div>
-                <div className="p-2.5 rounded-xl bg-violet-50 border border-violet-200 text-violet-600">
-                  <Mail className="w-5 h-5" />
-                </div>
-              </div>
-              <MiniBarChart
-                data={adminStats.emailChart ?? [0,0,0,0,0,0,0]}
-                labels={adminStats.chartLabels ?? ["","","","","","",""]}
-                color="bg-violet-500"
-              />
-            </motion.div>
-
-            {/* Call chart */}
-            <motion.div variants={itemVariants} className="glass-card glass-card-hover p-6 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-50 rounded-full blur-2xl pointer-events-none" />
-              <div className="flex items-center justify-between mb-5 relative z-10">
-                <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Call Interactions</p>
-                  <p className="text-3xl font-black text-slate-800 mt-0.5">{adminStats.totalCalls}</p>
-                </div>
-                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-600">
-                  <Phone className="w-5 h-5" />
-                </div>
-              </div>
-              <MiniBarChart
-                data={adminStats.callChart ?? [0,0,0,0,0,0,0]}
-                labels={adminStats.chartLabels ?? ["","","","","","",""]}
-                color="bg-amber-500"
-              />
-            </motion.div>
-          </div>
-
-          {/* Row 3: Pipeline overview (dark glass wide card) */}
-          <motion.div variants={itemVariants} className="glass-card p-6 md:p-8 relative overflow-hidden">
-            <div className="absolute -bottom-10 left-1/2 w-64 h-32 bg-indigo-50 rounded-full blur-3xl pointer-events-none" />
-            <div className="flex items-center gap-3 mb-6 relative z-10">
-              <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600">
-                <Target className="w-4 h-4" />
-              </div>
-              <h3 className="font-black text-[15px] text-slate-700">Operational Pipeline</h3>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 relative z-10">
-              {[
-                { label: "Pending Setup", value: adminStats.pending, accent: "border-amber-200 bg-amber-50 text-amber-700" },
-                { label: "On Hold", value: adminStats.hold, accent: "border-rose-200 bg-rose-50 text-rose-700" },
-                { label: "Total Activities", value: adminStats.totalActivities, accent: "border-indigo-200 bg-indigo-50 text-indigo-700" },
-                { label: "Calls Logged", value: adminStats.totalCalls, accent: "border-orange-200 bg-orange-50 text-orange-700" },
-                { label: "Emails Deployed", value: adminStats.totalEmailsSent, accent: "border-violet-200 bg-violet-50 text-violet-700" },
-              ].map(({ label, value, accent }) => (
-                <div key={label} className={`rounded-2xl border p-5 ${accent}`}>
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-2">{label}</p>
-                  <span className="font-black text-3xl">{value}</span>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-
-          {/* Row 4: Quick Access navigation cards */}
-          <motion.div variants={itemVariants}>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Quick Access</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {visibleNavCards.map((card) => (
-                <Link key={card.href} href={card.href}>
-                  <motion.div
-                    variants={itemVariants}
-                    whileHover={{ y: -4, scale: 1.01 }}
-                    whileTap={{ scale: 0.98 }}
-                    transition={{ type: "spring", stiffness: 300 }}
-                    className="group relative overflow-hidden glass-card cursor-pointer p-6 transition-all hover:border-indigo-200"
-                    style={{ borderRadius: "1.25rem" }}
-                  >
-                    {/* Gradient glow on hover */}
-                    <div className={cn("absolute -top-10 -right-10 w-36 h-36 rounded-full blur-3xl opacity-0 group-hover:opacity-20 transition-opacity duration-500 bg-gradient-to-br", card.gradient)} />
-                    {/* Top border accent */}
-                    <div className={cn("absolute top-0 left-6 right-6 h-px opacity-0 group-hover:opacity-60 transition-opacity bg-gradient-to-r from-transparent to-transparent", card.gradient.replace("from-", "via-"))} />
-                    <div className="relative z-10">
-                      <div className="flex items-start justify-between mb-5">
-                        <div className={cn("p-3 rounded-2xl bg-gradient-to-br shadow-lg", card.gradient)}>
-                          <card.icon className="w-5 h-5 text-white" />
-                        </div>
-                        <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-200" />
-                      </div>
-                      <h3 className="font-black text-[15px] text-slate-600 mb-1.5 group-hover:text-slate-900 transition-colors">{card.title}</h3>
-                      <p className="text-[12px] text-slate-400 font-medium leading-relaxed group-hover:text-slate-500 transition-colors">{card.description}</p>
-                    </div>
-                  </motion.div>
-                </Link>
-              ))}
-            </div>
-          </motion.div>
-
-          {/* Row 5: Recent Activity */}
-          <motion.div variants={itemVariants} className="glass-card p-6 md:p-8 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-50 rounded-full blur-3xl pointer-events-none" />
-            <div className="flex items-center justify-between mb-6 relative z-10">
-              <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600">
-                <Activity className="w-4 h-4" />
-              </div>
-              <h3 className="font-black text-[15px] text-slate-700">Recent Activity</h3>
-              </div>
-              <Link href="/email-agent" className="text-[10px] font-black text-indigo-500 hover:text-indigo-700 uppercase tracking-widest transition-colors">
-                View All
-              </Link>
-            </div>
-            {(adminStats.recentActivities?.length ?? 0) === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 text-slate-300 gap-3">
-                <Activity className="w-10 h-10 opacity-30 text-slate-400" />
-                <p className="font-bold text-sm text-slate-400">No activities yet</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 relative z-10">
-                {adminStats.recentActivities.map((act) => (
-                  <div key={act.id} className="flex items-start gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-slate-100 hover:border-slate-200 transition-all group">
-                    <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 shrink-0 group-hover:bg-indigo-100 transition-colors">
-                      <Mail className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-slate-700 text-[13px] truncate">{act.action}</p>
-                      <p className="text-[11px] text-slate-400 font-medium truncate mt-0.5">{act.content}</p>
-                      <p className="text-[10px] text-slate-400 font-bold mt-1">{act.createdAt ? new Date(act.createdAt).toLocaleDateString() : "—"}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </motion.div>
-        </>
-      )}
-
+      {isAdmin && adminStats && <AdminDashboard adminStats={adminStats} NAV_CARDS={NAV_CARDS} language={language} />}
       {/* ── CLIENT VIEW — EDITORIAL CHAPTERS ────────────────────────── */}
       {!isAdmin && (
         <div className="client-editorial">
@@ -507,7 +325,7 @@ function Dashboard() {
               { key: 'profile', label: 'Complete Company Profile', done: !!(clientStats.companyName && clientStats.website), link: '/clients' },
               { key: 'setup', label: 'Verify Your Domain', done: false, link: '/setup' },
               { key: 'files', label: 'Upload Your First Document', done: (clientStats.files?.length || 0) > 0, link: '/my-files' },
-              { key: 'services', label: 'Explore & Request Services', done: (clientStats.active_services_list?.length || 0) > 0 || clientStats.pending_requests_count > 0, link: '/store' },
+              { key: 'services', label: 'Explore & Request Services', done: (clientStats?.active_services_list?.length || 0) > 0 || (clientStats?.pending_requests_count ?? 0) > 0, link: '/store' },
               { key: 'proposals', label: 'Review Your Proposals', done: (clientStats.proposals?.length || 0) > 0, link: '/proposals' },
             ];
             const completed = checks.filter(c => c.done).length;
@@ -528,7 +346,7 @@ function Dashboard() {
                       </div>
                     </div>
                     {/* Progress bar */}
-                    <div className="w-full h-1.5 bg-white/5 rounded-full mb-8 overflow-hidden">
+                    <div className="w-full h-1.5 bg-white dark:bg-zinc-900/5 rounded-full mb-8 overflow-hidden">
                       <motion.div initial={{ width: 0 }} whileInView={{ width: `${progress}%` }} viewport={{ once: true }} transition={{ duration: 1, delay: 0.3 }}
                         className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full" />
                     </div>
@@ -536,7 +354,7 @@ function Dashboard() {
                       {checks.map((item, i) => (
                         <Link key={item.key} href={item.link}>
                           <motion.div initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08 }}
-                            className={`flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer group ${item.done ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white/[0.02] border-white/5 hover:border-amber-600/30 hover:bg-amber-600/5'}`}>
+                            className={`flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer group ${item.done ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white dark:bg-zinc-900/[0.02] border-white/5 hover:border-amber-600/30 hover:bg-amber-600/5'}`}>
                             <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${item.done ? 'border-emerald-500 bg-emerald-500/20' : 'border-stone-600 group-hover:border-amber-600'}`}>
                               {item.done && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                             </div>
@@ -733,7 +551,7 @@ function Dashboard() {
           )}
 
           {/* ═══ CHAPTER 04: PENDING QUOTES — Amber accent section ═══ */}
-          {clientStats?.pending_quotes_list?.length > 0 && (
+          {(clientStats?.pending_quotes_list?.length ?? 0) > 0 && (
             <section className="bg-zinc-950 text-white">
               <div className="max-w-5xl mx-auto px-8 md:px-16 py-24 md:py-32">
                 <motion.div
@@ -752,7 +570,7 @@ function Dashboard() {
                 </motion.div>
 
                 <div className="space-y-6">
-                  {clientStats.pending_quotes_list.map((quote: any, index: number) => (
+                  {clientStats?.pending_quotes_list?.map((quote: any, index: number) => (
                     <motion.div
                       key={quote.id}
                       initial={{ opacity: 0, y: 15 }}
@@ -804,14 +622,14 @@ function Dashboard() {
                 </motion.div>
 
                 {/* Progress overview */}
-                <div className="mb-12 p-6 border border-white/5 rounded-xl bg-white/[0.02]">
+                <div className="mb-12 p-6 border border-white/5 rounded-xl bg-white dark:bg-zinc-900/[0.02]">
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-stone-400 text-sm font-bold">Overall Progress</span>
                     <span className="text-amber-500 font-black text-lg">
                       {clientStats.milestones.filter((m: any) => m.status === 'Achieved').length}/{clientStats.milestones.length}
                     </span>
                   </div>
-                  <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-white dark:bg-zinc-900/5 rounded-full overflow-hidden">
                     <motion.div
                       initial={{ width: 0 }}
                       whileInView={{ width: `${(clientStats.milestones.filter((m: any) => m.status === 'Achieved').length / clientStats.milestones.length) * 100}%` }}
@@ -824,7 +642,7 @@ function Dashboard() {
 
                 {/* Timeline */}
                 <div className="relative">
-                  <div className="absolute left-[19px] top-0 bottom-0 w-px bg-white/10" />
+                  <div className="absolute left-[19px] top-0 bottom-0 w-px bg-white dark:bg-zinc-900/10" />
                   <div className="space-y-8">
                     {clientStats.milestones.map((m: any, index: number) => (
                       <motion.div
@@ -838,7 +656,7 @@ function Dashboard() {
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 ${
                           m.status === 'Achieved' ? 'bg-emerald-500/20 border border-emerald-500/40' :
                           m.status === 'InProgress' ? 'bg-amber-500/20 border border-amber-500/40' :
-                          'bg-white/5 border border-white/10'
+                          'bg-white dark:bg-zinc-900/5 border border-white/10'
                         }`}>
                           {m.status === 'Achieved' ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> :
                            m.status === 'InProgress' ? <Timer className="w-5 h-5 text-amber-400" /> :
@@ -847,7 +665,7 @@ function Dashboard() {
                         <div className={`flex-1 p-6 rounded-xl border ${
                           m.status === 'Achieved' ? 'border-emerald-500/20 bg-emerald-500/[0.03]' :
                           m.status === 'InProgress' ? 'border-amber-500/20 bg-amber-500/[0.03]' :
-                          'border-white/5 bg-white/[0.02]'
+                          'border-white/5 bg-white dark:bg-zinc-900/[0.02]'
                         }`}>
                           <div className="flex items-start justify-between gap-4">
                             <div>
@@ -857,7 +675,7 @@ function Dashboard() {
                             <span className={`text-[10px] font-bold tracking-[0.2em] uppercase px-3 py-1 rounded-full shrink-0 ${
                               m.status === 'Achieved' ? 'bg-emerald-500/20 text-emerald-400' :
                               m.status === 'InProgress' ? 'bg-amber-500/20 text-amber-400' :
-                              'bg-white/5 text-stone-500'
+                              'bg-white dark:bg-zinc-900/5 text-stone-500'
                             }`}>{m.status}</span>
                           </div>
                           {m.due_date && (
@@ -904,7 +722,7 @@ function Dashboard() {
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true }}
                       transition={{ delay: index * 0.08 }}
-                      className="p-8 bg-white rounded-xl border border-stone-200/60 hover:border-amber-600/30 hover:shadow-lg transition-all group"
+                      className="p-8 bg-white dark:bg-zinc-900 rounded-xl border border-stone-200/60 hover:border-amber-600/30 hover:shadow-lg transition-all group"
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className="p-3 rounded-xl bg-gradient-to-br from-sky-400 to-cyan-500">
@@ -966,7 +784,7 @@ function Dashboard() {
                 {clientStats.invoice_summary && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-16">
                     {[
-                      { label: 'Total Billed', value: clientStats.invoice_summary.total_billed, icon: DollarSign, color: 'text-white', bg: 'border-white/10 bg-white/[0.03]' },
+                      { label: 'Total Billed', value: clientStats.invoice_summary.total_billed, icon: DollarSign, color: 'text-white', bg: 'border-white/10 bg-white dark:bg-zinc-900/[0.03]' },
                       { label: 'Paid', value: clientStats.invoice_summary.total_paid, icon: CheckCircle, color: 'text-emerald-400', bg: 'border-emerald-500/20 bg-emerald-500/[0.05]' },
                       { label: 'Pending', value: clientStats.invoice_summary.total_pending, icon: Clock, color: 'text-amber-400', bg: 'border-amber-500/20 bg-amber-500/[0.05]' },
                       { label: 'Overdue', value: clientStats.invoice_summary.total_overdue, icon: AlertTriangle, color: 'text-rose-400', bg: 'border-rose-500/20 bg-rose-500/[0.05]' },
@@ -997,10 +815,10 @@ function Dashboard() {
                         whileInView={{ opacity: 1, y: 0 }}
                         viewport={{ once: true }}
                         transition={{ delay: index * 0.06 }}
-                        className="flex items-center justify-between py-6 border-b border-white/5 group hover:bg-white/[0.02] px-4 -mx-4 rounded-lg transition-colors"
+                        className="flex items-center justify-between py-6 border-b border-white/5 group hover:bg-white dark:bg-zinc-900/[0.02] px-4 -mx-4 rounded-lg transition-colors"
                       >
                         <div className="flex items-center gap-5">
-                          <div className="w-10 h-10 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
+                          <div className="w-10 h-10 rounded-lg bg-white dark:bg-zinc-900/5 border border-white/10 flex items-center justify-center">
                             <FileText className="w-4 h-4 text-stone-500" />
                           </div>
                           <div>
@@ -1013,7 +831,7 @@ function Dashboard() {
                             inv.status === 'Paid' ? 'bg-emerald-500/20 text-emerald-400' :
                             inv.status === 'Overdue' ? 'bg-rose-500/20 text-rose-400' :
                             inv.status === 'Sent' ? 'bg-blue-500/20 text-blue-400' :
-                            'bg-white/5 text-stone-400'
+                            'bg-white dark:bg-zinc-900/5 text-stone-400'
                           }`}>{inv.status}</span>
                           <p className="text-white font-black text-lg w-28 text-right">${inv.total?.toLocaleString()}</p>
                         </div>
@@ -1034,7 +852,7 @@ function Dashboard() {
                           whileInView={{ opacity: 1, y: 0 }}
                           viewport={{ once: true }}
                           transition={{ delay: index * 0.06 }}
-                          className="p-6 rounded-xl border border-white/5 bg-white/[0.02] hover:border-amber-600/20 transition-colors"
+                          className="p-6 rounded-xl border border-white/5 bg-white dark:bg-zinc-900/[0.02] hover:border-amber-600/20 transition-colors"
                         >
                           <div className="flex items-start justify-between">
                             <h4 className="font-bold text-white text-sm">{prop.title}</h4>
@@ -1042,7 +860,7 @@ function Dashboard() {
                               prop.status === 'Accepted' ? 'bg-emerald-500/20 text-emerald-400' :
                               prop.status === 'Sent' ? 'bg-blue-500/20 text-blue-400' :
                               prop.status === 'Rejected' ? 'bg-rose-500/20 text-rose-400' :
-                              'bg-white/5 text-stone-500'
+                              'bg-white dark:bg-zinc-900/5 text-stone-500'
                             }`}>{prop.status}</span>
                           </div>
                           {prop.total_value && <p className="text-amber-400 font-black text-xl mt-3">${prop.total_value.toLocaleString()}</p>}
@@ -1106,7 +924,7 @@ function Dashboard() {
                           <Lock className="w-3 h-3" />
                           <span className="text-[8px] font-bold tracking-[0.2em] uppercase">Secure</span>
                         </div>
-                        <Link href="/my-files" className="p-2.5 rounded-lg bg-white/5 text-stone-400 hover:bg-amber-600 hover:text-white transition-all">
+                        <Link href="/my-files" className="p-2.5 rounded-lg bg-white dark:bg-zinc-900/5 text-stone-400 hover:bg-amber-600 hover:text-white transition-all">
                           <Eye className="w-4 h-4" />
                         </Link>
                       </div>
@@ -1157,7 +975,7 @@ function Dashboard() {
                             whileInView={{ opacity: 1, x: 0 }}
                             viewport={{ once: true }}
                             transition={{ delay: index * 0.05 }}
-                            className="flex items-start gap-4 p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                            className="flex items-start gap-4 p-4 rounded-xl border border-white/5 bg-white dark:bg-zinc-900/[0.02] hover:bg-white dark:bg-zinc-900/[0.04] transition-colors"
                           >
                             <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
                               <Activity className="w-3.5 h-3.5 text-indigo-400" />
@@ -1193,7 +1011,7 @@ function Dashboard() {
                             viewport={{ once: true }}
                             transition={{ delay: index * 0.05 }}
                             className={`flex items-start gap-4 p-4 rounded-xl border transition-colors ${
-                              notif.is_read ? 'border-white/5 bg-white/[0.02]' : 'border-amber-500/20 bg-amber-500/[0.04]'
+                              notif.is_read ? 'border-white/5 bg-white dark:bg-zinc-900/[0.02]' : 'border-amber-500/20 bg-amber-500/[0.04]'
                             }`}
                           >
                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
@@ -1240,7 +1058,7 @@ function Dashboard() {
                 transition={{ duration: 0.6 }}
               >
                 <p className="text-amber-700 text-[11px] font-bold tracking-[0.3em] uppercase mb-4">
-                  Chapter {clientStats?.pending_quotes_list?.length > 0 ? '05' : (clientStats?.active_services_list?.length > 0 ? '04' : '03')}
+                  Chapter {(clientStats?.pending_quotes_list?.length ?? 0) > 0 ? '05' : ((clientStats?.active_services_list?.length ?? 0) > 0 ? '04' : '03')}
                 </p>
                 <h2
                   className="text-5xl md:text-7xl font-black text-zinc-900 mb-16 leading-[0.95]"
@@ -1259,7 +1077,7 @@ function Dashboard() {
                       viewport={{ once: true }}
                       transition={{ delay: index * 0.06 }}
                       whileHover={{ y: -2 }}
-                      className="p-8 bg-white rounded-xl border border-stone-200/60 hover:border-amber-600/30 hover:shadow-lg transition-all group cursor-pointer"
+                      className="p-8 bg-white dark:bg-zinc-900 rounded-xl border border-stone-200/60 hover:border-amber-600/30 hover:shadow-lg transition-all group cursor-pointer"
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className={cn("p-3 rounded-xl bg-gradient-to-br", card.gradient)}>
@@ -1285,7 +1103,7 @@ function Dashboard() {
                   <p className="text-amber-700 text-[10px] font-bold tracking-[0.25em] uppercase mb-4">Recommended For You</p>
                   <div className="flex flex-wrap gap-3">
                     {clientStats.recommended_services.split(',').map((s: string) => (
-                      <span key={s} className="px-5 py-2.5 bg-white border border-stone-200 text-stone-700 font-bold text-sm rounded-lg">{s.trim()}</span>
+                      <span key={s} className="px-5 py-2.5 bg-white dark:bg-zinc-900 border border-stone-200 text-stone-700 font-bold text-sm rounded-lg">{s.trim()}</span>
                     ))}
                   </div>
                 </motion.div>

@@ -102,13 +102,15 @@ async def scrape_website(url):
     }
     
     email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
-    # Robust pattern matching international & local phone numbers:
+    # Enhanced phone pattern - catches international formats, with/without +, with/without separators
     phone_pattern = re.compile(
-        r'(?:\+\d{1,4}[-.\s]?)?\(?\d{2,5}\)?[-.\s]?\d{2,5}[-.\s]?\d{3,5}(?:[-.\s]?\d{3,5})?|\+?\d{10,12}'
+        r'(?:\+\d{1,4}[-.\s]?)?\(?\d{2,5}\)?[-.\s]?\d{2,5}[-.\s]?\d{3,5}(?:[-.\s]?\d{3,5})?|\+\d{10,15}|(?:tel:|phone:|mobile:)[-\s]*[+]?[\d\s().-]{10,20}'
     )
 
     found_emails = set()
     found_phones = set()
+    found_linkedin = set()
+    found_twitter = set()
     scraped_texts = []
 
     def clean_phone(phone_str):
@@ -125,6 +127,20 @@ async def scrape_website(url):
         # 1. Regex search on raw HTML (before parsing) to catch mailto/tel and plain text matches
         for email in email_pattern.findall(html_content):
             found_emails.add(email)
+        
+        # Priority: Look for professional contact emails (contact@, sales@, hello@, etc.)
+        priority_email_patterns = [
+            r'(?:contact|hello|reach|inquiry|business|partnership|sales|support)[@\s]*:?[@\s]*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
+            r'"([a-zA-Z0-9._%+-]*(?:contact|hello|reach|inquiry|business|partnership|sales|support)[a-zA-Z0-9._%+-]*@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})"',
+            r'\b(?:contact|hello|reach|sales|hello|info|inquiry)@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
+        ]
+        for pattern in priority_email_patterns:
+            for match in re.finditer(pattern, html_content, re.IGNORECASE):
+                # Extract the email from group 1 if it exists, otherwise use the full match
+                email = match.group(1) if match.lastindex else match.group(0)
+                email = re.sub(r'["\'\s:]+', '', email).lower()
+                if email_pattern.match(email):
+                    found_emails.add(email)
             
         # Extract from href="mailto:..." and href="tel:..."
         temp_soup = BeautifulSoup(html_content, 'html.parser')
@@ -140,6 +156,18 @@ async def scrape_website(url):
                 cleaned = clean_phone(phone)
                 if cleaned:
                     found_phones.add(cleaned)
+            else:
+                lower_href = href.lower()
+                # LinkedIn extraction - company and personal profiles
+                if 'linkedin.com/' in lower_href:
+                    linkedin_url = href.split('?')[0].split(';')[0].strip()
+                    if linkedin_url:
+                        found_linkedin.add(linkedin_url)
+                # Twitter/X extraction - multiple domain variations
+                if any(domain in lower_href for domain in ['twitter.com/', 'x.com/', 'twitter.com/intent']):
+                    twitter_url = href.split('?')[0].split(';')[0].strip()
+                    if twitter_url and '/intent' not in lower_href:  # Skip intent links
+                        found_twitter.add(twitter_url)
 
         # 2. Extract plain text phone numbers
         # Clean soup script and style elements to avoid extracting numbers from Javascript/CSS
@@ -147,6 +175,20 @@ async def scrape_website(url):
             element.decompose()
             
         text_content = temp_soup.get_text(separator=' ')
+        
+        # Priority phone patterns (contact/support/sales numbers)
+        priority_patterns = [
+            r'(?:call us|phone|contact|support|sales|hello|reach us)[\s:]*([+]?[\d\s().-]{10,20})',
+            r'(?:ph|mobile|whatsapp|tel|telephone)[\s:]*([+]?[\d\s().-]{10,20})'
+        ]
+        for pattern in priority_patterns:
+            for match in re.finditer(pattern, text_content, re.IGNORECASE):
+                phone = match.group(1).strip()
+                cleaned = clean_phone(phone)
+                if cleaned:
+                    found_phones.add(cleaned)
+        
+        # General phone number extraction
         for phone in phone_pattern.findall(text_content):
             cleaned = clean_phone(phone)
             if cleaned:
@@ -216,7 +258,7 @@ async def scrape_website(url):
     contact_links = []
     try:
         soup = BeautifulSoup(response_text, 'html.parser')
-        keywords = ['contact', 'about', 'reach', 'info', 'support', 'help', 'career', 'team']
+        keywords = ['contact', 'about', 'reach', 'info', 'support', 'help', 'career', 'team', 'our-team', 'staff', 'people', 'leadership', 'management', 'board', 'sales', 'inquiry', 'business', 'partnership']
         seen_urls = set()
         for a in soup.find_all('a', href=True):
             href = a['href'].strip()
@@ -236,23 +278,32 @@ async def scrape_website(url):
         logger.error(f"Error parsing contact links: {e}")
 
     # Scrape top contact/about pages for contact info
-    for link in contact_links[:2]:
+    for link in contact_links[:5]:  # Increased from 3 to 5 pages
         logger.info(f"Scraping contact/about subpage: {link}")
         try:
             sub_resp = requests.get(link, headers=headers, timeout=6)
             if sub_resp.status_code == 200:
                 sub_text = extract_from_html(sub_resp.text, link)
-                # Keep text compact
-                scraped_texts.append(sub_text[:3000])
+                # Keep more text for better extraction (15000 chars instead of 5000)
+                scraped_texts.append(sub_text[:15000])
         except Exception as e:
             logger.error(f"Failed to scrape subpage {link}: {e}")
 
     # Combine everything
     all_emails = sorted(list(found_emails))
     all_phones = sorted(list(found_phones))
+    all_linkedin = sorted(list(found_linkedin))
+    all_twitter = sorted(list(found_twitter))
 
     # Keep unique paragraphs
     combined_website_text = "\n\n".join(scraped_texts)
     
-    final_content = f"Source URL: {url}\n\nExtracted Emails: {', '.join(all_emails)}\nExtracted Phone Numbers: {', '.join(all_phones)}\n\nWebsite Content:\n{combined_website_text[:15000]}"
+    final_content = (
+        f"Source URL: {url}\n\n"
+        f"Extracted Emails: {', '.join(all_emails)}\n"
+        f"Extracted Phone Numbers: {', '.join(all_phones)}\n"
+        f"Extracted LinkedIn Profiles: {', '.join(all_linkedin)}\n"
+        f"Extracted Twitter Profiles: {', '.join(all_twitter)}\n\n"
+        f"Website Content:\n{combined_website_text[:15000]}"
+    )
     return final_content
