@@ -233,7 +233,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
     setSendError(null);
     try {
       await onSendManually(result, companyName, companyUrl, false, "System");
-      setSendSuccess("Sent Manually");
+      setSendSuccess("Mail sent");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to send email";
       setSendError(message);
