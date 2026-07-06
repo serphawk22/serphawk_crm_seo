@@ -1138,9 +1138,9 @@ def create_db_and_tables():
             try:
                 conn.execute(text(query))
                 conn.commit()
-            except Exception:
+            except Exception as e:
                 # Column likely already exists
-                pass
+                conn.rollback()
         
     # Seed default statuses if none exist
     try:
