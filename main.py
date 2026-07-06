@@ -7918,14 +7918,40 @@ async def whatsapp_webhook(
             
             # Execute actions based on type
             if action == "add_lead":
-                reply_msg = f"Adding lead {args.get('company_name')} and starting smart research in background..."
-                background_tasks.add_task(
-                    smart_research,
-                    SmartResearchRequest(
-                        company_name=args.get('company_name'),
-                        company_url=args.get('website', '')
-                    )
+                from database import Lead, ClientResearch
+                company_name = args.get('company_name', 'Unknown')
+                website = args.get('website', '')
+                
+                # 1. Save Lead to DB
+                new_lead = Lead(
+                    company_name=company_name,
+                    website=website,
+                    source="WhatsApp",
+                    status="New"
                 )
+                session.add(new_lead)
+                session.commit()
+                session.refresh(new_lead)
+                
+                reply_msg = f"Lead {company_name} added successfully! Starting smart research in the background..."
+                
+                # 2. Kick off background task to research and save it
+                async def research_and_save(c_name, c_url, l_id):
+                    try:
+                        res = await smart_research(SmartResearchRequest(company_name=c_name, company_url=c_url))
+                        with Session(engine) as db_session:
+                            cr = ClientResearch(
+                                lead_id=l_id,
+                                email_agent_data=json.dumps(res)
+                            )
+                            db_session.add(cr)
+                            db_session.commit()
+                            from modules.whatsapp import send_whatsapp_message
+                            send_whatsapp_message(f"✅ Research complete for {c_name}! The AI draft is ready.", "whatsapp:+919502901416")
+                    except Exception as e:
+                        print("Error in bg research:", e)
+                        
+                background_tasks.add_task(research_and_save, company_name, website, new_lead.id)
             elif action == "schedule_meeting":
                 # Minimal implementation for now
                 reply_msg = f"Scheduled meeting for {args.get('target_name')} at {args.get('time_str')}."
