@@ -7918,7 +7918,7 @@ async def whatsapp_webhook(
             
             # Execute actions based on type
             if action == "add_lead":
-                from database import Lead, ClientResearch
+                from database import Lead, ClientResearch, ClientProfile
                 company_name = args.get('company_name', 'Unknown')
                 website = args.get('website', '')
                 
@@ -7930,18 +7930,29 @@ async def whatsapp_webhook(
                     status="New"
                 )
                 session.add(new_lead)
+                
+                # 1b. Also save as a Pending Client just in case the Leads UI is broken
+                new_client = ClientProfile(
+                    companyName=company_name,
+                    websiteUrl=website,
+                    status="Pending"
+                )
+                session.add(new_client)
+                
                 session.commit()
                 session.refresh(new_lead)
+                session.refresh(new_client)
                 
                 reply_msg = f"Lead {company_name} added successfully! Starting smart research in the background..."
                 
                 # 2. Kick off background task to research and save it
-                async def research_and_save(c_name, c_url, l_id):
+                async def research_and_save(c_name, c_url, l_id, client_id):
                     try:
                         res = await smart_research(SmartResearchRequest(company_name=c_name, company_url=c_url))
                         with Session(engine) as db_session:
                             cr = ClientResearch(
                                 lead_id=l_id,
+                                client_id=client_id,
                                 email_agent_data=json.dumps(res)
                             )
                             db_session.add(cr)
@@ -7951,7 +7962,7 @@ async def whatsapp_webhook(
                     except Exception as e:
                         print("Error in bg research:", e)
                         
-                background_tasks.add_task(research_and_save, company_name, website, new_lead.id)
+                background_tasks.add_task(research_and_save, company_name, website, new_lead.id, new_client.id)
             elif action == "schedule_meeting":
                 # Minimal implementation for now
                 reply_msg = f"Scheduled meeting for {args.get('target_name')} at {args.get('time_str')}."
