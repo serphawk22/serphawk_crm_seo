@@ -567,11 +567,11 @@ def process_whatsapp_command(message: str):
     """
     try:
         client = get_openai_client()
-        system_prompt = \"\"\"
+        system_prompt = """
         You are an intelligent assistant processing commands from a CRM owner via WhatsApp.
         Interpret their message and choose the appropriate action tool.
         If the message is conversational or unclear, do NOT call a tool, just return a conversational reply.
-        \"\"\"
+        """
         
         tools = [
             {
