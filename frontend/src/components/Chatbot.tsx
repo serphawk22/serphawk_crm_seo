@@ -151,6 +151,7 @@ export function Chatbot() {
         window.dispatchEvent(new Event('refresh-client-data'));
         window.dispatchEvent(new Event('refresh-marketplace-data'));
       }
+      }
     } catch (err) {
       console.error(err);
       setMessages(prev => [...prev, { role: 'bot', text: "Sorry, I couldn't process that right now. Please try again." }]);
