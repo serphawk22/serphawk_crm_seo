@@ -545,6 +545,7 @@ class ChatbotRequest(BaseModel):
     message: str
     client_id: Optional[int] = None
     current_route: Optional[str] = None
+    chat_history: Optional[str] = None
 
 
 class CreateUserRequest(BaseModel):
@@ -5806,7 +5807,7 @@ async def chatbot_message(
                         "client_id": client_context["client_id"] if client_context else "Unknown",
                         "company_name": client_context["company_name"] if client_context else "Unknown",
                         "issue_summary": issue_summary,
-                        "chat_history": request.message
+                        "chat_history": request.chat_history or request.message
                     }
                     base_url = "https://crm-seo.allytechcourses.com"
                     client_link = f"{base_url}/clients/{client_context['client_id']}" if client_context else base_url
@@ -7883,3 +7884,99 @@ def verify_extracted_email(email_id: int, data: VerifyEmailRequest, session: Ses
         
     session.commit()
     return {"ok": True, "status": email_obj.status}
+
+from fastapi.responses import PlainTextResponse
+
+@app.post("/whatsapp-webhook")
+async def whatsapp_webhook(
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+    From: str = Form(...),
+    Body: str = Form(...)
+):
+    from database import WhatsAppSession
+    from modules.llm_engine import process_whatsapp_command
+    import json
+    
+    # 1. Authorize sender
+    if not From.endswith("9502901416"):
+        return PlainTextResponse(
+            '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Unauthorized sender.</Message></Response>',
+            media_type="application/xml"
+        )
+        
+    msg_text = Body.strip().lower()
+    
+    # 2. Check for pending session
+    pending = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == From)).first()
+    
+    if pending:
+        if msg_text in ["yes", "y"]:
+            action = pending.pending_action
+            args = json.loads(pending.action_data)
+            reply_msg = "Action confirmed and executed."
+            
+            # Execute actions based on type
+            if action == "add_lead":
+                reply_msg = f"Adding lead {args.get('company_name')} and starting smart research in background..."
+                background_tasks.add_task(
+                    smart_research,
+                    SmartResearchRequest(
+                        company_name=args.get('company_name'),
+                        company_url=args.get('website', '')
+                    )
+                )
+            elif action == "schedule_meeting":
+                # Minimal implementation for now
+                reply_msg = f"Scheduled meeting for {args.get('target_name')} at {args.get('time_str')}."
+            elif action == "add_note":
+                reply_msg = f"Added note for {args.get('target_name')}."
+            
+            # Clear session
+            session.delete(pending)
+            session.commit()
+            
+            return PlainTextResponse(
+                f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{reply_msg}</Message></Response>',
+                media_type="application/xml"
+            )
+            
+        elif msg_text in ["no", "cancel", "n"]:
+            session.delete(pending)
+            session.commit()
+            return PlainTextResponse(
+                '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Action cancelled.</Message></Response>',
+                media_type="application/xml"
+            )
+            
+    # 3. No pending session, parse new command
+    result = process_whatsapp_command(Body)
+    if result["action"] != "none" and result["action"] != "error":
+        # Create session
+        new_session = WhatsAppSession(
+            phone_number=From,
+            pending_action=result["action"],
+            action_data=json.dumps(result["parameters"])
+        )
+        # Clear any old sessions
+        if pending:
+            session.delete(pending)
+        session.add(new_session)
+        session.commit()
+        
+        # Format confirmation message
+        action_name = result["action"]
+        params_str = ", ".join([f"{k}: {v}" for k, v in result["parameters"].items()])
+        confirm_msg = f"Do you want me to proceed with {action_name}? ({params_str})\\n\\nReply YES to confirm, or NO to cancel."
+        
+        return PlainTextResponse(
+            f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{confirm_msg}</Message></Response>',
+            media_type="application/xml"
+        )
+    else:
+        # Conversational reply or error
+        return PlainTextResponse(
+            f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{result["reply"]}</Message></Response>',
+            media_type="application/xml"
+        )
+
