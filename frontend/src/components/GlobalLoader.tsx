@@ -99,8 +99,10 @@ function Particle({ index, total }: { index: number; total: number }) {
 export function GlobalLoader() {
   const [step, setStep] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const stepTimer = setInterval(() => {
       setStep((s) => (s + 1) % STEPS.length);
     }, 1200);
@@ -116,6 +118,8 @@ export function GlobalLoader() {
       clearInterval(progressTimer);
     };
   }, []);
+
+  if (!mounted) return null;
 
   return (
     <div

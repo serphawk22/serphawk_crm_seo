@@ -134,6 +134,8 @@ def generate_email(analysis, contact=None, recommended_services=None, owner_name
 
         Then provide a short, punchy WhatsApp message (English only) to send to them. Keep it under 50 words. It should be casual but professional, mention the opportunity, and ask for a quick chat.
 
+        Then provide a short, punchy WhatsApp message (English only) to send to them. Keep it under 50 words. It should be casual but professional, mention the opportunity, and ask for a quick chat.
+
         Return a JSON object with exactly these fields:
         {{
             "subject": "Short benefit-focused subject (under 8 words, mention company or sector)",
