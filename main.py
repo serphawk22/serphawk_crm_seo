@@ -708,6 +708,7 @@ class ChatbotRequest(BaseModel):
     client_id: Optional[int] = None
     current_route: Optional[str] = None
     chat_history: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class CreateUserRequest(BaseModel):
@@ -5943,23 +5944,46 @@ async def chatbot_message(
                 action_taken = "trigger_whatsapp"
                 
                 # 1. Update the reply for the user
-                result["reply"] = "To connect to a live agent, please contact 9502901416."
+                result["reply"] = "I've notified our live agents. Please wait a moment while they connect."
                 
                 # 2. Extract issue summary
                 issue_summary = params.get("issue_summary", result.get("reply", "No issue summary provided."))
                 
-                # 3. Send AI WhatsApp summary to admin
+                # 3. Create LiveChatSession and Send AI WhatsApp summary to admin
                 try:
-                    from modules.whatsapp import send_ai_polished_whatsapp_message
-                    payload = {
-                        "client_id": client_context["client_id"] if client_context else "Unknown",
-                        "company_name": client_context["company_name"] if client_context else "Unknown",
-                        "issue_summary": issue_summary,
-                        "chat_history": request.chat_history or request.message
-                    }
-                    base_url = "https://crm-seo.allytechcourses.com"
-                    client_link = f"{base_url}/clients/{client_context['client_id']}" if client_context else base_url
-                    send_ai_polished_whatsapp_message("Support Escalation (Chatbot)", payload, client_link)
+                    from database import LiveChatSession
+                    if request.session_id:
+                        # check if exists
+                        existing_lcs = session.exec(select(LiveChatSession).where(LiveChatSession.session_id == request.session_id)).first()
+                        if not existing_lcs:
+                            lcs = LiveChatSession(
+                                session_id=request.session_id,
+                                status="pending",
+                                client_id=client_context["client_id"] if client_context else None
+                            )
+                            session.add(lcs)
+                            session.commit()
+                    
+                    from modules.whatsapp import send_whatsapp_message
+                    
+                    company = client_context["company_name"] if client_context else "Unknown Visitor"
+                    msg = f"🚨 *Live Chat Request!* 🚨\n\n*From:* {company}\n*Issue:* {issue_summary}\n\n*Chat History:*\n{request.chat_history or request.message}\n\nReply *YES* to claim this chat and talk directly to the visitor!"
+                    send_whatsapp_message(msg, "whatsapp:+919502901416")
+                    
+                    # Store a pending action in WhatsAppSession so if they reply YES it triggers live chat
+                    from database import WhatsAppSession
+                    import json
+                    pending = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == "whatsapp:+919502901416")).first()
+                    if pending:
+                        session.delete(pending)
+                    new_pending = WhatsAppSession(
+                        phone_number="whatsapp:+919502901416",
+                        pending_action="claim_live_chat",
+                        action_data=json.dumps({"session_id": request.session_id}) if request.session_id else "{}"
+                    )
+                    session.add(new_pending)
+                    session.commit()
+                    
                 except Exception as e:
                     print("WhatsApp Chatbot Handoff Error:", e)
                 
@@ -5988,6 +6012,47 @@ async def chatbot_message(
         "actions": actions,
         "action_taken": action_taken,
         "route": route
+    }
+
+class LiveChatSendRequest(BaseModel):
+    message: str
+
+@app.post("/chatbot/live-chat/{session_id}/send")
+def live_chat_send(session_id: str, request: LiveChatSendRequest, db: Session = Depends(get_session)):
+    from database import LiveChatSession, LiveChatMessage, WhatsAppSession
+    lcs = db.exec(select(LiveChatSession).where(LiveChatSession.session_id == session_id)).first()
+    if not lcs or lcs.status != "active":
+        return {"ok": False, "error": "Live chat is not active"}
+    
+    # Save message
+    msg = LiveChatMessage(session_id=session_id, sender="user", message=request.message)
+    db.add(msg)
+    db.commit()
+    
+    # Forward to WhatsApp
+    from modules.whatsapp import send_whatsapp_message
+    active_admin = db.exec(select(WhatsAppSession).where(WhatsAppSession.active_live_chat_session == session_id)).first()
+    if active_admin:
+        send_whatsapp_message(f"👤 *Visitor:* {request.message}", active_admin.phone_number)
+        
+    return {"ok": True}
+
+@app.get("/chatbot/live-chat/{session_id}/sync")
+def live_chat_sync(session_id: str, db: Session = Depends(get_session)):
+    from database import LiveChatSession, LiveChatMessage
+    lcs = db.exec(select(LiveChatSession).where(LiveChatSession.session_id == session_id)).first()
+    if not lcs:
+        return {"status": "inactive", "messages": []}
+    
+    # Fetch all admin messages
+    messages = db.exec(select(LiveChatMessage).where(LiveChatMessage.session_id == session_id).order_by(LiveChatMessage.timestamp.asc())).all()
+    
+    return {
+        "status": lcs.status,
+        "messages": [
+            {"sender": m.sender, "message": m.message, "timestamp": m.timestamp.isoformat()}
+            for m in messages
+        ]
     }
 
 
@@ -8106,17 +8171,63 @@ async def whatsapp_webhook(
         
     msg_text = Body.strip().lower()
     
-    # 2. Check for pending session
-    pending = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == From)).first()
+    # 2. Check for existing session (pending action or active live chat)
+    ws_session = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == From)).first()
     
-    if pending:
+    # 2.1 Handle Active Live Chat Messages
+    if ws_session and ws_session.active_live_chat_session:
+        if msg_text == "end":
+            from database import LiveChatSession
+            lcs = session.exec(select(LiveChatSession).where(LiveChatSession.session_id == ws_session.active_live_chat_session)).first()
+            if lcs:
+                lcs.status = "ended"
+            session.delete(ws_session)
+            session.commit()
+            return PlainTextResponse(
+                '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Live chat ended.</Message></Response>',
+                media_type="application/xml"
+            )
+        else:
+            from database import LiveChatMessage
+            # Forward msg to live chat
+            chat_msg = LiveChatMessage(
+                session_id=ws_session.active_live_chat_session,
+                sender="admin",
+                message=Body.strip()
+            )
+            session.add(chat_msg)
+            session.commit()
+            return PlainTextResponse(
+                '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+                media_type="application/xml"
+            )
+    
+    # 2.2 Handle Pending Actions
+    if ws_session and ws_session.pending_action:
         if msg_text in ["yes", "y"]:
-            action = pending.pending_action
-            args = json.loads(pending.action_data)
+            action = ws_session.pending_action
+            args = json.loads(ws_session.action_data)
             reply_msg = "Action confirmed and executed."
             
             # Execute actions based on type
-            if action == "add_lead":
+            if action == "claim_live_chat":
+                session_id = args.get("session_id")
+                from database import LiveChatSession
+                lcs = session.exec(select(LiveChatSession).where(LiveChatSession.session_id == session_id)).first()
+                if lcs:
+                    lcs.status = "active"
+                    ws_session.active_live_chat_session = session_id
+                    ws_session.pending_action = None
+                    ws_session.action_data = None
+                    session.commit()
+                    return PlainTextResponse(
+                        '<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Live chat connected! Anything you type now will be sent to the visitor. Type *END* to disconnect.</Message></Response>',
+                        media_type="application/xml"
+                    )
+                else:
+                    reply_msg = "Live chat session expired or not found."
+                    session.delete(ws_session)
+            elif action == "add_lead":
                 from database import Lead, ClientResearch, ClientProfile
                 company_name = args.get('company_name', 'Unknown')
                 website = args.get('website', '')
@@ -8162,23 +8273,23 @@ async def whatsapp_webhook(
                         print("Error in bg research:", e)
                         
                 background_tasks.add_task(research_and_save, company_name, website, new_lead.id, new_client.id)
+                session.delete(ws_session)
             elif action == "schedule_meeting":
                 # Minimal implementation for now
                 reply_msg = f"Scheduled meeting for {args.get('target_name')} at {args.get('time_str')}."
+                session.delete(ws_session)
             elif action == "add_note":
                 reply_msg = f"Added note for {args.get('target_name')}."
+                session.delete(ws_session)
             
-            # Clear session
-            session.delete(pending)
             session.commit()
-            
             return PlainTextResponse(
                 f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{reply_msg}</Message></Response>',
                 media_type="application/xml"
             )
             
         elif msg_text in ["no", "cancel", "n"]:
-            session.delete(pending)
+            session.delete(ws_session)
             session.commit()
             return PlainTextResponse(
                 '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Action cancelled.</Message></Response>',
@@ -8195,8 +8306,8 @@ async def whatsapp_webhook(
             action_data=json.dumps(result["parameters"])
         )
         # Clear any old sessions
-        if pending:
-            session.delete(pending)
+        if ws_session:
+            session.delete(ws_session)
         session.add(new_session)
         session.commit()
         

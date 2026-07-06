@@ -8,6 +8,7 @@ import {
   ExternalLink, 
   Clock, 
   ChevronRight, 
+  ChevronLeft,
   Plus, 
   FileScan, 
   UploadCloud, 
@@ -776,6 +777,30 @@ export default function ClientsPage() {
                 </AnimatePresence>
               </tbody>
             </table>
+          )}
+          {/* Pagination Controls */}
+          {viewMode === 'list' && totalCount > perPage && (
+            <div className="px-6 py-4 flex items-center justify-between border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+              <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">
+                Showing {(page - 1) * perPage + 1} to {Math.min(page * perPage, totalCount)} of {totalCount} clients
+              </span>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-4 py-2 text-sm font-semibold bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-2"
+                >
+                  <ChevronLeft className="w-4 h-4" /> Previous
+                </button>
+                <button 
+                  onClick={() => setPage(p => p + 1)}
+                  disabled={page * perPage >= totalCount}
+                  className="px-4 py-2 text-sm font-semibold bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-2"
+                >
+                  Next <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           )}
           {viewMode !== 'kanban' && viewMode !== 'graph' && viewMode !== 'pivot' && viewMode !== 'map' && filteredClients.length === 0 && (
             <div className="flex flex-col items-center justify-center h-64 text-center">
