@@ -1128,6 +1128,9 @@ def create_db_and_tables():
         "ALTER TABLE client_research ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
         "ALTER TABLE sent_emails ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
         "ALTER TABLE activity_logs ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
+        "ALTER TABLE whatsappsession ADD COLUMN active_live_chat_session VARCHAR",
+        "ALTER TABLE whatsappsession ALTER COLUMN pending_action DROP NOT NULL",
+        "ALTER TABLE whatsappsession ALTER COLUMN action_data DROP NOT NULL",
     ]
     
     with engine.connect() as conn:
