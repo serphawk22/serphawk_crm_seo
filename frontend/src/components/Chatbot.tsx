@@ -37,6 +37,9 @@ export function Chatbot() {
   const { role } = useRole();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const [liveChatStatus, setLiveChatStatus] = useState<'inactive' | 'pending' | 'active'>('inactive');
+  const [sessionId] = useState(() => Math.random().toString(36).substring(2, 15));
+
   const isClientRoute = role === 'Client';
   const quickActions = isClientRoute ? CLIENT_ACTIONS : ADMIN_ACTIONS;
 
@@ -50,6 +53,45 @@ export function Chatbot() {
   useEffect(() => {
     if (isOpen) scrollToBottom();
   }, [messages, isOpen, isTyping]);
+
+  useEffect(() => {
+    if (liveChatStatus === 'inactive') return;
+
+    let timer = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/chatbot/live-chat/${sessionId}/sync`);
+        const data = await res.json();
+        
+        if (data.status === 'active' && liveChatStatus !== 'active') {
+          setLiveChatStatus('active');
+        } else if (data.status === 'ended' && liveChatStatus !== 'inactive') {
+          setLiveChatStatus('inactive');
+          setMessages(prev => [...prev, { role: 'bot', text: 'Live chat ended by the agent.' }]);
+        }
+
+        if (data.messages && data.messages.length > 0) {
+          // Re-sync messages from admin that we don't have yet.
+          // For simplicity, we just count admin messages vs what's in local state
+          const adminMsgs = data.messages.filter((m: any) => m.sender === 'admin');
+          setMessages(prev => {
+            const localAdminCount = prev.filter(m => m.role === 'bot' && m.action === 'live_chat').length;
+            if (adminMsgs.length > localAdminCount) {
+              const newMsgs = adminMsgs.slice(localAdminCount).map((m: any) => ({
+                role: 'bot' as const,
+                text: m.message,
+                action: 'live_chat'
+              }));
+              return [...prev, ...newMsgs];
+            }
+            return prev;
+          });
+        }
+      } catch (e) {
+        console.error("Live chat sync error", e);
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [liveChatStatus, sessionId]);
 
   const handleCommand = async (text: string) => {
     setMessages(prev => [...prev, { role: 'user', text }]);
@@ -66,23 +108,40 @@ export function Chatbot() {
 
     setIsTyping(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/chatbot/message`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          client_id: currentClientId,
-          current_route: pathname,
-          chat_history: messages.map(m => `${m.role}: ${m.text}`).join('\n') + `\nuser: ${text}`
-        })
-      });
-      const data = await res.json();
-      
-      setMessages(prev => [...prev, { role: 'bot', text: data.reply || "I've processed your request.", action: data.action_taken }]);
+      if (liveChatStatus === 'active') {
+        const res = await fetch(`${API_BASE_URL}/chatbot/live-chat/${sessionId}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+           setMessages(prev => [...prev, { role: 'bot', text: "Failed to send message. Live chat might have ended." }]);
+           setLiveChatStatus('inactive');
+        }
+      } else {
+        const res = await fetch(`${API_BASE_URL}/chatbot/message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            client_id: currentClientId,
+            current_route: pathname,
+            chat_history: messages.map(m => `${m.role}: ${m.text}`).join('\n') + `\nuser: ${text}`,
+            session_id: sessionId
+          })
+        });
+        const data = await res.json();
+        
+        setMessages(prev => [...prev, { role: 'bot', text: data.reply || "I've processed your request.", action: data.action_taken }]);
+        
+        if (data.action_taken === 'trigger_whatsapp') {
+          setLiveChatStatus('pending');
+        }
 
-      // Handle navigation actions
-      if (data.action_taken === 'navigate' && data.route) {
-        setTimeout(() => {
+        // Handle navigation actions
+        if (data.action_taken === 'navigate' && data.route) {
+          setTimeout(() => {
           router.push(data.route);
         }, 1500); // Small delay to read the message before jumping
       }
@@ -113,10 +172,21 @@ export function Chatbot() {
       {isOpen && (
         <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-gray-200 w-80 lg:w-96 mb-4 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5" style={{ height: '520px' }}>
           {/* Header */}
-          <div className="bg-indigo-600 text-white p-4 flex justify-between items-center shrink-0">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="w-5 h-5" />
-              <span className="font-bold text-sm tracking-wide">SERP Hawk Assistant</span>
+          <div className="bg-indigo-600 p-4 flex justify-between items-start shrink-0 rounded-t-2xl">
+            <div className="flex gap-3 items-center">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm shadow-inner shrink-0 relative">
+                <MessageSquare className="w-5 h-5 text-white" />
+                <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-indigo-600 ${liveChatStatus === 'active' ? 'bg-amber-400' : 'bg-emerald-400'}`}></div>
+              </div>
+              <div className="flex flex-col">
+                <h3 className="font-bold text-white text-base leading-tight">
+                  {liveChatStatus === 'active' ? "Live Support" : "AI Assistant"}
+                </h3>
+                <p className="text-[11px] font-medium text-emerald-100 flex items-center gap-1.5 opacity-90">
+                  <span className={`w-1.5 h-1.5 rounded-full ${liveChatStatus === 'active' ? 'bg-amber-400' : 'bg-emerald-400'} animate-pulse ring-2 ring-white/20`} />
+                  {liveChatStatus === 'active' ? "Agent Connected" : liveChatStatus === 'pending' ? "Connecting to agent..." : "Online · Replies instantly"}
+                </p>
+              </div>
             </div>
             <button 
               onClick={() => setIsOpen(false)}

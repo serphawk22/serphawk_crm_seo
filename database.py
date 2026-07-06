@@ -1223,9 +1223,25 @@ class ApiAlert(SQLModel, table=True):
 class WhatsAppSession(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     phone_number: str = Field(index=True)
-    pending_action: str
-    action_data: str  # JSON string of parameters
+    pending_action: Optional[str] = None
+    action_data: Optional[str] = None  # JSON string of parameters
+    active_live_chat_session: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class LiveChatSession(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True, unique=True)
+    status: str = Field(default="pending") # pending, active, ended
+    client_id: Optional[int] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class LiveChatMessage(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True)
+    sender: str = Field(default="user") # user, admin
+    message: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
 
 def get_session():
     """
