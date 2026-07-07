@@ -261,6 +261,55 @@ async def smart_research(body: SmartResearchRequest):
         # If N8N returns the expected JSON structure, use it, else return a dummy structure
         if response.status_code == 200:
             data = response.json()
+            if isinstance(data, list) and len(data) > 0:
+                data = data[0]
+            
+            if "emails" in data or "cold_email_english" in data:
+                en_body = data.get("cold_email_english", "")
+                subject = "Unlock Next-Level Growth"
+                if "Subject:" in en_body:
+                    parts = en_body.split("Subject:", 1)
+                    if len(parts) > 1:
+                        subject = parts[1].split("\n")[0].strip()
+                        en_body = parts[1].split("\n", 1)[1].strip() if "\n" in parts[1] else en_body
+                
+                es_body = data.get("cold_email_spanish", "")
+                if "Asunto:" in es_body:
+                    parts = es_body.split("Asunto:", 1)
+                    if len(parts) > 1:
+                        es_body = parts[1].split("\n", 1)[1].strip() if "\n" in parts[1] else es_body
+
+                emails_val = data.get("emails", "")
+                if emails_val == "Not Found": emails_val = ""
+                phone_val = data.get("phone", "")
+                if phone_val == "Not Found": phone_val = ""
+
+                contact_email = emails_val.split(",")[0].strip() if emails_val else None
+
+                mapped = {
+                    "company_info": {
+                        "company_name": body.company_name,
+                        "summary": f"Analyzed {body.company_name}. Services: {', '.join(data.get('company_services', []))}",
+                        "extracted_emails": emails_val,
+                        "extracted_phone_numbers": phone_val,
+                        "company_social_media": data.get("social_links", {}),
+                    },
+                    "company_url": body.company_url or "",
+                    "contact": {
+                        "email": contact_email,
+                        "phone_number": phone_val if phone_val else None,
+                        "name": None, "role": None, "linkedin": None, "twitter": None
+                    },
+                    "recommended_services": [{"service_name": s, "why_relevant": "Based on N8N analysis"} for s in data.get("company_services", [])[:4]],
+                    "email_hook": "We noticed your amazing work at " + body.company_name,
+                    "draft": {
+                        "subject": subject,
+                        "english_body": en_body,
+                        "spanish_body": es_body
+                    },
+                    "extracted_services": [{"name": s, "category": "General", "approx_cost": 0} for s in data.get("company_services", [])]
+                }
+                return mapped
             return data
             
         data = {}
@@ -3321,7 +3370,7 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
                 # --- Trigger n8n Webhook ---
                 try:
                     import httpx
-                    webhook_url = "http://localhost:5678/webhook-test/serphawk-followup"
+                    webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "http://localhost:5678/webhook-test/serphawk-followup")
                     payload = {
                         "event": "email_sent",
                         "sender": sender,
