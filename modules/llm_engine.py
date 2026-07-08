@@ -559,3 +559,99 @@ Return ONLY valid JSON matching this structure:
     except Exception as e:
         print(f"Error in extract_client_profile: {e}")
         return {}
+
+
+def process_whatsapp_command(message: str):
+    """
+    Analyzes an incoming WhatsApp message to determine the CRM action using OpenAI function calling.
+    """
+    try:
+        client = get_openai_client()
+        system_prompt = """
+        You are an intelligent assistant processing commands from a CRM owner via WhatsApp.
+        Interpret their message and choose the appropriate action tool.
+        If the message is conversational or unclear, do NOT call a tool, just return a conversational reply.
+        """
+        
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_lead",
+                    "description": "Extracts company name and website to add a new lead.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "company_name": {"type": "string", "description": "The name of the company or lead."},
+                            "website": {"type": "string", "description": "The website URL of the company, if provided."}
+                        },
+                        "required": ["company_name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "schedule_meeting",
+                    "description": "Schedules a meeting or call.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "target_name": {"type": "string", "description": "The name of the lead or company to meet with."},
+                            "time_str": {"type": "string", "description": "The time or date mentioned (e.g. 'tomorrow at 5pm')."}
+                        },
+                        "required": ["target_name", "time_str"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_note",
+                    "description": "Adds a note to a client or lead.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "target_name": {"type": "string", "description": "The name of the lead or company to add a note to."},
+                            "content": {"type": "string", "description": "The actual content of the note."}
+                        },
+                        "required": ["target_name", "content"]
+                    }
+                }
+            }
+        ]
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message}
+            ],
+            tools=tools,
+            tool_choice="auto"
+        )
+        
+        msg = response.choices[0].message
+        
+        if msg.tool_calls:
+            tool_call = msg.tool_calls[0]
+            import json as _json
+            args = _json.loads(tool_call.function.arguments)
+            return {
+                "action": tool_call.function.name,
+                "parameters": args,
+                "reply": "Confirm action"
+            }
+        else:
+            return {
+                "action": "none",
+                "parameters": {},
+                "reply": msg.content or "I didn't quite catch that. Try saying something like 'add lead Microsoft microsoft.com'."
+            }
+    except Exception as e:
+        print(f"Error in process_whatsapp_command: {e}")
+        return {
+            "action": "error",
+            "parameters": {},
+            "reply": "Sorry, I ran into an error processing your command."
+        }

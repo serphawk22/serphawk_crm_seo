@@ -11,11 +11,6 @@ from sqlmodel import Session
 from modules.scraper import research_and_map_company
 from pydantic import BaseModel
 
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from database import engine, SentEmail
 from sqlmodel import select
 
@@ -185,20 +180,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Email Notification Helper
 # ─────────────────────────────────────────────────────────────────────────────
 def _send_notification_email(to_email: str, subject: str, body_html: str):
-
-    """Best-effort email notification using N8N webhook."""
+    """Best-effort email notification. Fails silently so it never blocks API responses."""
     try:
-        import httpx, os
-        webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "http://localhost:5678/webhook-test/trigger-cold-email")
-        sender = os.environ.get("SENDER_EMAIL", "prasanthanupojuwork@gmail.com")
-        payload = {
-            "event": "notification_email",
-            "to_email": to_email,
-            "subject": subject,
-            "body": body_html,
-            "sender": sender
-        }
-        httpx.post(webhook_url, json=payload, timeout=5.0)
+        from modules.email_sender import send_email_outlook
+        sender = os.environ.get("SENDER_EMAIL", "")
+        password = os.environ.get("SENDER_PASSWORD", "")
+        if sender and password:
+            send_email_outlook(to_email, subject, body_html, sender, password)
     except Exception as e:
         print(f"[Notification email failed] {e}")
 
@@ -457,46 +445,54 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     session.commit()
     session.refresh(sent_email)
 
-
-    # Step 3.5: Send the actual email via N8N Webhook (unless skip_send is True)
+    # Step 3.5: Send the actual email (unless skip_send is True)
     if not body.skip_send:
+        from modules.email_sender import send_email_outlook
         import os
         sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "prasanthanupojuwork@gmail.com")
+        password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
+        smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "smtp.gmail.com")
+        smtp_port = int(os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587))
+        imap_server = os.getenv("IMAP_SERVER", "imap.gmail.com")
+
+        if not sender or not password:
+            raise HTTPException(status_code=500, detail="Email sender credentials are not configured")
 
         try:
-            import httpx
             full_body = f"{body.english_body}\n\n{body.spanish_body}" if body.spanish_body else body.english_body
-            webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "http://localhost:5678/webhook-test/trigger-cold-email")
-            
-            import json
-            result_data = {}
-            if body.email_agent_data:
-                try:
-                    result_data = json.loads(body.email_agent_data)
-                except:
-                    pass
-
-            payload = {
-                "event": "email_sent",
-                "sender": sender,
-                "to_email": body.to_email,
-                "subject": body.subject,
-                "body": full_body,
-                "company_name": body.company_name,
-                "contact_name": body.contact_name or "Prospect",
-                "phone_number": body.phone_number,
-                "recommended_services": body.recommended_services or "SEO",
-                "timestamp": datetime.utcnow().isoformat(),
-                "result": result_data
-            }
-            # Wait for webhook to respond
-            response = httpx.post(webhook_url, json=payload, timeout=120.0)
-            if response.status_code not in (200, 201, 204):
-                raise Exception(f"Webhook returned status {response.status_code}: {response.text}")
-            print(f"Webhook successfully triggered and responded for {webhook_url}")
+            send_email_outlook(
+                to_email=body.to_email,
+                subject=body.subject,
+                body=full_body,
+                sender_email=sender,
+                sender_password=password,
+                smtp_server=smtp_server,
+                smtp_port=smtp_port,
+                imap_server=imap_server
+            )
+            # --- Trigger n8n Webhook ---
+            try:
+                import httpx
+                webhook_url = "http://localhost:5678/webhook-test/serphawk-followup"
+                payload = {
+                    "event": "email_sent",
+                    "sender": sender,
+                    "to_email": body.to_email,
+                    "subject": body.subject,
+                    "company_name": body.company_name,
+                    "contact_name": body.contact_name or "Prospect",
+                    "phone_number": body.phone_number,
+                    "recommended_services": body.recommended_services or "SEO",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                httpx.post(webhook_url, json=payload, timeout=5.0)
+                print(f"Webhook successfully triggered from manual send to {webhook_url}")
+            except Exception as wh_e:
+                print(f"Webhook trigger failed: {wh_e}")
         except Exception as e:
-            print(f"Manual Email send (webhook) failed: {e}")
+            print(f"Manual Email send failed: {e}")
             raise HTTPException(status_code=500, detail=f"Manual Email send failed: {e}")
+
 
     # Step 4: Log activity
     try:
@@ -594,6 +590,8 @@ class ChatbotRequest(BaseModel):
     message: str
     client_id: Optional[int] = None
     current_route: Optional[str] = None
+    chat_history: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class CreateUserRequest(BaseModel):
@@ -1267,7 +1265,6 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     session.add(cp)
     session.commit()
     session.refresh(cp)
-
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -1899,7 +1896,6 @@ def create_client_note(client_id: int, body: ClientNoteCreateRequest, session: S
     
     session.commit()
     session.refresh(note)
-
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -1926,7 +1922,6 @@ def update_client_note(client_id: int, note_id: int, body: ClientNoteUpdateReque
     note.updated_at = datetime.utcnow()
     session.add(note)
     session.commit()
-
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -2023,7 +2018,6 @@ def create_client_conversation(client_id: int, body: ConversationLogCreateReques
 
     session.commit()
     session.refresh(conv)
-
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -2049,7 +2043,6 @@ def add_conversation_reply(client_id: int, conv_id: int, body: ConversationReply
     session.add(reply)
     session.commit()
     session.refresh(reply)
-
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -2598,7 +2591,6 @@ def create_project(body: ProjectCreateRequest, session: Session = Depends(get_se
     session.add(p)
     session.commit()
     session.refresh(p)
-
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -2639,7 +2631,6 @@ def update_project(
     session.add(p)
     session.commit()
     session.refresh(p)
-
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -3029,7 +3020,6 @@ def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
     session.add(c)
     session.commit()
     session.refresh(c)
-
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -3057,7 +3047,6 @@ def update_call(
     session.add(c)
     session.commit()
     session.refresh(c)
-
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -3194,7 +3183,6 @@ def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = D
         except Exception as e:
             print("Scheduled call email error:", e)
 
-
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
@@ -3216,7 +3204,6 @@ def update_scheduled_call(sc_id: int, body: Dict[str, Any], session: Session = D
     session.add(sc)
     session.commit()
     session.refresh(sc)
-
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -4260,7 +4247,6 @@ def create_task(body: TaskCreateRequest, session: Session = Depends(get_session)
         )
         session.add(notif)
         session.commit()
-
         
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -4309,7 +4295,6 @@ def update_task(task_id: int, body: TaskUpdateRequest, session: Session = Depend
     session.add(t)
     session.commit()
     session.refresh(t)
-
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -5840,26 +5825,48 @@ async def chatbot_message(
                 
             elif action_name == "trigger_whatsapp_support":
                 action_taken = "trigger_whatsapp"
-
                 
                 # 1. Update the reply for the user
-                result["reply"] = "To connect to a live agent, please contact 9502901416."
+                result["reply"] = "I've notified our live agents. Please wait a moment while they connect."
                 
                 # 2. Extract issue summary
                 issue_summary = params.get("issue_summary", result.get("reply", "No issue summary provided."))
                 
-                # 3. Send AI WhatsApp summary to admin
+                # 3. Create LiveChatSession and Send AI WhatsApp summary to admin
                 try:
-                    from modules.whatsapp import send_ai_polished_whatsapp_message
-                    payload = {
-                        "client_id": client_context["client_id"] if client_context else "Unknown",
-                        "company_name": client_context["company_name"] if client_context else "Unknown",
-                        "issue_summary": issue_summary,
-                        "chat_history": request.message
-                    }
-                    base_url = "https://crm-seo.allytechcourses.com"
-                    client_link = f"{base_url}/clients/{client_context['client_id']}" if client_context else base_url
-                    send_ai_polished_whatsapp_message("Support Escalation (Chatbot)", payload, client_link)
+                    from database import LiveChatSession
+                    if request.session_id:
+                        # check if exists
+                        existing_lcs = session.exec(select(LiveChatSession).where(LiveChatSession.session_id == request.session_id)).first()
+                        if not existing_lcs:
+                            lcs = LiveChatSession(
+                                session_id=request.session_id,
+                                status="pending",
+                                client_id=client_context["client_id"] if client_context else None
+                            )
+                            session.add(lcs)
+                            session.commit()
+                    
+                    from modules.whatsapp import send_whatsapp_message
+                    
+                    company = client_context["company_name"] if client_context else "Unknown Visitor"
+                    msg = f"🚨 *Live Chat Request!* 🚨\n\n*From:* {company}\n*Issue:* {issue_summary}\n\n*Chat History:*\n{request.chat_history or request.message}\n\nReply *YES* to claim this chat and talk directly to the visitor!"
+                    send_whatsapp_message(msg, "whatsapp:+919502901416")
+                    
+                    # Store a pending action in WhatsAppSession so if they reply YES it triggers live chat
+                    from database import WhatsAppSession
+                    import json
+                    pending = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == "whatsapp:+919502901416")).first()
+                    if pending:
+                        session.delete(pending)
+                    new_pending = WhatsAppSession(
+                        phone_number="whatsapp:+919502901416",
+                        pending_action="claim_live_chat",
+                        action_data=json.dumps({"session_id": request.session_id}) if request.session_id else "{}"
+                    )
+                    session.add(new_pending)
+                    session.commit()
+                    
                 except Exception as e:
                     print("WhatsApp Chatbot Handoff Error:", e)
                 
@@ -5888,6 +5895,47 @@ async def chatbot_message(
         "actions": actions,
         "action_taken": action_taken,
         "route": route
+    }
+
+class LiveChatSendRequest(BaseModel):
+    message: str
+
+@app.post("/chatbot/live-chat/{session_id}/send")
+def live_chat_send(session_id: str, request: LiveChatSendRequest, db: Session = Depends(get_session)):
+    from database import LiveChatSession, LiveChatMessage, WhatsAppSession
+    lcs = db.exec(select(LiveChatSession).where(LiveChatSession.session_id == session_id)).first()
+    if not lcs or lcs.status != "active":
+        return {"ok": False, "error": "Live chat is not active"}
+    
+    # Save message
+    msg = LiveChatMessage(session_id=session_id, sender="user", message=request.message)
+    db.add(msg)
+    db.commit()
+    
+    # Forward to WhatsApp
+    from modules.whatsapp import send_whatsapp_message
+    active_admin = db.exec(select(WhatsAppSession).where(WhatsAppSession.active_live_chat_session == session_id)).first()
+    if active_admin:
+        send_whatsapp_message(f"👤 *Visitor:* {request.message}", active_admin.phone_number)
+        
+    return {"ok": True}
+
+@app.get("/chatbot/live-chat/{session_id}/sync")
+def live_chat_sync(session_id: str, db: Session = Depends(get_session)):
+    from database import LiveChatSession, LiveChatMessage
+    lcs = db.exec(select(LiveChatSession).where(LiveChatSession.session_id == session_id)).first()
+    if not lcs:
+        return {"status": "inactive", "messages": []}
+    
+    # Fetch all admin messages
+    messages = db.exec(select(LiveChatMessage).where(LiveChatMessage.session_id == session_id).order_by(LiveChatMessage.timestamp.asc())).all()
+    
+    return {
+        "status": lcs.status,
+        "messages": [
+            {"sender": m.sender, "message": m.message, "timestamp": m.timestamp.isoformat()}
+            for m in messages
+        ]
     }
 
 
@@ -6505,7 +6553,62 @@ async def automations_intelligence_scan(body: AutomationScanRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to scan: {str(e)}")
 
-# 
+# =====================================================================
+# ENHANCED CRM ARCHITECTURE - LEADS, ACCOUNTS, CONTACTS
+# =====================================================================
+import json
+import pandas as pd
+
+
+class LeadCreateRequest(BaseModel):
+    company_name: str
+    website: Optional[str] = None
+    industry: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    source: Optional[str] = None
+    owner_id: Optional[int] = None
+    status: str = "New"
+    notes: Optional[str] = None
+
+class AccountCreateRequest(BaseModel):
+    company_name: str
+    website: Optional[str] = None
+    industry: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    owner_id: Optional[int] = None
+
+class ContactCreateRequest(BaseModel):
+    first_name: str
+    last_name: Optional[str] = None
+    designation: Optional[str] = None
+    department: Optional[str] = None
+    email: Optional[str] = None
+    mobile_number: Optional[str] = None
+    alternate_number: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    lead_id: Optional[int] = None
+    account_id: Optional[int] = None
+    client_id: Optional[int] = None
+    notes: Optional[str] = None
+    tags: Optional[List[str]] = []
+    owner_id: Optional[int] = None
+    create_new_lead: Optional[bool] = False
+
+# ---- LEADS API ----
+@app.get("/leads")
+def get_leads(session: Session = Depends(get_session)):
+    leads = session.exec(select(Lead).order_by(Lead.created_at.desc())).all()
+    return {"leads": leads}
+
+@app.post("/leads")
+def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)):
+    lead = Lead(**body.dict())
+    session.add(lead)
+    session.commit()
+    session.refresh(lead)
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -6982,7 +7085,6 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
             session.commit()
         except Exception as e:
             print("Failed to send meeting email:", e)
-
             
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -7021,7 +7123,6 @@ def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session
     session.add(m)
     session.commit()
     session.refresh(m)
-
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -7701,7 +7802,6 @@ def get_work_queue(
 # EMAIL TRACKER APIs
 # ──────────────────────────────────────────────────────
 
-
 import os
 import json
 from fastapi.responses import RedirectResponse
@@ -7781,7 +7881,6 @@ def sync_email_integration(integration_id: int, session: Session = Depends(get_s
     if not integration:
         raise HTTPException(status_code=404, detail="Integration not found")
         
-
     if not integration.access_token:
         raise HTTPException(status_code=400, detail="Missing OAuth token. Please reconnect.")
         
@@ -7932,3 +8031,182 @@ def verify_extracted_email(email_id: int, data: VerifyEmailRequest, session: Ses
         
     session.commit()
     return {"ok": True, "status": email_obj.status}
+
+from fastapi.responses import PlainTextResponse
+
+@app.post("/whatsapp-webhook")
+async def whatsapp_webhook(
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+    From: str = Form(...),
+    Body: str = Form(...)
+):
+    from database import WhatsAppSession
+    from modules.llm_engine import process_whatsapp_command
+    import json
+    
+    # 1. Authorize sender
+    if not From.endswith("9502901416"):
+        return PlainTextResponse(
+            '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Unauthorized sender.</Message></Response>',
+            media_type="application/xml"
+        )
+        
+    msg_text = Body.strip().lower()
+    
+    # 2. Check for existing session (pending action or active live chat)
+    ws_session = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == From)).first()
+    
+    # 2.1 Handle Active Live Chat Messages
+    if ws_session and ws_session.active_live_chat_session:
+        if msg_text == "end":
+            from database import LiveChatSession
+            lcs = session.exec(select(LiveChatSession).where(LiveChatSession.session_id == ws_session.active_live_chat_session)).first()
+            if lcs:
+                lcs.status = "ended"
+            session.delete(ws_session)
+            session.commit()
+            return PlainTextResponse(
+                '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Live chat ended.</Message></Response>',
+                media_type="application/xml"
+            )
+        else:
+            from database import LiveChatMessage
+            # Forward msg to live chat
+            chat_msg = LiveChatMessage(
+                session_id=ws_session.active_live_chat_session,
+                sender="admin",
+                message=Body.strip()
+            )
+            session.add(chat_msg)
+            session.commit()
+            return PlainTextResponse(
+                '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+                media_type="application/xml"
+            )
+    
+    # 2.2 Handle Pending Actions
+    if ws_session and ws_session.pending_action:
+        if msg_text in ["yes", "y"]:
+            action = ws_session.pending_action
+            args = json.loads(ws_session.action_data)
+            reply_msg = "Action confirmed and executed."
+            
+            # Execute actions based on type
+            if action == "claim_live_chat":
+                session_id = args.get("session_id")
+                from database import LiveChatSession
+                lcs = session.exec(select(LiveChatSession).where(LiveChatSession.session_id == session_id)).first()
+                if lcs:
+                    lcs.status = "active"
+                    ws_session.active_live_chat_session = session_id
+                    ws_session.pending_action = None
+                    ws_session.action_data = None
+                    session.commit()
+                    return PlainTextResponse(
+                        '<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Live chat connected! Anything you type now will be sent to the visitor. Type *END* to disconnect.</Message></Response>',
+                        media_type="application/xml"
+                    )
+                else:
+                    reply_msg = "Live chat session expired or not found."
+                    session.delete(ws_session)
+            elif action == "add_lead":
+                from database import Lead, ClientResearch, ClientProfile
+                company_name = args.get('company_name', 'Unknown')
+                website = args.get('website', '')
+                
+                # 1. Save Lead to DB
+                new_lead = Lead(
+                    company_name=company_name,
+                    website=website,
+                    source="WhatsApp",
+                    status="New"
+                )
+                session.add(new_lead)
+                
+                # 1b. Also save as a Pending Client just in case the Leads UI is broken
+                new_client = ClientProfile(
+                    companyName=company_name,
+                    websiteUrl=website,
+                    status="Pending"
+                )
+                session.add(new_client)
+                
+                session.commit()
+                session.refresh(new_lead)
+                session.refresh(new_client)
+                
+                reply_msg = f"Lead {company_name} added successfully! Starting smart research in the background..."
+                
+                # 2. Kick off background task to research and save it
+                async def research_and_save(c_name, c_url, l_id, client_id):
+                    try:
+                        res = await smart_research(SmartResearchRequest(company_name=c_name, company_url=c_url))
+                        with Session(engine) as db_session:
+                            cr = ClientResearch(
+                                lead_id=l_id,
+                                client_id=client_id,
+                                email_agent_data=json.dumps(res)
+                            )
+                            db_session.add(cr)
+                            db_session.commit()
+                            from modules.whatsapp import send_whatsapp_message
+                            send_whatsapp_message(f"✅ Research complete for {c_name}! The AI draft is ready.", "whatsapp:+919502901416")
+                    except Exception as e:
+                        print("Error in bg research:", e)
+                        
+                background_tasks.add_task(research_and_save, company_name, website, new_lead.id, new_client.id)
+                session.delete(ws_session)
+            elif action == "schedule_meeting":
+                # Minimal implementation for now
+                reply_msg = f"Scheduled meeting for {args.get('target_name')} at {args.get('time_str')}."
+                session.delete(ws_session)
+            elif action == "add_note":
+                reply_msg = f"Added note for {args.get('target_name')}."
+                session.delete(ws_session)
+            
+            session.commit()
+            return PlainTextResponse(
+                f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{reply_msg}</Message></Response>',
+                media_type="application/xml"
+            )
+            
+        elif msg_text in ["no", "cancel", "n"]:
+            session.delete(ws_session)
+            session.commit()
+            return PlainTextResponse(
+                '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Action cancelled.</Message></Response>',
+                media_type="application/xml"
+            )
+            
+    # 3. No pending session, parse new command
+    result = process_whatsapp_command(Body)
+    if result["action"] != "none" and result["action"] != "error":
+        # Create session
+        new_session = WhatsAppSession(
+            phone_number=From,
+            pending_action=result["action"],
+            action_data=json.dumps(result["parameters"])
+        )
+        # Clear any old sessions
+        if ws_session:
+            session.delete(ws_session)
+        session.add(new_session)
+        session.commit()
+        
+        # Format confirmation message
+        action_name = result["action"]
+        params_str = ", ".join([f"{k}: {v}" for k, v in result["parameters"].items()])
+        confirm_msg = f"Do you want me to proceed with {action_name}? ({params_str})\\n\\nReply YES to confirm, or NO to cancel."
+        
+        return PlainTextResponse(
+            f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{confirm_msg}</Message></Response>',
+            media_type="application/xml"
+        )
+    else:
+        # Conversational reply or error
+        return PlainTextResponse(
+            f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{result["reply"]}</Message></Response>',
+            media_type="application/xml"
+        )
+
