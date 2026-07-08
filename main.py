@@ -219,237 +219,120 @@ class SmartResearchRequest(BaseModel):
     company_name: str
     company_url: Optional[str] = None
     client_id: Optional[int] = None  # If set, link extracted services to this CRM client
+
     owner_name: Optional[str] = "Varshith"
 
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest):
     """
-    Takes a company name (and optional URL), researches it via LLM,
-    finds business contact email, recommends services, and generates an email draft.
+
+    Forwards the company URL to N8N webhook and bypasses Python automation.
+    Waits for N8N to return the generated data.
     """
-    import json as _json
-    from modules.fallback_analyzer import analyze_company_name_fallback
-    from modules.market_analyzer import match_services
-    from modules.llm_engine import get_openai_client, generate_email
+    import httpx, os
+    from datetime import datetime
 
-    company_name = body.company_name.strip()
-
-    # Step 1: Try scraping website if URL given, otherwise use LLM knowledge
-    company_info = {}
-    website_content = ""
-    if body.company_url and body.company_url.strip():
-        try:
-            from modules.scraper import scrape_website
-            website_content = await scrape_website(body.company_url.strip())
-            if not website_content.startswith("ERROR"):
-                from modules.llm_engine import analyze_content
-                company_info = analyze_content(website_content)
-            else:
-                company_info = analyze_company_name_fallback(company_name)
-        except Exception:
-            company_info = analyze_company_name_fallback(company_name)
-    else:
-        company_info = analyze_company_name_fallback(company_name)
-
-    company_info.setdefault("company_name", company_name)
-
-    extracted_emails_str = ""
-    extracted_phones_str = ""
-    extracted_linkedin_str = ""
-    extracted_twitter_str = ""
-    if website_content and not website_content.startswith("ERROR"):
-        try:
-            if "Extracted Emails: " in website_content:
-                extracted_emails_str = website_content.split("Extracted Emails: ")[1].split("\n")[0].strip()
-            if "Extracted Phone Numbers: " in website_content:
-                extracted_phones_str = website_content.split("Extracted Phone Numbers: ")[1].split("\n")[0].strip()
-            if "Extracted LinkedIn Profiles: " in website_content:
-                extracted_linkedin_str = website_content.split("Extracted LinkedIn Profiles: ")[1].split("\n")[0].strip()
-            if "Extracted Twitter Profiles: " in website_content:
-                extracted_twitter_str = website_content.split("Extracted Twitter Profiles: ")[1].split("\n")[0].strip()
-            company_info["extracted_emails"] = extracted_emails_str
-            company_info["extracted_phone_numbers"] = extracted_phones_str
-            company_info["extracted_linkedin"] = extracted_linkedin_str
-            company_info["extracted_twitter"] = extracted_twitter_str
-        except Exception:
-            pass
-
-    # Step 2: Find business contact details via LLM
-    contact_email = None
-    contact_name = None
-    contact_role = None
-    contact_phone = None
-    contact_linkedin = None
-    contact_twitter = None
-    try:
-        client = get_openai_client()
-        email_prompt = f"""You are a professional business intelligence expert. Your job is to extract ACCURATE contact information for the company "{company_name}".
-
-CRITICAL RULES - MUST FOLLOW:
-1. ONLY use scraped data if it exists. DO NOT invent, guess, or use placeholders.
-2. If scraped emails exist, use the MOST PROFESSIONAL one (e.g., prefer sales@, contact@, info@ over support@)
-3. If scraped phone numbers exist, use them EXACTLY as provided.
-4. If scraped LinkedIn/Twitter exist, use the primary profile URL.
-5. For missing fields: use null (NOT placeholder values like +919999999999)
-6. Extract person name/role ONLY if found in website content.
-7. Validate all URLs are actual social profile links (not generic)
-
-WEBSITE DATA EXTRACTED:
-- Emails: {extracted_emails_str if extracted_emails_str else 'NONE FOUND'}
-- Phone Numbers: {extracted_phones_str if extracted_phones_str else 'NONE FOUND'}
-- LinkedIn Profiles: {extracted_linkedin_str if extracted_linkedin_str else 'NONE FOUND'}
-- Twitter/X Profiles: {extracted_twitter_str if extracted_twitter_str else 'NONE FOUND'}
-- Contact Records: {_json.dumps(company_info.get("contacts", [])) if company_info.get("contacts") else 'NONE FOUND'}
-
-WEBSITE CONTENT FOR MANUAL REVIEW:
-{website_content[:3000] if website_content and not website_content.startswith('ERROR') else 'No content available'}
-
-Return ONLY valid JSON:
-{{
-    "email": "the actual contact email from website or null",
-    "name": "contact person name if found in website data or null",
-    "role": "job role if found in website data or null",
-    "phone_number": "contact phone number from website or null",
-    "linkedin": "actual LinkedIn profile URL or null",
-    "twitter": "actual Twitter/X profile URL or null",
-    "data_source": "where each value came from (scraped/website/contacts)",
-    "confidence": "high/medium/low based on data quality"
-}}"""
-
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a data extraction expert. Return ONLY accurate data found in provided sources. Use null for missing data. NEVER invent placeholder values."},
-                {"role": "user", "content": email_prompt}
-            ],
-            response_format={"type": "json_object"}
-        )
-        contact_data = _json.loads(resp.choices[0].message.content)
-        contact_email = contact_data.get("email") or None
-        contact_name = contact_data.get("name") or None
-        contact_role = contact_data.get("role") or None
-        contact_phone = contact_data.get("phone_number") or None
-        contact_linkedin = contact_data.get("linkedin") or None
-        contact_twitter = contact_data.get("twitter") or None
-    except Exception as e:
-        import logging
-        logging.warning(f"OpenAI contact extraction failed: {e}")
-
-    if not contact_email:
-        contacts = company_info.get("contacts", [])
-        if contacts and isinstance(contacts, list) and len(contacts) > 0:
-            c = contacts[0]
-            contact_email = c.get("email") or contact_email
-            contact_name = c.get("name") or contact_name
-            contact_role = c.get("role") or contact_role
-            contact_phone = c.get("phone_number") or c.get("phone") or c.get("mobile") or contact_phone
-
-    if not contact_email and extracted_emails_str:
-        contact_email = next((e.strip() for e in extracted_emails_str.split(",") if e.strip()), None)
-
-    if not contact_linkedin and extracted_linkedin_str:
-        contact_linkedin = next((s.strip() for s in extracted_linkedin_str.split(",") if s.strip()), None)
-
-    if not contact_twitter and extracted_twitter_str:
-        contact_twitter = next((s.strip() for s in extracted_twitter_str.split(",") if s.strip()), None)
-
-    # Do NOT generate fallback emails - only use extracted/scraped data
-
-    # Step 3: Service matching
-    services_result = {}
-    try:
-        market_data = {
-            "industry": company_info.get("likely_industry", company_info.get("industry", "")),
-            "business_model": company_info.get("business_model", ""),
-            "pain_points": company_info.get("common_pain_points", company_info.get("pain_points", [])),
-        }
-        services_result = match_services(market_data, company_info)
-    except Exception:
-        services_result = {
-            "recommended_services": [
-                {"service_name": "Organic SEO", "why_relevant": "Improve online visibility", "expected_impact": "More qualified leads"},
-                {"service_name": "Local SEO", "why_relevant": "Dominate local search", "expected_impact": "Increased local customers"}
-            ],
-            "email_hook": f"Growth opportunities for {company_name}",
-            "package_suggestion": "Growth"
-        }
-
-    # Step 4: Generate email draft (pass recommended services so they appear in draft)
-    draft = {}
-    owner = body.owner_name or "Varshith"
-    try:
-        contact_for_email = {"name": contact_name, "role": contact_role} if contact_name else None
-        recommended = services_result.get("recommended_services", [])
-        draft = generate_email(company_info, contact=contact_for_email, recommended_services=recommended, owner_name=owner)
-    except Exception:
-        draft = {
-            "subject": f"Growth Partnership Opportunity – {company_name}",
-            "english_body": f"Hi,\n\nI came across {company_name} and was impressed by what you do. I'd love to explore how our SEO and digital marketing services could help accelerate your growth.\n\nBest regards,\n{owner}",
-            "spanish_body": f"Hola,\n\nEncontré {company_name} y me impresionó lo que hacen. Me encantaría explorar cómo nuestros servicios de SEO y marketing digital podrían ayudar a acelerar su crecimiento.\n\nSaludos cordiales,\n{owner}",
-        }
-
-    # Step 5: Extract structured services offered by this company
-    extracted_services = []
-    try:
-        if website_content and not website_content.startswith("ERROR"):
-            from modules.llm_engine import extract_client_services
-            extracted_services = extract_client_services(website_content, company_info.get("company_name", company_name))
-        elif company_info.get("key_value_props"):
-            # Fallback: convert key_value_props to minimal service objects
-            extracted_services = [
-                {"name": s, "brief": "", "category": "Other", "approx_cost": 0, "cost_is_estimated": True}
-                for s in company_info["key_value_props"]
-            ]
-    except Exception as _e:
-        print(f"Service extraction warning: {_e}")
-
-    # Step 6: If a client_id is linked, persist services to client + marketplace
-    if body.client_id and extracted_services:
-        try:
-            from sqlmodel import Session as _Session
-            with _Session(engine) as _sess:
-                cp = _sess.get(ClientProfile, body.client_id)
-                if cp:
-                    import json as _json2
-                    cp.services_offered = _json2.dumps(extracted_services)
-                    _sess.add(cp)
-                    # Also upsert into marketplace
-                    for svc in extracted_services:
-                        ms = MarketplaceService(
-                            service_name=svc.get("name", ""),
-                            normalized_name=svc.get("name", ""),
-                            category=svc.get("category"),
-                            description=svc.get("brief"),
-                            estimated_cost=float(svc.get("approx_cost", 0)),
-                            cost_is_estimated=svc.get("cost_is_estimated", True),
-                            provider_name=cp.companyName,
-                            provider_client_id=body.client_id,
-                            provider_industry=cp.industry,
-                            provider_address=cp.address,
-                            source="email_agent",
-                        )
-                        _sess.add(ms)
-                    _sess.commit()
-        except Exception as _e2:
-            print(f"Service persist warning: {_e2}")
-
-    return {
-        "company_info": company_info,
-        "company_url": body.company_url or company_info.get("website") or "",
-        "contact": {
-            "email": contact_email,
-            "name": contact_name,
-            "role": contact_role,
-            "phone_number": contact_phone,
-            "linkedin": contact_linkedin,
-            "twitter": contact_twitter,
-        },
-        "recommended_services": services_result.get("recommended_services", []),
-        "email_hook": services_result.get("email_hook", ""),
-        "package_suggestion": services_result.get("package_suggestion", ""),
-        "draft": draft,
-        "extracted_services": extracted_services,
+    webhook_url = os.getenv("N8N_SCRAPING_WEBHOOK_URL", "http://localhost:5678/webhook-test/trigger-cold-email")
+    payload = {
+        "event": "smart_research_requested",
+        "company_name": body.company_name,
+        "company_url": body.company_url,
+        "client_id": body.client_id,
+        "timestamp": datetime.utcnow().isoformat()
     }
+    
+    try:
+        # Wait up to 120 seconds for N8N to process and return the response
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(webhook_url, json=payload)
+        
+        # If N8N returns the expected JSON structure, use it, else return a dummy structure
+        if response.status_code == 200:
+            data = response.json()
+            if isinstance(data, list) and len(data) > 0:
+                data = data[0]
+            
+            if "emails" in data or "cold_email_english" in data:
+                en_body = data.get("cold_email_english", "")
+                subject = "Unlock Next-Level Growth"
+                if "Subject:" in en_body:
+                    parts = en_body.split("Subject:", 1)
+                    if len(parts) > 1:
+                        subject = parts[1].split("\n")[0].strip()
+                        en_body = parts[1].split("\n", 1)[1].strip() if "\n" in parts[1] else en_body
+                
+                es_body = data.get("cold_email_spanish", "")
+                if "Asunto:" in es_body:
+                    parts = es_body.split("Asunto:", 1)
+                    if len(parts) > 1:
+                        es_body = parts[1].split("\n", 1)[1].strip() if "\n" in parts[1] else es_body
+
+                emails_val = data.get("emails", "")
+                if emails_val == "Not Found": emails_val = ""
+                phone_val = data.get("phone", "")
+                if phone_val == "Not Found": phone_val = ""
+
+                contact_email = emails_val.split(",")[0].strip() if emails_val else None
+
+                mapped = {
+                    "company_info": {
+                        "company_name": body.company_name,
+                        "summary": f"Analyzed {body.company_name}. Services: {', '.join(data.get('company_services', []))}",
+                        "extracted_emails": emails_val,
+                        "extracted_phone_numbers": phone_val,
+                        "company_social_media": data.get("social_links", {}),
+                    },
+                    "company_url": body.company_url or "",
+                    "contact": {
+                        "email": contact_email,
+                        "phone_number": phone_val if phone_val else None,
+                        "name": None, "role": None, "linkedin": None, "twitter": None
+                    },
+                    "recommended_services": [{"service_name": s, "why_relevant": "Based on N8N analysis"} for s in data.get("company_services", [])[:4]],
+                    "email_hook": "We noticed your amazing work at " + body.company_name,
+                    "draft": {
+                        "subject": subject,
+                        "english_body": en_body,
+                        "spanish_body": es_body
+                    },
+                    "extracted_services": [{"name": s, "category": "General", "approx_cost": 0} for s in data.get("company_services", [])]
+                }
+                return mapped
+            return data
+            
+        data = {}
+        
+        # Merge with default empty structure to prevent frontend crash if N8N fails
+        return {
+            "company_info": data.get("company_info", {"company_name": body.company_name}),
+            "company_url": data.get("company_url", body.company_url or ""),
+            "contact": data.get("contact", {
+                "email": None, "name": None, "role": None,
+                "phone_number": None, "linkedin": None, "twitter": None
+            }),
+            "recommended_services": data.get("recommended_services", []),
+            "email_hook": data.get("email_hook", ""),
+            "package_suggestion": data.get("package_suggestion", ""),
+            "draft": data.get("draft", {
+                "subject": "Pending N8N Generation",
+                "english_body": f"N8N webhook returned status {response.status_code}.",
+                "spanish_body": ""
+            }),
+            "extracted_services": data.get("extracted_services", [])
+        }
+    except Exception as e:
+        print(f"Webhook trigger failed in smart_research: {e}")
+        # Return fallback empty structure
+        return {
+            "company_info": {"company_name": body.company_name},
+            "company_url": body.company_url or "",
+            "contact": {"email": None, "name": None, "role": None, "phone_number": None, "linkedin": None, "twitter": None},
+            "recommended_services": [],
+            "email_hook": "",
+            "package_suggestion": "",
+            "draft": {"subject": "Webhook Trigger Failed", "english_body": str(e), "spanish_body": ""},
+            "extracted_services": []
+        }
 
 # --- Send Manual: create client + record email + activity ---
 class SendManualRequest(BaseModel):
@@ -3474,7 +3357,7 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
                 # --- Trigger n8n Webhook ---
                 try:
                     import httpx
-                    webhook_url = "http://localhost:5678/webhook-test/serphawk-followup"
+                    webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "http://localhost:5678/webhook-test/serphawk-followup")
                     payload = {
                         "event": "email_sent",
                         "sender": sender,
