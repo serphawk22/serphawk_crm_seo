@@ -22,8 +22,10 @@ def send_whatsapp_message(message: str, to_number: str = None):
         return
 
     # Twilio requires whatsapp: prefix
+    recipient = recipient.replace(" ", "").replace("-", "")
     if not recipient.startswith("whatsapp:"):
         recipient = f"whatsapp:{recipient}"
+    twilio_number = twilio_number.replace(" ", "").replace("-", "")
     if not twilio_number.startswith("whatsapp:"):
         twilio_number = f"whatsapp:{twilio_number}"
 
