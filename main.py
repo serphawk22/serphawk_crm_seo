@@ -162,6 +162,14 @@ def on_startup():
             print("Successfully added sidebar_preferences to users table.")
     except Exception as e:
         print("sidebar_preferences column already exists or error:", e)
+        
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE leads ADD COLUMN ai_analysis_results JSON;"))
+            conn.commit()
+            print("Successfully added ai_analysis_results to leads table.")
+    except Exception as e:
+        print("ai_analysis_results column already exists or error:", e)
 
 allowed_origins = [
     "https://serphawk-crm-seo.vercel.app",

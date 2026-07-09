@@ -860,6 +860,7 @@ class Lead(SQLModel, table=True):
     account_id: Optional[int] = Field(default=None, foreign_key="accounts.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_activity: Optional[str] = Field(default=None, max_length=500)
+    ai_analysis_results: Optional[dict] = Field(default=None, sa_column=Column(JSON))
 
     account: Optional[Account] = Relationship(back_populates="leads")
     contacts: List["Contact"] = Relationship(back_populates="lead")

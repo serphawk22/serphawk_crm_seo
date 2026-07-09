@@ -6,9 +6,49 @@ import { useParams, useRouter } from "next/navigation";
 import { 
   Building2, Globe, Mail, Phone, MapPin, CheckCircle, Clock, 
   ArrowLeft, ArrowRightLeft, Edit, MoreVertical, FileText, 
-  MessageSquare, History, UserPlus, Plus, Bot, Radar, BarChart2, Zap
+  MessageSquare, History, UserPlus, Plus, Bot, Radar, BarChart2, Zap, Loader2
 } from "lucide-react";
 import Link from "next/link";
+import { motion } from "framer-motion";
+
+function ScoreRing({ score }: { score: number }) {
+  const radius = 42;
+  const circumference = 2 * Math.PI * radius;
+  const progress = (score / 100) * circumference;
+  const color = score >= 70 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444";
+
+  return (
+    <div className="relative flex items-center justify-center w-28 h-28">
+      <svg width="112" height="112" className="-rotate-90">
+        <circle cx="56" cy="56" r={radius} fill="none" stroke="var(--border)" strokeWidth="8" />
+        <motion.circle
+          cx="56"
+          cy="56"
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          initial={{ strokeDashoffset: circumference }}
+          animate={{ strokeDashoffset: circumference - progress }}
+          transition={{ duration: 1.2, ease: "easeOut" }}
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <motion.span
+          className="text-2xl font-extrabold"
+          style={{ color }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+        >
+          {score}
+        </motion.span>
+      </div>
+    </div>
+  );
+}
 
 export default function LeadDetailsPage() {
   const params = useParams();
@@ -18,7 +58,8 @@ export default function LeadDetailsPage() {
   const [lead, setLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [converting, setConverting] = useState(false);
-  const [activeTab, setActiveTab] = useState("timeline");
+  const [activeTab, setActiveTab] = useState("ai-agents");
+  const [loadingAgent, setLoadingAgent] = useState<string | null>(null);
 
   useEffect(() => {
     if (leadId) fetchLeadDetails();
@@ -64,6 +105,25 @@ export default function LeadDetailsPage() {
     }
   };
 
+  const handleRunAgent = async (agentType: string) => {
+    setLoadingAgent(agentType);
+    try {
+      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/ai/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_type: agentType })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLead(data.lead);
+      }
+    } catch (error) {
+      console.error("Failed to run agent", error);
+    } finally {
+      setLoadingAgent(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-[#f8fafc] dark:bg-[#0f172a]">
@@ -82,6 +142,8 @@ export default function LeadDetailsPage() {
       </div>
     );
   }
+
+  const aiResults = lead.ai_analysis_results || {};
 
   return (
     <div className="flex flex-col h-full bg-[#f8fafc] dark:bg-[#0f172a] overflow-hidden">
@@ -195,13 +257,13 @@ export default function LeadDetailsPage() {
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col min-w-0 bg-slate-50 dark:bg-[#0f172a]">
           {/* Tabs */}
-          <div className="flex items-center gap-1 px-6 pt-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b]">
+          <div className="flex items-center gap-1 px-6 pt-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shrink-0">
             {[
+              { id: 'ai-agents', icon: Bot, label: 'AI Agents' },
               { id: 'timeline', icon: History, label: 'Timeline' },
               { id: 'notes', icon: FileText, label: 'Notes' },
               { id: 'contacts', icon: UserPlus, label: 'Contacts' },
               { id: 'emails', icon: Mail, label: 'Emails' },
-              { id: 'ai-agents', icon: Bot, label: 'AI Agents' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -219,7 +281,7 @@ export default function LeadDetailsPage() {
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-6 relative">
             {activeTab === 'timeline' && (
               <div className="max-w-2xl">
                 <div className="relative pl-6 border-l-2 border-slate-200 dark:border-slate-800 space-y-8">
@@ -264,50 +326,198 @@ export default function LeadDetailsPage() {
                 </div>
               </div>
             )}
+
             {activeTab === 'ai-agents' && (
-              <div className="max-w-4xl">
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">AI Options for {lead.company_name}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <Link href={`/email-agent?lead_id=${lead.id}`} className="block p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-blue-500 hover:shadow-md transition-all group">
-                    <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center mb-3">
-                      <Mail className="w-5 h-5 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />
-                    </div>
-                    <h4 className="font-semibold text-slate-900 dark:text-white mb-1">Email Agent</h4>
-                    <p className="text-xs text-slate-500">Draft personalized outreach emails.</p>
-                  </Link>
+              <div className="max-w-5xl flex flex-col gap-8 pb-12">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">AI Options for {lead.company_name}</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                    
+                    <button 
+                      onClick={() => handleRunAgent("email")}
+                      disabled={loadingAgent !== null}
+                      className="text-left p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-blue-500 hover:shadow-md transition-all group disabled:opacity-50"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center mb-3 relative">
+                        {loadingAgent === "email" ? <Loader2 className="w-5 h-5 text-blue-600 animate-spin" /> : <Mail className="w-5 h-5 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />}
+                      </div>
+                      <h4 className="font-semibold text-slate-900 dark:text-white mb-1">Email Agent</h4>
+                      <p className="text-xs text-slate-500">Draft personalized outreach emails.</p>
+                    </button>
 
-                  <Link href={`/admin/radar?target_url=${lead.website || ''}`} className="block p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-purple-500 hover:shadow-md transition-all group">
-                    <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center mb-3">
-                      <Radar className="w-5 h-5 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform" />
-                    </div>
-                    <h4 className="font-semibold text-slate-900 dark:text-white mb-1">Radar Analysis</h4>
-                    <p className="text-xs text-slate-500">Discover insights from social platforms.</p>
-                  </Link>
+                    <button 
+                      onClick={() => handleRunAgent("radar")}
+                      disabled={loadingAgent !== null}
+                      className="text-left p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-purple-500 hover:shadow-md transition-all group disabled:opacity-50"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center mb-3 relative">
+                        {loadingAgent === "radar" ? <Loader2 className="w-5 h-5 text-purple-600 animate-spin" /> : <Radar className="w-5 h-5 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform" />}
+                      </div>
+                      <h4 className="font-semibold text-slate-900 dark:text-white mb-1">Radar Analysis</h4>
+                      <p className="text-xs text-slate-500">Discover insights from social platforms.</p>
+                    </button>
 
-                  <Link href={`/admin/agents/competitor?target_url=${lead.website || ''}`} className="block p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-orange-500 hover:shadow-md transition-all group">
-                    <div className="w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center mb-3">
-                      <BarChart2 className="w-5 h-5 text-orange-600 dark:text-orange-400 group-hover:scale-110 transition-transform" />
-                    </div>
-                    <h4 className="font-semibold text-slate-900 dark:text-white mb-1">Competitor Analysis</h4>
-                    <p className="text-xs text-slate-500">Analyze the competitive landscape.</p>
-                  </Link>
+                    <button 
+                      onClick={() => handleRunAgent("competitor")}
+                      disabled={loadingAgent !== null}
+                      className="text-left p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-orange-500 hover:shadow-md transition-all group disabled:opacity-50"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center mb-3 relative">
+                        {loadingAgent === "competitor" ? <Loader2 className="w-5 h-5 text-orange-600 animate-spin" /> : <BarChart2 className="w-5 h-5 text-orange-600 dark:text-orange-400 group-hover:scale-110 transition-transform" />}
+                      </div>
+                      <h4 className="font-semibold text-slate-900 dark:text-white mb-1">Competitor Analysis</h4>
+                      <p className="text-xs text-slate-500">Analyze the competitive landscape.</p>
+                    </button>
 
-                  <Link href={`/admin/agents/website-scanner?target_url=${lead.website || ''}`} className="block p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-emerald-500 hover:shadow-md transition-all group">
-                    <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center mb-3">
-                      <Globe className="w-5 h-5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
-                    </div>
-                    <h4 className="font-semibold text-slate-900 dark:text-white mb-1">Website Scanner</h4>
-                    <p className="text-xs text-slate-500">Scan for SEO, tech stack, and content gaps.</p>
-                  </Link>
+                    <button 
+                      onClick={() => handleRunAgent("scanner")}
+                      disabled={loadingAgent !== null}
+                      className="text-left p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-emerald-500 hover:shadow-md transition-all group disabled:opacity-50"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center mb-3 relative">
+                        {loadingAgent === "scanner" ? <Loader2 className="w-5 h-5 text-emerald-600 animate-spin" /> : <Globe className="w-5 h-5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />}
+                      </div>
+                      <h4 className="font-semibold text-slate-900 dark:text-white mb-1">Website Scanner</h4>
+                      <p className="text-xs text-slate-500">Scan for SEO, tech stack, and content gaps.</p>
+                    </button>
 
-                  <Link href={`/admin/automations?target=${lead.company_name}`} className="block p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-amber-500 hover:shadow-md transition-all group">
-                    <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center mb-3">
-                      <Zap className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" />
-                    </div>
-                    <h4 className="font-semibold text-slate-900 dark:text-white mb-1">AI Automations</h4>
-                    <p className="text-xs text-slate-500">Setup triggers and automatic workflows.</p>
-                  </Link>
+                    <button 
+                      onClick={() => handleRunAgent("automations")}
+                      disabled={loadingAgent !== null}
+                      className="text-left p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-amber-500 hover:shadow-md transition-all group disabled:opacity-50"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center mb-3 relative">
+                        {loadingAgent === "automations" ? <Loader2 className="w-5 h-5 text-amber-600 animate-spin" /> : <Zap className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" />}
+                      </div>
+                      <h4 className="font-semibold text-slate-900 dark:text-white mb-1">AI Automations</h4>
+                      <p className="text-xs text-slate-500">Setup triggers and automatic workflows.</p>
+                    </button>
+                  </div>
                 </div>
+                
+                {/* INLINE AI RESULTS RENDERED HERE */}
+                <div className="flex flex-col gap-6">
+                  {aiResults.scanner && (
+                    <div className="bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+                      <div className="flex items-center gap-3 mb-6">
+                        <Globe className="w-6 h-6 text-emerald-500" />
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">Website Scan Results</h3>
+                      </div>
+                      <div className="flex flex-col md:flex-row gap-8">
+                        <div className="flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 p-6 rounded-xl border border-slate-100 dark:border-slate-800 min-w-[200px]">
+                          <ScoreRing score={aiResults.scanner.score} />
+                          <p className="mt-4 text-sm font-bold text-slate-700 dark:text-slate-300">Overall Score</p>
+                        </div>
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-red-500"></span> Issues Found
+                            </h4>
+                            <ul className="space-y-2">
+                              {aiResults.scanner.issues.map((i: string, idx: number) => (
+                                <li key={idx} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
+                                  <span>•</span> {i}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-green-500"></span> Opportunities
+                            </h4>
+                            <ul className="space-y-2">
+                              {aiResults.scanner.opportunities.map((o: string, idx: number) => (
+                                <li key={idx} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
+                                  <span>•</span> {o}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {aiResults.radar && (
+                    <div className="bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+                      <div className="flex items-center gap-3 mb-4">
+                        <Radar className="w-6 h-6 text-purple-500" />
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">Radar Intelligence</h3>
+                      </div>
+                      <ul className="space-y-3">
+                        {aiResults.radar.insights.map((insight: string, idx: number) => (
+                          <li key={idx} className="p-3 bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-800/50 rounded-lg text-sm text-slate-700 dark:text-slate-300 flex items-start gap-3">
+                            <CheckCircle className="w-4 h-4 text-purple-500 mt-0.5 shrink-0" />
+                            {insight}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {aiResults.email && (
+                    <div className="bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+                      <div className="flex items-center gap-3 mb-4">
+                        <Mail className="w-6 h-6 text-blue-500" />
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">AI Drafted Email</h3>
+                      </div>
+                      <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <p className="text-sm font-bold text-slate-900 dark:text-white mb-2 pb-2 border-b border-slate-200 dark:border-slate-700">Subject: {aiResults.email.subject}</p>
+                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{aiResults.email.body}</p>
+                      </div>
+                      <div className="mt-4 flex justify-end gap-3">
+                        <button className="px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800">Discard</button>
+                        <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow-sm flex items-center gap-2">Send Now</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {aiResults.competitor && (
+                    <div className="bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+                      <div className="flex items-center gap-3 mb-4">
+                        <BarChart2 className="w-6 h-6 text-orange-500" />
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">Competitor Analysis</h3>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {aiResults.competitor.map((comp: any, idx: number) => (
+                          <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-200 dark:border-slate-700">
+                              <h4 className="font-bold text-slate-900 dark:text-white text-sm">{comp.name}</h4>
+                              <span className="text-xs font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">{comp.overlap} Overlap</span>
+                            </div>
+                            <div className="space-y-3">
+                              <div>
+                                <p className="text-xs font-bold text-slate-500 mb-1">Strengths</p>
+                                <p className="text-xs text-slate-700 dark:text-slate-300">{comp.strengths.join(", ")}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-slate-500 mb-1">Weaknesses</p>
+                                <p className="text-xs text-slate-700 dark:text-slate-300">{comp.weaknesses.join(", ")}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {aiResults.automations && (
+                    <div className="bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+                      <div className="flex items-center gap-3 mb-4">
+                        <Zap className="w-6 h-6 text-amber-500" />
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">Active Automations</h3>
+                      </div>
+                      <ul className="space-y-2">
+                        {aiResults.automations.workflows.map((wf: string, idx: number) => (
+                          <li key={idx} className="flex items-center gap-3 text-sm text-slate-700 dark:text-slate-300 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/50 p-3 rounded-lg">
+                            <CheckCircle className="w-4 h-4 text-amber-500" /> {wf}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
               </div>
             )}
           </div>
