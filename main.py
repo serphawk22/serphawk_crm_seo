@@ -6899,75 +6899,112 @@ async def analyze_lead_ai(lead_id: int, body: LeadAIAnalyzeRequest, session: Ses
         
     url = lead.website or f"https://{lead.company_name.lower().replace(' ', '')}.com"
     
-    import asyncio
-    import random
-    
-    await asyncio.sleep(2)
-    
     results = lead.ai_analysis_results or {}
     
-    if body.agent_type == "scanner":
-        domain = url.replace("https://", "").replace("http://", "").split("/")[0]
-        results["scanner"] = {
-            "url": url,
-            "title": domain.capitalize(),
-            "description": f"{domain} is a business website that could benefit from SEO optimization.",
-            "industry": lead.industry or "Business",
-            "score": random.randint(40, 80),
-            "issues": [
-                "Missing meta descriptions",
-                "Slow page load speed",
-                "No structured data / schema markup",
-                "Weak backlink profile"
-            ],
-            "opportunities": [
-                "Local SEO \u2014 high-volume keywords untapped",
-                "Content gap: missing competitor keywords"
-            ],
-            "tech": ["WordPress", "Google Analytics"]
-        }
-    elif body.agent_type == "radar":
-        results["radar"] = {
-            "insights": [
-                f"Found active LinkedIn presence for {lead.company_name}.",
-                "Mentions of recent product launch on Twitter.",
-                "High engagement on recent blog posts."
-            ],
-            "social_links": {
-                "linkedin": f"https://linkedin.com/company/{lead.company_name.lower().replace(' ', '')}",
-                "twitter": f"https://twitter.com/{lead.company_name.lower().replace(' ', '')}"
+    try:
+        from modules.llm_engine import get_openai_client
+        import json
+        client = get_openai_client()
+        
+        system_prompt = f"You are an elite B2B CRM intelligence AI. Analyze this target lead: Company: {lead.company_name}, Website: {url}, Industry: {lead.industry or 'Unknown'}. "
+        
+        prompt = None
+        if body.agent_type == "scanner":
+            prompt = system_prompt + """
+Generate a highly detailed, professional website scan report. Return ONLY valid JSON matching exactly:
+{
+  "url": "the website url",
+  "title": "Clean company name",
+  "description": "2-3 sentence deep analysis of what they do",
+  "industry": "Specific industry",
+  "score": integer between 40-95,
+  "issues": ["Issue 1", "Issue 2", "Issue 3", "Issue 4"],
+  "opportunities": ["Opp 1", "Opp 2", "Opp 3"],
+  "tech": ["Tech 1", "Tech 2", "Tech 3", "Tech 4"]
+}
+"""
+        elif body.agent_type == "radar":
+            prompt = system_prompt + """
+Generate deeply researched, realistic social media and market intelligence insights. Return ONLY valid JSON matching exactly:
+{
+  "insights": ["Insight 1 (e.g. recent hires, funding, strategy)", "Insight 2", "Insight 3"],
+  "social_links": {
+    "linkedin": "Predicted company linkedin url",
+    "twitter": "Predicted company twitter url"
+  }
+}
+"""
+        elif body.agent_type == "competitor":
+            prompt = system_prompt + """
+Identify 2 realistic competitors in their exact industry. Return ONLY valid JSON matching exactly:
+{
+  "competitor": [
+    {
+      "name": "Competitor 1",
+      "url": "competitor1.com",
+      "overlap": "High overlap %",
+      "strengths": ["Strength 1", "Strength 2"],
+      "weaknesses": ["Weakness 1", "Weakness 2"]
+    },
+    {
+      "name": "Competitor 2",
+      "url": "competitor2.com",
+      "overlap": "Medium overlap %",
+      "strengths": ["Strength 1", "Strength 2"],
+      "weaknesses": ["Weakness 1", "Weakness 2"]
+    }
+  ]
+}
+"""
+        elif body.agent_type == "email":
+            prompt = system_prompt + """
+Write a highly personalized, compelling cold outreach email to the CEO. Return ONLY valid JSON matching exactly:
+{
+  "subject": "Compelling subject line",
+  "body": "The full email body, formatted beautifully with line breaks."
+}
+"""
+        elif body.agent_type == "calling":
+            prompt = system_prompt + """
+Write a professional, structured B2B sales teleprompter pitch for a sales agent to read. Include an intro, value prop, pain points, objection handling, and closing. Return ONLY valid JSON matching exactly:
+{
+  "calling": {
+    "intro": "The opening hook...",
+    "value_prop": "The core pitch...",
+    "objections": ["If they say X, say Y...", "If they say A, say B..."],
+    "closing": "The call to action..."
+  }
+}
+"""
+        elif body.agent_type == "automations":
+            results["automations"] = {
+                "status": "Active",
+                "workflows": [
+                    "Auto-follow up if no reply in 3 days",
+                    "Score lead based on email open rate",
+                    "Notify Slack #sales when lead visits pricing page"
+                ]
             }
-        }
-    elif body.agent_type == "competitor":
-        results["competitor"] = [
-            {
-                "name": "Acme Corp",
-                "url": "acme.com",
-                "overlap": "85%",
-                "strengths": ["Strong domain authority", "Large backlink profile"],
-                "weaknesses": ["Slow site speed", "Poor mobile UX"]
-            },
-            {
-                "name": "Globex",
-                "url": "globex.com",
-                "overlap": "60%",
-                "strengths": ["Great content marketing"],
-                "weaknesses": ["No local SEO presence"]
-            }
-        ]
-    elif body.agent_type == "email":
-        results["email"] = {
-            "subject": f"Quick question regarding {lead.company_name}'s digital presence",
-            "body": f"Hi there,\n\nI was reviewing {lead.company_name}'s website at {url} and noticed a few areas where we could help improve your search visibility and overall performance.\n\nWould you be open to a brief chat next week to discuss this?\n\nBest regards,"
-        }
-    elif body.agent_type == "automations":
-        results["automations"] = {
-            "status": "Active",
-            "workflows": [
-                "Auto-follow up if no reply in 3 days",
-                "Notify Slack on email open"
-            ]
-        }
+            
+        if prompt:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.7,
+            )
+            data = json.loads(response.choices[0].message.content)
+            
+            if body.agent_type == "calling":
+                results["calling"] = data.get("calling", data)
+            elif body.agent_type == "competitor":
+                results["competitor"] = data.get("competitor", [])
+            else:
+                results[body.agent_type] = data
+
+    except Exception as e:
+        print(f"Error generating AI analysis: {e}")
+        return {"ok": False, "error": "AI generation failed."}
         
     lead.ai_analysis_results = results
     
