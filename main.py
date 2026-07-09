@@ -6887,6 +6887,99 @@ def delete_lead(lead_id: int, session: Session = Depends(get_session)):
     session.commit()
     return {"ok": True}
 
+class LeadAIAnalyzeRequest(BaseModel):
+    agent_type: str
+
+@app.post("/leads/{lead_id}/ai/analyze")
+async def analyze_lead_ai(lead_id: int, body: LeadAIAnalyzeRequest, session: Session = Depends(get_session)):
+    from database import Lead
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        return {"ok": False, "error": "Lead not found"}
+        
+    url = lead.website or f"https://{lead.company_name.lower().replace(' ', '')}.com"
+    
+    import asyncio
+    import random
+    
+    await asyncio.sleep(2)
+    
+    results = lead.ai_analysis_results or {}
+    
+    if body.agent_type == "scanner":
+        domain = url.replace("https://", "").replace("http://", "").split("/")[0]
+        results["scanner"] = {
+            "url": url,
+            "title": domain.capitalize(),
+            "description": f"{domain} is a business website that could benefit from SEO optimization.",
+            "industry": lead.industry or "Business",
+            "score": random.randint(40, 80),
+            "issues": [
+                "Missing meta descriptions",
+                "Slow page load speed",
+                "No structured data / schema markup",
+                "Weak backlink profile"
+            ],
+            "opportunities": [
+                "Local SEO \u2014 high-volume keywords untapped",
+                "Content gap: missing competitor keywords"
+            ],
+            "tech": ["WordPress", "Google Analytics"]
+        }
+    elif body.agent_type == "radar":
+        results["radar"] = {
+            "insights": [
+                f"Found active LinkedIn presence for {lead.company_name}.",
+                "Mentions of recent product launch on Twitter.",
+                "High engagement on recent blog posts."
+            ],
+            "social_links": {
+                "linkedin": f"https://linkedin.com/company/{lead.company_name.lower().replace(' ', '')}",
+                "twitter": f"https://twitter.com/{lead.company_name.lower().replace(' ', '')}"
+            }
+        }
+    elif body.agent_type == "competitor":
+        results["competitor"] = [
+            {
+                "name": "Acme Corp",
+                "url": "acme.com",
+                "overlap": "85%",
+                "strengths": ["Strong domain authority", "Large backlink profile"],
+                "weaknesses": ["Slow site speed", "Poor mobile UX"]
+            },
+            {
+                "name": "Globex",
+                "url": "globex.com",
+                "overlap": "60%",
+                "strengths": ["Great content marketing"],
+                "weaknesses": ["No local SEO presence"]
+            }
+        ]
+    elif body.agent_type == "email":
+        results["email"] = {
+            "subject": f"Quick question regarding {lead.company_name}'s digital presence",
+            "body": f"Hi there,\n\nI was reviewing {lead.company_name}'s website at {url} and noticed a few areas where we could help improve your search visibility and overall performance.\n\nWould you be open to a brief chat next week to discuss this?\n\nBest regards,"
+        }
+    elif body.agent_type == "automations":
+        results["automations"] = {
+            "status": "Active",
+            "workflows": [
+                "Auto-follow up if no reply in 3 days",
+                "Notify Slack on email open"
+            ]
+        }
+        
+    lead.ai_analysis_results = results
+    
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(lead, "ai_analysis_results")
+    
+    session.add(lead)
+    session.commit()
+    session.refresh(lead)
+    
+    return {"ok": True, "lead": lead}
+
 @app.post("/leads/{lead_id}/convert")
 def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
