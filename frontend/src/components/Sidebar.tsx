@@ -4,44 +4,43 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Bell,
-  Users,
-  FolderOpen,
-  CheckSquare,
-  CheckCircle,
-  Radar,
-  Mail,
-  Zap,
-  LayoutList,
-  Globe,
-  BarChart2,
-  Activity,
-  FileText,
-  FileEdit,
-  ShoppingBag,
-  Settings,
-  Moon,
-  Sun,
-  ChevronDown,
-  ChevronRight,
-  Search,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Calendar,
-  Phone,
-  Package,
-  ShoppingCart,
-  Truck,
-  HeadphonesIcon,
-  BookOpen,
-  FileBarChart2,
+  LayoutDashboard, Bell, Users, FolderOpen, CheckSquare, CheckCircle, Radar, Mail,
+  Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
+  Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar,
+  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Edit2, GripVertical, Check
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRole, Role } from "@/context/RoleContext";
 import { useSidebar } from "@/context/SidebarContext";
 import { useTheme } from "@/context/ThemeContext";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { API_BASE_URL } from "@/config";
+
+// --- DND Kit Imports ---
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
+// Icon mapping for dynamically loaded sections
+const iconMap: Record<string, any> = {
+  LayoutDashboard, Bell, Users, FolderOpen, CheckSquare, CheckCircle, Radar, Mail,
+  Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
+  Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar,
+  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2
+};
 
 interface SidebarProps {
   role: Role;
@@ -49,80 +48,197 @@ interface SidebarProps {
 
 const NOTIFICATION_COUNT = 3;
 
-const sidebarSections = [
+const defaultSidebarSections = [
   {
+    id: "section-main",
     heading: null,
     items: [
-      { name: "Dashboard", icon: LayoutDashboard, href: "/", roles: ["Admin", "Employee", "Client", "Intern", "SalesManager"] },
-      { name: "Notifications", icon: Bell, href: "/notifications", roles: ["Admin", "Employee", "Client"], badge: NOTIFICATION_COUNT },
-      { name: "My Work Queue", icon: LayoutList, href: "/work-queue", roles: ["Admin", "Employee"] },
+      { id: "item-dashboard", name: "Dashboard", icon: "LayoutDashboard", href: "/", roles: ["Admin", "Employee", "Client", "Intern", "SalesManager"] },
+      { id: "item-notifications", name: "Notifications", icon: "Bell", href: "/notifications", roles: ["Admin", "Employee", "Client"], badge: NOTIFICATION_COUNT },
+      { id: "item-work-queue", name: "My Work Queue", icon: "LayoutList", href: "/work-queue", roles: ["Admin", "Employee"] },
     ],
   },
   {
+    id: "section-crm",
     heading: "CRM",
     items: [
-      { name: "Leads", icon: Radar, href: "/leads", roles: ["Admin", "Employee", "SalesManager"] },
-      { name: "Contacts", icon: Users, href: "/contacts", roles: ["Admin", "Employee", "SalesManager"] },
-      { name: "Clients", icon: CheckCircle, href: "/clients", roles: ["Admin", "Employee", "SalesManager"] },
+      { id: "item-leads", name: "Leads", icon: "Radar", href: "/leads", roles: ["Admin", "Employee", "SalesManager"] },
+      { id: "item-contacts", name: "Contacts", icon: "Users", href: "/contacts", roles: ["Admin", "Employee", "SalesManager"] },
+      { id: "item-clients", name: "Clients", icon: "CheckCircle", href: "/clients", roles: ["Admin", "Employee", "SalesManager"] },
     ],
   },
   {
+    id: "section-activities",
     heading: "ACTIVITIES",
     items: [
-      { name: "Meetings", icon: Calendar, href: "/meetings", roles: ["Admin", "Employee", "SalesManager"] },
-      { name: "Calls", icon: Phone, href: "/calls", roles: ["Admin", "Employee", "SalesManager"] },
-      { name: "Tasks", icon: CheckSquare, href: "/tasks", roles: ["Admin", "Employee", "Intern"] },
-      { name: "Completed", icon: CheckCircle, href: "/admin/completed", roles: ["Admin", "Employee"] },
+      { id: "item-meetings", name: "Meetings", icon: "Calendar", href: "/meetings", roles: ["Admin", "Employee", "SalesManager"] },
+      { id: "item-calls", name: "Calls", icon: "Phone", href: "/calls", roles: ["Admin", "Employee", "SalesManager"] },
+      { id: "item-tasks", name: "Tasks", icon: "CheckSquare", href: "/tasks", roles: ["Admin", "Employee", "Intern"] },
+      { id: "item-completed", name: "Completed", icon: "CheckCircle", href: "/admin/completed", roles: ["Admin", "Employee"] },
     ],
   },
   {
+    id: "section-projects",
     heading: "PROJECTS",
     items: [
-      { name: "Projects", icon: FolderOpen, href: "/projects", roles: ["Admin", "Employee", "Intern"] },
-      { name: "Milestones", icon: Activity, href: "/milestones", roles: ["Admin", "Employee", "Intern"] },
+      { id: "item-projects", name: "Projects", icon: "FolderOpen", href: "/projects", roles: ["Admin", "Employee", "Intern"] },
+      { id: "item-milestones", name: "Milestones", icon: "Activity", href: "/milestones", roles: ["Admin", "Employee", "Intern"] },
     ],
   },
   {
+    id: "section-ai-agents",
     heading: "AI AGENTS",
     items: [
-      { name: "Email Agent", icon: Mail, href: "/email-agent", roles: ["Admin", "Employee"] },
-      { name: "Radar Analysis", icon: Radar, href: "/admin/radar", roles: ["Admin", "Employee"] },
-      { name: "Competitor Analysis", icon: BarChart2, href: "/admin/agents/competitor", roles: ["Admin", "Employee"] },
-      { name: "Website Scanner", icon: Globe, href: "/admin/agents/website-scanner", roles: ["Admin", "Employee"] },
-      { name: "AI Automations", icon: Zap, href: "/admin/automations", roles: ["Admin"] },
+      { id: "item-email-agent", name: "Email Agent", icon: "Mail", href: "/email-agent", roles: ["Admin", "Employee"] },
+      { id: "item-radar", name: "Radar Analysis", icon: "Radar", href: "/admin/radar", roles: ["Admin", "Employee"] },
+      { id: "item-competitor", name: "Competitor Analysis", icon: "BarChart2", href: "/admin/agents/competitor", roles: ["Admin", "Employee"] },
+      { id: "item-website-scanner", name: "Website Scanner", icon: "Globe", href: "/admin/agents/website-scanner", roles: ["Admin", "Employee"] },
+      { id: "item-automations", name: "AI Automations", icon: "Zap", href: "/admin/automations", roles: ["Admin"] },
     ],
   },
   {
+    id: "section-inventory",
     heading: "INVENTORY",
     items: [
-      { name: "Products", icon: Package, href: "/products", roles: ["Admin", "SalesManager"] },
-      { name: "Quotes", icon: FileBarChart2, href: "/quotes", roles: ["Admin", "SalesManager"] },
-      { name: "Sales Orders", icon: ShoppingCart, href: "/sales-orders", roles: ["Admin", "SalesManager"] },
-      { name: "Purchase Orders", icon: Truck, href: "/purchase-orders", roles: ["Admin"] },
-      { name: "Invoices", icon: FileText, href: "/invoices", roles: ["Admin", "SalesManager"] },
+      { id: "item-products", name: "Products", icon: "Package", href: "/products", roles: ["Admin", "SalesManager"] },
+      { id: "item-quotes", name: "Quotes", icon: "FileBarChart2", href: "/quotes", roles: ["Admin", "SalesManager"] },
+      { id: "item-sales-orders", name: "Sales Orders", icon: "ShoppingCart", href: "/sales-orders", roles: ["Admin", "SalesManager"] },
+      { id: "item-purchase-orders", name: "Purchase Orders", icon: "Truck", href: "/purchase-orders", roles: ["Admin"] },
+      { id: "item-invoices", name: "Invoices", icon: "FileText", href: "/invoices", roles: ["Admin", "SalesManager"] },
     ],
   },
   {
+    id: "section-support",
     heading: "SUPPORT",
     items: [
-      { name: "Cases", icon: HeadphonesIcon, href: "/support/cases", roles: ["Admin", "Employee", "SalesManager"] },
-      { name: "Solutions", icon: BookOpen, href: "/support/solutions", roles: ["Admin", "Employee", "SalesManager"] },
+      { id: "item-cases", name: "Cases", icon: "HeadphonesIcon", href: "/support/cases", roles: ["Admin", "Employee", "SalesManager"] },
+      { id: "item-solutions", name: "Solutions", icon: "BookOpen", href: "/support/solutions", roles: ["Admin", "Employee", "SalesManager"] },
     ],
   },
   {
+    id: "section-financials",
     heading: "FINANCIALS",
     items: [
-      { name: "Proposals", icon: FileEdit, href: "/proposals", roles: ["Admin", "SalesManager"] },
-      { name: "Marketplace", icon: ShoppingBag, href: "/admin/marketplace", roles: ["Admin", "Employee", "SalesManager"] },
+      { id: "item-proposals", name: "Proposals", icon: "FileEdit", href: "/proposals", roles: ["Admin", "SalesManager"] },
+      { id: "item-marketplace", name: "Marketplace", icon: "ShoppingBag", href: "/admin/marketplace", roles: ["Admin", "Employee", "SalesManager"] },
     ],
   },
   {
+    id: "section-system",
     heading: "SYSTEM",
     items: [
-      { name: "API Intelligence", icon: Activity, href: "/admin/api-intelligence", roles: ["Admin"] },
+      { id: "item-api-intelligence", name: "API Intelligence", icon: "Activity", href: "/admin/api-intelligence", roles: ["Admin"] },
     ],
   },
 ];
+
+// --- Sortable Section Component ---
+function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: "relative" as any,
+    zIndex: isDragging ? 10 : 1,
+  };
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(section.heading || "");
+
+  const handleSave = () => {
+    onRenameSection(section.id, editValue);
+    setIsEditing(false);
+  };
+
+  const visibleItems = section.items.filter((item: any) => item.roles.includes(role));
+  if (visibleItems.length === 0) return null;
+
+  return (
+    <div ref={setNodeRef} style={style} className={cn("flex flex-col mt-3")}>
+      <AnimatePresence>
+        {!collapsed && section.heading !== null && (
+          <div className="flex items-center group px-3 pt-1 pb-1.5 gap-2">
+            {isEditMode && (
+              <div {...attributes} {...listeners} className="cursor-grab hover:bg-slate-200 dark:hover:bg-slate-700 p-0.5 rounded">
+                <GripVertical className="w-3 h-3 text-slate-400" />
+              </div>
+            )}
+            
+            {isEditing && isEditMode ? (
+              <div className="flex items-center gap-1 flex-1">
+                <input 
+                  type="text" 
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  className="bg-transparent text-[10px] font-bold tracking-[0.12em] uppercase text-slate-600 dark:text-slate-300 outline-none w-full border-b border-blue-500"
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                />
+                <Check onClick={handleSave} className="w-3 h-3 text-green-500 cursor-pointer" />
+              </div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex-1 text-[10px] font-bold tracking-[0.12em] uppercase flex justify-between items-center"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                <span>{section.heading}</span>
+                {isEditMode && (
+                  <Edit2 onClick={() => setIsEditing(true)} className="w-3 h-3 opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity" />
+                )}
+              </motion.div>
+            )}
+          </div>
+        )}
+      </AnimatePresence>
+
+      <div className="flex flex-col gap-0.5">
+        {visibleItems.map((item: any) => {
+          const isActive = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href));
+          const IconComp = iconMap[item.icon] || LayoutDashboard;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "relative group flex items-center gap-3 rounded-xl transition-all duration-150 select-none shrink-0",
+                collapsed ? "w-11 h-11 justify-center mx-auto" : "h-[42px] px-3",
+                !isActive && "hover:bg-gray-50 dark:hover:bg-slate-800/50"
+              )}
+              style={isActive ? { background: "rgba(37,99,235,0.08)", color: "#2563eb" } : { color: "var(--sidebar-text)" }}
+            >
+              {isActive && !collapsed && (
+                <motion.span layoutId="sidebar-active-indicator" className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-blue-600" />
+              )}
+              <IconComp className={cn("w-[18px] h-[18px] shrink-0 transition-colors", isActive ? "text-blue-600" : "group-hover:text-blue-500")} />
+              <AnimatePresence>
+                {!collapsed && (
+                  <motion.span
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -6 }}
+                    transition={{ duration: 0.14 }}
+                    className={cn("flex-1 text-[13.5px] font-medium truncate", isActive && "font-semibold")}
+                  >
+                    {item.name}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+              {item.badge && item.badge > 0 && !collapsed && (
+                <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
+                  {item.badge}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function Sidebar({ role }: SidebarProps) {
   const pathname = usePathname();
@@ -131,13 +247,68 @@ export function Sidebar({ role }: SidebarProps) {
   const { theme, toggleTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
   const [darkToggle, setDarkToggle] = useState(theme === "dark");
+  
+  const [sections, setSections] = useState<any[]>(defaultSidebarSections);
+  const [isEditMode, setIsEditMode] = useState(false);
 
   const initial = user?.name?.charAt(0).toUpperCase() || "B";
   const userName = user?.name || "Brajesh";
 
+  useEffect(() => {
+    fetchSidebarPrefs();
+  }, []);
+
+  const fetchSidebarPrefs = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/me/sidebar-preferences`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.sidebar_preferences?.sections) {
+          setSections(data.sidebar_preferences.sections);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load sidebar prefs", e);
+    }
+  };
+
+  const saveSidebarPrefs = async (newSections: any[]) => {
+    try {
+      await fetch(`${API_BASE_URL}/users/me/sidebar-preferences`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sidebar_preferences: { sections: newSections } }),
+      });
+    } catch (e) {
+      console.error("Failed to save sidebar prefs", e);
+    }
+  };
+
   const handleDarkToggle = () => {
     setDarkToggle(!darkToggle);
     toggleTheme();
+  };
+
+  const handleRenameSection = (sectionId: string, newName: string) => {
+    const updated = sections.map(sec => sec.id === sectionId ? { ...sec, heading: newName } : sec);
+    setSections(updated);
+    saveSidebarPrefs(updated);
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: any) => {
+    const { active, over } = event;
+    if (active.id !== over.id) {
+      const oldIndex = sections.findIndex(sec => sec.id === active.id);
+      const newIndex = sections.findIndex(sec => sec.id === over.id);
+      const updated = arrayMove(sections, oldIndex, newIndex);
+      setSections(updated);
+      saveSidebarPrefs(updated);
+    }
   };
 
   return (
@@ -155,7 +326,6 @@ export function Sidebar({ role }: SidebarProps) {
       >
         {/* ── TOP BRANDING ── */}
         <div className={cn("shrink-0 flex items-center py-4", collapsed ? "justify-center px-2" : "px-4 gap-3")}>
-          {/* Logo */}
           <div className="shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md">
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
               <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
@@ -171,14 +341,19 @@ export function Sidebar({ role }: SidebarProps) {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -8 }}
                 transition={{ duration: 0.15 }}
-                className="flex-1 min-w-0 overflow-hidden"
+                className="flex-1 min-w-0 overflow-hidden flex items-center justify-between"
               >
-                <span className="block font-bold text-[15px] leading-tight tracking-tight truncate" style={{ color: "var(--text-primary)" }}>
-                  SERP Hawk
-                </span>
-                <span className="block text-[11px] font-medium truncate" style={{ color: "var(--text-secondary)" }}>
-                  Corporate HQ
-                </span>
+                <div>
+                  <span className="block font-bold text-[15px] leading-tight tracking-tight truncate" style={{ color: "var(--text-primary)" }}>SERP Hawk</span>
+                  <span className="block text-[11px] font-medium truncate" style={{ color: "var(--text-secondary)" }}>Corporate HQ</span>
+                </div>
+                <button 
+                  onClick={() => setIsEditMode(!isEditMode)} 
+                  className={cn("p-1.5 rounded-lg transition-colors", isEditMode ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800")}
+                  title="Customize Sidebar"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
@@ -215,93 +390,30 @@ export function Sidebar({ role }: SidebarProps) {
         </AnimatePresence>
 
         {/* ── MAIN NAVIGATION ── */}
-        <nav
-          className={cn("flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pb-2", collapsed ? "px-2" : "px-3")}
-          style={{ scrollbarWidth: "none" }}
-        >
-          {sidebarSections.map((section, sIdx) => {
-            const visibleItems = section.items.filter((item) => item.roles.includes(role));
-            if (visibleItems.length === 0) return null;
-
-            return (
-              <div key={sIdx} className={cn("flex flex-col", sIdx > 0 ? "mt-3" : "mt-0")}>
-                <AnimatePresence>
-                  {!collapsed && section.heading && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="px-3 pt-1 pb-1.5 text-[10px] font-bold tracking-[0.12em] uppercase"
-                      style={{ color: "var(--text-secondary)" }}
-                    >
-                      {section.heading}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <div className="flex flex-col gap-0.5">
-                  {visibleItems.map((item) => {
-                    const isActive = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href));
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={cn(
-                          "relative group flex items-center gap-3 rounded-xl transition-all duration-150 select-none shrink-0",
-                          collapsed ? "w-11 h-11 justify-center mx-auto" : "h-[42px] px-3",
-                          !isActive && "hover:bg-gray-50"
-                        )}
-                        style={isActive ? { background: "rgba(37,99,235,0.08)", color: "#2563eb" } : { color: "var(--sidebar-text)" }}
-                      >
-                        {isActive && !collapsed && (
-                          <motion.span layoutId="sidebar-active-indicator" className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-blue-600" />
-                        )}
-                        <item.icon className={cn("w-[18px] h-[18px] shrink-0 transition-colors", isActive ? "text-blue-600" : "group-hover:text-blue-500")} />
-                        <AnimatePresence>
-                          {!collapsed && (
-                            <motion.span
-                              initial={{ opacity: 0, x: -6 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              exit={{ opacity: 0, x: -6 }}
-                              transition={{ duration: 0.14 }}
-                              className={cn("flex-1 text-[13.5px] font-medium truncate", isActive && "font-semibold")}
-                            >
-                              {item.name}
-                            </motion.span>
-                          )}
-                        </AnimatePresence>
-                        {item.badge && item.badge > 0 && !collapsed && (
-                          <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
-                            {item.badge}
-                          </span>
-                        )}
-                        {!collapsed && !item.badge && (
-                          <ChevronRight className={cn("shrink-0 w-3.5 h-3.5 opacity-0 group-hover:opacity-40 transition-opacity", isActive && "opacity-40")} />
-                        )}
-                        {collapsed && (
-                          <span
-                            className="absolute left-full ml-3 px-2.5 py-1.5 text-xs font-semibold rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none shadow-lg z-[100] whitespace-nowrap transition-all duration-150"
-                            style={{ background: "var(--text-primary)", color: "var(--background)" }}
-                          >
-                            {item.name}{item.badge ? ` (${item.badge})` : ""}
-                          </span>
-                        )}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+        <nav className={cn("flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 pb-2", collapsed ? "px-2" : "px-3")} style={{ scrollbarWidth: "none" }}>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+              {sections.map((section) => (
+                <SortableSection 
+                  key={section.id} 
+                  section={section} 
+                  role={role} 
+                  pathname={pathname} 
+                  collapsed={collapsed} 
+                  isEditMode={isEditMode}
+                  onRenameSection={handleRenameSection}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         </nav>
 
         {/* ── BOTTOM SECTION ── */}
         <div className="shrink-0" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
           <div className={cn("flex flex-col gap-0.5 py-3", collapsed ? "px-2" : "px-3")}>
-            {/* Settings */}
             <Link
               href="/admin/settings"
-              className={cn("group flex items-center gap-3 rounded-xl transition-all duration-150 hover:bg-gray-50", collapsed ? "w-11 h-11 justify-center mx-auto" : "h-[42px] px-3")}
+              className={cn("group flex items-center gap-3 rounded-xl transition-all duration-150 hover:bg-gray-50 dark:hover:bg-slate-800/50", collapsed ? "w-11 h-11 justify-center mx-auto" : "h-[42px] px-3")}
               style={{ color: "var(--sidebar-text)" }}
             >
               <Settings className="w-[18px] h-[18px] shrink-0 group-hover:text-blue-500 transition-colors" />
@@ -312,17 +424,10 @@ export function Sidebar({ role }: SidebarProps) {
                   </motion.span>
                 )}
               </AnimatePresence>
-              {!collapsed && <ChevronRight className="shrink-0 w-3.5 h-3.5 opacity-0 group-hover:opacity-40 transition-opacity" />}
-              {collapsed && (
-                <span className="absolute left-full ml-3 px-2.5 py-1.5 text-xs font-semibold rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none shadow-lg z-[100] whitespace-nowrap" style={{ background: "var(--text-primary)", color: "var(--background)" }}>
-                  Settings
-                </span>
-              )}
             </Link>
 
-            {/* Dark Mode Toggle */}
             <div
-              className={cn("group flex items-center gap-3 rounded-xl transition-all duration-150 cursor-pointer hover:bg-gray-50", collapsed ? "w-11 h-11 justify-center mx-auto relative" : "h-[42px] px-3")}
+              className={cn("group flex items-center gap-3 rounded-xl transition-all duration-150 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50", collapsed ? "w-11 h-11 justify-center mx-auto relative" : "h-[42px] px-3")}
               style={{ color: "var(--sidebar-text)" }}
               onClick={handleDarkToggle}
             >
@@ -337,15 +442,9 @@ export function Sidebar({ role }: SidebarProps) {
                   </motion.div>
                 )}
               </AnimatePresence>
-              {collapsed && (
-                <span className="absolute left-full ml-3 px-2.5 py-1.5 text-xs font-semibold rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none shadow-lg z-[100] whitespace-nowrap" style={{ background: "var(--text-primary)", color: "var(--background)" }}>
-                  Dark Mode
-                </span>
-              )}
             </div>
           </div>
 
-          {/* User Profile Card */}
           <div className={cn("pb-4", collapsed ? "px-2" : "px-3")}>
             <AnimatePresence>
               {!collapsed ? (
@@ -353,7 +452,7 @@ export function Sidebar({ role }: SidebarProps) {
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 6 }}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all hover:bg-gray-50 group"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all hover:bg-gray-50 dark:hover:bg-slate-800/50 group"
                   style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
                 >
                   <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm">
@@ -381,7 +480,6 @@ export function Sidebar({ role }: SidebarProps) {
         </div>
       </motion.div>
 
-      {/* ── FLOATING COLLAPSE / EXPAND TOGGLE (no overlap, always visible) ── */}
       <motion.button
         animate={{ left: collapsed ? 72 : 280 }}
         transition={{ type: "spring", stiffness: 280, damping: 30 }}

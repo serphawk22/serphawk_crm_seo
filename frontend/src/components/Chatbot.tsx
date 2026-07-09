@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Users, UserPlus, Mail, ChevronRight, Send, ShoppingBag, MessageCircle, Settings, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { MessageSquare, X, Users, UserPlus, Mail, ChevronRight, Send, ShoppingBag, MessageCircle, Settings, Loader2, Mic, MicOff } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useRole } from '@/context/RoleContext';
 import { API_BASE_URL } from '@/config';
@@ -38,7 +38,31 @@ export function Chatbot() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [liveChatStatus, setLiveChatStatus] = useState<'inactive' | 'pending' | 'active'>('inactive');
-  const [sessionId] = useState(() => Math.random().toString(36).substring(2, 15));
+  
+  // Persist session ID
+  const [sessionId, setSessionId] = useState<string>('');
+  
+  // Voice Recognition State
+  const [isListening, setIsListening] = useState(false);
+  
+  useEffect(() => {
+    let storedSession = localStorage.getItem('chatbot_session_id');
+    if (!storedSession) {
+      storedSession = Math.random().toString(36).substring(2, 15);
+      localStorage.setItem('chatbot_session_id', storedSession);
+    }
+    setSessionId(storedSession);
+    
+    // Fetch History
+    fetch(`${API_BASE_URL}/chatbot/history/${storedSession}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok && data.history && data.history.length > 0) {
+          setMessages(data.history);
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   const isClientRoute = role === 'Client';
   const quickActions = isClientRoute ? CLIENT_ACTIONS : ADMIN_ACTIONS;
@@ -167,6 +191,45 @@ export function Chatbot() {
     setInput('');
   };
 
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      setIsListening(false);
+      return;
+    }
+    
+    // @ts-ignore
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Your browser does not support speech recognition.");
+      return;
+    }
+    
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+    
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+    
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(prev => (prev ? prev + " " : "") + transcript);
+    };
+    
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error", event.error);
+      setIsListening(false);
+    };
+    
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+    
+    recognition.start();
+  }, [isListening]);
+
   return (
     <div className="fixed bottom-6 right-6 z-50">
       {/* Chat Window */}
@@ -264,18 +327,26 @@ export function Chatbot() {
 
           {/* Input Area */}
           <form onSubmit={handleSubmit} className="p-3 bg-slate-50 dark:bg-zinc-950 border-t border-slate-200 dark:border-zinc-700 flex gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={toggleListening}
+              className={`p-2.5 rounded-xl transition-colors shadow-md flex items-center justify-center shrink-0 ${isListening ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse' : 'bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-700 border border-slate-200 dark:border-zinc-700'}`}
+              title={isListening ? "Stop listening" : "Voice input"}
+            >
+              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
             <input 
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={currentClientId ? "e.g., Log a call about pricing..." : "Type a message..."}
-              className="flex-1 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+              className="flex-1 min-w-0 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
               disabled={isTyping}
             />
             <button 
               type="submit"
               disabled={!input.trim() || isTyping}
-              className="bg-indigo-600 text-white p-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
+              className="bg-indigo-600 text-white p-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md shrink-0"
             >
               <Send className="w-4 h-4" />
             </button>
