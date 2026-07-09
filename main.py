@@ -152,6 +152,16 @@ app.include_router(api_intelligence_router)
 def on_startup():
     patch_openai()
     create_db_and_tables()
+    
+    # Auto-migrate: Add missing columns if they don't exist
+    from sqlalchemy import text
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN sidebar_preferences JSON;"))
+            conn.commit()
+            print("Successfully added sidebar_preferences to users table.")
+    except Exception as e:
+        print("sidebar_preferences column already exists or error:", e)
 
 allowed_origins = [
     "https://serphawk-crm-seo.vercel.app",
