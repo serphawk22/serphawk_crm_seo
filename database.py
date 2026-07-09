@@ -64,6 +64,7 @@ class User(SQLModel, table=True):
     role: str = Field(default="Client") # Admin, Employee, Client
     is_active: bool = Field(default=True)
     status: str = Field(default="Active")
+    sidebar_preferences: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
     createdAt: datetime = Field(default_factory=datetime.utcnow, sa_column=Column("created_at", DateTime))
     updatedAt: datetime = Field(default_factory=datetime.utcnow, sa_column=Column("updated_at", DateTime))
     
@@ -1229,6 +1230,20 @@ class WhatsAppSession(SQLModel, table=True):
     pending_action: Optional[str] = None
     action_data: Optional[str] = None  # JSON string of parameters
     active_live_chat_session: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ChatbotSession(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True, unique=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ChatbotMessage(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True, foreign_key="chatbotsession.session_id")
+    role: str = Field(default="user") # user, assistant
+    content: str = Field(sa_column=Column(Text))
+    action_taken: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class LiveChatSession(SQLModel, table=True):

@@ -312,6 +312,21 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
             {
                 "type": "function",
                 "function": {
+                    "name": "research_lead",
+                    "description": "Researches a company/website using AI and creates a Lead in the CRM automatically.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "company_name": {"type": "string", "description": "Name of the company"},
+                            "website": {"type": "string", "description": "Website URL of the company"}
+                        },
+                        "required": ["company_name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "bulk_import_websites",
                     "description": "Scrapes and imports a list of website URLs into the CRM as new clients.",
                     "parameters": {
