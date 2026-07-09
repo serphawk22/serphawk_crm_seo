@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { 
   Building2, Globe, Mail, Phone, MapPin, CheckCircle, Clock, 
   ArrowLeft, ArrowRightLeft, Edit, MoreVertical, FileText, 
-  MessageSquare, History, UserPlus
+  MessageSquare, History, UserPlus, Plus, Bot, Radar, BarChart2, Zap
 } from "lucide-react";
 import Link from "next/link";
 
@@ -201,6 +201,7 @@ export default function LeadDetailsPage() {
               { id: 'notes', icon: FileText, label: 'Notes' },
               { id: 'contacts', icon: UserPlus, label: 'Contacts' },
               { id: 'emails', icon: Mail, label: 'Emails' },
+              { id: 'ai-agents', icon: Bot, label: 'AI Agents' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -260,6 +261,52 @@ export default function LeadDetailsPage() {
                 <div className="bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 p-8 text-center">
                   <UserPlus className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
                   <p className="text-slate-500 dark:text-slate-400 text-sm">No contacts added yet. Add key decision makers here.</p>
+                </div>
+              </div>
+            )}
+            {activeTab === 'ai-agents' && (
+              <div className="max-w-4xl">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">AI Options for {lead.company_name}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <Link href={`/email-agent?lead_id=${lead.id}`} className="block p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-blue-500 hover:shadow-md transition-all group">
+                    <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center mb-3">
+                      <Mail className="w-5 h-5 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />
+                    </div>
+                    <h4 className="font-semibold text-slate-900 dark:text-white mb-1">Email Agent</h4>
+                    <p className="text-xs text-slate-500">Draft personalized outreach emails.</p>
+                  </Link>
+
+                  <Link href={`/admin/radar?target_url=${lead.website || ''}`} className="block p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-purple-500 hover:shadow-md transition-all group">
+                    <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center mb-3">
+                      <Radar className="w-5 h-5 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform" />
+                    </div>
+                    <h4 className="font-semibold text-slate-900 dark:text-white mb-1">Radar Analysis</h4>
+                    <p className="text-xs text-slate-500">Discover insights from social platforms.</p>
+                  </Link>
+
+                  <Link href={`/admin/agents/competitor?target_url=${lead.website || ''}`} className="block p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-orange-500 hover:shadow-md transition-all group">
+                    <div className="w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center mb-3">
+                      <BarChart2 className="w-5 h-5 text-orange-600 dark:text-orange-400 group-hover:scale-110 transition-transform" />
+                    </div>
+                    <h4 className="font-semibold text-slate-900 dark:text-white mb-1">Competitor Analysis</h4>
+                    <p className="text-xs text-slate-500">Analyze the competitive landscape.</p>
+                  </Link>
+
+                  <Link href={`/admin/agents/website-scanner?target_url=${lead.website || ''}`} className="block p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-emerald-500 hover:shadow-md transition-all group">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center mb-3">
+                      <Globe className="w-5 h-5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
+                    </div>
+                    <h4 className="font-semibold text-slate-900 dark:text-white mb-1">Website Scanner</h4>
+                    <p className="text-xs text-slate-500">Scan for SEO, tech stack, and content gaps.</p>
+                  </Link>
+
+                  <Link href={`/admin/automations?target=${lead.company_name}`} className="block p-4 bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-800 hover:border-amber-500 hover:shadow-md transition-all group">
+                    <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center mb-3">
+                      <Zap className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" />
+                    </div>
+                    <h4 className="font-semibold text-slate-900 dark:text-white mb-1">AI Automations</h4>
+                    <p className="text-xs text-slate-500">Setup triggers and automatic workflows.</p>
+                  </Link>
                 </div>
               </div>
             )}
