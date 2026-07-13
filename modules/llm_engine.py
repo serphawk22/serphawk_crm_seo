@@ -583,9 +583,16 @@ def process_whatsapp_command(message: str):
     try:
         client = get_openai_client()
         system_prompt = """
-        You are an intelligent assistant processing commands from a CRM owner via WhatsApp.
-        Interpret their message and choose the appropriate action tool.
-        If the message is conversational or unclear, do NOT call a tool, just return a conversational reply.
+        You are an intelligent AI assistant embedded in a CRM system, processing commands from the
+        business owner sent via WhatsApp — often as informal voice message transcripts.
+
+        Your job:
+        - Carefully read the message (which may be a voice transcript and therefore informal/spoken language).
+        - Detect the intended CRM action and call the matching tool with extracted parameters.
+        - If parameters are partially missing, use what is available and leave optional fields empty.
+        - Only if the message is purely conversational or completely unrelated to CRM actions, skip calling a tool.
+        - Be smart: "add john doe from acme" means add_client. "book a meeting with..." means schedule_meeting.
+        - "note that ravi is interested" means add_note. "create a task to follow up" means add_task.
         """
         
         tools = [
@@ -623,14 +630,51 @@ def process_whatsapp_command(message: str):
                 "type": "function",
                 "function": {
                     "name": "add_note",
-                    "description": "Adds a note to a client or lead.",
+                    "description": "Adds a note or update to an existing client or lead.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "target_name": {"type": "string", "description": "The name of the lead or company to add a note to."},
-                            "content": {"type": "string", "description": "The actual content of the note."}
+                            "target_name": {"type": "string", "description": "The name of the client or company to add a note to."},
+                            "content": {"type": "string", "description": "The full content/body of the note."}
                         },
                         "required": ["target_name", "content"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_client",
+                    "description": "Adds a brand new client to the CRM. Use when the owner wants to onboard or register a new client.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "company_name": {"type": "string", "description": "The name of the client company."},
+                            "contact_person": {"type": "string", "description": "The name of the main contact person at the client company."},
+                            "email": {"type": "string", "description": "Email address of the client."},
+                            "phone": {"type": "string", "description": "Phone number of the client."},
+                            "website": {"type": "string", "description": "Website URL of the client."},
+                            "notes": {"type": "string", "description": "Any initial notes about this client."}
+                        },
+                        "required": ["company_name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_task",
+                    "description": "Creates a new task or to-do in the CRM. Use when the owner wants to create a reminder, follow-up task, or work item.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string", "description": "A short title for the task."},
+                            "description": {"type": "string", "description": "More detail about what the task involves."},
+                            "due_date": {"type": "string", "description": "When the task should be done (e.g. 'tomorrow', 'July 20', '2026-07-20')."},
+                            "priority": {"type": "string", "description": "Priority level: Low, Medium, High, or Urgent. Default Medium."},
+                            "client_name": {"type": "string", "description": "Name of the client this task is related to, if any."}
+                        },
+                        "required": ["title"]
                     }
                 }
             }
