@@ -101,3 +101,78 @@ def send_ai_polished_whatsapp_message(event_type: str, raw_data: dict, link: str
         msg = f"🚨 *{event_type}*\n\n" + "\n".join(info_lines)
         if link: msg += f"\n\n🔗 Link: {link}"
         send_whatsapp_message(msg)
+
+
+def transcribe_voice_message(media_url: str, account_sid: str, auth_token: str) -> str:
+    """
+    Downloads a WhatsApp voice note from Twilio and transcribes it using
+    OpenAI Whisper.
+
+    Args:
+        media_url:   The Twilio MediaUrl0 value from the webhook POST.
+        account_sid: Twilio Account SID (required for authenticated download).
+        auth_token:  Twilio Auth Token.
+
+    Returns:
+        The transcribed text string.
+
+    Raises:
+        RuntimeError: If OPENAI_API_KEY is missing.
+        requests.HTTPError: If the audio download fails.
+    """
+    import tempfile
+    import openai
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is not set — cannot transcribe voice message.")
+
+    # 1. Download the audio from Twilio (requires HTTP Basic Auth)
+    print(f"[Voice] Downloading audio from: {media_url}")
+    audio_response = requests.get(
+        media_url,
+        auth=HTTPBasicAuth(account_sid, auth_token),
+        timeout=30
+    )
+    audio_response.raise_for_status()
+
+    # 2. Detect content type to pick the right file extension
+    content_type = audio_response.headers.get("Content-Type", "audio/ogg")
+    ext_map = {
+        "audio/ogg": ".ogg",
+        "audio/mpeg": ".mp3",
+        "audio/mp4": ".mp4",
+        "audio/wav": ".wav",
+        "audio/webm": ".webm",
+        "audio/amr": ".amr",
+    }
+    ext = ext_map.get(content_type.split(";")[0].strip(), ".ogg")
+
+    # 3. Save to a temp file — Whisper needs a seekable file object
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        tmp.write(audio_response.content)
+        tmp_path = tmp.name
+
+    try:
+        print(f"[Voice] Saved audio to {tmp_path} ({len(audio_response.content)} bytes)")
+
+        # 4. Transcribe via OpenAI Whisper
+        openai_client = openai.OpenAI(api_key=api_key)
+        with open(tmp_path, "rb") as audio_file:
+            transcript_obj = openai_client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                response_format="text"
+            )
+
+        # response_format="text" returns a plain string
+        transcript_text = transcript_obj.strip() if isinstance(transcript_obj, str) else str(transcript_obj).strip()
+        print(f"[Voice] Transcript: {transcript_text}")
+        return transcript_text
+
+    finally:
+        # 5. Always clean up the temp file
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
