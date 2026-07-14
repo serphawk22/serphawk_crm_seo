@@ -233,83 +233,243 @@ async def research_map_company_endpoint(body: ResearchMapRequest, background_tas
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# --- Smart Research: company name → full analysis + draft + contact email ---
 class SmartResearchRequest(BaseModel):
     company_name: str
     company_url: Optional[str] = None
-    client_id: Optional[int] = None
+    client_id: Optional[int] = None  # If set, link extracted services to this CRM client
     owner_name: Optional[str] = "Varshith"
 
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest):
-    import httpx, os
-    webhook_url = os.getenv("N8N_SCRAPING_WEBHOOK_URL", "https://primary-production-d40bc.up.railway.app/webhook/trigger-cold-email")
+    """
+    Takes a company name (and optional URL), researches it via LLM,
+    finds business contact email, recommends services, and generates an email draft.
+    """
+    import json as _json
+    from modules.fallback_analyzer import analyze_company_name_fallback
+    from modules.market_analyzer import match_services
+    from modules.llm_engine import get_openai_client, generate_email
+
+    company_name = body.company_name.strip()
+
+    # Step 1: Try scraping website if URL given, otherwise use LLM knowledge
+    company_info = {}
+    website_content = ""
+    if body.company_url and body.company_url.strip():
+        try:
+            from modules.scraper import scrape_website
+            website_content = await scrape_website(body.company_url.strip())
+            if not website_content.startswith("ERROR"):
+                from modules.llm_engine import analyze_content
+                company_info = analyze_content(website_content)
+            else:
+                company_info = analyze_company_name_fallback(company_name)
+        except Exception:
+            company_info = analyze_company_name_fallback(company_name)
+    else:
+        company_info = analyze_company_name_fallback(company_name)
+
+    company_info.setdefault("company_name", company_name)
+
+    extracted_emails_str = ""
+    extracted_phones_str = ""
+    extracted_linkedin_str = ""
+    extracted_twitter_str = ""
+    if website_content and not website_content.startswith("ERROR"):
+        try:
+            if "Extracted Emails: " in website_content:
+                extracted_emails_str = website_content.split("Extracted Emails: ")[1].split("\n")[0].strip()
+            if "Extracted Phone Numbers: " in website_content:
+                extracted_phones_str = website_content.split("Extracted Phone Numbers: ")[1].split("\n")[0].strip()
+            if "Extracted LinkedIn Profiles: " in website_content:
+                extracted_linkedin_str = website_content.split("Extracted LinkedIn Profiles: ")[1].split("\n")[0].strip()
+            if "Extracted Twitter Profiles: " in website_content:
+                extracted_twitter_str = website_content.split("Extracted Twitter Profiles: ")[1].split("\n")[0].strip()
+            company_info["extracted_emails"] = extracted_emails_str
+            company_info["extracted_phone_numbers"] = extracted_phones_str
+            company_info["extracted_linkedin"] = extracted_linkedin_str
+            company_info["extracted_twitter"] = extracted_twitter_str
+        except Exception:
+            pass
+
+    # Step 2: Find business contact details via LLM
+    contact_email = None
+    contact_name = None
+    contact_role = None
+    contact_phone = None
+    contact_linkedin = None
+    contact_twitter = None
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                webhook_url,
-                json={"company_name": body.company_name, "company_url": body.company_url},
-                timeout=60.0
-            )
-            data = resp.json()
-            if isinstance(data, list) and len(data) > 0:
-                data = data[0]
+        client = get_openai_client()
+        email_prompt = f"""You are a professional business intelligence expert. Your job is to extract ACCURATE contact information for the company "{company_name}".
 
-            # If it already matches the old schema (e.g. n8n workflow was updated), return it
-            if "company_info" in data and "draft" in data:
-                return data
+CRITICAL RULES - MUST FOLLOW:
+1. ONLY use scraped data if it exists. DO NOT invent, guess, or use placeholders.
+2. If scraped emails exist, use the MOST PROFESSIONAL one (e.g., prefer sales@, contact@, info@ over support@)
+3. If scraped phone numbers exist, use them EXACTLY as provided.
+4. If scraped LinkedIn/Twitter exist, use the primary profile URL.
+5. For missing fields: use null (NOT placeholder values like +919999999999)
+6. Extract person name/role ONLY if found in website content.
+7. Validate all URLs are actual social profile links (not generic)
 
-            emails = data.get("emails", "")
-            phone = data.get("phone", "")
-            social = data.get("social_links") or {}
-            if not isinstance(social, dict):
-                social = {}
-                
-            def clean_social(val):
-                if not val or not isinstance(val, str): return ""
-                v = val.strip()
-                if v.lower() in ["not found", "n/a", "none", "null", "-", ""]: return ""
-                return v
+WEBSITE DATA EXTRACTED:
+- Emails: {extracted_emails_str if extracted_emails_str else 'NONE FOUND'}
+- Phone Numbers: {extracted_phones_str if extracted_phones_str else 'NONE FOUND'}
+- LinkedIn Profiles: {extracted_linkedin_str if extracted_linkedin_str else 'NONE FOUND'}
+- Twitter/X Profiles: {extracted_twitter_str if extracted_twitter_str else 'NONE FOUND'}
+- Contact Records: {_json.dumps(company_info.get("contacts", [])) if company_info.get("contacts") else 'NONE FOUND'}
 
-            eng = data.get("cold_email_english", "")
-            span = data.get("cold_email_spanish", "")
+WEBSITE CONTENT FOR MANUAL REVIEW:
+{website_content[:3000] if website_content and not website_content.startswith('ERROR') else 'No content available'}
 
-            subject = "Outreach from SERP Hawk"
-            if eng.startswith("Subject: "):
-                parts = eng.split("\n", 1)
-                subject = parts[0].replace("Subject: ", "").strip()
-                eng = parts[1].strip() if len(parts) > 1 else eng
-                
-            if span.startswith("Asunto: "):
-                parts = span.split("\n", 1)
-                span = parts[1].strip() if len(parts) > 1 else span
+Return ONLY valid JSON:
+{{
+    "email": "the actual contact email from website or null",
+    "name": "contact person name if found in website data or null",
+    "role": "job role if found in website data or null",
+    "phone_number": "contact phone number from website or null",
+    "linkedin": "actual LinkedIn profile URL or null",
+    "twitter": "actual Twitter/X profile URL or null",
+    "data_source": "where each value came from (scraped/website/contacts)",
+    "confidence": "high/medium/low based on data quality"
+}}"""
 
-            return {
-                "company_info": {
-                    "extracted_emails": emails if emails != "Not Found" else "",
-                    "extracted_phone_numbers": phone if phone != "Not Found" else "",
-                    "company_social_media": {
-                        "linkedin": clean_social(social.get("linkedin")),
-                        "twitter": clean_social(social.get("twitter")),
-                        "facebook": clean_social(social.get("facebook")),
-                        "instagram": clean_social(social.get("instagram"))
-                    }
-                },
-                "contact": {
-                    "email": emails if emails != "Not Found" else "",
-                    "phone_number": phone if phone != "Not Found" else "",
-                    "linkedin": clean_social(social.get("linkedin"))
-                },
-                "recommended_services": data.get("company_services", []),
-                "draft": {
-                    "subject": subject,
-                    "english_body": eng,
-                    "spanish_body": span
-                }
-            }
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a data extraction expert. Return ONLY accurate data found in provided sources. Use null for missing data. NEVER invent placeholder values."},
+                {"role": "user", "content": email_prompt}
+            ],
+            response_format={"type": "json_object"}
+        )
+        contact_data = _json.loads(resp.choices[0].message.content)
+        contact_email = contact_data.get("email") or None
+        contact_name = contact_data.get("name") or None
+        contact_role = contact_data.get("role") or None
+        contact_phone = contact_data.get("phone_number") or None
+        contact_linkedin = contact_data.get("linkedin") or None
+        contact_twitter = contact_data.get("twitter") or None
     except Exception as e:
-        print(f"Error calling scraping webhook: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        import logging
+        logging.warning(f"OpenAI contact extraction failed: {e}")
 
+    if not contact_email:
+        contacts = company_info.get("contacts", [])
+        if contacts and isinstance(contacts, list) and len(contacts) > 0:
+            c = contacts[0]
+            contact_email = c.get("email") or contact_email
+            contact_name = c.get("name") or contact_name
+            contact_role = c.get("role") or contact_role
+            contact_phone = c.get("phone_number") or c.get("phone") or c.get("mobile") or contact_phone
+
+    if not contact_email and extracted_emails_str:
+        contact_email = next((e.strip() for e in extracted_emails_str.split(",") if e.strip()), None)
+
+    if not contact_linkedin and extracted_linkedin_str:
+        contact_linkedin = next((s.strip() for s in extracted_linkedin_str.split(",") if s.strip()), None)
+
+    if not contact_twitter and extracted_twitter_str:
+        contact_twitter = next((s.strip() for s in extracted_twitter_str.split(",") if s.strip()), None)
+
+    # Do NOT generate fallback emails - only use extracted/scraped data
+
+    # Step 3: Service matching
+    services_result = {}
+    try:
+        market_data = {
+            "industry": company_info.get("likely_industry", company_info.get("industry", "")),
+            "business_model": company_info.get("business_model", ""),
+            "pain_points": company_info.get("common_pain_points", company_info.get("pain_points", [])),
+        }
+        services_result = match_services(market_data, company_info)
+    except Exception:
+        services_result = {
+            "recommended_services": [
+                {"service_name": "Organic SEO", "why_relevant": "Improve online visibility", "expected_impact": "More qualified leads"},
+                {"service_name": "Local SEO", "why_relevant": "Dominate local search", "expected_impact": "Increased local customers"}
+            ],
+            "email_hook": f"Growth opportunities for {company_name}",
+            "package_suggestion": "Growth"
+        }
+
+    # Step 4: Generate email draft (pass recommended services so they appear in draft)
+    draft = {}
+    owner = body.owner_name or "Varshith"
+    try:
+        contact_for_email = {"name": contact_name, "role": contact_role} if contact_name else None
+        recommended = services_result.get("recommended_services", [])
+        draft = generate_email(company_info, contact=contact_for_email, recommended_services=recommended, owner_name=owner)
+    except Exception:
+        draft = {
+            "subject": f"Growth Partnership Opportunity – {company_name}",
+            "english_body": f"Hi,\n\nI came across {company_name} and was impressed by what you do. I'd love to explore how our SEO and digital marketing services could help accelerate your growth.\n\nBest regards,\n{owner}",
+            "spanish_body": f"Hola,\n\nEncontré {company_name} y me impresionó lo que hacen. Me encantaría explorar cómo nuestros servicios de SEO y marketing digital podrían ayudar a acelerar su crecimiento.\n\nSaludos cordiales,\n{owner}",
+        }
+
+    # Step 5: Extract structured services offered by this company
+    extracted_services = []
+    try:
+        if website_content and not website_content.startswith("ERROR"):
+            from modules.llm_engine import extract_client_services
+            extracted_services = extract_client_services(website_content, company_info.get("company_name", company_name))
+        elif company_info.get("key_value_props"):
+            # Fallback: convert key_value_props to minimal service objects
+            extracted_services = [
+                {"name": s, "brief": "", "category": "Other", "approx_cost": 0, "cost_is_estimated": True}
+                for s in company_info["key_value_props"]
+            ]
+    except Exception as _e:
+        print(f"Service extraction warning: {_e}")
+
+    # Step 6: If a client_id is linked, persist services to client + marketplace
+    if body.client_id and extracted_services:
+        try:
+            from sqlmodel import Session as _Session
+            with _Session(engine) as _sess:
+                cp = _sess.get(ClientProfile, body.client_id)
+                if cp:
+                    import json as _json2
+                    cp.services_offered = _json2.dumps(extracted_services)
+                    _sess.add(cp)
+                    # Also upsert into marketplace
+                    for svc in extracted_services:
+                        ms = MarketplaceService(
+                            service_name=svc.get("name", ""),
+                            normalized_name=svc.get("name", ""),
+                            category=svc.get("category"),
+                            description=svc.get("brief"),
+                            estimated_cost=float(svc.get("approx_cost", 0)),
+                            cost_is_estimated=svc.get("cost_is_estimated", True),
+                            provider_name=cp.companyName,
+                            provider_client_id=body.client_id,
+                            provider_industry=cp.industry,
+                            provider_address=cp.address,
+                            source="email_agent",
+                        )
+                        _sess.add(ms)
+                    _sess.commit()
+        except Exception as _e2:
+            print(f"Service persist warning: {_e2}")
+
+    return {
+        "company_info": company_info,
+        "company_url": body.company_url or company_info.get("website") or "",
+        "contact": {
+            "email": contact_email,
+            "name": contact_name,
+            "role": contact_role,
+            "phone_number": contact_phone,
+            "linkedin": contact_linkedin,
+            "twitter": contact_twitter,
+        },
+        "recommended_services": services_result.get("recommended_services", []),
+        "email_hook": services_result.get("email_hook", ""),
+        "package_suggestion": services_result.get("package_suggestion", ""),
+        "draft": draft,
+        "extracted_services": extracted_services,
+    }
 
 # --- Send Manual: create client + record email + activity ---
 class SendManualRequest(BaseModel):
@@ -6722,75 +6882,112 @@ async def analyze_lead_ai(lead_id: int, body: LeadAIAnalyzeRequest, session: Ses
         
     url = lead.website or f"https://{lead.company_name.lower().replace(' ', '')}.com"
     
-    import asyncio
-    import random
-    
-    await asyncio.sleep(2)
-    
     results = lead.ai_analysis_results or {}
     
-    if body.agent_type == "scanner":
-        domain = url.replace("https://", "").replace("http://", "").split("/")[0]
-        results["scanner"] = {
-            "url": url,
-            "title": domain.capitalize(),
-            "description": f"{domain} is a business website that could benefit from SEO optimization.",
-            "industry": lead.industry or "Business",
-            "score": random.randint(40, 80),
-            "issues": [
-                "Missing meta descriptions",
-                "Slow page load speed",
-                "No structured data / schema markup",
-                "Weak backlink profile"
-            ],
-            "opportunities": [
-                "Local SEO \u2014 high-volume keywords untapped",
-                "Content gap: missing competitor keywords"
-            ],
-            "tech": ["WordPress", "Google Analytics"]
-        }
-    elif body.agent_type == "radar":
-        results["radar"] = {
-            "insights": [
-                f"Found active LinkedIn presence for {lead.company_name}.",
-                "Mentions of recent product launch on Twitter.",
-                "High engagement on recent blog posts."
-            ],
-            "social_links": {
-                "linkedin": f"https://linkedin.com/company/{lead.company_name.lower().replace(' ', '')}",
-                "twitter": f"https://twitter.com/{lead.company_name.lower().replace(' ', '')}"
+    try:
+        from modules.llm_engine import get_openai_client
+        import json
+        client = get_openai_client()
+        
+        system_prompt = f"You are an elite B2B CRM intelligence AI. Analyze this target lead: Company: {lead.company_name}, Website: {url}, Industry: {lead.industry or 'Unknown'}. "
+        
+        prompt = None
+        if body.agent_type == "scanner":
+            prompt = system_prompt + """
+Generate a highly detailed, professional website scan report. Return ONLY valid JSON matching exactly:
+{
+  "url": "the website url",
+  "title": "Clean company name",
+  "description": "2-3 sentence deep analysis of what they do",
+  "industry": "Specific industry",
+  "score": integer between 40-95,
+  "issues": ["Issue 1", "Issue 2", "Issue 3", "Issue 4"],
+  "opportunities": ["Opp 1", "Opp 2", "Opp 3"],
+  "tech": ["Tech 1", "Tech 2", "Tech 3", "Tech 4"]
+}
+"""
+        elif body.agent_type == "radar":
+            prompt = system_prompt + """
+Generate deeply researched, realistic social media and market intelligence insights. Return ONLY valid JSON matching exactly:
+{
+  "insights": ["Insight 1 (e.g. recent hires, funding, strategy)", "Insight 2", "Insight 3"],
+  "social_links": {
+    "linkedin": "Predicted company linkedin url",
+    "twitter": "Predicted company twitter url"
+  }
+}
+"""
+        elif body.agent_type == "competitor":
+            prompt = system_prompt + """
+Identify 2 realistic competitors in their exact industry. Return ONLY valid JSON matching exactly:
+{
+  "competitor": [
+    {
+      "name": "Competitor 1",
+      "url": "competitor1.com",
+      "overlap": "High overlap %",
+      "strengths": ["Strength 1", "Strength 2"],
+      "weaknesses": ["Weakness 1", "Weakness 2"]
+    },
+    {
+      "name": "Competitor 2",
+      "url": "competitor2.com",
+      "overlap": "Medium overlap %",
+      "strengths": ["Strength 1", "Strength 2"],
+      "weaknesses": ["Weakness 1", "Weakness 2"]
+    }
+  ]
+}
+"""
+        elif body.agent_type == "email":
+            prompt = system_prompt + """
+Write a highly personalized, compelling cold outreach email to the CEO. Return ONLY valid JSON matching exactly:
+{
+  "subject": "Compelling subject line",
+  "body": "The full email body, formatted beautifully with line breaks."
+}
+"""
+        elif body.agent_type == "calling":
+            prompt = system_prompt + """
+Write a professional, structured B2B sales teleprompter pitch for a sales agent to read. Include an intro, value prop, pain points, objection handling, and closing. Return ONLY valid JSON matching exactly:
+{
+  "calling": {
+    "intro": "The opening hook...",
+    "value_prop": "The core pitch...",
+    "objections": ["If they say X, say Y...", "If they say A, say B..."],
+    "closing": "The call to action..."
+  }
+}
+"""
+        elif body.agent_type == "automations":
+            results["automations"] = {
+                "status": "Active",
+                "workflows": [
+                    "Auto-follow up if no reply in 3 days",
+                    "Score lead based on email open rate",
+                    "Notify Slack #sales when lead visits pricing page"
+                ]
             }
-        }
-    elif body.agent_type == "competitor":
-        results["competitor"] = [
-            {
-                "name": "Acme Corp",
-                "url": "acme.com",
-                "overlap": "85%",
-                "strengths": ["Strong domain authority", "Large backlink profile"],
-                "weaknesses": ["Slow site speed", "Poor mobile UX"]
-            },
-            {
-                "name": "Globex",
-                "url": "globex.com",
-                "overlap": "60%",
-                "strengths": ["Great content marketing"],
-                "weaknesses": ["No local SEO presence"]
-            }
-        ]
-    elif body.agent_type == "email":
-        results["email"] = {
-            "subject": f"Quick question regarding {lead.company_name}'s digital presence",
-            "body": f"Hi there,\n\nI was reviewing {lead.company_name}'s website at {url} and noticed a few areas where we could help improve your search visibility and overall performance.\n\nWould you be open to a brief chat next week to discuss this?\n\nBest regards,"
-        }
-    elif body.agent_type == "automations":
-        results["automations"] = {
-            "status": "Active",
-            "workflows": [
-                "Auto-follow up if no reply in 3 days",
-                "Notify Slack on email open"
-            ]
-        }
+            
+        if prompt:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.7,
+            )
+            data = json.loads(response.choices[0].message.content)
+            
+            if body.agent_type == "calling":
+                results["calling"] = data.get("calling", data)
+            elif body.agent_type == "competitor":
+                results["competitor"] = data.get("competitor", [])
+            else:
+                results[body.agent_type] = data
+
+    except Exception as e:
+        print(f"Error generating AI analysis: {e}")
+        return {"ok": False, "error": "AI generation failed."}
         
     lead.ai_analysis_results = results
     
@@ -8194,18 +8391,57 @@ async def whatsapp_webhook(
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     From: str = Form(...),
-    Body: str = Form(...)
+    Body: str = Form(default=""),
+    NumMedia: str = Form(default="0"),
+    MediaUrl0: Optional[str] = Form(default=None),
+    MediaContentType0: Optional[str] = Form(default=None),
 ):
     from database import WhatsAppSession
     from modules.llm_engine import process_whatsapp_command
+    from modules.whatsapp import send_whatsapp_message
     import json
-    
+
+    # Helper: normalise the sender number so we can push outbound messages
+    # From arrives as "whatsapp:+919502901416" — strip the prefix for our helper
+    # which re-adds it internally.
+    sender_number = From  # keep original for DB lookups
+    # We pass From directly to send_whatsapp_message; that function handles the prefix.
+
+    # ── Empty TwiML we always return so Twilio never waits / times-out ───
+    EMPTY_TWIML = PlainTextResponse(
+        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+        media_type="application/xml"
+    )
+
+    # ── Step 0: Voice message detection & transcription ───────────────────
+    # Twilio sets NumMedia >= 1 and MediaContentType0 = audio/* for voice notes.
+    voice_transcript = None
+    if int(NumMedia or 0) >= 1 and MediaUrl0 and (MediaContentType0 or "").startswith("audio/"):
+        account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
+        auth_token  = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        try:
+            from modules.whatsapp import transcribe_voice_message
+            # ① Immediately ACK so the user knows we got it
+            send_whatsapp_message(
+                "🎙️ Got your voice note! Transcribing and processing... give me a moment ⏳",
+                From
+            )
+            voice_transcript = transcribe_voice_message(MediaUrl0, account_sid, auth_token)
+            # Use the transcript as the body for downstream processing
+            Body = voice_transcript
+            print(f"[Voice] Final transcript: {voice_transcript}")
+        except Exception as ve:
+            print(f"[Voice] Transcription failed: {ve}")
+            send_whatsapp_message(
+                "🎙️ I received your voice note but couldn't transcribe it. "
+                "Please try again or type your request.",
+                From
+            )
+            return EMPTY_TWIML
+
     # 1. Authorize sender
     if not From.endswith("9502901416"):
-        return PlainTextResponse(
-            '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Unauthorized sender.</Message></Response>',
-            media_type="application/xml"
-        )
+        return EMPTY_TWIML
         
     msg_text = Body.strip().lower()
     
@@ -8221,10 +8457,8 @@ async def whatsapp_webhook(
                 lcs.status = "ended"
             session.delete(ws_session)
             session.commit()
-            return PlainTextResponse(
-                '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Live chat ended.</Message></Response>',
-                media_type="application/xml"
-            )
+            send_whatsapp_message("✅ Live chat ended.", From)
+            return EMPTY_TWIML
         else:
             from database import LiveChatMessage
             # Forward msg to live chat
@@ -8235,10 +8469,7 @@ async def whatsapp_webhook(
             )
             session.add(chat_msg)
             session.commit()
-            return PlainTextResponse(
-                '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-                media_type="application/xml"
-            )
+            return EMPTY_TWIML
     
     # 2.2 Handle Pending Actions
     if ws_session and ws_session.pending_action:
@@ -8258,19 +8489,20 @@ async def whatsapp_webhook(
                     ws_session.pending_action = None
                     ws_session.action_data = None
                     session.commit()
-                    return PlainTextResponse(
-                        '<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Live chat connected! Anything you type now will be sent to the visitor. Type *END* to disconnect.</Message></Response>',
-                        media_type="application/xml"
+                    send_whatsapp_message(
+                        "✅ Live chat connected! Anything you type now will be sent to the visitor. Type *END* to disconnect.",
+                        From
                     )
+                    return EMPTY_TWIML
                 else:
                     reply_msg = "Live chat session expired or not found."
                     session.delete(ws_session)
+            # ── Action: add_lead ─────────────────────────────────────────────
             elif action == "add_lead":
                 from database import Lead, ClientResearch, ClientProfile
                 company_name = args.get('company_name', 'Unknown')
                 website = args.get('website', '')
-                
-                # 1. Save Lead to DB
+
                 new_lead = Lead(
                     company_name=company_name,
                     website=website,
@@ -8278,28 +8510,22 @@ async def whatsapp_webhook(
                     status="New"
                 )
                 session.add(new_lead)
-                
-                # 1b. Also save as a Pending Client just in case the Leads UI is broken
+
                 new_client = ClientProfile(
                     companyName=company_name,
                     websiteUrl=website,
                     status="Pending"
                 )
                 session.add(new_client)
-                
                 session.commit()
                 session.refresh(new_lead)
                 session.refresh(new_client)
-                
-                reply_msg = f"Lead {company_name} added successfully! Starting smart research in the background..."
-                
-                # 2. Kick off background task to research and save it
+
+                reply_msg = f"✅ Lead *{company_name}* added! Starting smart research in the background..."
+
                 async def research_and_save(c_name, c_url, l_id, client_id):
                     try:
-                        import httpx, os
-                        webhook_url = os.getenv("NEXT_PUBLIC_WEBHOOK_URL", "https://primary-production-d40bc.up.railway.app/webhook/trigger-cold-email")
-                        resp = httpx.post(webhook_url, json={"company_name": c_name, "company_url": c_url}, timeout=60.0)
-                        res = resp.json()
+                        res = await smart_research(SmartResearchRequest(company_name=c_name, company_url=c_url))
                         with Session(engine) as db_session:
                             cr = ClientResearch(
                                 lead_id=l_id,
@@ -8309,62 +8535,223 @@ async def whatsapp_webhook(
                             db_session.add(cr)
                             db_session.commit()
                             from modules.whatsapp import send_whatsapp_message
-                            send_whatsapp_message(f"✅ Research complete for {c_name}! The AI draft is ready.", "whatsapp:+919502901416")
+                            send_whatsapp_message(f"✅ Research complete for *{c_name}*! AI draft is ready.", From)
                     except Exception as e:
                         print("Error in bg research:", e)
-                        
+
                 background_tasks.add_task(research_and_save, company_name, website, new_lead.id, new_client.id)
                 session.delete(ws_session)
-            elif action == "schedule_meeting":
-                # Minimal implementation for now
-                reply_msg = f"Scheduled meeting for {args.get('target_name')} at {args.get('time_str')}."
+
+            # ── Action: add_client (full client onboarding) ──────────────────
+            elif action == "add_client":
+                from database import ClientProfile
+                company_name    = args.get('company_name', 'Unknown')
+                contact_person  = args.get('contact_person')
+                email           = args.get('email')
+                phone           = args.get('phone')
+                website         = args.get('website')
+                notes_text      = args.get('notes')
+
+                new_client = ClientProfile(
+                    companyName=company_name,
+                    contact_person=contact_person,
+                    phone=phone,
+                    websiteUrl=website,
+                    status="Active",
+                    lead_source="WhatsApp Voice",
+                )
+                # Store email in customFields if not a dedicated column
+                if email:
+                    new_client.customFields = {"email": email}
+                session.add(new_client)
+                session.commit()
+                session.refresh(new_client)
+
+                # Optionally attach initial note
+                if notes_text:
+                    from database import ClientNote
+                    initial_note = ClientNote(
+                        client_id=new_client.id,
+                        content=notes_text,
+                        author_name="WhatsApp Agent",
+                        tags=["voice", "onboarding"]
+                    )
+                    session.add(initial_note)
+                    session.commit()
+
+                reply_msg = (
+                    f"✅ Client *{company_name}* added to CRM!\n"
+                    + (f"👤 Contact: {contact_person}\n" if contact_person else "")
+                    + (f"📧 Email: {email}\n" if email else "")
+                    + (f"📞 Phone: {phone}\n" if phone else "")
+                    + (f"🌐 Website: {website}\n" if website else "")
+                )
                 session.delete(ws_session)
+
+            # ── Action: schedule_meeting ─────────────────────────────────────
+            elif action == "schedule_meeting":
+                from database import ScheduledCall
+                target_name = args.get('target_name', 'Unknown')
+                time_str    = args.get('time_str', 'TBD')
+
+                new_call = ScheduledCall(
+                    title=f"Meeting with {target_name}",
+                    entity_name=target_name,
+                    notes=f"Scheduled via WhatsApp voice: {time_str}",
+                    assigned_to="Admin",
+                    status="Scheduled"
+                )
+                session.add(new_call)
+                session.commit()
+
+                reply_msg = f"📅 Meeting with *{target_name}* scheduled for *{time_str}*! Added to your calendar."
+                session.delete(ws_session)
+
+            # ── Action: add_note ─────────────────────────────────────────────
             elif action == "add_note":
-                reply_msg = f"Added note for {args.get('target_name')}."
+                from database import ClientNote, ClientProfile
+                target_name = args.get('target_name', '')
+                content     = args.get('content', '')
+
+                # Try to find the client by name (case-insensitive partial match)
+                client = session.exec(
+                    select(ClientProfile).where(
+                        ClientProfile.companyName.ilike(f"%{target_name}%")
+                    )
+                ).first()
+
+                if client:
+                    note = ClientNote(
+                        client_id=client.id,
+                        content=content,
+                        author_name="WhatsApp Agent",
+                        tags=["voice"]
+                    )
+                    session.add(note)
+                    session.commit()
+                    reply_msg = f"📝 Note added to *{client.companyName}*: \"{content[:80]}{'...' if len(content) > 80 else ''}\""
+                else:
+                    reply_msg = (
+                        f"⚠️ Couldn't find a client named *{target_name}*. "
+                        f"Please check the name and try again."
+                    )
+                session.delete(ws_session)
+
+            # ── Action: add_task ─────────────────────────────────────────────
+            elif action == "add_task":
+                from database import Task, ClientProfile
+                title       = args.get('title', 'Untitled Task')
+                description = args.get('description')
+                due_date    = args.get('due_date')
+                priority    = args.get('priority', 'Medium')
+                client_name = args.get('client_name')
+
+                # Optionally link to a client
+                client_id = None
+                if client_name:
+                    client = session.exec(
+                        select(ClientProfile).where(
+                            ClientProfile.companyName.ilike(f"%{client_name}%")
+                        )
+                    ).first()
+                    if client:
+                        client_id = client.id
+
+                new_task = Task(
+                    title=title,
+                    description=description or f"Created via WhatsApp voice command.",
+                    status="Todo",
+                    priority=priority,
+                    due_date=due_date,
+                    client_id=client_id
+                )
+                session.add(new_task)
+                session.commit()
+
+                reply_msg = (
+                    f"✅ Task created!\n"
+                    f"📌 *{title}*\n"
+                    + (f"📅 Due: {due_date}\n" if due_date else "")
+                    + (f"🔥 Priority: {priority}\n" if priority else "")
+                    + (f"🏢 Client: {client_name}\n" if client_name else "")
+                )
                 session.delete(ws_session)
             
             session.commit()
-            return PlainTextResponse(
-                f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{reply_msg}</Message></Response>',
-                media_type="application/xml"
-            )
-            
+            # ② Proactively send the action result via WhatsApp API
+            send_whatsapp_message(reply_msg, From)
+            return EMPTY_TWIML
+
         elif msg_text in ["no", "cancel", "n"]:
             session.delete(ws_session)
             session.commit()
-            return PlainTextResponse(
-                '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Action cancelled.</Message></Response>',
-                media_type="application/xml"
-            )
+            send_whatsapp_message("❌ Action cancelled. Send a new command whenever you're ready.", From)
+            return EMPTY_TWIML
             
-    # 3. No pending session, parse new command
+    # 3. No pending session — parse a fresh command (text or voice transcript)
     result = process_whatsapp_command(Body)
-    if result["action"] != "none" and result["action"] != "error":
-        # Create session
+    if result["action"] not in ["none", "error"]:
+        # Save pending session to await YES/NO
         new_session = WhatsAppSession(
             phone_number=From,
             pending_action=result["action"],
             action_data=json.dumps(result["parameters"])
         )
-        # Clear any old sessions
         if ws_session:
             session.delete(ws_session)
         session.add(new_session)
         session.commit()
-        
-        # Format confirmation message
+
+        # ── Build rich confirmation message ───────────────────────────────
         action_name = result["action"]
-        params_str = ", ".join([f"{k}: {v}" for k, v in result["parameters"].items()])
-        confirm_msg = f"Do you want me to proceed with {action_name}? ({params_str})\\n\\nReply YES to confirm, or NO to cancel."
-        
-        return PlainTextResponse(
-            f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{confirm_msg}</Message></Response>',
-            media_type="application/xml"
+        params = result["parameters"]
+
+        action_labels = {
+            "add_lead":         "➕ Add Lead",
+            "add_client":       "🏢 Add New Client",
+            "add_note":         "📝 Add Note",
+            "schedule_meeting": "📅 Schedule Meeting",
+            "add_task":         "✅ Create Task",
+        }
+        label = action_labels.get(action_name, action_name.replace("_", " ").title())
+
+        field_icons = {
+            "company_name":   "🏢", "contact_person": "👤", "email": "📧",
+            "phone":          "📞", "website":         "🌐", "notes": "📋",
+            "target_name":    "👤", "content":         "📋", "time_str": "🕐",
+            "title":          "📌", "description":     "📋", "due_date": "📅",
+            "priority":       "🔥", "client_name":     "🏢",
+        }
+        param_lines = ""
+        for k, v in params.items():
+            if v:
+                icon = field_icons.get(k, "•")
+                param_lines += f"\n{icon} {k.replace('_', ' ').title()}: {v}"
+
+        # Show transcript snippet for voice messages
+        voice_prefix = ""
+        if voice_transcript:
+            short_transcript = voice_transcript[:150] + ('...' if len(voice_transcript) > 150 else '')
+            voice_prefix = f"🎙️ *I heard:* \"{short_transcript}\"\n\n"
+
+        confirm_msg = (
+            f"{voice_prefix}"
+            f"📋 *Proposed Action:* {label}{param_lines}\n\n"
+            f"Reply *YES* to confirm or *NO* to cancel."
         )
+
+        # ③ Proactively push the confirmation — no TwiML reliance
+        send_whatsapp_message(confirm_msg, From)
+        return EMPTY_TWIML
+
     else:
-        # Conversational reply or error
-        return PlainTextResponse(
-            f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{result["reply"]}</Message></Response>',
-            media_type="application/xml"
+        # Conversational reply or unrecognized input
+        reply = result.get(
+            "reply",
+            "🤖 I didn't quite understand that.\n\nTry:\n• _Add client Acme Corp_\n• _Schedule meeting with Ravi tomorrow at 3pm_\n• _Note that Blue Barrier is interested in SEO_\n• Or just send a voice note!"
         )
+        if voice_transcript:
+            reply = f"🎙️ *I heard:* \"{voice_transcript[:100]}\"\n\n{reply}"
+        send_whatsapp_message(reply, From)
+        return EMPTY_TWIML
 
