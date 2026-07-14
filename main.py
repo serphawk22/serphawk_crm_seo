@@ -582,53 +582,36 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     session.commit()
     session.refresh(sent_email)
 
-    # Step 3.5: Send the actual email (unless skip_send is True)
+    # Step 3.5: Send the actual email via webhook only (unless skip_send is True)
     if not body.skip_send:
-        from modules.email_sender import send_email_outlook
         import os
+        import httpx
         sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "prasanthanupojuwork@gmail.com")
-        password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
-        smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "smtp.gmail.com")
-        smtp_port = int(os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587))
-        imap_server = os.getenv("IMAP_SERVER", "imap.gmail.com")
-
-        if not sender or not password:
-            raise HTTPException(status_code=500, detail="Email sender credentials are not configured")
-
+        
         try:
             full_body = f"{body.english_body}\n\n{body.spanish_body}" if body.spanish_body else body.english_body
-            send_email_outlook(
-                to_email=body.to_email,
-                subject=body.subject,
-                body=full_body,
-                sender_email=sender,
-                sender_password=password,
-                smtp_server=smtp_server,
-                smtp_port=smtp_port,
-                imap_server=imap_server
-            )
-            # --- Trigger n8n Webhook ---
-            try:
-                import httpx
-                webhook_url = "http://localhost:5678/webhook-test/serphawk-followup"
-                payload = {
-                    "event": "email_sent",
-                    "sender": sender,
-                    "to_email": body.to_email,
-                    "subject": body.subject,
-                    "company_name": body.company_name,
-                    "contact_name": body.contact_name or "Prospect",
-                    "phone_number": body.phone_number,
-                    "recommended_services": body.recommended_services or "SEO",
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-                httpx.post(webhook_url, json=payload, timeout=5.0)
-                print(f"Webhook successfully triggered from manual send to {webhook_url}")
-            except Exception as wh_e:
-                print(f"Webhook trigger failed: {wh_e}")
+            # Added for Gmail Agent Migration: Using N8N webhook trigger instead of local SMTP integration for automation.
+            # This triggers the n8n webhook workflow to send the email and handle follow-ups externally.
+            webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "http://localhost:5678/webhook-test/serphawk-followup")
+            payload = {
+                "event": "email_sent",
+                "sender": sender,
+                "to_email": body.to_email,
+                "subject": body.subject,
+                "body": full_body,
+                "company_name": body.company_name,
+                "contact_name": body.contact_name or "Prospect",
+                "phone_number": body.phone_number,
+                "recommended_services": body.recommended_services or "SEO",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            # Send to webhook and wait for response
+            response = httpx.post(webhook_url, json=payload, timeout=30.0)
+            response.raise_for_status()
+            print(f"Webhook successfully triggered and responded from manual send to {webhook_url}")
         except Exception as e:
-            print(f"Manual Email send failed: {e}")
-            raise HTTPException(status_code=500, detail=f"Manual Email send failed: {e}")
+            print(f"Manual Email send failed via webhook: {e}")
+            raise HTTPException(status_code=500, detail=f"Manual Email send failed via webhook: {e}")
 
 
     # Step 4: Log activity
