@@ -208,31 +208,102 @@ function BottomUpFillMail() {
   );
 }
 
-function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAutomatically, onSaveFollowUp }: { result: ResearchResultData; companyName: string; companyUrl: string; onSendManually: (r: ResearchResultData, name: string, url: string, skip_send?: boolean, action_type?: string) => Promise<SendEmailResult>; onSendAutomatically: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSaveFollowUp: (r: ResearchResultData, note: string, title: string) => Promise<boolean>; }) {
+function ResultCard({ historyId, result, companyName, companyUrl, onSendManually, onSendAutomatically, onSaveFollowUp, onRemove }: { historyId: string; result: ResearchResultData; companyName: string; companyUrl: string; onSendManually: (r: ResearchResultData, name: string, url: string, skip_send?: boolean, action_type?: string) => Promise<SendEmailResult>; onSendAutomatically: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSaveFollowUp: (r: ResearchResultData, note: string, title: string) => Promise<boolean>; onRemove: (id: string) => void; }) {
   const [activeTab, setActiveTab] = useState<"english" | "spanish">("english");
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
   const [followUpNote, setFollowUpNote] = useState("");
+
   const [followUpTitle, setFollowUpTitle] = useState(`Follow up with ${companyName}`);
   const [followUpStatus, setFollowUpStatus] = useState<string | null>(null);
   const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
+  const [editableSubject, setEditableSubject] = useState(result.draft?.subject || "");
+  const [editableEnglishBody, setEditableEnglishBody] = useState(result.draft?.english_body || result.draft?.body || "");
+  const [editableSpanishBody, setEditableSpanishBody] = useState(result.draft?.spanish_body || "");
+  const [editableWhatsappBody, setEditableWhatsappBody] = useState(result.draft?.whatsapp_draft || "");
+  const [fromEmail, setFromEmail] = useState("info@serphawk.com");
+
   const extractedEmail = result.company_info?.extracted_emails?.split(",")[0]?.trim();
   const directContactEmail = Array.isArray((result.company_info as any)?.contacts) ? (result.company_info as any).contacts[0]?.email : (result.company_info as any)?.email;
-  const contactEmail = result.contact?.email || directContactEmail || extractedEmail;
+  const initialContactEmail = result.contact?.email || directContactEmail || extractedEmail || "";
 
-  const englishText = result.draft?.english_body || result.draft?.body || "";
-  const spanishText = result.draft?.spanish_body || "";
+  const [toEmail, setToEmail] = useState(initialContactEmail);
+
+  useEffect(() => {
+    if (sendSuccess) {
+      const timer = setTimeout(() => {
+        onRemove(historyId);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [sendSuccess, historyId, onRemove]);
+
+  if (sendSuccess) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        className="w-full bg-white dark:bg-zinc-900 border border-emerald-500/30 rounded-2xl p-12 flex flex-col items-center justify-center shadow-sm"
+      >
+        <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mb-4">
+          <CheckCircle className="w-10 h-10 text-emerald-500" />
+        </div>
+        <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 mb-2">Mail Sent Successfully!</h2>
+        <p className="text-slate-500 dark:text-zinc-400 text-sm mb-6">Moving this to your recent outreach log...</p>
+      </motion.div>
+    );
+  }
+
+  if (sending) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="w-full bg-white dark:bg-zinc-900 border border-indigo-500/30 rounded-2xl p-12 flex flex-col items-center justify-center shadow-sm h-64"
+      >
+        <Clock className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
+        <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">Sending Email...</h2>
+        <p className="text-slate-500 dark:text-zinc-400 text-sm">Please wait while the system processes your request.</p>
+      </motion.div>
+    );
+  }
+
+
+
+  const englishText = editableEnglishBody;
+  const spanishText = editableSpanishBody;
   const gmailBodyText = spanishText && !englishText.includes(spanishText) 
     ? `${englishText}\n\n---\n\n${spanishText}`
     : englishText;
 
+  const getUpdatedResult = () => ({
+    ...result,
+    contact: {
+      ...(result.contact || {}),
+      email: toEmail
+    },
+    draft: {
+      ...result.draft,
+      subject: editableSubject,
+      english_body: editableEnglishBody,
+      spanish_body: editableSpanishBody,
+      whatsapp_draft: editableWhatsappBody,
+      body: editableEnglishBody
+    }
+  });
+
   const handleSend = async () => {
+    if (!toEmail || !toEmail.trim()) {
+      setSendError("Please provide a recipient email address in the 'To:' field.");
+      return;
+    }
     setSending(true);
     setSendError(null);
     try {
-      await onSendManually(result, companyName, companyUrl, false, "System");
+      await onSendManually(getUpdatedResult(), companyName, companyUrl, false, "System");
       setSendSuccess("Mail sent");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to send email";
@@ -242,10 +313,14 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
   };
 
   const handleSendAutomatically = async () => {
+    if (!toEmail || !toEmail.trim()) {
+      setSendError("Please provide a recipient email address in the 'To:' field.");
+      return;
+    }
     setSending(true);
     setSendError(null);
     try {
-      await onSendAutomatically(result, companyName, companyUrl);
+      await onSendAutomatically(getUpdatedResult(), companyName, companyUrl);
       setSendSuccess("Sent Automatically");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to send email";
@@ -416,45 +491,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
           )}
         </div>
 
-      {/* Recommended Services */}
-      {result.recommended_services && result.recommended_services.length > 0 && (
-        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center gap-2 mb-5">
-            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
-              <Zap className="w-4 h-4" />
-            </div>
-            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Recommended Services</p>
-          </div>
-          {result.email_hook && (
-            <p className="text-sm text-slate-800 dark:text-zinc-100 italic mb-5 bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
-              &ldquo;{result.email_hook}&rdquo;
-            </p>
-          )}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {result.recommended_services && result.recommended_services.map((svc, i: number) => {
-              const service = typeof svc === 'string' ? { service_name: svc } : svc;
-              return (
-                <div key={i} className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl hover:border-slate-300 dark:border-zinc-600 hover:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 transition-all">
-                  <div className="flex items-start gap-3">
-                    <div className="p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 shrink-0 mt-0.5">
-                      <TrendingUp className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-800 dark:text-zinc-100 text-sm">{service.service_name}</p>
-                      <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{service.why_relevant}</p>
-                      {service.expected_impact && (
-                        <p className="text-[10px] text-green-400 font-bold mt-2 flex items-center gap-1">
-                          <CheckCircle className="w-3 h-3" /> {service.expected_impact}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+
 
       {/* Extracted Client Services */}
       {result.extracted_services && result.extracted_services.length > 0 && (
@@ -504,18 +541,68 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
               </div>
               <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Generated Email Draft</p>
             </div>
-            <CopyButton text={activeTab === "english" ? (result.draft.english_body || result.draft.body || "") : (result.draft.spanish_body || "")} />
+            <CopyButton text={activeTab === "english" ? editableEnglishBody : activeTab === "spanish" ? editableSpanishBody : editableWhatsappBody} />
           </div>
 
-          {result.draft.subject && (
-            <div className="mb-4 p-3 bg-slate-50 dark:bg-zinc-950 rounded-xl border border-slate-100 dark:border-zinc-800 flex items-center justify-between">
-              <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Subject</p>
-                <p className="text-sm font-bold text-slate-800 dark:text-zinc-100">{result.draft.subject}</p>
+          {/* Send Box at the top */}
+          <div className="mb-6 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 space-y-4 shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100">
+                  <span className="text-slate-500 w-12">From:</span>
+                  <input 
+                    type="text" 
+                    value={fromEmail}
+                    onChange={(e) => setFromEmail(e.target.value)}
+                    className="flex-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 transition-all"
+                  />
+                </div>
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100">
+                  <span className="text-slate-500 w-12">To:</span>
+                  <input 
+                    type="text" 
+                    value={toEmail}
+                    onChange={(e) => setToEmail(e.target.value)}
+                    placeholder="recipient@example.com"
+                    className="flex-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 transition-all"
+                  />
+                </div>
               </div>
-              <CopyButton text={result.draft.subject} />
+
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={handleSendAutomatically}
+                    disabled={sending || !!sendSuccess}
+                    className="w-full px-4 py-3 rounded-xl bg-black dark:bg-white text-white dark:text-black font-bold text-xs flex items-center justify-center gap-2 hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                  >
+                    {sending ? <Clock className="w-3.5 h-3.5 animate-spin" /> : sendSuccess ? <CheckCircle className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
+                    Send Automatically ( send mail )
+                  </button>
+                  <button
+                    onClick={handleSend}
+                    disabled={sending || !!sendSuccess}
+                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-50 dark:bg-zinc-950 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    Send via System
+                  </button>
+                </div>
+              </div>
+              {sendError && (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+                  {sendError}
+                </div>
+              )}
             </div>
-          )}
+          <div className="mb-4">
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Subject</p>
+            <input 
+              type="text"
+              value={editableSubject}
+              onChange={(e) => setEditableSubject(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-zinc-950 rounded-xl border border-slate-100 dark:border-zinc-800 p-3 text-sm font-bold text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500 transition-all"
+            />
+          </div>
 
           <div className="flex gap-2 mb-4">
             {[
@@ -535,124 +622,70 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
             ))}
           </div>
 
-          <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl p-5 text-sm text-slate-700 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed max-h-80 overflow-auto font-mono custom-scrollbar">
-            {activeTab === "english"
-              ? (result.draft.english_body || result.draft.body || "No English draft generated")
-              : activeTab === "spanish"
-              ? (result.draft.spanish_body || "No Spanish draft generated")
-              : (result.draft.whatsapp_draft || "No WhatsApp draft generated")}
+          <div className="mb-6">
+            <textarea
+              value={activeTab === "english" ? editableEnglishBody : activeTab === "spanish" ? editableSpanishBody : editableWhatsappBody}
+              onChange={(e) => {
+                if (activeTab === "english") setEditableEnglishBody(e.target.value);
+                else if (activeTab === "spanish") setEditableSpanishBody(e.target.value);
+                else setEditableWhatsappBody(e.target.value);
+              }}
+              rows={12}
+              className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl p-5 text-sm text-slate-700 dark:text-zinc-200 leading-relaxed font-mono custom-scrollbar focus:outline-none focus:border-indigo-500 transition-all resize-y"
+            />
           </div>
 
-          {contactEmail && (
-            <div className="space-y-6">
-              <div className="grid gap-3 md:grid-cols-3">
-                {buildProspectingPoints(result).map((point, idx) => {
-                  const Icon = point.icon;
-                  return (
-                    <div key={idx} className="rounded-3xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 p-4 text-sm text-slate-700 dark:text-zinc-200 shadow-sm">
-                      <div className="flex items-center gap-2 mb-3 text-slate-500 dark:text-zinc-400">
-                        <Icon className="w-4 h-4" />
-                        <span className="font-bold uppercase tracking-[0.18em] text-[10px]">{point.title}</span>
-                      </div>
-                      <p className="leading-snug text-slate-600 dark:text-zinc-300 font-medium">{point.body}</p>
+          <div className="space-y-6">
+            <div className="grid gap-3 md:grid-cols-3">
+              {buildProspectingPoints(result).map((point, idx) => {
+                const Icon = point.icon;
+                return (
+                  <div key={idx} className="rounded-3xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 p-4 text-sm text-slate-700 dark:text-zinc-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3 text-slate-500 dark:text-zinc-400">
+                      <Icon className="w-4 h-4" />
+                      <span className="font-bold uppercase tracking-[0.18em] text-[10px]">{point.title}</span>
                     </div>
-                  );
-                })}
+                    <p className="leading-snug text-slate-600 dark:text-zinc-300 font-medium">{point.body}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 space-y-3">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Next Follow-up Note</label>
+                <input
+                  type="text"
+                  value={followUpTitle}
+                  onChange={(e) => setFollowUpTitle(e.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-white"
+                  placeholder="Follow-up title"
+                />
               </div>
-
-              <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 space-y-4">
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100">
-                      <Send className="w-4 h-4 text-slate-500 dark:text-zinc-400" />
-                      <span>Ready to send to: {contactEmail}</span>
-                    </div>
-                    <p className="text-xs text-slate-400 mt-1">Use your Gmail credentials to send the outreach email instantly.</p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={handleSendAutomatically}
-                      disabled={sending || !!sendSuccess}
-                      className="px-4 py-2 rounded-xl bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-indigo-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                    >
-                      {sending ? <Clock className="w-3.5 h-3.5 animate-spin" /> : sendSuccess ? <CheckCircle className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
-                      Send Automatically
-                    </button>
-                    <button
-                      onClick={handleSend}
-                      disabled={sending || !!sendSuccess}
-                      className="px-4 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 font-bold text-xs flex items-center gap-2 hover:bg-slate-50 dark:bg-zinc-950 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                    >
-                      <UserPlus className="w-3.5 h-3.5" />
-                      Send via System
-                    </button>
-                    <a
-                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${contactEmail || ''}&su=${encodeURIComponent(result.draft?.subject || '')}&body=${encodeURIComponent(gmailBodyText)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => onSendManually(result, companyName, companyUrl, true, "Gmail").catch(console.error)}
-                      className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-amber-600 transition-all shrink-0"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      Send through Gmail
-                    </a>
-                    {result.draft?.whatsapp_draft && result.contact?.phone_number && (
-                      <a
-                        href={`https://wa.me/${result.contact.phone_number.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(result.draft.whatsapp_draft)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => onSendManually(result, companyName, companyUrl, true, "WhatsApp").catch(console.error)}
-                        className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-emerald-600 transition-all shrink-0"
-                      >
-                        <MessageCircle className="w-3.5 h-3.5" /> Send via WhatsApp
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Next Follow-up Note</label>
-                    <input
-                      type="text"
-                      value={followUpTitle}
-                      onChange={(e) => setFollowUpTitle(e.target.value)}
-                      className="mt-2 w-full rounded-xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-white"
-                      placeholder="Follow-up title"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Note for the sales team</label>
-                    <textarea
-                      value={followUpNote}
-                      onChange={(e) => setFollowUpNote(e.target.value)}
-                      rows={4}
-                      className="mt-2 w-full rounded-2xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 px-3 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-white resize-none"
-                      placeholder="Capture the follow-up summary, next steps, or internal action items."
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <button
-                      onClick={handleSaveFollowUp}
-                      disabled={savingFollowUp || !followUpNote.trim()}
-                      className="px-4 py-2 rounded-xl bg-sky-500 text-slate-800 dark:text-zinc-100 font-bold text-xs hover:bg-sky-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {savingFollowUp ? "Saving..." : "Save Follow-Up"}
-                    </button>
-                    {followUpStatus && (
-                      <p className="text-xs text-slate-500 dark:text-zinc-400">{followUpStatus}</p>
-                    )}
-                  </div>
-                  {sendError && (
-                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-                      {sendError}
-                    </div>
-                  )}
-                </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Note for the sales team</label>
+                <textarea
+                  value={followUpNote}
+                  onChange={(e) => setFollowUpNote(e.target.value)}
+                  rows={4}
+                  className="mt-2 w-full rounded-2xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 px-3 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-white resize-none"
+                  placeholder="Capture the follow-up summary, next steps, or internal action items."
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  onClick={handleSaveFollowUp}
+                  disabled={savingFollowUp || !followUpNote.trim()}
+                  className="px-4 py-2 rounded-xl bg-sky-500 text-slate-800 dark:text-zinc-100 font-bold text-xs hover:bg-sky-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingFollowUp ? "Saving..." : "Save Follow-Up"}
+                </button>
+                {followUpStatus && (
+                  <p className="text-xs text-slate-500 dark:text-zinc-400">{followUpStatus}</p>
+                )}
               </div>
             </div>
-          )}
+          </div>
         </div>
       )}
     </motion.div>
@@ -676,9 +709,25 @@ export default function EmailAgentPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Added for Gmail Agent Migration: Allows user to dismiss a specific research result and refocuses on the input field seamlessly
+  const handleRemoveResult = (id: string) => {
+    setResultsHistory(prev => prev.filter(r => r.id !== id));
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Updated for Gmail Agent Migration: Smoothly scrolls the specific chat container to the bottom instead of the whole page
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: "smooth"
+      });
+    }
   };
 
   useEffect(() => {
@@ -752,7 +801,8 @@ export default function EmailAgentPage() {
         ...prev
       ]);
       
-      setChatStep("company_name");
+      // Updated for Gmail Agent Migration: Moved step to 'website_url' (previously 'company_name') to enable multi-company sequential searches
+      setChatStep("website_url");
       setCompanyName("");
       setTimeout(() => {
         setMessages(prev => [
@@ -927,7 +977,7 @@ export default function EmailAgentPage() {
             <Bot className="w-4 h-4 text-slate-800 dark:text-zinc-100" /> AI Research Assistant
           </div>
           
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar" ref={chatContainerRef}>
             <AnimatePresence initial={false}>
               {messages.map((msg) => (
                 <motion.div 
@@ -962,6 +1012,7 @@ export default function EmailAgentPage() {
               </div>
               
               <input
+                ref={inputRef}
                 type="url"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
@@ -986,7 +1037,7 @@ export default function EmailAgentPage() {
           <div className="w-full mt-8 space-y-8">
             <h3 className="font-black text-xl text-slate-800 dark:text-zinc-100 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 backdrop-blur-md px-4 py-2 rounded-xl inline-block shadow-lg border border-slate-100 dark:border-zinc-800">Research Results</h3>
             {resultsHistory.map(res => (
-              <ResultCard key={res.id} result={res.resultData} companyName={res.companyName} companyUrl={res.companyUrl} onSendManually={handleSendManually} onSendAutomatically={handleSendAutomatically} onSaveFollowUp={handleSaveFollowUp} />
+              <ResultCard key={res.id} historyId={res.id} result={res.resultData} companyName={res.companyName} companyUrl={res.companyUrl} onSendManually={handleSendManually} onSendAutomatically={handleSendAutomatically} onSaveFollowUp={handleSaveFollowUp} onRemove={handleRemoveResult} />
             ))}
           </div>
         )}
