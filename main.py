@@ -8415,35 +8415,50 @@ async def whatsapp_webhook(
 ):
     from database import WhatsAppSession
     from modules.llm_engine import process_whatsapp_command
+    from modules.whatsapp import send_whatsapp_message
     import json
 
-    # ── Step 0: Voice message detection ──────────────────────────────────
-    # When a user sends a voice note, Twilio sets NumMedia >= 1 and
-    # MediaContentType0 to an audio/* type. Body will be empty.
+    # Helper: normalise the sender number so we can push outbound messages
+    # From arrives as "whatsapp:+919502901416" — strip the prefix for our helper
+    # which re-adds it internally.
+    sender_number = From  # keep original for DB lookups
+    # We pass From directly to send_whatsapp_message; that function handles the prefix.
+
+    # ── Empty TwiML we always return so Twilio never waits / times-out ───
+    EMPTY_TWIML = PlainTextResponse(
+        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+        media_type="application/xml"
+    )
+
+    # ── Step 0: Voice message detection & transcription ───────────────────
+    # Twilio sets NumMedia >= 1 and MediaContentType0 = audio/* for voice notes.
     voice_transcript = None
     if int(NumMedia or 0) >= 1 and MediaUrl0 and (MediaContentType0 or "").startswith("audio/"):
         account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
         auth_token  = os.environ.get("TWILIO_AUTH_TOKEN", "")
         try:
             from modules.whatsapp import transcribe_voice_message
+            # ① Immediately ACK so the user knows we got it
+            send_whatsapp_message(
+                "🎙️ Got your voice note! Transcribing and processing... give me a moment ⏳",
+                From
+            )
             voice_transcript = transcribe_voice_message(MediaUrl0, account_sid, auth_token)
             # Use the transcript as the body for downstream processing
             Body = voice_transcript
+            print(f"[Voice] Final transcript: {voice_transcript}")
         except Exception as ve:
             print(f"[Voice] Transcription failed: {ve}")
-            return PlainTextResponse(
-                '<?xml version="1.0" encoding="UTF-8"?><Response>'
-                '<Message>🎙️ I received your voice note but could not transcribe it. '
-                'Please try again or type your request.</Message></Response>',
-                media_type="application/xml"
+            send_whatsapp_message(
+                "🎙️ I received your voice note but couldn't transcribe it. "
+                "Please try again or type your request.",
+                From
             )
+            return EMPTY_TWIML
 
     # 1. Authorize sender
     if not From.endswith("9502901416"):
-        return PlainTextResponse(
-            '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Unauthorized sender.</Message></Response>',
-            media_type="application/xml"
-        )
+        return EMPTY_TWIML
         
     msg_text = Body.strip().lower()
     
@@ -8459,10 +8474,8 @@ async def whatsapp_webhook(
                 lcs.status = "ended"
             session.delete(ws_session)
             session.commit()
-            return PlainTextResponse(
-                '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Live chat ended.</Message></Response>',
-                media_type="application/xml"
-            )
+            send_whatsapp_message("✅ Live chat ended.", From)
+            return EMPTY_TWIML
         else:
             from database import LiveChatMessage
             # Forward msg to live chat
@@ -8473,10 +8486,7 @@ async def whatsapp_webhook(
             )
             session.add(chat_msg)
             session.commit()
-            return PlainTextResponse(
-                '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-                media_type="application/xml"
-            )
+            return EMPTY_TWIML
     
     # 2.2 Handle Pending Actions
     if ws_session and ws_session.pending_action:
@@ -8496,10 +8506,11 @@ async def whatsapp_webhook(
                     ws_session.pending_action = None
                     ws_session.action_data = None
                     session.commit()
-                    return PlainTextResponse(
-                        '<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Live chat connected! Anything you type now will be sent to the visitor. Type *END* to disconnect.</Message></Response>',
-                        media_type="application/xml"
+                    send_whatsapp_message(
+                        "✅ Live chat connected! Anything you type now will be sent to the visitor. Type *END* to disconnect.",
+                        From
                     )
+                    return EMPTY_TWIML
                 else:
                     reply_msg = "Live chat session expired or not found."
                     session.delete(ws_session)
@@ -8684,18 +8695,15 @@ async def whatsapp_webhook(
                 session.delete(ws_session)
             
             session.commit()
-            return PlainTextResponse(
-                f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{reply_msg}</Message></Response>',
-                media_type="application/xml"
-            )
-            
+            # ② Proactively send the action result via WhatsApp API
+            send_whatsapp_message(reply_msg, From)
+            return EMPTY_TWIML
+
         elif msg_text in ["no", "cancel", "n"]:
             session.delete(ws_session)
             session.commit()
-            return PlainTextResponse(
-                '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Action cancelled.</Message></Response>',
-                media_type="application/xml"
-            )
+            send_whatsapp_message("❌ Action cancelled. Send a new command whenever you're ready.", From)
+            return EMPTY_TWIML
             
     # 3. No pending session — parse a fresh command (text or voice transcript)
     result = process_whatsapp_command(Body)
@@ -8711,26 +8719,25 @@ async def whatsapp_webhook(
         session.add(new_session)
         session.commit()
 
-        # Build a rich, human-friendly confirmation message
+        # ── Build rich confirmation message ───────────────────────────────
         action_name = result["action"]
         params = result["parameters"]
 
         action_labels = {
-            "add_lead":        "➕ Add Lead",
-            "add_client":      "🏢 Add New Client",
-            "add_note":        "📝 Add Note",
-            "schedule_meeting":"📅 Schedule Meeting",
-            "add_task":        "✅ Create Task",
+            "add_lead":         "➕ Add Lead",
+            "add_client":       "🏢 Add New Client",
+            "add_note":         "📝 Add Note",
+            "schedule_meeting": "📅 Schedule Meeting",
+            "add_task":         "✅ Create Task",
         }
         label = action_labels.get(action_name, action_name.replace("_", " ").title())
 
-        # Friendly field display
         field_icons = {
             "company_name":   "🏢", "contact_person": "👤", "email": "📧",
-            "phone":          "📞", "website": "🌐",  "notes": "📋",
-            "target_name":    "👤", "content": "📋",  "time_str": "🕐",
-            "title":          "📌", "description": "📋", "due_date": "📅",
-            "priority":       "🔥", "client_name": "🏢",
+            "phone":          "📞", "website":         "🌐", "notes": "📋",
+            "target_name":    "👤", "content":         "📋", "time_str": "🕐",
+            "title":          "📌", "description":     "📋", "due_date": "📅",
+            "priority":       "🔥", "client_name":     "🏢",
         }
         param_lines = ""
         for k, v in params.items():
@@ -8738,29 +8745,30 @@ async def whatsapp_webhook(
                 icon = field_icons.get(k, "•")
                 param_lines += f"\n{icon} {k.replace('_', ' ').title()}: {v}"
 
-        # Prepend voice transcript note if applicable
+        # Show transcript snippet for voice messages
         voice_prefix = ""
         if voice_transcript:
-            short_transcript = voice_transcript[:120] + ('...' if len(voice_transcript) > 120 else '')
-            voice_prefix = f"🎙️ I heard: \"{short_transcript}\"\n\n"
+            short_transcript = voice_transcript[:150] + ('...' if len(voice_transcript) > 150 else '')
+            voice_prefix = f"🎙️ *I heard:* \"{short_transcript}\"\n\n"
 
         confirm_msg = (
             f"{voice_prefix}"
-            f"*{label}*{param_lines}\n\n"
+            f"📋 *Proposed Action:* {label}{param_lines}\n\n"
             f"Reply *YES* to confirm or *NO* to cancel."
         )
 
-        return PlainTextResponse(
-            f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{confirm_msg}</Message></Response>',
-            media_type="application/xml"
-        )
+        # ③ Proactively push the confirmation — no TwiML reliance
+        send_whatsapp_message(confirm_msg, From)
+        return EMPTY_TWIML
+
     else:
         # Conversational reply or unrecognized input
-        reply = result.get("reply", "I didn't quite understand that. Try: 'add client Acme Corp' or send a voice note!")
-        if voice_transcript:
-            reply = f"🎙️ I heard: \"{voice_transcript[:80]}\"\n\n{reply}"
-        return PlainTextResponse(
-            f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{reply}</Message></Response>',
-            media_type="application/xml"
+        reply = result.get(
+            "reply",
+            "🤖 I didn't quite understand that.\n\nTry:\n• _Add client Acme Corp_\n• _Schedule meeting with Ravi tomorrow at 3pm_\n• _Note that Blue Barrier is interested in SEO_\n• Or just send a voice note!"
         )
+        if voice_transcript:
+            reply = f"🎙️ *I heard:* \"{voice_transcript[:100]}\"\n\n{reply}"
+        send_whatsapp_message(reply, From)
+        return EMPTY_TWIML
 
