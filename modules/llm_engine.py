@@ -576,9 +576,10 @@ Return ONLY valid JSON matching this structure:
         return {}
 
 
-def process_whatsapp_command(message: str, previous_state: dict = None):
+def process_whatsapp_command(message: str, previous_state: dict = None, image_data: dict = None):
     """
-    Analyzes an incoming WhatsApp message to determine the CRM action using OpenAI function calling.
+    Analyzes an incoming WhatsApp message (or image) to determine the CRM action using OpenAI function calling.
+    If image_data is provided (dict with 'base64' and 'mime_type'), it uses GPT-4o's vision capabilities.
     If previous_state is provided, it merges the new message into the existing context.
     """
     try:
@@ -669,12 +670,29 @@ def process_whatsapp_command(message: str, previous_state: dict = None):
             }
         ]
 
+        user_content = []
+        if message:
+            user_content.append({"type": "text", "text": message})
+        
+        if image_data:
+            if not message:
+                user_content.append({"type": "text", "text": "Please extract the CRM entity details from this image (e.g. business card, ID) and trigger the add_entity action with the extracted information."})
+            user_content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{image_data['mime_type']};base64,{image_data['base64']}"
+                }
+            })
+
+        # If we only have text, we can just pass a string or the array.
+        # But if we have an image, we must pass the array.
+        messages = [{"role": "system", "content": system_prompt}]
+        if user_content:
+            messages.append({"role": "user", "content": user_content if image_data else message or "No text provided."})
+
         response = client.chat.completions.create(
             model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": message}
-            ],
+            messages=messages,
             tools=tools,
             tool_choice="auto"
         )

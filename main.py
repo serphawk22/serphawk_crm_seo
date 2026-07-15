@@ -8438,6 +8438,39 @@ async def whatsapp_webhook(
                 From
             )
             return EMPTY_TWIML
+            
+    # ── Step 0.5: Image detection & processing (Business Cards, IDs) ──────
+    image_data = None
+    if int(NumMedia or 0) >= 1 and MediaUrl0 and (MediaContentType0 or "").startswith("image/"):
+        account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
+        auth_token  = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        try:
+            send_whatsapp_message(
+                "🖼️ Got your image! Scanning for details... ⏳",
+                From
+            )
+            print(f"[Image] Downloading image from: {MediaUrl0}")
+            import requests, base64
+            from requests.auth import HTTPBasicAuth
+            img_resp = requests.get(
+                MediaUrl0,
+                auth=HTTPBasicAuth(account_sid, auth_token),
+                timeout=30
+            )
+            img_resp.raise_for_status()
+            base64_img = base64.b64encode(img_resp.content).decode('utf-8')
+            image_data = {
+                "base64": base64_img,
+                "mime_type": MediaContentType0
+            }
+            print(f"[Image] Successfully downloaded and encoded image ({len(img_resp.content)} bytes)")
+        except Exception as e:
+            print(f"[Image] Failed to download or process image: {e}")
+            send_whatsapp_message(
+                "❌ Sorry, I couldn't process the image you sent.",
+                From
+            )
+            return EMPTY_TWIML
 
     # 1. Authorize sender
     if not From.endswith("9502901416"):
@@ -8718,7 +8751,7 @@ async def whatsapp_webhook(
             
     # 3. No pending session (or a correction) — parse via AI
     print(f"[WhatsApp Flow] Processing command: {Body}")
-    result = process_whatsapp_command(Body, previous_state)
+    result = process_whatsapp_command(Body, previous_state, image_data)
     print(f"[WhatsApp Flow] AI Result: {result}")
     
     if result["action"] not in ["none", "error"]:
