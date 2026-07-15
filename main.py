@@ -6941,21 +6941,34 @@ Identify 2 realistic competitors in their exact industry. Return ONLY valid JSON
 """
         elif body.agent_type == "email":
             prompt = system_prompt + """
-Write a highly personalized, compelling cold outreach email to the CEO. Return ONLY valid JSON matching exactly:
+Write a hyper-personalized, ultra-concise, and compelling cold outreach email to the CEO or decision-maker. 
+CRITICAL RULES:
+1. NO PLACEHOLDERS: Do NOT use brackets like [Your Name], [Your Company], etc. Write the email from the perspective of an elite B2B Growth/Marketing Agency (SerpHawk).
+2. NO BOILERPLATE: Never use generic openers like "I hope this message finds you well" or "My name is X". Jump STRAIGHT into the value and why you are contacting them.
+3. BE SPECIFIC: Use the actual insights, industry, and URL provided to make it hyper-relevant to their specific business.
+4. KEEP IT SHORT: Keep it under 4 short paragraphs. Make it punchy.
+
+Return ONLY valid JSON matching exactly:
 {
-  "subject": "Compelling subject line",
+  "subject": "Compelling, non-spammy subject line (lowercase, casual)",
   "body": "The full email body, formatted beautifully with line breaks."
 }
 """
         elif body.agent_type == "calling":
             prompt = system_prompt + """
-Write a professional, structured B2B sales teleprompter pitch for a sales agent to read. Include an intro, value prop, pain points, objection handling, and closing. Return ONLY valid JSON matching exactly:
+Write a professional, punchy, and conversational B2B sales teleprompter script for a sales agent to read on a cold call. 
+CRITICAL RULES:
+1. NO PLACEHOLDERS: Do NOT use brackets like [Your Name] or [Your Company]. Introduce yourself as calling from SerpHawk (an elite Growth/SEO agency).
+2. SOUND HUMAN: Make it sound like a real person speaking, not a corporate robot. Use casual but professional language.
+3. BE SPECIFIC: Use the lead's actual company name and industry to make the pitch highly relevant.
+
+Return ONLY valid JSON matching exactly:
 {
   "calling": {
-    "intro": "The opening hook...",
-    "value_prop": "The core pitch...",
-    "objections": ["If they say X, say Y...", "If they say A, say B..."],
-    "closing": "The call to action..."
+    "intro": "The opening hook (casual, getting straight to the point)...",
+    "value_prop": "The core pitch tailored to their specific industry...",
+    "objections": ["If they say 'Not interested', say...", "If they say 'We already have an agency', say..."],
+    "closing": "The soft call to action to book a meeting..."
   }
 }
 """
