@@ -264,6 +264,28 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
         );
       })()}
 
+      {/* ── Sheet Data (Imported Fields) ────────────────────────── */}
+      {client?.customFields?.sheet_data && Object.keys(client.customFields.sheet_data).length > 0 && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px 20px', backdropFilter: 'blur(16px)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+            <div style={{ background: '#10b981', borderRadius: 8, padding: '4px 7px', display: 'flex' }}>
+              <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M3 3a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2H3zm0 2h14v1H3V5zm0 3h14v7H3V8z"/></svg>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Sheet Data</span>
+            <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>{Object.keys(client.customFields.sheet_data).length} fields</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+            {Object.entries(client.customFields.sheet_data)
+              .filter(([k, v]) => v && String(v).trim() && ![''].includes(String(v).trim()))
+              .map(([key, val]) => (
+                <div key={key} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 14px' }}>
+                  <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase' as const, color: 'var(--text-muted)', margin: '0 0 4px 0' }}>{key}</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', margin: 0, wordBreak: 'break-word' }}>{String(val)}</p>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
 
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
