@@ -8770,7 +8770,9 @@ async def whatsapp_webhook(
         confirm_msg = (
             f"{voice_prefix}"
             f"📋 *Proposed Action:* {label}{param_lines}\n\n"
-            f"Reply *YES* to confirm or *NO* to cancel."
+            f"✅ Reply *YES* to confirm\n"
+            f"❌ Reply *NO* to cancel\n"
+            f"✏️ *To edit:* Just reply with your corrections (e.g., 'change email to xyz@gmail.com')"
         )
 
         # ③ Proactively push the confirmation — no TwiML reliance
