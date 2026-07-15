@@ -8467,6 +8467,7 @@ async def whatsapp_webhook(
     
     # 2.1 Handle Active Live Chat Messages
     if ws_session and ws_session.active_live_chat_session:
+        print(f"[WhatsApp Flow] User is in active live chat session: {ws_session.active_live_chat_session}")
         if msg_text == "end":
             from database import LiveChatSession
             lcs = session.exec(select(LiveChatSession).where(LiveChatSession.session_id == ws_session.active_live_chat_session)).first()
@@ -8474,7 +8475,7 @@ async def whatsapp_webhook(
                 lcs.status = "ended"
             session.delete(ws_session)
             session.commit()
-            send_whatsapp_message("✅ Live chat ended.", From)
+            send_whatsapp_message("✅ Live chat ended. You can now send CRM commands again.", From)
             return EMPTY_TWIML
         else:
             from database import LiveChatMessage
@@ -8486,10 +8487,12 @@ async def whatsapp_webhook(
             )
             session.add(chat_msg)
             session.commit()
+            print("[WhatsApp Flow] Message forwarded to live chat. Exiting.")
             return EMPTY_TWIML
     
     # 2.2 Handle Pending Actions
     if ws_session and ws_session.pending_action:
+        print(f"[WhatsApp Flow] User has pending action: {ws_session.pending_action}")
         if msg_text in ["yes", "y"]:
             action = ws_session.pending_action
             args = json.loads(ws_session.action_data)
@@ -8695,6 +8698,7 @@ async def whatsapp_webhook(
                 session.delete(ws_session)
             
             session.commit()
+            print("[WhatsApp Flow] Executed pending action successfully.")
             # ② Proactively send the action result via WhatsApp API
             send_whatsapp_message(reply_msg, From)
             return EMPTY_TWIML
@@ -8702,11 +8706,23 @@ async def whatsapp_webhook(
         elif msg_text in ["no", "cancel", "n"]:
             session.delete(ws_session)
             session.commit()
+            print("[WhatsApp Flow] Pending action cancelled explicitly by user.")
             send_whatsapp_message("❌ Action cancelled. Send a new command whenever you're ready.", From)
             return EMPTY_TWIML
+        else:
+            # They didn't say yes or no, but they have a pending action.
+            # E.g. they sent a new command or a new voice note.
+            print("[WhatsApp Flow] Overwriting previous pending action with new command.")
+            session.delete(ws_session)
+            session.commit()
+            # Explicitly set ws_session to None so it doesn't try to use it below
+            ws_session = None
             
     # 3. No pending session — parse a fresh command (text or voice transcript)
+    print(f"[WhatsApp Flow] Processing fresh command: {Body}")
     result = process_whatsapp_command(Body)
+    print(f"[WhatsApp Flow] AI Result: {result}")
+    
     if result["action"] not in ["none", "error"]:
         # Save pending session to await YES/NO
         new_session = WhatsAppSession(
@@ -8758,11 +8774,13 @@ async def whatsapp_webhook(
         )
 
         # ③ Proactively push the confirmation — no TwiML reliance
+        print("[WhatsApp Flow] Sending confirmation message to user.")
         send_whatsapp_message(confirm_msg, From)
         return EMPTY_TWIML
 
     else:
         # Conversational reply or unrecognized input
+        print("[WhatsApp Flow] Sending conversational fallback.")
         reply = result.get(
             "reply",
             "🤖 I didn't quite understand that.\n\nTry:\n• _Add client Acme Corp_\n• _Schedule meeting with Ravi tomorrow at 3pm_\n• _Note that Blue Barrier is interested in SEO_\n• Or just send a voice note!"
