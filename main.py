@@ -8491,11 +8491,19 @@ async def whatsapp_webhook(
             return EMPTY_TWIML
     
     # 2.2 Handle Pending Actions
+    previous_state = None
     if ws_session and ws_session.pending_action:
         print(f"[WhatsApp Flow] User has pending action: {ws_session.pending_action}")
-        if msg_text in ["yes", "y"]:
-            action = ws_session.pending_action
-            args = json.loads(ws_session.action_data)
+        action = ws_session.pending_action
+        args = json.loads(ws_session.action_data)
+        
+        is_confirm = False
+        if action == "add_entity" and msg_text in ["1", "2", "3"]:
+            is_confirm = True
+        elif action != "add_entity" and msg_text in ["yes", "y"]:
+            is_confirm = True
+
+        if is_confirm:
             reply_msg = "Action confirmed and executed."
             
             # Execute actions based on type
@@ -8517,95 +8525,101 @@ async def whatsapp_webhook(
                 else:
                     reply_msg = "Live chat session expired or not found."
                     session.delete(ws_session)
-            # ── Action: add_lead ─────────────────────────────────────────────
-            elif action == "add_lead":
-                from database import Lead, ClientResearch, ClientProfile
-                company_name = args.get('company_name', 'Unknown')
-                website = args.get('website', '')
+            # ── Action: add_entity (replaces add_lead and add_client) ────────
+            elif action == "add_entity":
+                name = args.get('name', 'Unknown')
+                email = args.get('email')
+                phone = args.get('phone')
+                website = args.get('website')
+                notes_text = args.get('notes')
 
-                new_lead = Lead(
-                    company_name=company_name,
-                    website=website,
-                    source="WhatsApp",
-                    status="New"
-                )
-                session.add(new_lead)
-
-                new_client = ClientProfile(
-                    companyName=company_name,
-                    websiteUrl=website,
-                    status="Pending"
-                )
-                session.add(new_client)
-                session.commit()
-                session.refresh(new_lead)
-                session.refresh(new_client)
-
-                reply_msg = f"✅ Lead *{company_name}* added! Starting smart research in the background..."
-
-                async def research_and_save(c_name, c_url, l_id, client_id):
-                    try:
-                        res = await smart_research(SmartResearchRequest(company_name=c_name, company_url=c_url))
-                        with Session(engine) as db_session:
-                            cr = ClientResearch(
-                                lead_id=l_id,
-                                client_id=client_id,
-                                email_agent_data=json.dumps(res)
-                            )
-                            db_session.add(cr)
-                            db_session.commit()
-                            from modules.whatsapp import send_whatsapp_message
-                            send_whatsapp_message(f"✅ Research complete for *{c_name}*! AI draft is ready.", From)
-                    except Exception as e:
-                        print("Error in bg research:", e)
-
-                background_tasks.add_task(research_and_save, company_name, website, new_lead.id, new_client.id)
-                session.delete(ws_session)
-
-            # ── Action: add_client (full client onboarding) ──────────────────
-            elif action == "add_client":
-                from database import ClientProfile
-                company_name    = args.get('company_name', 'Unknown')
-                contact_person  = args.get('contact_person')
-                email           = args.get('email')
-                phone           = args.get('phone')
-                website         = args.get('website')
-                notes_text      = args.get('notes')
-
-                new_client = ClientProfile(
-                    companyName=company_name,
-                    contact_person=contact_person,
-                    phone=phone,
-                    websiteUrl=website,
-                    status="Active",
-                    lead_source="WhatsApp Voice",
-                )
-                # Store email in customFields if not a dedicated column
-                if email:
-                    new_client.customFields = {"email": email}
-                session.add(new_client)
-                session.commit()
-                session.refresh(new_client)
-
-                # Optionally attach initial note
-                if notes_text:
-                    from database import ClientNote
-                    initial_note = ClientNote(
-                        client_id=new_client.id,
-                        content=notes_text,
-                        author_name="WhatsApp Agent",
-                        tags=["voice", "onboarding"]
+                if msg_text == "1": # Client
+                    from database import ClientProfile, ClientNote
+                    new_client = ClientProfile(
+                        companyName=name,
+                        phone=phone,
+                        websiteUrl=website,
+                        status="Active",
+                        lead_source="WhatsApp Voice",
                     )
-                    session.add(initial_note)
+                    if email:
+                        new_client.customFields = {"email": email}
+                    session.add(new_client)
                     session.commit()
+                    session.refresh(new_client)
 
-                reply_msg = (
-                    f"✅ Client *{company_name}* added to CRM!\n"
-                    + (f"👤 Contact: {contact_person}\n" if contact_person else "")
-                    + (f"📧 Email: {email}\n" if email else "")
-                    + (f"📞 Phone: {phone}\n" if phone else "")
-                    + (f"🌐 Website: {website}\n" if website else "")
-                )
+                    if notes_text:
+                        initial_note = ClientNote(
+                            client_id=new_client.id,
+                            content=notes_text,
+                            author_name="WhatsApp Agent",
+                            tags=["voice", "onboarding"]
+                        )
+                        session.add(initial_note)
+                        session.commit()
+                    
+                    reply_msg = (
+                        f"✅ Client *{name}* added to CRM!\n"
+                        + (f"📧 Email: {email}\n" if email else "")
+                        + (f"📞 Phone: {phone}\n" if phone else "")
+                        + (f"🌐 Website: {website}\n" if website else "")
+                    )
+
+                elif msg_text == "2": # Lead
+                    from database import Lead, ClientProfile, ClientResearch
+                    new_lead = Lead(
+                        company_name=name,
+                        website=website,
+                        source="WhatsApp",
+                        status="New"
+                    )
+                    session.add(new_lead)
+                    
+                    new_client = ClientProfile(
+                        companyName=name,
+                        websiteUrl=website,
+                        status="Pending"
+                    )
+                    if email:
+                        new_client.customFields = {"email": email}
+                    if phone:
+                        new_client.phone = phone
+                    session.add(new_client)
+                    session.commit()
+                    session.refresh(new_lead)
+                    session.refresh(new_client)
+
+                    reply_msg = f"✅ Lead *{name}* added! Starting smart research in the background..."
+                    
+                    async def research_and_save(c_name, c_url, l_id, client_id):
+                        try:
+                            res = await smart_research(SmartResearchRequest(company_name=c_name, company_url=c_url))
+                            with Session(engine) as db_session:
+                                cr = ClientResearch(
+                                    lead_id=l_id,
+                                    client_id=client_id,
+                                    email_agent_data=json.dumps(res)
+                                )
+                                db_session.add(cr)
+                                db_session.commit()
+                                from modules.whatsapp import send_whatsapp_message
+                                send_whatsapp_message(f"✅ Research complete for *{c_name}*! AI draft is ready.", From)
+                        except Exception as e:
+                            print("Error in bg research:", e)
+
+                    background_tasks.add_task(research_and_save, name, website, new_lead.id, new_client.id)
+
+                elif msg_text == "3": # Contact
+                    from database import Contact
+                    new_contact = Contact(
+                        first_name=name,
+                        email=email,
+                        mobile_number=phone
+                    )
+                    session.add(new_contact)
+                    session.commit()
+                    reply_msg = f"✅ Contact *{name}* added to CRM!"
+
                 session.delete(ws_session)
 
             # ── Action: schedule_meeting ─────────────────────────────────────
@@ -8710,17 +8724,18 @@ async def whatsapp_webhook(
             send_whatsapp_message("❌ Action cancelled. Send a new command whenever you're ready.", From)
             return EMPTY_TWIML
         else:
-            # They didn't say yes or no, but they have a pending action.
-            # E.g. they sent a new command or a new voice note.
-            print("[WhatsApp Flow] Overwriting previous pending action with new command.")
-            session.delete(ws_session)
-            session.commit()
-            # Explicitly set ws_session to None so it doesn't try to use it below
-            ws_session = None
+            # They didn't say yes/no/1/2/3, so they are providing a correction.
+            print("[WhatsApp Flow] User provided correction to pending action.")
+            previous_state = {
+                "action": ws_session.pending_action,
+                "parameters": json.loads(ws_session.action_data)
+            }
+            # We explicitly DO NOT delete the ws_session here. 
+            # We pass previous_state to the LLM, and update the session in Step 3.
             
-    # 3. No pending session — parse a fresh command (text or voice transcript)
-    print(f"[WhatsApp Flow] Processing fresh command: {Body}")
-    result = process_whatsapp_command(Body)
+    # 3. No pending session (or a correction) — parse via AI
+    print(f"[WhatsApp Flow] Processing command: {Body}")
+    result = process_whatsapp_command(Body, previous_state)
     print(f"[WhatsApp Flow] AI Result: {result}")
     
     if result["action"] not in ["none", "error"]:
@@ -8740,8 +8755,7 @@ async def whatsapp_webhook(
         params = result["parameters"]
 
         action_labels = {
-            "add_lead":         "➕ Add Lead",
-            "add_client":       "🏢 Add New Client",
+            "add_entity":       "👤 Add New Entity",
             "add_note":         "📝 Add Note",
             "schedule_meeting": "📅 Schedule Meeting",
             "add_task":         "✅ Create Task",
@@ -8749,8 +8763,8 @@ async def whatsapp_webhook(
         label = action_labels.get(action_name, action_name.replace("_", " ").title())
 
         field_icons = {
-            "company_name":   "🏢", "contact_person": "👤", "email": "📧",
-            "phone":          "📞", "website":         "🌐", "notes": "📋",
+            "name":           "👤", "email": "📧", "phone": "📞", 
+            "website":        "🌐", "notes": "📋",
             "target_name":    "👤", "content":         "📋", "time_str": "🕐",
             "title":          "📌", "description":     "📋", "due_date": "📅",
             "priority":       "🔥", "client_name":     "🏢",
@@ -8767,13 +8781,25 @@ async def whatsapp_webhook(
             short_transcript = voice_transcript[:150] + ('...' if len(voice_transcript) > 150 else '')
             voice_prefix = f"🎙️ *I heard:* \"{short_transcript}\"\n\n"
 
-        confirm_msg = (
-            f"{voice_prefix}"
-            f"📋 *Proposed Action:* {label}{param_lines}\n\n"
-            f"✅ Reply *YES* to confirm\n"
-            f"❌ Reply *NO* to cancel\n"
-            f"✏️ *To edit:* Just reply with your corrections (e.g., 'change email to xyz@gmail.com')"
-        )
+        if action_name == "add_entity":
+            confirm_msg = (
+                f"{voice_prefix}"
+                f"📋 *Proposed Action:* {label}{param_lines}\n\n"
+                f"Where should I add this? *Reply with a number:*\n"
+                f"1️⃣ Client\n"
+                f"2️⃣ Lead\n"
+                f"3️⃣ Contact\n\n"
+                f"❌ Reply *NO* to cancel\n"
+                f"✏️ *To edit:* Just reply with your corrections (e.g. 'change name to xyz')"
+            )
+        else:
+            confirm_msg = (
+                f"{voice_prefix}"
+                f"📋 *Proposed Action:* {label}{param_lines}\n\n"
+                f"✅ Reply *YES* to confirm\n"
+                f"❌ Reply *NO* to cancel\n"
+                f"✏️ *To edit:* Just reply with your corrections (e.g., 'change time to tomorrow')"
+            )
 
         # ③ Proactively push the confirmation — no TwiML reliance
         print("[WhatsApp Flow] Sending confirmation message to user.")
