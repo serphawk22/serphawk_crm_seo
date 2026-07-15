@@ -576,9 +576,10 @@ Return ONLY valid JSON matching this structure:
         return {}
 
 
-def process_whatsapp_command(message: str):
+def process_whatsapp_command(message: str, previous_state: dict = None):
     """
     Analyzes an incoming WhatsApp message to determine the CRM action using OpenAI function calling.
+    If previous_state is provided, it merges the new message into the existing context.
     """
     try:
         client = get_openai_client()
@@ -591,23 +592,29 @@ def process_whatsapp_command(message: str):
         2. NEVER ask conversational clarifying questions (e.g., "Could you confirm the email address?"). The backend will automatically ask the user for confirmation. Just extract what you can and call the tool!
         3. AGGRESSIVELY correct speech-to-text errors. For example, if you see "VarsitAdre, gmail.com", format it as "VarsitAdre@gmail.com".
         4. If a required parameter is vaguely hinted at, make your best guess.
-        5. "add john doe from acme" means add_client. "book a meeting with..." means schedule_meeting.
+        5. "add john doe from acme" means add_entity. "book a meeting with..." means schedule_meeting.
         6. "note that ravi is interested" means add_note. "create a task to follow up" means add_task.
         """
         
+        if previous_state:
+            system_prompt += f"\n\nIMPORTANT CONTEXT:\nThe user is providing a correction or additional information for their PREVIOUS command.\nPrevious intent: {previous_state.get('action')}\nPrevious parameters: {previous_state.get('parameters')}\n\nMERGE the user's new message into these previous parameters. Keep the same tool intent (unless they explicitly change it), update any fields they mentioned, and RETURN THE FULL SET of merged parameters."
+
         tools = [
             {
                 "type": "function",
                 "function": {
-                    "name": "add_lead",
-                    "description": "Extracts company name and website to add a new lead.",
+                    "name": "add_entity",
+                    "description": "Adds a new person or company to the CRM. Use this for Leads, Clients, or Contacts.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "company_name": {"type": "string", "description": "The name of the company or lead."},
-                            "website": {"type": "string", "description": "The website URL of the company, if provided."}
+                            "name": {"type": "string", "description": "The name of the company or person."},
+                            "email": {"type": "string", "description": "Email address."},
+                            "phone": {"type": "string", "description": "Phone number."},
+                            "website": {"type": "string", "description": "Website URL, if provided."},
+                            "notes": {"type": "string", "description": "Any initial notes about them."}
                         },
-                        "required": ["company_name"]
+                        "required": ["name"]
                     }
                 }
             },
@@ -641,25 +648,7 @@ def process_whatsapp_command(message: str):
                     }
                 }
             },
-            {
-                "type": "function",
-                "function": {
-                    "name": "add_client",
-                    "description": "Adds a brand new client to the CRM. Use when the owner wants to onboard or register a new client.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "company_name": {"type": "string", "description": "The name of the client company."},
-                            "contact_person": {"type": "string", "description": "The name of the main contact person at the client company."},
-                            "email": {"type": "string", "description": "Email address of the client."},
-                            "phone": {"type": "string", "description": "Phone number of the client."},
-                            "website": {"type": "string", "description": "Website URL of the client."},
-                            "notes": {"type": "string", "description": "Any initial notes about this client."}
-                        },
-                        "required": ["company_name"]
-                    }
-                }
-            },
+
             {
                 "type": "function",
                 "function": {
