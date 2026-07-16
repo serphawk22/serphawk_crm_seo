@@ -276,7 +276,18 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
             {Object.entries(client.customFields.sheet_data)
-              .filter(([k, v]) => v && String(v).trim() && ![''].includes(String(v).trim()))
+              .filter(([k, v]) => {
+                if (!v || !String(v).trim()) return false;
+                const lowerK = k.toLowerCase().trim();
+                const ignored = [
+                  'team member',
+                  'research status (pending/in progress/completed)',
+                  'research status',
+                  'start date',
+                  'end date'
+                ];
+                return !ignored.includes(lowerK);
+              })
               .map(([key, val]) => (
                 <div key={key} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 14px' }}>
                   <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase' as const, color: 'var(--text-muted)', margin: '0 0 4px 0' }}>{key}</p>
