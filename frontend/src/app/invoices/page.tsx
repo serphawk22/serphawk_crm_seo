@@ -38,7 +38,7 @@ const STATUS_CONFIG: Record<string, { icon: any; color: string; bg: string }> = 
 };
 
 export default function InvoicesPage() {
-  const { role, user } = useRole();
+  const { role, user, loading: authLoading } = useRole();
   const isClient = role === "Client";
   const clientId = user?.client_id;
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -57,7 +57,11 @@ export default function InvoicesPage() {
   });
   const [lineItems, setLineItems] = useState([{ description: "", amount: "" }]);
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { 
+    if (!authLoading) {
+      fetchAll(); 
+    }
+  }, [authLoading]);
 
   async function fetchAll() {
     setLoading(true);
@@ -66,7 +70,7 @@ export default function InvoicesPage() {
       : `${API_BASE_URL}/invoices`;
     const [inv, cl, sr] = await Promise.all([
       fetch(invoiceUrl).then(r => r.json()),
-      isClient ? Promise.resolve({ clients: [] }) : fetch(`${API_BASE_URL}/clients`).then(r => r.json()),
+      isClient ? Promise.resolve({ clients: [] }) : fetch(`${API_BASE_URL}/clients?per_page=1000`).then(r => r.json()),
       isClient ? Promise.resolve({ requests: [] }) : fetch(`${API_BASE_URL}/services/requests`).then(r => r.json()),
     ]);
     setInvoices(inv.invoices || []);
