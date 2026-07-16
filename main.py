@@ -1455,7 +1455,7 @@ async def import_sheet(body: SheetImportRequest, background_tasks: BackgroundTas
             return None
 
         company  = get_field(["Client Name","Company","Company Name","companyName","Name"])
-        website  = get_field(["Website URL","Website","websiteUrl","url","URL"])
+        website  = get_field(["Website URL","Website","websiteUrl","url","URL","company web site"])
 
         if not company and website:
             # Extract domain name as company name if missing (e.g. https://www.mosco.mx -> Mosco)
