@@ -15,6 +15,7 @@ import { GlobalLoader } from "@/components/GlobalLoader";
 import { usePathname } from "next/navigation";
 import { CallNotificationBar } from "@/components/CallNotificationBar";
 import SpaceAtmosphere from "@/components/SpaceAtmosphere";
+import Script from "next/script";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
@@ -108,7 +109,37 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Google Translate — suppress native toolbar; our LanguageSelector toggle controls it */}
+        <style>{`
+          .goog-te-banner-frame, .goog-te-balloon-frame { display: none !important; }
+          .goog-te-gadget { display: none !important; }
+          body { top: 0 !important; }
+          .skiptranslate { display: none !important; }
+          #google_translate_element { display: none !important; }
+        `}</style>
+      </head>
       <body className={inter.className}>
+        {/* Hidden Google Translate hook — translates the ENTIRE page DOM */}
+        <div id="google_translate_element" style={{ display: "none" }} />
+        <Script
+          id="google-translate-init"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              function googleTranslateElementInit() {
+                new google.translate.TranslateElement(
+                  { pageLanguage: 'en', includedLanguages: 'es,fr,de,it', autoDisplay: false },
+                  'google_translate_element'
+                );
+              }
+            `,
+          }}
+        />
+        <Script
+          src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"
+          strategy="afterInteractive"
+        />
         <ThemeProvider>
           <I18nProvider>
             <LanguageProvider>
