@@ -31,6 +31,21 @@ export default function LanguageSelector() {
     localStorage.setItem('crm-language', code); // Persist across sessions
     setLanguage(code as Language); // Sync the secondary context
     setIsOpen(false);
+
+    // ── Google Translate full-page translation ──
+    // Fires alongside i18next so ALL content (DB data, dynamic labels) gets translated
+    const triggerGoogleTranslate = (lang: string, attempts = 0) => {
+      const select = document.querySelector<HTMLSelectElement>('.goog-te-combo');
+      if (select) {
+        // 'en' → select the "Select Language" placeholder to restore original
+        select.value = lang === 'en' ? '' : lang;
+        select.dispatchEvent(new Event('change'));
+      } else if (attempts < 25) {
+        // Retry while GT script is still loading (up to 2.5s)
+        setTimeout(() => triggerGoogleTranslate(lang, attempts + 1), 100);
+      }
+    };
+    triggerGoogleTranslate(code);
   };
 
   return (
