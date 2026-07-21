@@ -324,21 +324,23 @@ export function Sidebar({ role }: SidebarProps) {
     setLanguage(lang as Language);
     setActiveLang(lang);
 
-    // Trigger Google Translate full-page translation
+    if (lang === "en") {
+      // Set flag BEFORE reload — sync script in <head> reads this and adds
+      // 'notranslate' to <html> BEFORE GT loads, so GT never retranslates.
+      sessionStorage.setItem("crm_gt_restore_en", "1");
+      document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${window.location.hostname}`;
+      window.location.reload();
+      return;
+    }
+
+    // Switching TO Spanish:
+    // Remove notranslate so GT is allowed to translate the page.
+    document.documentElement.classList.remove("notranslate");
+    document.documentElement.removeAttribute("translate");
+
     const triggerGT = (attempts = 0) => {
-      // ── Restoring to English ──
-      // GT cannot reliably restore via the select box alone.
-      // Clear the googtrans cookie and reload — the only guaranteed restore.
-      if (lang === "en") {
-        // Flag tells googleTranslateElementInit (after reload) to force English
-        sessionStorage.setItem("crm_gt_restore_en", "1");
-        document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-        document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
-        document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${window.location.hostname}`;
-        window.location.reload();
-        return;
-      }
-      // ── Switching to Spanish ──
       const select = document.querySelector<HTMLSelectElement>(".goog-te-combo");
       if (select) {
         select.value = lang;
