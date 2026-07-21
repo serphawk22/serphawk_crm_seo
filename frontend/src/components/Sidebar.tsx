@@ -326,9 +326,20 @@ export function Sidebar({ role }: SidebarProps) {
 
     // Trigger Google Translate full-page translation
     const triggerGT = (attempts = 0) => {
+      // ── Restoring to English ──
+      // GT cannot reliably restore via the select box alone.
+      // Clear the googtrans cookie and reload — the only guaranteed restore.
+      if (lang === "en") {
+        document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
+        document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${window.location.hostname}`;
+        window.location.reload();
+        return;
+      }
+      // ── Switching to Spanish ──
       const select = document.querySelector<HTMLSelectElement>(".goog-te-combo");
       if (select) {
-        select.value = lang === "en" ? "" : lang;
+        select.value = lang;
         select.dispatchEvent(new Event("change"));
       } else if (attempts < 25) {
         setTimeout(() => triggerGT(attempts + 1), 100);
