@@ -330,6 +330,8 @@ export function Sidebar({ role }: SidebarProps) {
       // GT cannot reliably restore via the select box alone.
       // Clear the googtrans cookie and reload — the only guaranteed restore.
       if (lang === "en") {
+        // Flag tells googleTranslateElementInit (after reload) to force English
+        sessionStorage.setItem("crm_gt_restore_en", "1");
         document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
         document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
         document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${window.location.hostname}`;
