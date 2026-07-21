@@ -33,12 +33,10 @@ export default function LanguageSelector() {
     setIsOpen(false);
 
     // ── Google Translate full-page translation ──
-    // Fires alongside i18next so ALL content (DB data, dynamic labels) gets translated
     const triggerGoogleTranslate = (lang: string, attempts = 0) => {
-      // Restoring to English: GT cannot reliably restore via select alone.
-      // Clear the googtrans cookie and reload — the only guaranteed method.
       if (lang === 'en') {
-        // Flag tells googleTranslateElementInit (after reload) to force English
+        // Sync script in <head> reads this flag on reload and adds
+        // 'notranslate' to <html> BEFORE GT loads — GT never retranslates.
         sessionStorage.setItem('crm_gt_restore_en', '1');
         document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
         document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
@@ -46,13 +44,15 @@ export default function LanguageSelector() {
         window.location.reload();
         return;
       }
-      // Switching to another language — use the hidden GT select
+      // Remove notranslate so GT is allowed to translate the page
+      document.documentElement.classList.remove('notranslate');
+      document.documentElement.removeAttribute('translate');
+      // Trigger GT via the hidden combo select
       const select = document.querySelector<HTMLSelectElement>('.goog-te-combo');
       if (select) {
         select.value = lang;
         select.dispatchEvent(new Event('change'));
       } else if (attempts < 25) {
-        // Retry while GT script is still loading (up to 2.5s)
         setTimeout(() => triggerGoogleTranslate(lang, attempts + 1), 100);
       }
     };

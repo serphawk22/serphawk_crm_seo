@@ -110,7 +110,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Google Translate — suppress native toolbar; our LanguageSelector toggle controls it */}
+        {/* Suppress Google Translate native toolbar */}
         <style>{`
           .goog-te-banner-frame, .goog-te-balloon-frame { display: none !important; }
           .goog-te-gadget { display: none !important; }
@@ -118,9 +118,23 @@ export default function RootLayout({
           .skiptranslate { display: none !important; }
           #google_translate_element { display: none !important; }
         `}</style>
+        {/*
+          SYNC SCRIPT — runs before GT loads.
+          If user clicked EN, we mark the html element with 'notranslate'
+          so Google Translate sees it and skips the page entirely.
+          This is the ONLY reliable way to prevent GT re-applying Spanish.
+        */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function() {
+            if (sessionStorage.getItem('crm_gt_restore_en') === '1') {
+              sessionStorage.removeItem('crm_gt_restore_en');
+              document.documentElement.classList.add('notranslate');
+              document.documentElement.setAttribute('translate', 'no');
+            }
+          })();
+        `}} />
       </head>
       <body className={inter.className}>
-        {/* Hidden Google Translate hook — translates the ENTIRE page DOM */}
         <div id="google_translate_element" style={{ display: "none" }} />
         <Script
           id="google-translate-init"
@@ -132,28 +146,6 @@ export default function RootLayout({
                   { pageLanguage: 'en', includedLanguages: 'es,fr,de,it', autoDisplay: false },
                   'google_translate_element'
                 );
-
-                // After GT widget loads, check if user clicked EN and we need to block re-translation.
-                // GT can re-apply a previous translation 2-3s after load from its own memory.
-                // The sessionStorage flag tells us to immediately force English after init.
-                if (sessionStorage.getItem('crm_gt_restore_en') === '1') {
-                  sessionStorage.removeItem('crm_gt_restore_en');
-                  var forceEnglish = function(tries) {
-                    var sel = document.querySelector('.goog-te-combo');
-                    if (sel) {
-                      // If GT auto-applied a language, reset it to blank (original)
-                      sel.value = '';
-                      sel.dispatchEvent(new Event('change'));
-                    } else if (tries < 30) {
-                      setTimeout(function() { forceEnglish(tries + 1); }, 100);
-                    }
-                  };
-                  // Start checking immediately and keep checking for 3s
-                  forceEnglish(0);
-                  setTimeout(function() { forceEnglish(0); }, 500);
-                  setTimeout(function() { forceEnglish(0); }, 1500);
-                  setTimeout(function() { forceEnglish(0); }, 3000);
-                }
               }
             `,
           }}
