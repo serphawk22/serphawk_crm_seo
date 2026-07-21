@@ -22,14 +22,16 @@ import {
   Loader2,
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
+import EmailTrackerTab from "./components/EmailTrackerTab";
 
-type Tab = "profile" | "security" | "notifications" | "appearance";
+type Tab = "profile" | "security" | "notifications" | "appearance" | "integrations";
 
 const TABS: { id: Tab; label: string; icon: typeof User }[] = [
   { id: "profile", label: "Profile", icon: User },
   { id: "security", label: "Security", icon: Shield },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "integrations", label: "Email Integrations", icon: Mail },
 ];
 
 function SaveButton({
@@ -582,6 +584,9 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+          
+          {/* ── EMAIL INTEGRATIONS TAB ── */}
+          {tab === "integrations" && <EmailTrackerTab />}
         </motion.div>
       </div>
 

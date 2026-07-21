@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity, MessageSquare, StickyNote, CheckSquare, Building2, ChevronDown,
   Target, FolderOpen, HeartPulse, LayoutDashboard, Users,
-  TrendingUp, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone
+  TrendingUp, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X
 } from 'lucide-react';
 
 import { API_BASE_URL } from '@/config';
@@ -264,6 +264,39 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
         );
       })()}
 
+      {/* ── Sheet Data (Imported Fields) ────────────────────────── */}
+      {client?.customFields?.sheet_data && Object.keys(client.customFields.sheet_data).length > 0 && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px 20px', backdropFilter: 'blur(16px)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+            <div style={{ background: '#10b981', borderRadius: 8, padding: '4px 7px', display: 'flex' }}>
+              <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M3 3a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2H3zm0 2h14v1H3V5zm0 3h14v7H3V8z"/></svg>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Sheet Data</span>
+            <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>{Object.keys(client.customFields.sheet_data).length} fields</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+            {Object.entries(client.customFields.sheet_data)
+              .filter(([k, v]) => {
+                if (!v || !String(v).trim()) return false;
+                const lowerK = k.toLowerCase().trim();
+                const ignored = [
+                  'team member',
+                  'research status (pending/in progress/completed)',
+                  'research status',
+                  'start date',
+                  'end date'
+                ];
+                return !ignored.includes(lowerK);
+              })
+              .map(([key, val]) => (
+                <div key={key} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 14px' }}>
+                  <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase' as const, color: 'var(--text-muted)', margin: '0 0 4px 0' }}>{key}</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', margin: 0, wordBreak: 'break-word' }}>{String(val)}</p>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
 
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
@@ -393,7 +426,13 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
             <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: '16px 0' }}>{t('client_tabs.no_activity')}</p>
           ) : (
             recentActivities.map((a: any) => (
-              <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+              <div 
+                key={a.id} 
+                onClick={() => setSelectedActivity(a)}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 8px', borderBottom: '1px solid var(--border)', cursor: 'pointer', borderRadius: 8, transition: 'background 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
                 <Clock size={12} color="#94a3b8" style={{ marginTop: 2, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontSize: 12.5, fontWeight: 600, color: '#334155', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.action}</p>
@@ -453,6 +492,7 @@ export default function AdminClientDetailPage() {
   const [darkMode, setDarkMode]           = useState(false);
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [newUserForm, setNewUserForm] = useState({ name: '', email: '', role: 'SalesManager', password: 'password123' });
+  const [selectedActivity, setSelectedActivity] = useState<any>(null);
 
   // Force light theme always — no dark mode on this page
   useEffect(() => {
@@ -843,6 +883,74 @@ export default function AdminClientDetailPage() {
           </aside>
         </div>
       </div>
+
+      {/* Activity Detail Modal */}
+      <AnimatePresence>
+        {selectedActivity && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 9999,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)'
+            }}
+            onClick={() => setSelectedActivity(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: 'var(--bg-card)', border: '1px solid var(--border)',
+                borderRadius: 24, padding: 32, width: '90%', maxWidth: 700,
+                maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.1)'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <div>
+                  <h3 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>{selectedActivity.action}</h3>
+                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 0' }}>
+                    {selectedActivity.createdAt ? new Date(selectedActivity.createdAt).toLocaleString(language === 'es' ? 'es-ES' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : ''}
+                    {selectedActivity.method ? ` • via ${selectedActivity.method}` : ''}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setSelectedActivity(null)}
+                  style={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              
+              {selectedActivity.content && (
+                <div style={{ marginBottom: 20 }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 8px 0' }}>{language === 'es' ? 'Resumen' : 'Summary'}</p>
+                  <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 12, fontSize: 14, color: 'var(--text-secondary)' }}>
+                    {selectedActivity.content}
+                  </div>
+                </div>
+              )}
+              
+              {selectedActivity.details && (
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 8px 0' }}>{language === 'es' ? 'Detalles' : 'Details'}</p>
+                  <div style={{ background: 'var(--bg-hover)', padding: 16, borderRadius: 12, fontSize: 13, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', fontFamily: 'monospace', border: '1px solid var(--border)' }}>
+                    {selectedActivity.details}
+                  </div>
+                </div>
+              )}
+              
+              {!selectedActivity.content && !selectedActivity.details && (
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic', padding: 20 }}>{language === 'es' ? 'No hay detalles adicionales.' : 'No additional details available.'}</p>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

@@ -173,10 +173,10 @@ export default function RadarAnalysisPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed");
       setAddedPlaceIds(prev => new Set([...prev, c.place_id || c.name]));
-      setAddSuccess(`${c.name} added to CRM! Discovered from: ${foundPlace?.name}`);
+      setAddSuccess(`${c.name} added as Lead! View in CRM → Leads`);
       setTimeout(() => setAddSuccess(null), 4000);
     } catch (e: any) {
-      setError(e.message || "Failed to add client");
+      setError(e.message || "Failed to add lead");
     }
   }, [radarResult, sourceClientId, foundPlace]);
 

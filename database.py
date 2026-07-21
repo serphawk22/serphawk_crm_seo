@@ -64,6 +64,7 @@ class User(SQLModel, table=True):
     role: str = Field(default="Client") # Admin, Employee, Client
     is_active: bool = Field(default=True)
     status: str = Field(default="Active")
+    sidebar_preferences: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
     createdAt: datetime = Field(default_factory=datetime.utcnow, sa_column=Column("created_at", DateTime))
     updatedAt: datetime = Field(default_factory=datetime.utcnow, sa_column=Column("updated_at", DateTime))
     
@@ -403,10 +404,11 @@ class ActivityLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     userId: Optional[int] = Field(default=None, foreign_key="users.id")
     clientId: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     action: str # e.g., "Manual Activity", "Login", "Profile Update"
     method: Optional[str] = None # Email, Phone, In-person, WhatsApp, Website
     content: Optional[str] = Field(default=None, sa_column=Column(Text))
-    details: Optional[str] = None
+    details: Optional[str] = Field(default=None, sa_column=Column(Text))
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     
     # Relationships
@@ -485,6 +487,26 @@ class CallLog(SQLModel, table=True):
     createdAt: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ScheduledCall(SQLModel, table=True):
+    """
+    Scheduled future calls with optional AI-generated pitch
+    """
+    __tablename__ = "scheduled_calls"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str = Field(max_length=500)
+    scheduled_at: Optional[datetime] = Field(default=None)
+    entity_type: str = Field(default="client", max_length=50)  # client, lead, contact
+    entity_id: Optional[int] = Field(default=None)
+    entity_name: Optional[str] = Field(default=None, max_length=255)
+    entity_email: Optional[str] = Field(default=None, max_length=255)
+    pitch: Optional[str] = Field(default=None, sa_column=Column(Text))
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    assigned_to: Optional[str] = Field(default=None, max_length=255)
+    status: str = Field(default="Scheduled", max_length=50)  # Scheduled, Completed, Cancelled
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class SentEmail(SQLModel, table=True):
     """
     Stores all sent emails with bilingual body content
@@ -493,6 +515,7 @@ class SentEmail(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     to_email: str = Field(max_length=255)
     subject: str = Field(max_length=500)
     english_body: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -776,10 +799,11 @@ class ConversationReply(SQLModel, table=True):
 
 
 class ClientResearch(SQLModel, table=True):
-    """Pre-sales research data for a client"""
+    """Pre-sales research data for a client or lead"""
     __tablename__ = "client_research"
     id: Optional[int] = Field(default=None, primary_key=True)
-    client_id: int = Field(foreign_key="client_profiles.id", unique=True)
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", unique=True)
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id", unique=True)
     company_overview: Optional[str] = Field(default=None, sa_column=Column(Text))
     competitors: Optional[str] = Field(default=None, sa_column=Column(Text))
     tech_stack: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -800,6 +824,263 @@ class ClientTicket(SQLModel, table=True):
     title: str = Field(max_length=255)
     description: Optional[str] = Field(default=None, sa_column=Column(Text))
     status: str = Field(default="Pending")  # Pending, Done, Not Done
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Account(SQLModel, table=True):
+    __tablename__ = "accounts"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_name: str = Field(max_length=255, index=True)
+    website: Optional[str] = Field(default=None, max_length=500)
+    industry: Optional[str] = Field(default=None, max_length=200)
+    phone: Optional[str] = Field(default=None, max_length=100)
+    address: Optional[str] = Field(default=None, sa_column=Column(Text))
+    owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_activity: Optional[str] = Field(default=None, max_length=500)
+    
+    contacts: List["Contact"] = Relationship(back_populates="account")
+    leads: List["Lead"] = Relationship(back_populates="account")
+
+class Lead(SQLModel, table=True):
+    __tablename__ = "leads"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_name: str = Field(max_length=255, index=True)
+    website: Optional[str] = Field(default=None, max_length=500)
+    industry: Optional[str] = Field(default=None, max_length=200)
+    email: Optional[str] = Field(default=None, max_length=255)
+    phone: Optional[str] = Field(default=None, max_length=100)
+    address: Optional[str] = Field(default=None, sa_column=Column(Text))
+    source: Optional[str] = Field(default=None, max_length=100)
+    owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    status: str = Field(default="New")
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    is_converted: bool = Field(default=False)
+    converted_client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    account_id: Optional[int] = Field(default=None, foreign_key="accounts.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_activity: Optional[str] = Field(default=None, max_length=500)
+    ai_analysis_results: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+
+    account: Optional[Account] = Relationship(back_populates="leads")
+    contacts: List["Contact"] = Relationship(back_populates="lead")
+
+class Contact(SQLModel, table=True):
+    __tablename__ = "contacts"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    first_name: str = Field(max_length=100)
+    last_name: Optional[str] = Field(default=None, max_length=100)
+    full_name: Optional[str] = Field(default=None, max_length=255)
+    designation: Optional[str] = Field(default=None, max_length=200)
+    department: Optional[str] = Field(default=None, max_length=100)
+    email: Optional[str] = Field(default=None, max_length=255)
+    mobile_number: Optional[str] = Field(default=None, max_length=100)
+    alternate_number: Optional[str] = Field(default=None, max_length=100)
+    linkedin_url: Optional[str] = Field(default=None, max_length=500)
+    
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
+    account_id: Optional[int] = Field(default=None, foreign_key="accounts.id")
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    tags: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    lead: Optional[Lead] = Relationship(back_populates="contacts")
+    account: Optional[Account] = Relationship(back_populates="contacts")
+
+
+
+# ──────────────────────────────────────────────────────
+# ACTIVITIES: Meeting
+# ──────────────────────────────────────────────────────
+
+class Meeting(SQLModel, table=True):
+    """Scheduled or logged meetings"""
+    __tablename__ = "meetings"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str = Field(max_length=500)
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    location: Optional[str] = Field(default=None, max_length=500)
+    meeting_type: str = Field(default="Meeting", max_length=100)  # Meeting, Demo, Follow-up, Discovery
+    status: str = Field(default="Scheduled", max_length=50)  # Scheduled, Completed, Cancelled, No-show
+    scheduled_at: Optional[datetime] = Field(default=None)
+    duration_minutes: Optional[int] = Field(default=None)
+    host_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    contact_id: Optional[int] = Field(default=None, foreign_key="contacts.id")
+    attendees: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    outcome: Optional[str] = Field(default=None, sa_column=Column(Text))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ──────────────────────────────────────────────────────
+# INVENTORY: Products
+# ──────────────────────────────────────────────────────
+
+class Product(SQLModel, table=True):
+    """Products / services catalog for quotes and orders"""
+    __tablename__ = "products"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(max_length=500, index=True)
+    sku: Optional[str] = Field(default=None, max_length=100, index=True)
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    category: Optional[str] = Field(default=None, max_length=200)
+    unit_price: float = Field(default=0.0)
+    currency: str = Field(default="USD", max_length=10)
+    tax_rate: float = Field(default=0.0)
+    stock_quantity: Optional[int] = Field(default=None)
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class QuoteItem(SQLModel, table=True):
+    """Line items for a Quote"""
+    __tablename__ = "quote_items"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    quote_id: int = Field(foreign_key="quotes.id")
+    product_id: Optional[int] = Field(default=None, foreign_key="products.id")
+    description: str = Field(max_length=500)
+    quantity: float = Field(default=1.0)
+    unit_price: float = Field(default=0.0)
+    discount_pct: float = Field(default=0.0)
+    tax_rate: float = Field(default=0.0)
+    total: float = Field(default=0.0)
+
+
+class CRMQuote(SQLModel, table=True):
+    """Sales quotes sent to leads/clients"""
+    __tablename__ = "quotes"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    quote_number: Optional[str] = Field(default=None, max_length=100, index=True)
+    title: str = Field(max_length=500)
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    contact_id: Optional[int] = Field(default=None, foreign_key="contacts.id")
+    status: str = Field(default="Draft", max_length=50)  # Draft, Sent, Accepted, Rejected, Expired
+    subtotal: float = Field(default=0.0)
+    tax_total: float = Field(default=0.0)
+    discount_total: float = Field(default=0.0)
+    grand_total: float = Field(default=0.0)
+    currency: str = Field(default="USD", max_length=10)
+    valid_until: Optional[str] = Field(default=None, max_length=50)
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    terms: Optional[str] = Field(default=None, sa_column=Column(Text))
+    owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SalesOrder(SQLModel, table=True):
+    """Confirmed sales orders (from accepted quotes or direct)"""
+    __tablename__ = "sales_orders"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    order_number: Optional[str] = Field(default=None, max_length=100, index=True)
+    quote_id: Optional[int] = Field(default=None, foreign_key="quotes.id")
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    status: str = Field(default="Pending", max_length=50)  # Pending, Processing, Fulfilled, Cancelled
+    grand_total: float = Field(default=0.0)
+    currency: str = Field(default="USD", max_length=10)
+    delivery_date: Optional[str] = Field(default=None, max_length=50)
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PurchaseOrder(SQLModel, table=True):
+    """Purchase orders sent to vendors/suppliers"""
+    __tablename__ = "purchase_orders"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    po_number: Optional[str] = Field(default=None, max_length=100, index=True)
+    vendor_name: str = Field(max_length=500)
+    vendor_email: Optional[str] = Field(default=None, max_length=255)
+    status: str = Field(default="Draft", max_length=50)  # Draft, Sent, Received, Cancelled
+    grand_total: float = Field(default=0.0)
+    currency: str = Field(default="USD", max_length=10)
+    expected_delivery: Optional[str] = Field(default=None, max_length=50)
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ──────────────────────────────────────────────────────
+# SUPPORT: Cases & Solutions
+# ──────────────────────────────────────────────────────
+
+class Case(SQLModel, table=True):
+    """Support cases raised by clients or internal team"""
+    __tablename__ = "cases"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    case_number: Optional[str] = Field(default=None, max_length=100, index=True)
+    subject: str = Field(max_length=500)
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    status: str = Field(default="Open", max_length=50)  # Open, In Progress, Resolved, Closed
+    priority: str = Field(default="Medium", max_length=50)  # Low, Medium, High, Urgent
+    category: Optional[str] = Field(default=None, max_length=200)
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    contact_id: Optional[int] = Field(default=None, foreign_key="contacts.id")
+    assigned_to: Optional[int] = Field(default=None, foreign_key="users.id")
+    resolution: Optional[str] = Field(default=None, sa_column=Column(Text))
+    resolved_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Solution(SQLModel, table=True):
+    """Knowledge base solutions for common support cases"""
+    __tablename__ = "solutions"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str = Field(max_length=500, index=True)
+    content: str = Field(sa_column=Column(Text))
+    category: Optional[str] = Field(default=None, max_length=200)
+    tags: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    is_published: bool = Field(default=True)
+    view_count: int = Field(default=0)
+    helpful_count: int = Field(default=0)
+    author_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+# ──────────────────────────────────────────────────────
+# EMAIL TRACKER: Integrations & Extracted Emails
+# ──────────────────────────────────────────────────────
+
+class EmailIntegration(SQLModel, table=True):
+    __tablename__ = "email_integrations"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    email_address: str = Field(max_length=255)
+    provider: str = Field(max_length=50) # Gmail, Outlook, IMAP
+    status: str = Field(default="Connected") # Connected, Error, Disconnected
+    
+    # OAuth Tokens
+    access_token: Optional[str] = Field(default=None, sa_column=Column(Text))
+    refresh_token: Optional[str] = Field(default=None, sa_column=Column(Text))
+    token_expiry: Optional[datetime] = Field(default=None)
+    
+    last_synced_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ExtractedEmail(SQLModel, table=True):
+    __tablename__ = "extracted_emails"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    integration_id: Optional[int] = Field(default=None, foreign_key="email_integrations.id")
+    sender_name: str = Field(max_length=255)
+    sender_email: str = Field(max_length=255)
+    subject: str = Field(max_length=500)
+    body_snippet: Optional[str] = Field(default=None, sa_column=Column(Text))
+    suggested_type: str = Field(default="Unknown") # Lead, Client, Spam, Inquiry
+    ai_analysis: Optional[str] = Field(default=None, sa_column=Column(Text))
+    status: str = Field(default="Pending") # Pending, Verified_Lead, Verified_Client, Dismissed
+    received_at: datetime = Field(default_factory=datetime.utcnow)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -845,6 +1126,13 @@ def create_db_and_tables():
         # Marketplace indexes (table created by SQLModel.metadata.create_all)
         "CREATE INDEX IF NOT EXISTS ix_marketplace_services_category ON marketplace_services (category)",
         "CREATE INDEX IF NOT EXISTS ix_marketplace_services_provider ON marketplace_services (provider_client_id)",
+        # Lead-related columns for cross-module linking
+        "ALTER TABLE client_research ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
+        "ALTER TABLE sent_emails ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
+        "ALTER TABLE activity_logs ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
+        "ALTER TABLE whatsappsession ADD COLUMN active_live_chat_session VARCHAR",
+        "ALTER TABLE whatsappsession ALTER COLUMN pending_action DROP NOT NULL",
+        "ALTER TABLE whatsappsession ALTER COLUMN action_data DROP NOT NULL",
     ]
     
     with engine.connect() as conn:
@@ -852,9 +1140,9 @@ def create_db_and_tables():
             try:
                 conn.execute(text(query))
                 conn.commit()
-            except Exception:
+            except Exception as e:
                 # Column likely already exists
-                pass
+                conn.rollback()
         
     # Seed default statuses if none exist
     try:
@@ -935,6 +1223,43 @@ class ApiAlert(SQLModel, table=True):
     target: Optional[str] = Field(default="global", max_length=100)
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WhatsAppSession(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    phone_number: str = Field(index=True)
+    pending_action: Optional[str] = None
+    action_data: Optional[str] = None  # JSON string of parameters
+    active_live_chat_session: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ChatbotSession(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True, unique=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ChatbotMessage(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True, foreign_key="chatbotsession.session_id")
+    role: str = Field(default="user") # user, assistant
+    content: str = Field(sa_column=Column(Text))
+    action_taken: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class LiveChatSession(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True, unique=True)
+    status: str = Field(default="pending") # pending, active, ended
+    client_id: Optional[int] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class LiveChatMessage(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True)
+    sender: str = Field(default="user") # user, admin
+    message: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
 def get_session():

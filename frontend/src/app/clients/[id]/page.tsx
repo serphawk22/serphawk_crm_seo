@@ -154,6 +154,7 @@ export default function ClientDetailPage() {
   });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({ companyName: '', projectName: '', websiteUrl: '' });
+  const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     await updateProfile({
@@ -402,6 +403,25 @@ export default function ClientDetailPage() {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleSimulateCall = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${id}/simulate-call`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        alert(`AI Pitch Generated:\n\n${data.pitch}`);
+        fetchActivities();
+      } else {
+        alert('Failed to generate simulation');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error connecting to AI');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -803,23 +823,30 @@ export default function ClientDetailPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.55 }}
               whileHover={{ y: -8 }}
-              className="group relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 overflow-hidden cursor-pointer shadow-sm"
+              className="group relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 overflow-hidden shadow-sm"
             >
               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative z-10">
-                <div className="flex items-start justify-between mb-6">
-                  <div>
-                    <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">Untapped Revenue</h3>
-                    <p className="text-sm text-slate-500 dark:text-zinc-400">Growth opportunities ahead</p>
+              <div className="relative z-10 flex flex-col h-full justify-between">
+                <div>
+                  <div className="flex items-start justify-between mb-6">
+                    <div>
+                      <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">Untapped Revenue</h3>
+                      <p className="text-sm text-slate-500 dark:text-zinc-400">Growth opportunities ahead</p>
+                    </div>
+                    <div className="p-3 bg-orange-100 text-orange-600 rounded-xl"><TrendingUp size={24} /></div>
                   </div>
-                  <div className="p-3 bg-orange-100 text-orange-600 rounded-xl"><TrendingUp size={24} /></div>
+                  <p className="text-lg font-bold text-slate-600 dark:text-zinc-300 mb-6">
+                    {client.customFields?.untapped_revenue_note || 'No data yet — admin can set this'}
+                  </p>
                 </div>
-                <p className="text-lg font-bold text-slate-600 dark:text-zinc-300 mb-4">
-                  {client.customFields?.untapped_revenue_note || 'No data yet — admin can set this'}
-                </p>
-                <Link href="/store" className="block w-full py-2 text-center bg-orange-600/80 hover:bg-orange-600 text-white rounded-xl font-bold text-sm transition-all">
-                  See Opportunities →
-                </Link>
+                <div className="flex gap-3">
+                  <Link href="/store" className="flex-1 py-3 text-center bg-orange-600/10 hover:bg-orange-600/20 text-orange-600 rounded-xl font-bold text-sm transition-all border border-orange-200">
+                    See Opportunities
+                  </Link>
+                  <button onClick={handleSimulateCall} disabled={loading} className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-orange-500/20 transition-all disabled:opacity-50">
+                    {loading ? 'Thinking...' : 'AI Call Simulation'}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -893,10 +920,14 @@ export default function ClientDetailPage() {
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: 1.8 + idx * 0.05 }}
-                        className="p-3 bg-purple-50 border border-purple-200 rounded-xl"
+                        onClick={() => setSelectedActivity(item)}
+                        className="p-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl cursor-pointer transition-colors"
                       >
                         <p className="text-sm font-bold text-slate-800 dark:text-zinc-100">{item.action || item.content}</p>
-                        <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}</p>
+                        <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">
+                          {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}
+                          {item.method ? ` • via ${item.method}` : ''}
+                        </p>
                       </motion.div>
                     ))
                   )}
@@ -990,7 +1021,7 @@ export default function ClientDetailPage() {
                     <motion.div key={`${ev.type}-${ev.id}`} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }}
                       className="relative flex items-start gap-4 pl-14">
                       <div className={`absolute left-3.5 w-5 h-5 rounded-full ${c.bg} ring-2 ${c.ring} flex items-center justify-center text-[10px]`}>{c.icon}</div>
-                      <div className="flex-1 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
+                      <div onClick={() => setSelectedActivity(ev)} className="flex-1 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer">
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{ev.type}</span>
@@ -1007,6 +1038,74 @@ export default function ClientDetailPage() {
             </div>
           </div>
         </motion.div>
+
+        {/* Activity Detail Modal */}
+        <AnimatePresence>
+          {selectedActivity && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 9999,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)'
+              }}
+              onClick={() => setSelectedActivity(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={e => e.stopPropagation()}
+                style={{
+                  background: 'white', border: '1px solid #e2e8f0',
+                  borderRadius: 24, padding: 32, width: '90%', maxWidth: 700,
+                  maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.1)'
+                }}
+                className="bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-800 dark:text-zinc-100 m-0">{selectedActivity.title || selectedActivity.action}</h3>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 m-0 mt-1">
+                      {selectedActivity.date || selectedActivity.createdAt ? new Date(selectedActivity.date || selectedActivity.createdAt).toLocaleString() : ''}
+                      {selectedActivity.method ? ` • via ${selectedActivity.method}` : ''}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedActivity(null)}
+                    className="bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 border-none rounded-full w-9 h-9 flex items-center justify-center cursor-pointer text-slate-500 dark:text-zinc-400 transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                
+                {(selectedActivity.detail || selectedActivity.content) && (
+                  <div style={{ marginBottom: 20 }}>
+                    <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 m-0 mb-2">Summary</p>
+                    <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-xl text-sm text-slate-600 dark:text-zinc-300">
+                      {selectedActivity.content || selectedActivity.detail}
+                    </div>
+                  </div>
+                )}
+
+                {selectedActivity.details && (
+                  <div>
+                    <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 m-0 mb-2">Details</p>
+                    <div className="bg-slate-100 dark:bg-zinc-950 p-4 rounded-xl text-sm text-slate-800 dark:text-zinc-200 whitespace-pre-wrap font-mono border border-slate-200 dark:border-zinc-800">
+                      {selectedActivity.details}
+                    </div>
+                  </div>
+                )}
+                
+                {!selectedActivity.detail && !selectedActivity.content && !selectedActivity.details && (
+                  <p className="text-center text-slate-400 italic p-5">No additional details available.</p>
+                )}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </div>
     </motion.div>

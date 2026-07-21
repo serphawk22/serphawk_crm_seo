@@ -8,7 +8,6 @@ import {
   ExternalLink, 
   Clock, 
   ChevronRight, 
-  ChevronLeft,
   Plus, 
   FileScan, 
   UploadCloud, 
@@ -26,11 +25,7 @@ import {
   RefreshCw,
   AlertCircle,
   Sparkles,
-  Phone,
-  Building2,
-  Trash2,
-  Zap,
-  X
+  Phone
 } from 'lucide-react';
 import Link from 'next/link';
 import { API_BASE_URL } from '@/config';
@@ -40,7 +35,6 @@ import { useRole } from '@/context/RoleContext';
 import PageGuide from '@/components/PageGuide';
 import dynamic from 'next/dynamic';
 import { ContextMenu } from '@/components/ContextMenu';
-import { ViewSwitcher, ViewType } from '@/components/ViewSwitcher';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const ClientMapView = dynamic(() => import('./ClientMapView'), {
@@ -63,6 +57,7 @@ const containerVariants = {
     transition: { staggerChildren: 0.1, delayChildren: 0.1 }
   }
 };
+
 const itemVariants = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 100 } }
@@ -115,7 +110,6 @@ export default function ClientsPage() {
   const [loadTime, setLoadTime] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'map' | 'kanban' | 'graph' | 'pivot'>('list');
-  const [graphType, setGraphType] = useState<'status' | 'source' | 'industry'>('status');
   const [isSheetImportOpen, setIsSheetImportOpen] = useState(false);
   const [sheetUrl, setSheetUrl] = useState('');
   const [sheetPreview, setSheetPreview] = useState<any[]>([]);
@@ -131,16 +125,8 @@ export default function ClientsPage() {
     }
   }, [searchParams]);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
-  const [isOCRModalOpen, setIsOCRModalOpen] = useState(false);
-  const [ocrLoading, setOcrLoading] = useState(false);
-
-  // Quick Actions State
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
   const [actionLoading, setActionLoading] = useState<Record<number, string>>({});
-  
-  // Pitch Modal State
-  const [pitchModal, setPitchModal] = useState<{isOpen: boolean, pitch: string, clientName: string}>({ isOpen: false, pitch: "", clientName: "" });
-
   const [formData, setFormData] = useState({
     companyName: '',
     websiteUrl: '',
@@ -182,6 +168,9 @@ export default function ClientsPage() {
     };
   }, []);
 
+  const [isOCRModalOpen, setIsOCRModalOpen] = useState(false);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
@@ -440,13 +429,13 @@ export default function ClientsPage() {
   };
 
   const handleSimulateCall = async (clientId: number) => {
-    const clientName = clients.find(c => c.id === clientId)?.companyName || 'Unknown Client';
     setActionLoading(p => ({ ...p, [clientId]: 'call' }));
     try {
       const res = await fetch(`${API_BASE_URL}/clients/${clientId}/simulate-call`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        setPitchModal({ isOpen: true, pitch: data.pitch, clientName });
+        alert(`AI Pitch Generated:\n\n${data.pitch}`);
+        fetchActivities();
       } else {
         alert('Failed to generate simulation');
       }
@@ -471,348 +460,477 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#f8fafc] dark:bg-[#0f172a]">
-      {/* Header */}
-      <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b]">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t("clients.title")}</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("clients.description")}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => window.open(`${API_BASE_URL}/clients/export-csv`, '_blank')} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
-              <Download className="w-4 h-4" /> Export CSV
-            </button>
-            <button onClick={() => { setIsSheetImportOpen(true); setSheetImportState('idle'); setSheetPreview([]); setSheetUrl(''); setSheetImportResult(null); }} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
-              <FileSpreadsheet className="w-4 h-4" /> Import Sheet
-            </button>
-            <button onClick={() => setIsOCRModalOpen(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
-              <FileScan className="w-4 h-4" /> <span className="hidden sm:inline">{t("clients.ocr_scan")}</span>
-            </button>
-            <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all hover:shadow-md active:scale-95">
-              <Plus className="w-4 h-4" /> {t("clients.add_client")}
-            </button>
-          </div>
+    <div className="max-w-[1500px] mx-auto space-y-8">
+      <div className="flex flex-col xl:flex-row gap-8 items-stretch">
+      <motion.div 
+        initial="hidden" animate="show" variants={containerVariants}
+        className="flex-1 space-y-8 min-w-0"
+      >
+      <motion.div variants={itemVariants} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10 w-full glass-card p-6 rounded-[2rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)]">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-zinc-100 tracking-tight">{t("clients.title")}</h1>
+          <p className="text-slate-500 dark:text-zinc-400 font-medium text-sm mt-1">{t("clients.description")}</p>
         </div>
+        <div className="flex gap-2 w-full md:w-auto flex-wrap">
+          <button 
+            onClick={() => window.open(`${API_BASE_URL}/clients/export-csv`, '_blank')}
+            className="flex-1 md:flex-none px-4 py-2.5 bg-zinc-500/10 border border-zinc-500/30 text-zinc-400 rounded-xl font-bold hover:bg-zinc-500/20 transition-all flex items-center justify-center gap-2 text-sm"
+          >
+            <Download className="w-4 h-4" /> Export CSV
+          </button>
+          <button 
+            onClick={() => { setIsSheetImportOpen(true); setSheetImportState('idle'); setSheetPreview([]); setSheetUrl(''); setSheetImportResult(null); }}
+            className="flex-1 md:flex-none px-4 py-2.5 bg-slate-500/10 border border-slate-500/30 text-slate-400 rounded-xl font-bold hover:bg-slate-500/20 transition-all flex items-center justify-center gap-2 text-sm"
+          >
+            <FileSpreadsheet className="w-4 h-4" /> Import Sheet
+          </button>
+          <button 
+            onClick={() => setIsOCRModalOpen(true)}
+            className="flex-1 md:flex-none px-5 py-2.5 bg-white dark:bg-zinc-900/70 backdrop-blur-md text-zinc-700 border border-zinc-100 rounded-xl font-bold hover:bg-white dark:bg-zinc-900 hover:shadow-md transition-all flex items-center justify-center gap-2"
+          >
+            <FileScan className="w-5 h-5" /> <span className="hidden sm:inline">{t("clients.ocr_scan")}</span>
+          </button>
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex-1 md:flex-none px-5 py-2.5 bg-gradient-to-r from-zinc-600 to-slate-600 text-white rounded-xl font-bold shadow-[0_8px_20px_rgba(79,70,229,0.3)] hover:shadow-[0_8px_30px_rgba(79,70,229,0.5)] hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
+          >
+            <Plus className="w-5 h-5" /> {t("clients.add_client")}
+          </button>
+        </div>
+      </motion.div>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-500/10 border border-transparent">
-             <p className="text-xl font-black text-blue-600">{loading ? "—" : totalCount}</p>
-             <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">{t("clients.total_accounts")}</p>
+      <PageGuide
+        pageKey="clients"
+        title={language === 'es' ? 'Cómo funciona el Hub de Clientes' : 'How the Client Hub works'}
+        description={language === 'es' ? 'Su centro de mando para gestionar todas las cuentas de clientes, contactos e inteligencia.' : 'Your central command for managing all client accounts, contacts, and intelligence.'}
+        steps={[
+          { icon: '➕', text: language === 'es' ? 'Haga clic en "Agregar Cliente" para crear una nueva cuenta con el nombre de la empresa, sitio web, correo electrónico y palabras clave.' : 'Click "Add Client" to create a new account with company name, website, email, and keywords.' },
+          { icon: '📷', text: language === 'es' ? 'Utilice "Escaneo OCR" para extraer detalles del cliente de una foto de tarjeta de visita automáticamente.' : 'Use "OCR Scan" to extract client details from a business card photo automatically.' },
+          { icon: '🔍', text: language === 'es' ? 'Busque por nombre o empresa y use filtros para encontrar rápidamente a cualquier cliente.' : 'Search by name or company and use filters to quickly find any client.' },
+          { icon: '👁️', text: language === 'es' ? 'Haga clic en cualquier tarjeta de cliente para ver su perfil completo, servicios, auditoría e historial de comunicación.' : 'Click any client card to view their full profile, services, audit, and communication history.' },
+        ]}
+      />
+
+      {/* KPI Cards */}
+      <motion.div variants={itemVariants} className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+        <div className="glass-card p-6 rounded-[2rem] shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Users className="w-16 h-16 text-zinc-600" /></div>
+          <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-2">{t("clients.total_accounts")}</p>
+          <p className="text-4xl font-black text-slate-800 dark:text-zinc-100">{totalCount}</p>
+          {loadTime !== null && (
+            <p className="text-[10px] text-slate-400 mt-2">Loaded in {loadTime}ms</p>
+          )}
+        </div>
+        {statuses.slice(0, 3).map((status) => (
+          <div key={status.id} className="glass-card p-6 rounded-[2rem] shadow-sm relative overflow-hidden group">
+             <div className="absolute top-0 left-0 w-1.5 h-full" style={{ backgroundColor: status.color.replace('bg-', '') || '#6366f1' }}></div>
+             <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-2 pl-2">{status.name}</p>
+             <p className="text-4xl font-black text-slate-800 dark:text-zinc-100 pl-2">{clients.filter(c => c.status === status.name).length}</p>
           </div>
-          {statuses.slice(0, 3).map((status, idx) => {
-            const colors = ["text-violet-600", "text-amber-600", "text-emerald-600"];
-            const bgs = ["bg-violet-500/10", "bg-amber-500/10", "bg-emerald-500/10"];
-            return (
-              <div key={status.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl ${bgs[idx % 3]} border border-transparent`}>
-                <p className={`text-xl font-black ${colors[idx % 3]}`}>{loading ? "—" : clients.filter(c => c.status === status.name).length}</p>
-                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">{status.name}</p>
-              </div>
-            )
-          })}
-        </div>
-      </div>
+        ))}
+      </motion.div>
+      </motion.div>
 
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-[#1e293b] border-b border-slate-200 dark:border-slate-800 flex-wrap gap-3">
-        <div className="relative w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text" placeholder="Search clients..."
-            value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-900 dark:text-white placeholder:text-slate-400"
-          />
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <ViewSwitcher currentView={viewMode as any} onViewChange={(v: any) => setViewMode(v)} />
-          {["All", ...statuses.map(s => s.name)].map(s => (
-            <button key={s} onClick={() => { setFilter(s === "All" ? "All" : s); setPage(1); }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${(filter === "All" ? "All" : filter) === s ? "bg-blue-600 dark:bg-white text-white dark:text-black shadow-sm" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex flex-1 overflow-hidden">
-        {/* Main Content Area */}
-        <div className="flex-1 overflow-auto bg-white dark:bg-[#1e293b]">
-          {loading && clients.length === 0 ? (
-            <div className="flex items-center justify-center h-64">
-              <Loader2 className="animate-spin w-8 h-8 text-blue-600" />
-            </div>
-          ) : viewMode === 'kanban' ? (
-            <div className="flex gap-4 p-6 overflow-x-auto h-full items-start">
-              {statuses.map(status => {
-                const colClients = filteredClients.filter(c => c.status === status.name);
-                return (
-                  <div key={status.id} className="w-80 shrink-0 flex flex-col bg-slate-50 dark:bg-[#111111] border border-slate-200 dark:border-[#222222] rounded-2xl max-h-full">
-                    <div className="p-4 font-bold text-slate-800 dark:text-white flex items-center justify-between border-b border-slate-200 dark:border-[#222222]">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: status.color.replace('bg-', '') || '#6366f1' }}></div>
-                        <span>{status.name}</span>
-                      </div>
-                      <span className="px-2.5 py-1 rounded-full bg-slate-200 dark:bg-[#222222] text-xs text-slate-600 dark:text-[#a3a3a3]">{colClients.length}</span>
-                    </div>
-                    <div className="p-3 flex-1 overflow-y-auto space-y-3 min-h-[200px]">
-                      {colClients.map(client => (
-                        <ContextMenu 
-                          key={client.id}
-                          onCtrlClick={() => window.open(`/admin/clients/${client.id}`, '_blank')}
-                          actions={[
-                            { label: 'Open in New Tab', icon: <ExternalLink className="w-4 h-4" />, onClick: () => window.open(`/admin/clients/${client.id}`, '_blank') },
-                            { label: 'Open Client', icon: <ChevronRight className="w-4 h-4" />, onClick: () => router.push(`/admin/clients/${client.id}`) },
-                            { label: 'AI Call Pitch', icon: <Phone className="w-4 h-4" />, onClick: () => handleSimulateCall(client.id) },
-                            { label: 'Delete Client', icon: <XCircle className="w-4 h-4" />, danger: true, onClick: () => handleDeleteClient(client.id) },
-                          ]}
-                        >
-                          <motion.div layoutId={`client-${client.id}`} onClick={() => router.push(`/admin/clients/${client.id}`)}
-                            className="p-4 bg-white dark:bg-[#000000] rounded-xl shadow-sm border border-slate-200 dark:border-[#222222] cursor-pointer hover:border-blue-500 dark:hover:border-white transition-colors group">
-                            <div className="font-semibold text-slate-900 dark:text-white text-sm">{client.companyName || client.projectName || client.email || 'Unnamed Client'}</div>
-                            {client.website && <div className="text-[12px] text-slate-500 mt-1 line-clamp-1">{client.website}</div>}
-                            {client.email && <div className="text-[11px] text-slate-400 mt-2 flex items-center gap-1"><Mail className="w-3 h-3"/>{client.email}</div>}
-                          </motion.div>
-                        </ContextMenu>
-                      ))}
-                      {colClients.length === 0 && <div className="p-4 text-center text-sm text-slate-400 border-2 border-dashed border-slate-200 dark:border-[#222222] rounded-xl">No clients</div>}
-                    </div>
+      {/* Activity Sidebar */}
+      <motion.div
+        initial="hidden" animate="show" variants={itemVariants}
+        className="w-full xl:w-[450px] shrink-0 relative"
+      >
+        <div className="xl:absolute xl:inset-0 w-full h-full">
+          <div className="glass-card rounded-[2.5rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)] p-6 h-full flex flex-col">
+          <div className="flex items-center gap-3 mb-6 shrink-0">
+            <div className="p-2 bg-zinc-100 text-zinc-600 rounded-xl"><Activity className="w-5 h-5" /></div>
+            <h3 className="text-lg font-black text-slate-800 dark:text-zinc-100">{language === 'es' ? 'Actividad Reciente' : 'Recent Activity'}</h3>
+          </div>
+          <div ref={scrollRef} className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar">
+            {activities.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-zinc-400 text-center py-8">{language === 'es' ? 'No hay actividad.' : 'No activity yet.'}</p>
+            ) : (
+              activities.map(act => (
+                <Link href={act.clientId ? `/admin/clients/${act.clientId}` : '#'} key={act.id} className="block p-4 bg-white dark:bg-zinc-900/60 hover:bg-white dark:bg-zinc-900 rounded-2xl border border-white/80 shadow-sm hover:shadow-md transition-all group">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-xs font-bold px-2 py-1 bg-zinc-50 text-zinc-600 rounded-lg">{act.action}</span>
+                    <span className="text-[10px] text-slate-400 font-medium">{new Date(act.createdAt).toLocaleDateString()}</span>
                   </div>
-                )
-              })}
-            </div>
-          ) : viewMode === 'graph' ? (
-            <div className="p-8 h-full flex flex-col">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex bg-slate-100 dark:bg-[#1a1a1a] p-1 rounded-xl">
-                  <button onClick={() => setGraphType('status')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${graphType === 'status' ? 'bg-white dark:bg-[#222222] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>By Status</button>
-                  <button onClick={() => setGraphType('source')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${graphType === 'source' ? 'bg-white dark:bg-[#222222] text-amber-600 dark:text-amber-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>By Source</button>
-                  <button onClick={() => setGraphType('industry')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${graphType === 'industry' ? 'bg-white dark:bg-[#222222] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>By Industry</button>
-                </div>
-              </div>
-              <div className="bg-white dark:bg-[#111111] p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-[#222222] flex-1 min-h-0 flex flex-col">
-                <h3 className="text-lg font-bold mb-6 text-slate-900 dark:text-white">
-                  {graphType === 'status' ? 'Clients by Status' : graphType === 'source' ? 'Clients by Lead Source' : 'Clients by Industry'}
-                </h3>
-                <div className="flex-1 min-h-[400px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    {graphType === 'status' ? (
-                      <BarChart data={statuses.map(s => ({ name: s.name, count: filteredClients.filter(c => c.status === s.name).length }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
-                        <XAxis dataKey="name" stroke="#888" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#888" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
-                        <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#000', borderColor: '#222', color: '#fff'}} />
-                        <Bar dataKey="count" fill="currentColor" className="fill-blue-500 dark:fill-white" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    ) : graphType === 'source' ? (
-                      <BarChart data={Array.from(new Set(filteredClients.map(c => c.lead_source || 'Unknown'))).map(source => ({ name: source, count: filteredClients.filter(c => (c.lead_source || 'Unknown') === source).length }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
-                        <XAxis dataKey="name" stroke="#888" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#888" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
-                        <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#000', borderColor: '#222', color: '#fff'}} />
-                        <Bar dataKey="count" fill="currentColor" className="fill-amber-500 dark:fill-amber-400" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    ) : (
-                      <BarChart data={Array.from(new Set(filteredClients.map(c => c.industry || 'Unknown'))).map(ind => ({ name: ind, count: filteredClients.filter(c => (c.industry || 'Unknown') === ind).length }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
-                        <XAxis dataKey="name" stroke="#888" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#888" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
-                        <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#000', borderColor: '#222', color: '#fff'}} />
-                        <Bar dataKey="count" fill="currentColor" className="fill-purple-500 dark:fill-purple-400" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    )}
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-          ) : viewMode === 'pivot' ? (
-            <div className="p-6 h-full overflow-auto">
-              <table className="w-full text-left border-collapse bg-white dark:bg-[#111111] border border-slate-200 dark:border-[#222222] rounded-2xl overflow-hidden shadow-sm">
+                  <p className="text-sm font-semibold text-slate-700 dark:text-zinc-200 group-hover:text-zinc-600 transition-colors line-clamp-2">{act.content}</p>
+                  {act.details && (
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 mt-2 line-clamp-1">{act.details}</p>
+                  )}
+                </Link>
+              ))
+            )}
+          </div>
+        </div>
+        </div>
+      </motion.div>
+      </div>
+
+      {/* Main Glass Box */}
+      <motion.div variants={itemVariants} className="glass-card rounded-[2.5rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)] overflow-hidden">
+        <div className="p-6 border-b border-white/10 dark:border-white/5 flex flex-col md:flex-row gap-6 justify-between items-center bg-black/5 dark:bg-white/5">
+          <div className="flex items-center bg-black/10 dark:bg-white/10 p-1 rounded-2xl border border-black/5 dark:border-white/5 shrink-0">
+            <button
+              onClick={() => setViewMode('list')}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                viewMode === 'list' ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-md" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
+              )}
+            >
+              List
+            </button>
+            <button
+              onClick={() => setViewMode('kanban')}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                viewMode === 'kanban' ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-md" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
+              )}
+            >
+              Kanban
+            </button>
+            <button
+              onClick={() => setViewMode('graph')}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                viewMode === 'graph' ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-md" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
+              )}
+            >
+              Graph
+            </button>
+            <button
+              onClick={() => setViewMode('pivot')}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                viewMode === 'pivot' ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-md" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
+              )}
+            >
+              Pivot
+            </button>
+            <button
+              onClick={() => setViewMode('map')}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
+                viewMode === 'map' ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-md" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
+              )}
+            >
+              Map
+            </button>
+          </div>
+          <div className="relative w-full md:w-[28rem]">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
+            <input 
+              type="text" 
+              placeholder={t("clients.search_placeholder")} 
+              className="w-full pl-12 pr-4 py-3 bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/50 focus:border-zinc-500 transition-all font-medium text-slate-700 dark:text-zinc-200 placeholder:text-slate-400 shadow-sm"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          
+          <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+            <button 
+              onClick={() => { setFilter('All'); setPage(1); }}
+              className={cn(
+                "px-5 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-colors",
+                filter === 'All' ? "bg-zinc-600 text-white shadow-md" : "bg-black/5 dark:bg-white/5 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/10"
+              )}
+            >
+              {t("clients.all_hubs")}
+            </button>
+            {statuses.map(stat => (
+              <button 
+                key={stat.id}
+                onClick={() => { setFilter(stat.name); setPage(1); }}
+                className={cn(
+                  "px-5 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-colors",
+                  filter === stat.name ? "bg-zinc-600 text-white shadow-md" : "bg-black/5 dark:bg-white/5 text-slate-600 dark:text-zinc-300 hover:bg-black/10 dark:hover:bg-white/10"
+                )}
+              >
+                {stat.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {viewMode === 'list' && (
+        <div className="p-6">
+          <div className="glass-card rounded-3xl overflow-hidden">
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 dark:bg-[#000000] border-b border-slate-200 dark:border-[#222222] text-xs uppercase tracking-wider text-slate-500 dark:text-[#a3a3a3]">
-                    <th className="p-4 font-semibold">Assignee \ Status</th>
-                    {statuses.map(s => <th key={s.id} className="p-4 font-semibold text-center">{s.name}</th>)}
-                    <th className="p-4 font-bold text-center border-l border-slate-200 dark:border-[#222222]">Total</th>
+                  <tr className="border-b border-black/10 dark:border-white/10 text-[10px] uppercase tracking-widest text-slate-400 bg-black/5 dark:bg-white/5">
+                    <th className="px-6 py-4 font-black">{language === 'es' ? 'Cliente' : 'Client'}</th>
+                    <th className="px-6 py-4 font-black">Status</th>
+                    <th className="px-6 py-4 font-black">Assignee</th>
+                    <th className="px-6 py-4 font-black">Website</th>
+                    <th className="px-6 py-4 font-black">{language === 'es' ? 'Última Actividad' : 'Last Activity'}</th>
+                    <th className="px-6 py-4 font-black">Services</th>
+                    <th className="px-6 py-4 font-black text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-[#222222]">
-                  {Array.from(new Set(filteredClients.map(c => c.assignedEmployeeName || 'Unassigned'))).map(assignee => {
-                    const assigneeClients = filteredClients.filter(c => (c.assignedEmployeeName || 'Unassigned') === assignee);
-                    return (
-                      <tr key={assignee} className="hover:bg-slate-50 dark:hover:bg-[#0a0a0a]">
-                        <td className="p-4 font-medium text-slate-900 dark:text-white">{assignee}</td>
-                        {statuses.map(s => <td key={s.id} className="p-4 text-center text-slate-600 dark:text-[#a3a3a3]">{assigneeClients.filter(c => c.status === s.name).length || '-'}</td>)}
-                        <td className="p-4 text-center font-bold text-slate-900 dark:text-white border-l border-slate-200 dark:border-[#222222]">{assigneeClients.length}</td>
-                      </tr>
-                    )
-                  })}
+                <tbody className="divide-y divide-slate-100">
+                  <AnimatePresence>
+                    {filteredClients.map(client => (
+                      <ContextMenu 
+                        key={client.id}
+                        onCtrlClick={() => window.open(`/admin/clients/${client.id}`, '_blank')}
+                        actions={[
+                          { label: 'Open in New Tab', icon: <ExternalLink className="w-4 h-4" />, onClick: () => window.open(`/admin/clients/${client.id}`, '_blank') },
+                          { label: 'Open Client', icon: <ChevronRight className="w-4 h-4" />, onClick: () => router.push(`/admin/clients/${client.id}`) },
+                          { label: 'AI Call Pitch', icon: <Phone className="w-4 h-4" />, onClick: () => handleSimulateCall(client.id) },
+                          { label: 'Assign Owner', icon: <Users className="w-4 h-4" />, onClick: () => alert('Assign Owner feature coming soon') },
+                          { label: 'View Activity', icon: <Activity className="w-4 h-4" />, onClick: () => router.push(`/admin/clients/${client.id}?tab=activity`) },
+                          { label: 'Copy Client ID', icon: <CheckCircle2 className="w-4 h-4" />, onClick: () => navigator.clipboard.writeText(client.id.toString()) },
+                          { label: 'Delete Client', icon: <XCircle className="w-4 h-4" />, danger: true, onClick: () => handleDeleteClient(client.id) },
+                        ]}
+                      >
+                        <motion.tr 
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors group cursor-pointer"
+                          onClick={() => router.push(`/admin/clients/${client.id}`)}
+                        >
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col">
+                              <span className="font-bold text-slate-800 dark:text-zinc-100 text-sm group-hover:text-zinc-600 transition-colors line-clamp-1">
+                                {client.companyName || client.projectName || client.email || 'Unnamed Client'}
+                              </span>
+                              {client.email && (
+                                <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1 mt-0.5 line-clamp-1">
+                                  <Mail className="w-3 h-3" /> {client.email}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <StatusBadge statusName={client.status} />
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-zinc-500/10 border border-zinc-500/30 flex items-center justify-center text-zinc-400 shrink-0">
+                                <Users className="w-3 h-3" />
+                              </div>
+                              <span className="text-sm font-medium text-slate-700 dark:text-zinc-200 truncate max-w-[120px]">
+                                {client.assignedEmployeeName || 'Unassigned'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-zinc-400 font-medium">
+                              <Globe className="w-4 h-4 text-slate-400" />
+                              <span className="truncate max-w-[150px]">{client.website || client.websiteUrl || '-'}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col">
+                              <span className="text-sm text-slate-600 dark:text-zinc-300 font-medium truncate max-w-[200px]">
+                                {client.lastActivity || '-'}
+                              </span>
+                              {client.lastActivityDate && (
+                                <span className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+                                  {new Date(client.lastActivityDate).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                             <div className="flex flex-col gap-1.5 w-[150px]">
+                               {client.services_requested && <span title={parseServices(client.services_requested) || ''} className="px-2 py-1 bg-sky-500/10 border border-sky-500/30 text-sky-400 rounded-md text-[10px] font-bold block truncate w-full">Req: {parseServices(client.services_requested)}</span>}
+                               {client.services_offered && <span title={parseServices(client.services_offered) || ''} className="px-2 py-1 bg-zinc-500/10 border border-zinc-500/30 text-zinc-400 rounded-md text-[10px] font-bold block truncate w-full">Off: {parseServices(client.services_offered)}</span>}
+                             </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button 
+                                onClick={e => { e.preventDefault(); e.stopPropagation(); setExpandedRowId(p => p === client.id ? null : client.id); }} 
+                                title="Quick Actions" 
+                                className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-950 hover:bg-zinc-50 text-slate-400 hover:text-zinc-600 transition-colors"
+                              >
+                                <ChevronRight className={cn("w-4 h-4 transition-transform", expandedRowId === client.id && "rotate-90")} />
+                              </button>
+                              <button 
+                                onClick={e => { e.preventDefault(); e.stopPropagation(); handleDeleteClient(client.id); }} 
+                                title="Delete client" 
+                                className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-950 hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                            </div>
+                          </td>
+                        </motion.tr>
+                        <AnimatePresence>
+                          {expandedRowId === client.id && (
+                            <motion.tr
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="bg-black/5 dark:bg-white/5 overflow-hidden"
+                            >
+                              <td colSpan={7} className="p-0 border-b border-black/10 dark:border-white/10">
+                                <div className="px-6 py-4 flex items-center gap-3">
+                                  <button
+                                    onClick={() => handleQuickAction(client.id, 'analyse')}
+                                    disabled={!!actionLoading[client.id]}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 text-zinc-700 text-sm font-bold hover:bg-zinc-200 transition-colors"
+                                  >
+                                    {actionLoading[client.id] === 'analyse' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
+                                    Analyse Client
+                                  </button>
+                                  <button
+                                    onClick={() => handleQuickAction(client.id, 'extract')}
+                                    disabled={!!actionLoading[client.id]}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 text-zinc-700 text-sm font-bold hover:bg-zinc-200 transition-colors"
+                                  >
+                                    {actionLoading[client.id] === 'extract' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                                    Extract Services
+                                  </button>
+                                  <button
+                                    onClick={() => handleQuickAction(client.id, 'email')}
+                                    disabled={!!actionLoading[client.id]}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-100 text-blue-700 text-sm font-bold hover:bg-blue-200 transition-colors"
+                                  >
+                                    {actionLoading[client.id] === 'email' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                                    Email Outbound
+                                  </button>
+                                  <button
+                                    onClick={() => handleQuickAction(client.id, 'opportunity')}
+                                    disabled={!!actionLoading[client.id]}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-500/10 border border-slate-500/30 text-slate-300 text-sm font-bold hover:bg-slate-500/20 transition-colors ml-auto"
+                                  >
+                                    <Briefcase className="w-4 h-4" />
+                                    View Opportunity
+                                  </button>
+                                </div>
+                              </td>
+                            </motion.tr>
+                          )}
+                        </AnimatePresence>
+                      </ContextMenu>
+                    ))}
+                  </AnimatePresence>
                 </tbody>
               </table>
+              
+              {filteredClients.length === 0 && (
+                <div className="py-20 flex flex-col items-center justify-center text-center">
+                  <div className="w-16 h-16 bg-black/5 dark:bg-white/5 rounded-full flex items-center justify-center mb-4 shadow-sm">
+                     <Search className="w-8 h-8 text-zinc-300" />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-700 dark:text-zinc-200">{language === 'es' ? 'No se encontraron clientes' : 'No clients found'}</h3>
+                  <p className="text-slate-500 dark:text-zinc-400 mt-1 text-sm font-medium max-w-sm">{language === 'es' ? 'Intente ajustar su búsqueda.' : 'Try adjusting your search query or filters.'}</p>
+                </div>
+              )}
             </div>
-          ) : viewMode === 'map' ? (
-            <div className="p-6 h-[700px]">
-              <ClientMapView clients={filteredClients} />
+          </div>
+        </div>
+        )}
+
+        {viewMode === 'kanban' && (
+          <div className="flex gap-4 p-6 overflow-x-auto h-[600px] items-start custom-scrollbar">
+            {statuses.map(status => {
+              const colClients = filteredClients.filter(c => c.status === status.name);
+              return (
+                <div key={status.id} className="w-80 shrink-0 flex flex-col bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-2xl max-h-full">
+                  <div className="p-4 font-bold text-slate-800 dark:text-zinc-100 flex items-center justify-between border-b border-black/10 dark:border-white/10">
+                    <span className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full shadow-[0_0_4px_currentColor]" style={{ backgroundColor: status.color.replace('bg-', '') || '#6366f1' }}></div>
+                      {status.name}
+                    </span>
+                    <span className="px-2.5 py-1 rounded-full bg-black/10 dark:bg-white/10 text-xs text-slate-600 dark:text-zinc-300">{colClients.length}</span>
+                  </div>
+                  <div className="p-3 flex-1 overflow-y-auto space-y-3 min-h-[200px] custom-scrollbar">
+                    {colClients.map(client => (
+                      <motion.div key={client.id} layoutId={`client-${client.id}`} onClick={() => router.push(`/admin/clients/${client.id}`)}
+                        className="p-4 bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-black/10 dark:border-white/10 cursor-pointer hover:border-zinc-500 dark:hover:border-zinc-400 transition-colors group">
+                        <div className="font-bold text-slate-900 dark:text-white text-sm line-clamp-1">{client.companyName || client.projectName || client.email}</div>
+                        {client.assignedEmployeeName && <div className="text-[11px] text-slate-500 mt-2 flex items-center gap-1"><Users className="w-3 h-3"/>{client.assignedEmployeeName}</div>}
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {viewMode === 'graph' && (
+          <div className="p-8 h-full min-h-[600px]">
+            <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl shadow-sm border border-black/10 dark:border-white/10 h-[500px]">
+              <h3 className="text-lg font-bold mb-6 text-slate-900 dark:text-white">Clients by Status</h3>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={statuses.map(s => ({ name: s.name, count: filteredClients.filter(c => c.status === s.name).length }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} opacity={0.2} />
+                  <XAxis dataKey="name" stroke="#888" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#888" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip cursor={{fill: 'rgba(99,102,241,0.05)'}} contentStyle={{backgroundColor: 'var(--background)', borderColor: 'var(--border)', color: 'var(--text-primary)'}} />
+                  <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-          ) : (
-            <table className="w-full text-left border-collapse">
+          </div>
+        )}
+
+        {viewMode === 'pivot' && (
+          <div className="p-6 h-full overflow-auto min-h-[600px] custom-scrollbar">
+            <table className="w-full text-left border-collapse bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm">
               <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-[13px] font-semibold text-slate-500 dark:text-slate-400">
-                  <th className="px-6 py-4 font-medium">Client</th>
-                  <th className="px-6 py-4 font-medium">Status</th>
-                  <th className="px-6 py-4 font-medium">Assignee</th>
-                  <th className="px-6 py-4 font-medium">Website</th>
-                  <th className="px-6 py-4 font-medium">Last Activity</th>
-                  <th className="px-6 py-4 font-medium text-right">Actions</th>
+                <tr className="bg-black/5 dark:bg-white/5 border-b border-black/10 dark:border-white/10 text-xs uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                  <th className="p-4 font-bold">Assignee \ Status</th>
+                  {statuses.map(s => <th key={s.id} className="p-4 font-bold text-center">{s.name}</th>)}
+                  <th className="p-4 font-bold text-center border-l border-black/10 dark:border-white/10">Total</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                <AnimatePresence>
-                  {filteredClients.map((client, idx) => (
-                    <React.Fragment key={client.id}>
-                      <motion.tr 
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.02 }}
-                        className="hover:bg-slate-50 dark:hover:bg-slate-800/50 group transition-colors cursor-pointer"
-                        onClick={() => router.push(`/admin/clients/${client.id}`)}
-                      >
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-slate-900 dark:text-white text-sm group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1">
-                              {client.companyName || client.projectName || client.email || 'Unnamed Client'}
-                            </span>
-                            {client.email && (
-                              <span className="text-[12px] text-slate-500 flex items-center gap-1 mt-0.5">
-                                <Mail className="w-3 h-3" /> {client.email}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center px-2 py-1 rounded-md text-[11px] font-bold uppercase tracking-wide border bg-blue-500/10 text-blue-600 border-blue-500/20`}>
-                            {client.status || "Active"}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-[13px] text-slate-600 dark:text-slate-300">
-                            {client.assignedEmployeeName || '—'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-[13px] text-slate-600 dark:text-slate-300">
-                            {client.website || client.websiteUrl ? (client.website || client.websiteUrl).replace(/^https?:\/\//, '') : '—'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-[13px] text-slate-600 dark:text-slate-300">
-                            {client.lastActivity ? client.lastActivity : '—'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={(e) => { e.stopPropagation(); setExpandedRowId(p => p === client.id ? null : client.id); }} title="Quick Actions" className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors">
-                              <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", expandedRowId === client.id && "rotate-90")} />
-                            </button>
-                            <button disabled={actionLoading[client.id] === 'call'} onClick={(e) => { e.stopPropagation(); handleSimulateCall(client.id); }} title="AI Call Pitch" className="p-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600 transition-colors disabled:opacity-50">
-                              {actionLoading[client.id] === 'call' ? <Loader2 className="w-3.5 h-3.5 animate-spin text-green-500" /> : <Phone className="w-3.5 h-3.5" />}
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); window.open(`/admin/clients/${client.id}`, '_blank'); }} title="Open in New Tab" className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors">
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDeleteClient(client.id); }} title="Delete Client" className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </motion.tr>
-                      <AnimatePresence>
-                        {expandedRowId === client.id && (
-                          <motion.tr
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="bg-slate-50 dark:bg-[#1e293b] border-y border-slate-200 dark:border-slate-700 overflow-hidden"
-                          >
-                            <td colSpan={6} className="p-0">
-                              <div className="px-6 py-4 flex items-center gap-3">
-                                <button
-                                  onClick={() => handleQuickAction(client.id, 'analyse')}
-                                  disabled={!!actionLoading[client.id]}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm"
-                                >
-                                  {actionLoading[client.id] === 'analyse' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4 text-slate-500" />}
-                                  Analyse Client
-                                </button>
-                                <button
-                                  onClick={() => handleQuickAction(client.id, 'extract')}
-                                  disabled={!!actionLoading[client.id]}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm"
-                                >
-                                  {actionLoading[client.id] === 'extract' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4 text-slate-500" />}
-                                  Extract Services
-                                </button>
-                                <button
-                                  onClick={() => handleQuickAction(client.id, 'email')}
-                                  disabled={!!actionLoading[client.id]}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 text-sm font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shadow-sm"
-                                >
-                                  {actionLoading[client.id] === 'email' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4 text-blue-500" />}
-                                  Email Outbound
-                                </button>
-                                <button
-                                  onClick={() => handleQuickAction(client.id, 'opportunity')}
-                                  disabled={!!actionLoading[client.id]}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ml-auto shadow-sm"
-                                >
-                                  <Briefcase className="w-4 h-4 text-slate-500" />
-                                  View Opportunity
-                                </button>
-                              </div>
-                            </td>
-                          </motion.tr>
-                        )}
-                      </AnimatePresence>
-                    </React.Fragment>
-                  ))}
-                </AnimatePresence>
+              <tbody className="divide-y divide-black/10 dark:divide-white/10">
+                {Array.from(new Set(filteredClients.map(c => c.assignedEmployeeName || 'Unassigned'))).map(assignee => {
+                  const empClients = filteredClients.filter(c => (c.assignedEmployeeName || 'Unassigned') === assignee);
+                  return (
+                    <tr key={assignee} className="hover:bg-black/5 dark:hover:bg-white/5">
+                      <td className="p-4 font-bold text-slate-900 dark:text-white">{assignee}</td>
+                      {statuses.map(s => <td key={s.id} className="p-4 text-center text-slate-600 dark:text-zinc-300">{empClients.filter(c => c.status === s.name).length || '-'}</td>)}
+                      <td className="p-4 text-center font-bold text-slate-900 dark:text-white border-l border-black/10 dark:border-white/10">{empClients.length}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
-          )}
-          {/* Pagination Controls */}
-          {viewMode === 'list' && totalCount > perPage && (
-            <div className="px-6 py-4 flex items-center justify-between border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-              <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-                Showing {(page - 1) * perPage + 1} to {Math.min(page * perPage, totalCount)} of {totalCount} clients
-              </span>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-4 py-2 text-sm font-semibold bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-2"
-                >
-                  <ChevronLeft className="w-4 h-4" /> Previous
-                </button>
-                <button 
-                  onClick={() => setPage(p => p + 1)}
-                  disabled={page * perPage >= totalCount}
-                  className="px-4 py-2 text-sm font-semibold bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-2"
-                >
-                  Next <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
-          {viewMode !== 'kanban' && viewMode !== 'graph' && viewMode !== 'pivot' && viewMode !== 'map' && filteredClients.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-64 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center mb-4">
-                <Building2 className="w-8 h-8 text-slate-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">No clients found</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm">Try adjusting filters or click "Add Client" to get started.</p>
-            </div>
-          )}
+          </div>
+        )}
+
+        {viewMode === 'map' && (
+          <div className="p-6">
+            <React.Suspense fallback={<div>Loading map...</div>}>
+              <ClientMapView clients={filteredClients} statuses={statuses} />
+            </React.Suspense>
+          </div>
+        )}
+      </motion.div>
+
+      {viewMode === 'list' && (totalCount > 0 || clients.length > 0) && (
+        <div className="flex flex-col gap-2 md:flex-row items-center justify-between px-4 py-3 rounded-3xl glass-card border border-white/10 dark:border-white/5 shadow-sm">
+          <p className="text-sm text-slate-500 dark:text-zinc-400">
+            {language === 'es' ? 'Mostrando' : 'Showing'} {(page - 1) * perPage + 1} - {Math.min(page * perPage, totalCount || clients.length)} {language === 'es' ? 'de' : 'of'} {totalCount || clients.length} {language === 'es' ? 'clientes' : 'clients'}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-4 py-2 rounded-2xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-slate-700 dark:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-black/10 dark:hover:bg-white/10 transition-all"
+            >
+              {language === 'es' ? 'Anterior' : 'Previous'}
+            </button>
+            <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">{language === 'es' ? 'Página' : 'Page'} {page} {language === 'es' ? 'de' : 'of'} {Math.max(1, Math.ceil((totalCount || clients.length) / perPage))}</span>
+            <button
+              onClick={() => setPage(p => Math.min(Math.ceil((totalCount || clients.length) / perPage), p + 1))}
+              disabled={page >= Math.ceil((totalCount || clients.length) / perPage)}
+              className="px-4 py-2 rounded-2xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-slate-700 dark:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-black/10 dark:hover:bg-white/10 transition-all"
+            >
+              {language === 'es' ? 'Siguiente' : 'Next'}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
       {/* Modals remain structurally similar, but updated with glassmorphism */}
       <AnimatePresence>
         {isOCRModalOpen && (
@@ -1153,46 +1271,6 @@ export default function ClientsPage() {
                   </div>
                 )}
 
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {pitchModal.isOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          >
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-3xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]"
-            >
-              <div className="flex justify-between items-center px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800 dark:text-white">
-                  <Phone className="w-5 h-5 text-green-500" />
-                  AI Call Pitch: {pitchModal.clientName}
-                </h2>
-                <button onClick={() => setPitchModal({isOpen: false, pitch: "", clientName: ""})} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-6 overflow-y-auto flex-1">
-                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-6 border border-slate-200 dark:border-slate-700">
-                  <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300 font-medium leading-relaxed">
-                    {pitchModal.pitch}
-                  </p>
-                </div>
-              </div>
-              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex justify-end gap-3">
-                <button onClick={() => {
-                  navigator.clipboard.writeText(pitchModal.pitch);
-                  alert('Copied to clipboard!');
-                }} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-white transition-colors">
-                  Copy Pitch
-                </button>
-                <button onClick={() => setPitchModal({isOpen: false, pitch: "", clientName: ""})} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors">
-                  Done
-                </button>
               </div>
             </motion.div>
           </motion.div>
