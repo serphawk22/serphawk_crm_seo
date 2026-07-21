@@ -32,7 +32,9 @@ import { cn } from "@/lib/utils";
 import { useRole, Role } from "@/context/RoleContext";
 import { useSidebar } from "@/context/SidebarContext";
 import { useTheme } from "@/context/ThemeContext";
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
+import { useLanguage, Language } from "@/context/LanguageContext";
 
 interface SidebarProps {
   role: Role;
@@ -104,6 +106,30 @@ export function Sidebar({ role }: SidebarProps) {
     toggleTheme();
   };
 
+  // ── Language Toggle ──
+  const { i18n } = useTranslation();
+  const { setLanguage } = useLanguage();
+  const [activeLang, setActiveLang] = useState<"en" | "es">("en");
+
+  const switchLanguage = useCallback((lang: "en" | "es") => {
+    i18n.changeLanguage(lang);
+    localStorage.setItem("crm-language", lang);
+    setLanguage(lang as Language);
+    setActiveLang(lang);
+
+    // Trigger Google Translate full-page translation
+    const triggerGT = (attempts = 0) => {
+      const select = document.querySelector<HTMLSelectElement>(".goog-te-combo");
+      if (select) {
+        select.value = lang === "en" ? "" : lang;
+        select.dispatchEvent(new Event("change"));
+      } else if (attempts < 25) {
+        setTimeout(() => triggerGT(attempts + 1), 100);
+      }
+    };
+    triggerGT();
+  }, [i18n, setLanguage]);
+
   return (
     <>
       <motion.div
@@ -146,6 +172,58 @@ export function Sidebar({ role }: SidebarProps) {
               </motion.div>
             )}
           </AnimatePresence>
+        </div>
+
+        {/* ── LANGUAGE TOGGLE (top-left) ── */}
+        <div className={cn("shrink-0 pb-3", collapsed ? "flex justify-center px-2" : "px-3")}>
+          {collapsed ? (
+            // Collapsed: just show active flag, click cycles EN → ES → EN
+            <button
+              onClick={() => switchLanguage(activeLang === "en" ? "es" : "en")}
+              title={activeLang === "en" ? "Switch to Español" : "Switch to English"}
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-lg hover:bg-white/10 transition-all"
+            >
+              {activeLang === "en" ? "🇺🇸" : "🇪🇸"}
+            </button>
+          ) : (
+            // Expanded: pill toggle with both options
+            <div
+              className="flex items-center gap-0.5 p-0.5 rounded-xl border"
+              style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+            >
+              {/* EN */}
+              <button
+                onClick={() => switchLanguage("en")}
+                title="Switch to English"
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all duration-200",
+                  activeLang === "en"
+                    ? "bg-white shadow-sm text-indigo-700"
+                    : "text-slate-400 hover:text-slate-600"
+                )}
+                style={activeLang === "en" ? { color: "var(--accent)" } : { color: "var(--text-secondary)" }}
+              >
+                <span className="text-[14px] leading-none">🇺🇸</span>
+                <span>EN</span>
+              </button>
+
+              {/* ES */}
+              <button
+                onClick={() => switchLanguage("es")}
+                title="Cambiar a Español"
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all duration-200",
+                  activeLang === "es"
+                    ? "bg-white shadow-sm text-indigo-700"
+                    : "text-slate-400 hover:text-slate-600"
+                )}
+                style={activeLang === "es" ? { color: "var(--accent)" } : { color: "var(--text-secondary)" }}
+              >
+                <span className="text-[14px] leading-none">🇪🇸</span>
+                <span>ES</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── SEARCH BAR ── */}
