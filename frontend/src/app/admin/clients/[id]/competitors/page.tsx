@@ -61,7 +61,8 @@ function RadarMapLoader({ target, competitors, radiusKm }: { target: any; compet
       mapInstanceRef.current = new g.Map(mapRef.current, {
         center, zoom: radiusKm <= 2 ? 15 : radiusKm <= 5 ? 14 : radiusKm <= 10 ? 13 : 12,
         styles: isDark ? darkStyles : [], mapTypeControl: false, streetViewControl: false,
-      }); else {
+      });
+    } else {
       mapInstanceRef.current.panTo(center);
     }
 
