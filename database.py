@@ -214,6 +214,9 @@ class Project(SQLModel, table=True):
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
     
+    # Relationships
+    remarks: List["Remark"] = Relationship(back_populates="project")
+
 class ProjectTicket(SQLModel, table=True):
     """
     Jira-style tickets for project management (Kanban).
@@ -245,9 +248,6 @@ class ProjectTicket(SQLModel, table=True):
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    # Relationships
-    remarks: List["Remark"] = Relationship(back_populates="project")
 
 
 class ClientProfile(SQLModel, table=True):
