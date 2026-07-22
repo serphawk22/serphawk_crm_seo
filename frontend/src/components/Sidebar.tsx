@@ -93,7 +93,6 @@ const defaultSidebarSections = [
       { id: "item-radar", name: "Radar Analysis", icon: "Radar", href: "/admin/radar", roles: ["Admin", "Employee"] },
       { id: "item-competitor", name: "Competitor Analysis", icon: "BarChart2", href: "/admin/agents/competitor", roles: ["Admin", "Employee"] },
       { id: "item-website-scanner", name: "Website Scanner", icon: "Globe", href: "/admin/agents/website-scanner", roles: ["Admin", "Employee"] },
-      { id: "item-automations", name: "AI Automations", icon: "Zap", href: "/admin/automations", roles: ["Admin"] },
     ],
   },
   {

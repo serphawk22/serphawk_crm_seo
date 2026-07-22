@@ -30,9 +30,9 @@ interface Employee { id: number; name: string; email: string; }
 interface Client { id: number; companyName?: string; name?: string; }
 
 const COLUMNS: { key: Task["status"]; label: string; color: string; bg: string; icon: any }[] = [
-  { key: "Todo", label: "To Do", color: "text-amber-500", bg: "bg-zinc-900 border-white/5", icon: Clock },
-  { key: "InProgress", label: "In Progress", color: "text-sky-400", bg: "bg-zinc-900 border-white/5", icon: Zap },
-  { key: "Done", label: "Done", color: "text-emerald-500", bg: "bg-zinc-900 border-white/5", icon: CheckCircle2 },
+  { key: "Todo", label: "To Do", color: "text-amber-500", bg: "bg-gray-50 dark:bg-zinc-900 border-gray-200 dark:border-white/5", icon: Clock },
+  { key: "InProgress", label: "In Progress", color: "text-sky-400", bg: "bg-gray-50 dark:bg-zinc-900 border-gray-200 dark:border-white/5", icon: Zap },
+  { key: "Done", label: "Done", color: "text-emerald-500", bg: "bg-gray-50 dark:bg-zinc-900 border-gray-200 dark:border-white/5", icon: CheckCircle2 },
 ];
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -184,7 +184,7 @@ export default function TasksPage() {
               <col.icon className={cn("w-4 h-4", col.color)} />
               <span className={cn("font-bold text-sm", col.color)}>{col.label}</span>
             </div>
-            <span className="text-2xl font-black text-white">{columnTasks(col.key).length}</span>
+            <span className="text-2xl font-black text-gray-900 dark:text-white">{columnTasks(col.key).length}</span>
           </div>
         ))}
       </div>

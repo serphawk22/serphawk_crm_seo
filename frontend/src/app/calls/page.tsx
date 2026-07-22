@@ -165,9 +165,9 @@ export default function CallsPage() {
       const [callsRes, schedRes, clientsRes, leadsRes, contactsRes] = await Promise.all([
         fetch(`${API_BASE_URL}/calls`),
         fetch(`${API_BASE_URL}/scheduled-calls`),
-        fetch(`${API_BASE_URL}/clients`),
-        fetch(`${API_BASE_URL}/leads`),
-        fetch(`${API_BASE_URL}/contacts`),
+        fetch(`${API_BASE_URL}/clients?per_page=1000`),
+        fetch(`${API_BASE_URL}/leads?per_page=1000`),
+        fetch(`${API_BASE_URL}/contacts?per_page=1000`),
       ]);
       setCalls((await callsRes.json()).calls || []);
       setScheduledCalls((await schedRes.json()).scheduled_calls || []);

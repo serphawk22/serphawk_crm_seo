@@ -256,17 +256,9 @@ export default function ProjectDetailPage() {
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">Assignees</p>
                     <p className="text-xl font-black text-gray-900 dark:text-zinc-50">{(project.employeeIds?.length || 0) + (project.internIds?.length || 0)}</p>
                  </div>
-                 <div className="p-6 bg-gray-50 dark:bg-zinc-950 rounded-[2rem] border border-gray-100 dark:border-zinc-800 text-center">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">Total Milestones</p>
-                    <p className="text-xl font-black text-gray-900 dark:text-zinc-50">8</p>
-                 </div>
-                 <div className="p-6 bg-gray-50 dark:bg-zinc-950 rounded-[2rem] border border-gray-100 dark:border-zinc-800 text-center">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">Active Tasks</p>
-                    <p className="text-xl font-black text-gray-900 dark:text-zinc-50">3</p>
-                 </div>
-                 <div className="p-6 bg-gray-50 dark:bg-zinc-950 rounded-[2rem] border border-gray-100 dark:border-zinc-800 text-center">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">Health</p>
-                    <p className="text-xl font-black text-green-600">GOOD</p>
+                 <div className="p-6 bg-gray-50 dark:bg-zinc-950 rounded-[2rem] border border-gray-100 dark:border-zinc-800 text-center col-span-2 md:col-span-4">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">Total Assignees</p>
+                    <p className="text-xl font-black text-gray-900 dark:text-zinc-50">{(project.employeeIds?.length || 0) + (project.internIds?.length || 0)}</p>
                  </div>
               </div>
            </div>
