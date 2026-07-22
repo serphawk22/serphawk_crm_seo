@@ -76,7 +76,6 @@ const defaultSidebarSections = [
       { id: "item-meetings", name: "Meetings", icon: "Calendar", href: "/meetings", roles: ["Admin", "Employee", "SalesManager"] },
       { id: "item-calls", name: "Calls", icon: "Phone", href: "/calls", roles: ["Admin", "Employee", "SalesManager"] },
       { id: "item-tasks", name: "Tasks", icon: "CheckSquare", href: "/tasks", roles: ["Admin", "Employee", "Intern"] },
-      { id: "item-completed", name: "Completed", icon: "CheckCircle", href: "/admin/completed", roles: ["Admin", "Employee"] },
     ],
   },
   {
@@ -102,10 +101,8 @@ const defaultSidebarSections = [
     heading: "INVENTORY",
     items: [
       { id: "item-products", name: "Products", icon: "Package", href: "/products", roles: ["Admin", "SalesManager"] },
-      { id: "item-quotes", name: "Quotes", icon: "FileBarChart2", href: "/quotes", roles: ["Admin", "SalesManager"] },
-      { id: "item-sales-orders", name: "Sales Orders", icon: "ShoppingCart", href: "/sales-orders", roles: ["Admin", "SalesManager"] },
-      { id: "item-purchase-orders", name: "Purchase Orders", icon: "Truck", href: "/purchase-orders", roles: ["Admin"] },
-      { id: "item-invoices", name: "Invoices", icon: "FileText", href: "/invoices", roles: ["Admin", "SalesManager"] },
+      { id: "item-orders", name: "Orders", icon: "ShoppingCart", href: "/orders", roles: ["Admin", "SalesManager"] },
+      { id: "item-billing", name: "Billing", icon: "FileText", href: "/billing", roles: ["Admin", "SalesManager"] },
     ],
   },
   {

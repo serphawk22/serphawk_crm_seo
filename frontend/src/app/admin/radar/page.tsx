@@ -188,7 +188,7 @@ export default function RadarAnalysisPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 p-4 md:p-6 space-y-6">
+    <div className="min-h-screen bg-slate-50 dark:bg-gray-50 dark:bg-zinc-950 p-4 md:p-6 space-y-6">
 
       {/* Header */}
       <div className="flex items-center gap-4">
@@ -196,41 +196,41 @@ export default function RadarAnalysisPage() {
           <Radar className="w-7 h-7 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-black text-slate-800 dark:text-zinc-100">Radar Analysis Engine</h1>
-          <p className="text-sm text-slate-500 dark:text-zinc-400">Google Maps competitor intelligence &amp; geo-market analysis</p>
+          <h1 className="text-2xl font-black text-slate-800 dark:text-slate-900 dark:text-zinc-100">Radar Analysis Engine</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-500 dark:text-zinc-400">Google Maps competitor intelligence &amp; geo-market analysis</p>
         </div>
       </div>
 
       {/* Search Form */}
-      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
+      <div className="bg-white dark:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
         <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-4">Phase 1 — Target Business Search</p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <div className="lg:col-span-2">
-            <label className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">Business Name / Website</label>
+            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">Business Name / Website</label>
             <input
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleSearch()}
               placeholder="e.g. DaPros, Marketing Agency Guadalajara"
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 text-sm placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 text-slate-800 dark:text-slate-900 dark:text-zinc-100 text-sm placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
           <div>
-            <label className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">City / Region</label>
+            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">City / Region</label>
             <input
               value={locationHint}
               onChange={e => setLocationHint(e.target.value)}
               placeholder="e.g. Guadalajara, Mexico"
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 text-sm placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 text-slate-800 dark:text-slate-900 dark:text-zinc-100 text-sm placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
           <div>
-            <label className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">Business Category</label>
+            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">Business Category</label>
             <input
               value={category}
               onChange={e => setCategory(e.target.value)}
               placeholder="digital marketing agency"
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 text-sm placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 text-slate-800 dark:text-slate-900 dark:text-zinc-100 text-sm placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
         </div>
@@ -247,7 +247,7 @@ export default function RadarAnalysisPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 {RADIUS_OPTIONS.map(r => (
                   <button key={r} onClick={() => setRadiusKm(r)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${radiusKm === r ? "bg-indigo-600 text-white shadow" : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700"}`}>
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${radiusKm === r ? "bg-indigo-600 text-white shadow" : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700"}`}>
                     {r} km
                   </button>
                 ))}
@@ -286,7 +286,7 @@ export default function RadarAnalysisPage() {
       <AnimatePresence>
         {foundPlace && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-            className="bg-white dark:bg-zinc-900 border border-indigo-500/30 rounded-2xl p-6 shadow-sm">
+            className="bg-white dark:bg-white dark:bg-zinc-900 border border-indigo-500/30 rounded-2xl p-6 shadow-sm">
             <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-4">Target Business Located</p>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="lg:col-span-2 flex items-start gap-4">
@@ -294,8 +294,8 @@ export default function RadarAnalysisPage() {
                   {foundPlace.name.charAt(0)}
                 </div>
                 <div>
-                  <h2 className="text-lg font-black text-slate-800 dark:text-zinc-100">{foundPlace.name}</h2>
-                  <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{foundPlace.address}</p>
+                  <h2 className="text-lg font-black text-slate-800 dark:text-slate-900 dark:text-zinc-100">{foundPlace.name}</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-500 dark:text-zinc-400 mt-0.5">{foundPlace.address}</p>
                   {foundPlace.rating && (
                     <div className="flex items-center gap-1 mt-1">
                       <Star size={11} className="text-amber-400 fill-amber-400" />
@@ -309,20 +309,20 @@ export default function RadarAnalysisPage() {
                 { label: "Latitude", value: foundPlace.lat?.toFixed(6), icon: Navigation2 },
                 { label: "Longitude", value: foundPlace.lng?.toFixed(6), icon: Navigation2 },
               ].map(({ label, value, icon: Icon }) => (
-                <div key={label} className="p-3 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-zinc-700">
+                <div key={label} className="p-3 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-gray-300 dark:border-zinc-700">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Icon size={10} className="text-slate-400" />
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
                   </div>
-                  <p className="text-sm font-mono font-bold text-slate-800 dark:text-zinc-100">{value}</p>
+                  <p className="text-sm font-mono font-bold text-slate-800 dark:text-slate-900 dark:text-zinc-100">{value}</p>
                 </div>
               ))}
             </div>
             {foundPlace.place_id && (
               <div className="mt-3 flex flex-wrap gap-3">
                 <div className="px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 rounded-lg">
-                  <span className="text-[9px] text-slate-500 dark:text-zinc-400 uppercase font-bold">Place ID </span>
-                  <span className="text-xs font-mono text-slate-600 dark:text-zinc-300">{foundPlace.place_id}</span>
+                  <span className="text-[9px] text-slate-500 dark:text-slate-500 dark:text-zinc-400 uppercase font-bold">Place ID </span>
+                  <span className="text-xs font-mono text-slate-600 dark:text-slate-700 dark:text-zinc-300">{foundPlace.place_id}</span>
                 </div>
                 {foundPlace.maps_url && (
                   <a href={foundPlace.maps_url} target="_blank" rel="noreferrer"
@@ -349,12 +349,12 @@ export default function RadarAnalysisPage() {
                 { label: "Radius Scanned", value: `${radarResult.radius_km} km`, icon: Target, color: "text-blue-500" },
                 { label: "Analysis ID", value: `#${radarResult.radar_id}`, icon: Zap, color: "text-amber-500" },
               ].map(({ label, value, icon: Icon, color }) => (
-                <div key={label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm">
+                <div key={label} className="bg-white dark:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 rounded-2xl p-4 shadow-sm">
                   <div className="flex items-center gap-2 mb-2">
                     <Icon size={14} className={color} />
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
                   </div>
-                  <p className="text-2xl font-black text-slate-800 dark:text-zinc-100">{value}</p>
+                  <p className="text-2xl font-black text-slate-800 dark:text-slate-900 dark:text-zinc-100">{value}</p>
                 </div>
               ))}
             </div>
@@ -362,7 +362,7 @@ export default function RadarAnalysisPage() {
             {/* Map + Legend */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
               {/* Map */}
-              <div className="lg:col-span-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl shadow-sm overflow-hidden" style={{ minHeight: "520px" }}>
+              <div className="lg:col-span-3 bg-white dark:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 rounded-2xl shadow-sm overflow-hidden" style={{ minHeight: "520px" }}>
                 {mapReady ? (
                   <div id="radar-google-map" className="w-full h-full" style={{ minHeight: "520px" }}>
                     <RadarMapLoader target={radarResult.target} competitors={radarResult.competitors} radiusKm={radarResult.radius_km} />
@@ -376,30 +376,30 @@ export default function RadarAnalysisPage() {
 
               {/* Legend + Source */}
               <div className="space-y-4">
-                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-zinc-400 mb-3">Pin Legend</p>
+                <div className="bg-white dark:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 rounded-2xl p-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-500 dark:text-zinc-400 mb-3">Pin Legend</p>
                   <div className="space-y-2.5">
                     {Object.entries(colorConfig).map(([key, cfg]) => (
                       <div key={key} className="flex items-center gap-2.5">
                         <div className={`w-3 h-3 rounded-full ${cfg.dot} shrink-0`} />
-                        <span className="text-xs text-slate-600 dark:text-zinc-300">{cfg.label}</span>
+                        <span className="text-xs text-slate-600 dark:text-slate-700 dark:text-zinc-300">{cfg.label}</span>
                       </div>
                     ))}
                     <div className="flex items-center gap-2.5">
                       <div className="w-3 h-3 rounded-full bg-indigo-500 shrink-0" />
-                      <span className="text-xs text-slate-600 dark:text-zinc-300">Target Business</span>
+                      <span className="text-xs text-slate-600 dark:text-slate-700 dark:text-zinc-300">Target Business</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Source Client Attribution */}
-                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-zinc-400 mb-3">Attribution Source</p>
-                  <p className="text-xs text-slate-500 dark:text-zinc-400 mb-2">Link discoveries to a CRM client (optional)</p>
+                <div className="bg-white dark:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 rounded-2xl p-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-500 dark:text-zinc-400 mb-3">Attribution Source</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-500 dark:text-zinc-400 mb-2">Link discoveries to a CRM client (optional)</p>
                   <select
                     value={sourceClientId || ""}
                     onChange={e => setSourceClientId(e.target.value ? parseInt(e.target.value) : null)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 text-slate-800 dark:text-slate-900 dark:text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
                     <option value="">No attribution</option>
                     {clients.map(c => (
                       <option key={c.id} value={c.id}>{c.companyName}</option>
@@ -436,8 +436,8 @@ export default function RadarAnalysisPage() {
           <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-600/20 to-violet-600/20 border border-indigo-500/20 flex items-center justify-center mb-6">
             <Radar className="w-10 h-10 text-indigo-500 opacity-60" />
           </div>
-          <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">Start Your Radar Scan</h2>
-          <p className="text-sm text-slate-500 dark:text-zinc-400 max-w-md">
+          <h2 className="text-xl font-black text-slate-800 dark:text-slate-900 dark:text-zinc-100 mb-2">Start Your Radar Scan</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-500 dark:text-zinc-400 max-w-md">
             Enter a business name and city above to locate it on Google Maps, then run a radar scan to discover all nearby competitors with full market intelligence.
           </p>
         </div>
@@ -466,10 +466,11 @@ function RadarMapLoader({ target, competitors, radiusKm }: { target: any; compet
       { featureType: "water", elementType: "geometry", stylers: [{ color: "#0f172a" }] },
     ];
 
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     if (!mapInstanceRef.current) {
       mapInstanceRef.current = new g.Map(mapRef.current, {
         center, zoom: radiusKm <= 2 ? 15 : radiusKm <= 5 ? 14 : radiusKm <= 10 ? 13 : 12,
-        styles: darkStyles, mapTypeControl: false, streetViewControl: false,
+        styles: isDark ? darkStyles : [], mapTypeControl: false, streetViewControl: false,
       });
     } else {
       mapInstanceRef.current.panTo(center);
