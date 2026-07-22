@@ -4803,9 +4803,6 @@ def delete_project_ticket(ticket_id: int, session: Session = Depends(get_session
     session.commit()
     return {"ok": True}
 
-from passlib.context import CryptContext
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 @app.post("/projects/{project_id}/team")
 def add_project_team(project_id: int, body: ProjectTeamRequest, session: Session = Depends(get_session)):
     p = session.get(Project, project_id)
@@ -4823,7 +4820,7 @@ def add_project_team(project_id: int, body: ProjectTeamRequest, session: Session
                 email=email,
                 name=email.split('@')[0],
                 role="ProjectMember",
-                password_hash=pwd_context.hash("password123")
+                password=_hash_password("password123")
             )
             session.add(user)
             session.commit()
