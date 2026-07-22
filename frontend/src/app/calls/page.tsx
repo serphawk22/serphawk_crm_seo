@@ -175,9 +175,9 @@ export default function CallsPage() {
   const fetchDropdownData = async () => {
     try {
       const [clientsRes, leadsRes, contactsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/clients`),
-        fetch(`${API_BASE_URL}/leads`),
-        fetch(`${API_BASE_URL}/contacts`),
+        fetch(`${API_BASE_URL}/clients?per_page=1000`),
+        fetch(`${API_BASE_URL}/leads?per_page=1000`),
+        fetch(`${API_BASE_URL}/contacts?per_page=1000`),
       ]);
       setClients((await clientsRes.json()).clients || []);
       setLeads((await leadsRes.json()).leads || []);

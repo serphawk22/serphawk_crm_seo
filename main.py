@@ -203,8 +203,8 @@ def _send_notification_email(to_email: str, subject: str, body_html: str):
     """Best-effort email notification. Fails silently so it never blocks API responses."""
     try:
         from modules.email_sender import send_email_outlook
-        sender = os.environ.get("SENDER_EMAIL", "")
-        password = os.environ.get("SENDER_PASSWORD", "")
+        sender = os.environ.get("EMAIL_SENDER") or os.environ.get("OUTLOOK_EMAIL") or ""
+        password = os.environ.get("EMAIL_PASSWORD") or os.environ.get("OUTLOOK_PASSWORD") or ""
         if sender and password:
             send_email_outlook(to_email, subject, body_html, sender, password)
     except Exception as e:
@@ -1158,7 +1158,7 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
                     return str(sv).strip()
         return None
 
-    website         = _get(cp.websiteUrl, "Website URL", "Website", "url")
+    website         = _get(cp.websiteUrl, "Website URL", "Website", "url", "Company Website", "website_url", "Domain")
     company_name    = _get(cp.companyName, "Client Name", "Company", "Company Name", "Name")
     
     # If company name is STILL blank (e.g. legacy import with no company column), derive from website
@@ -1176,6 +1176,8 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
     description     = _get(cp.tagline, "Description", "description", "Notes")
     phone           = _get(cp.phone, "Contact", "Phone")
     country         = _get(cp.address, "Country", "country", "Region")
+
+    last_act_log = session.exec(select(ActivityLog).where(ActivityLog.clientId == cp.id).order_by(ActivityLog.createdAt.desc())).first()
 
     return {
         "id": cp.id,
@@ -1196,8 +1198,8 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
         "recommended_services": cp.recommended_services,
         "nextMilestone": cp.nextMilestone,
         "nextMilestoneDate": cp.nextMilestoneDate,
-        "lastActivity": cp.lastActivity,
-        "lastActivityDate": cp.lastActivityDate,
+        "lastActivity": last_act_log.action if last_act_log else cp.lastActivity,
+        "lastActivityDate": last_act_log.createdAt.isoformat() if last_act_log else cp.lastActivityDate,
         "assignedEmployeeId": cp.assignedEmployeeId,
         "assignedEmployeeName": employee.name if employee else None,
         "projectId": cp.projectId,
@@ -1288,7 +1290,7 @@ def delete_user(user_id: int, session: Session = Depends(get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 @app.get("/employees")
 def list_employees(session: Session = Depends(get_session)):
-    employees = session.exec(select(User).where(User.role == "Employee")).all()
+    employees = session.exec(select(User).where(User.role.in_(["Employee", "Admin", "SalesManager"]))).all()
     return {"employees": [_user_dict(u) for u in employees]}
 
 

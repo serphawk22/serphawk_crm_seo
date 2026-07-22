@@ -61,6 +61,22 @@ export default function ProjectsPage() {
     }
   };
 
+  const updateProjectStatus = async (e: React.ChangeEvent<HTMLSelectElement>, id: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const newStatus = e.target.value;
+    try {
+      await fetch(`${API_BASE_URL}/projects/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      fetchProjects();
+    } catch (error) {
+      console.error("Failed to update status:", error);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       <div className="flex justify-between items-center">
@@ -108,14 +124,21 @@ export default function ProjectsPage() {
                   <StickyNote className="w-6 h-6" />
                 </div>
                 <div className="flex flex-col items-end">
-                   <span className={cn(
-                     "px-3 py-1 text-[10px] font-black uppercase rounded-full border mb-1",
-                     project.status === 'Planning' ? "bg-amber-50 text-amber-600 border-amber-100" :
-                     project.status === 'Active' ? "bg-blue-50 text-blue-600 border-blue-100" :
-                     project.status === 'Completed' ? "bg-green-50 text-green-600 border-green-100" : "bg-gray-50 dark:bg-zinc-950 text-gray-400 border-gray-100 dark:border-zinc-800"
-                   )}>
-                     {project.status}
-                   </span>
+                   <select
+                     value={project.status}
+                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                     onChange={(e) => updateProjectStatus(e, project.id)}
+                     className={cn(
+                       "px-2 py-1 text-[10px] font-black uppercase rounded-lg border mb-1 outline-none cursor-pointer hover:opacity-80 transition-opacity appearance-none",
+                       project.status === 'Planning' ? "bg-amber-50 text-amber-600 border-amber-100" :
+                       project.status === 'Active' ? "bg-blue-50 text-blue-600 border-blue-100" :
+                       project.status === 'Completed' ? "bg-green-50 text-green-600 border-green-100" : "bg-gray-50 dark:bg-zinc-950 text-gray-400 border-gray-100 dark:border-zinc-800"
+                     )}
+                   >
+                     <option value="Planning">Planning</option>
+                     <option value="Active">Active</option>
+                     <option value="Completed">Completed</option>
+                   </select>
                    <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest leading-none">Status</p>
                 </div>
               </div>
@@ -143,13 +166,8 @@ export default function ProjectsPage() {
               
               <div className="mt-6 pt-6 border-t border-gray-50 flex justify-between items-center">
                  <div className="flex -space-x-2">
-                    {[1, 2].map(i => (
-                      <div key={i} className="w-8 h-8 rounded-full bg-gray-100 dark:bg-zinc-800 border-2 border-white flex items-center justify-center text-[10px] font-black text-gray-400">
-                        {i}
-                      </div>
-                    ))}
-                    <div className="w-8 h-8 rounded-full bg-blue-50 border-2 border-white flex items-center justify-center text-[10px] font-black text-blue-600">
-                      +0
+                    <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/30 border-2 border-white dark:border-zinc-900 flex items-center justify-center text-[10px] font-black text-blue-600 dark:text-blue-400">
+                      +{(project.employeeIds?.length || 0) + (project.internIds?.length || 0)}
                     </div>
                  </div>
                  <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Team Assigned</p>
