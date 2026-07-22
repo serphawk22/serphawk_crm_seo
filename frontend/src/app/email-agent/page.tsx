@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Fragment } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Sparkles, Mail, Clock, User, Globe, ChevronDown, ChevronUp,
@@ -20,6 +20,7 @@ interface SentEmail {
   recommended_services: string | null;
   manual: boolean;
   draft_json: string | null;
+  status: string;
   sent_at: string | null;
 }
 
@@ -55,11 +56,21 @@ interface ResearchResultData {
     extracted_phone_numbers?: string;
     extracted_linkedin?: string;
     extracted_twitter?: string;
+    company_social_media?: {
+      linkedin?: string;
+      twitter?: string;
+      instagram?: string;
+      facebook?: string;
+    };
     contacts?: Array<{
       email?: string;
       name?: string;
       role?: string;
       phone_number?: string;
+      personal_social_media?: {
+        linkedin?: string;
+        twitter?: string;
+      };
     }>;
   };
   contact?: {
@@ -120,18 +131,24 @@ function CopyButton({ text }: { text: string }) {
 function buildProspectingPoints(result: ResearchResultData) {
   const hasServices = (result.recommended_services || []).map((s) => typeof s === 'string' ? s : s.service_name).filter(Boolean) as string[];
   
+  const toArray = (val: any) => Array.isArray(val) ? val : (typeof val === 'string' ? val.split(",") : []);
+  
   // Extract contact information with fallbacks
-  const primaryEmail = result.contact?.email || result.company_info?.extracted_emails?.split(",")[0]?.trim() || "No email found.";
-  const allEmails = result.company_info?.extracted_emails ? result.company_info.extracted_emails.split(",").map(e => e.trim()).slice(0, 2).join(", ") : primaryEmail;
+  const emails = toArray(result.company_info?.extracted_emails);
+  const primaryEmail = result.contact?.email || emails[0]?.trim() || "No email found.";
+  const allEmails = emails.length > 0 ? emails.map((e: string) => e.trim()).slice(0, 2).join(", ") : primaryEmail;
   
-  const primaryPhone = result.contact?.phone_number || result.contact?.whatsapp || result.company_info?.extracted_phone_numbers?.split(",")[0]?.trim() || "No phone available.";
-  const allPhones = result.company_info?.extracted_phone_numbers ? result.company_info.extracted_phone_numbers.split(",").map(p => p.trim()).slice(0, 2).join(", ") : primaryPhone;
+  const phones = toArray(result.company_info?.extracted_phone_numbers);
+  const primaryPhone = result.contact?.phone_number || result.contact?.whatsapp || phones[0]?.trim() || "No phone available.";
+  const allPhones = phones.length > 0 ? phones.map((p: string) => p.trim()).slice(0, 2).join(", ") : primaryPhone;
   
-  const linkedinProfile = result.contact?.linkedin || result.company_info?.linkedin || result.company_info?.extracted_linkedin?.split(",")[0]?.trim() || "No LinkedIn profile found.";
-  const allLinkedIn = result.company_info?.extracted_linkedin ? result.company_info.extracted_linkedin.split(",").map(l => l.trim()).slice(0, 2).join(", ") : linkedinProfile;
+  const linkedins = toArray(result.company_info?.extracted_linkedin);
+  const linkedinProfile = result.contact?.linkedin || result.company_info?.linkedin || linkedins[0]?.trim() || "No LinkedIn profile found.";
+  const allLinkedIn = linkedins.length > 0 ? linkedins.map((l: string) => l.trim()).slice(0, 2).join(", ") : linkedinProfile;
   
-  const twitterProfile = result.contact?.twitter || result.company_info?.extracted_twitter?.split(",")[0]?.trim() || "No Twitter/X profile found.";
-  const allTwitter = result.company_info?.extracted_twitter ? result.company_info.extracted_twitter.split(",").map(t => t.trim()).slice(0, 2).join(", ") : twitterProfile;
+  const twitters = toArray(result.company_info?.extracted_twitter);
+  const twitterProfile = result.contact?.twitter || twitters[0]?.trim() || "No Twitter/X profile found.";
+  const allTwitter = twitters.length > 0 ? twitters.map((t: string) => t.trim()).slice(0, 2).join(", ") : twitterProfile;
   
   return [
     {
@@ -219,15 +236,24 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
   const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
-  const [editableSubject, setEditableSubject] = useState(result.draft?.subject || "");
-  const [editableEnglishBody, setEditableEnglishBody] = useState(result.draft?.english_body || result.draft?.body || "");
-  const [editableSpanishBody, setEditableSpanishBody] = useState(result.draft?.spanish_body || "");
-  const [editableWhatsappBody, setEditableWhatsappBody] = useState(result.draft?.whatsapp_draft || "");
-  const [fromEmail, setFromEmail] = useState("info@serphawk.com");
+  const formatBody = (body: any) => {
+    if (typeof body !== 'string') return "";
+    return body.replace(/<br\s*\/?>/gi, '\n');
+  };
 
-  const extractedEmail = result.company_info?.extracted_emails?.split(",")[0]?.trim();
+  const [editableSubject, setEditableSubject] = useState(result.draft?.subject || "");
+  const [editableEnglishBody, setEditableEnglishBody] = useState(formatBody(result.draft?.english_body || result.draft?.body));
+  const [editableSpanishBody, setEditableSpanishBody] = useState(formatBody(result.draft?.spanish_body));
+  const [editableWhatsappBody, setEditableWhatsappBody] = useState(formatBody(result.draft?.whatsapp_draft));
+  const [fromEmail, setFromEmail] = useState("vkanjali@serphawk.com");
+
+  const extractedEmailsArray = Array.isArray(result.company_info?.extracted_emails) ? result.company_info.extracted_emails : (result.company_info?.extracted_emails?.split(",") || []);
+  const extractedEmail = extractedEmailsArray[0]?.trim();
   const directContactEmail = Array.isArray((result.company_info as any)?.contacts) ? (result.company_info as any).contacts[0]?.email : (result.company_info as any)?.email;
-  const initialContactEmail = result.contact?.email || directContactEmail || extractedEmail || "";
+  
+  let rawInitialEmail = result.contact?.email || directContactEmail || extractedEmail || "";
+  if (Array.isArray(rawInitialEmail)) rawInitialEmail = rawInitialEmail[0];
+  const initialContactEmail = typeof rawInitialEmail === 'string' ? rawInitialEmail : String(rawInitialEmail || "");
 
   const [toEmail, setToEmail] = useState(initialContactEmail);
 
@@ -288,10 +314,10 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
     draft: {
       ...result.draft,
       subject: editableSubject,
-      english_body: editableEnglishBody,
-      spanish_body: editableSpanishBody,
+      english_body: activeTab === "english" ? editableEnglishBody : "",
+      spanish_body: activeTab === "spanish" ? editableSpanishBody : "",
       whatsapp_draft: editableWhatsappBody,
-      body: editableEnglishBody
+      body: activeTab === "english" ? editableEnglishBody : editableSpanishBody
     }
   });
 
@@ -310,6 +336,24 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
       setSendError(message);
     }
     setSending(false);
+  };
+
+  const handleSendViaSystem = () => {
+    if (!toEmail || !toEmail.trim()) {
+      setSendError("Please provide a recipient email address in the 'To:' field.");
+      return;
+    }
+    
+    // Open the default custom mail app instantly (mailto:)
+    const bodyText = activeTab === "english" ? editableEnglishBody : activeTab === "spanish" ? editableSpanishBody : editableWhatsappBody;
+    const mailtoLink = `mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(editableSubject)}&body=${encodeURIComponent(bodyText)}`;
+    window.location.href = mailtoLink;
+    
+    // Log to backend in the background without freezing the UI
+    onSendManually(getUpdatedResult(), companyName, companyUrl, true, "System").catch(console.error);
+    
+    // Show success immediately
+    setSendSuccess("Mail sent");
   };
 
   const handleSendAutomatically = async () => {
@@ -408,7 +452,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
             <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
               <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Emails</p>
               <div className="flex flex-col gap-1">
-                {result.company_info?.extracted_emails ? result.company_info.extracted_emails.split(',').map((e: string, i: number) => (
+                {result.company_info?.extracted_emails ? (Array.isArray(result.company_info.extracted_emails) ? result.company_info.extracted_emails : result.company_info.extracted_emails.split(',')).map((e: string, i: number) => (
                   <a key={i} href={`mailto:${e.trim()}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-mono break-all">{e.trim()}</a>
                 )) : <p className="text-sm text-slate-500 dark:text-zinc-500 font-mono">None</p>}
               </div>
@@ -548,14 +592,19 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
           <div className="mb-6 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 space-y-4 shadow-sm">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
               <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100">
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100 group relative">
                   <span className="text-slate-500 w-12">From:</span>
                   <input 
                     type="text" 
                     value={fromEmail}
-                    onChange={(e) => setFromEmail(e.target.value)}
-                    className="flex-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 transition-all"
+                    readOnly
+                    disabled
+                    className="flex-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 px-3 py-1.5 text-sm text-slate-500 cursor-not-allowed focus:outline-none transition-all"
                   />
+                  <div className="absolute bottom-full left-14 mb-2 hidden group-hover:block bg-slate-800 text-white text-xs rounded-lg px-3 py-1.5 shadow-lg whitespace-nowrap z-50 font-medium">
+                    If you want to change the from mail contact developer
+                    <div className="absolute -bottom-1 left-4 w-2 h-2 bg-slate-800 rotate-45"></div>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100">
                   <span className="text-slate-500 w-12">To:</span>
@@ -579,7 +628,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
                     Send Automatically ( send mail )
                   </button>
                   <button
-                    onClick={handleSend}
+                    onClick={handleSendViaSystem}
                     disabled={sending || !!sendSuccess}
                     className="w-full px-4 py-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-50 dark:bg-zinc-950 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -705,6 +754,7 @@ export default function EmailAgentPage() {
   const [resultsHistory, setResultsHistory] = useState<ResearchResult[]>([]);
 
   const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
+  const [emailTotals, setEmailTotals] = useState({ totalSent: 0, autoCount: 0, manualCount: 0 });
   const [emailsLoading, setEmailsLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
@@ -735,15 +785,43 @@ export default function EmailAgentPage() {
   }, [messages, chatStep]);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/sent-emails?limit=30`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) return setSentEmails(data);
-        if (data?.emails && Array.isArray(data.emails)) return setSentEmails(data.emails);
-        return setSentEmails([]);
-      })
-      .catch(() => setSentEmails([]))
-      .finally(() => setEmailsLoading(false));
+    const fetchEmailsData = () => {
+      fetch(`${API_BASE_URL}/sent-emails?limit=30`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && typeof data === 'object' && !Array.isArray(data) && 'totalSent' in data) {
+            setEmailTotals({
+              totalSent: data.totalSent,
+              autoCount: data.autoCount,
+              manualCount: data.manualCount
+            });
+            return setSentEmails(data.emails || []);
+          }
+          if (Array.isArray(data)) {
+            setEmailTotals({
+              totalSent: data.length,
+              manualCount: data.filter(e => e.manual).length,
+              autoCount: data.length - data.filter(e => e.manual).length
+            });
+            return setSentEmails(data);
+          }
+          if (data?.emails && Array.isArray(data.emails)) {
+            setEmailTotals({
+              totalSent: data.emails.length,
+              manualCount: data.emails.filter((e: any) => e.manual).length,
+              autoCount: data.emails.length - data.emails.filter((e: any) => e.manual).length
+            });
+            return setSentEmails(data.emails);
+          }
+          return setSentEmails([]);
+        })
+        .catch(() => setSentEmails([]))
+        .finally(() => setEmailsLoading(false));
+    };
+
+    fetchEmailsData();
+    const interval = setInterval(fetchEmailsData, 10000); // Refresh every 10 seconds
+    return () => clearInterval(interval);
   }, []);
 
   const handleSendInput = async () => {
@@ -843,7 +921,8 @@ export default function EmailAgentPage() {
     try {
       const serviceNames = (result.recommended_services || []).map((s) => (typeof s === 'string' ? s : s.service_name || '')).filter(Boolean).join(", ");
       const fallbackEmail = Array.isArray(result.company_info?.contacts) ? result.company_info.contacts[0]?.email : undefined;
-      const extractedEmail = result.company_info?.extracted_emails?.split(",")[0]?.trim();
+      const extractedEmailsArray = Array.isArray(result.company_info?.extracted_emails) ? result.company_info.extracted_emails : (result.company_info?.extracted_emails?.split(",") || []);
+      const extractedEmail = extractedEmailsArray[0]?.trim();
       const emailToSend = result.contact?.email || fallbackEmail || extractedEmail || undefined;
       if (!emailToSend) {
         throw new Error("No recipient email available to send.");
@@ -877,8 +956,30 @@ export default function EmailAgentPage() {
       fetch(`${API_BASE_URL}/sent-emails?limit=30`)
         .then((r) => r.json())
         .then((d) => {
-          if (Array.isArray(d)) return setSentEmails(d);
-          if (d?.emails && Array.isArray(d.emails)) return setSentEmails(d.emails);
+          if (d && typeof d === 'object' && !Array.isArray(d) && 'totalSent' in d) {
+            setEmailTotals({
+              totalSent: d.totalSent,
+              autoCount: d.autoCount,
+              manualCount: d.manualCount
+            });
+            return setSentEmails(d.emails || []);
+          }
+          if (Array.isArray(d)) {
+            setEmailTotals({
+              totalSent: d.length,
+              manualCount: d.filter(e => e.manual).length,
+              autoCount: d.length - d.filter(e => e.manual).length
+            });
+            return setSentEmails(d);
+          }
+          if (d?.emails && Array.isArray(d.emails)) {
+            setEmailTotals({
+              totalSent: d.emails.length,
+              manualCount: d.emails.filter((e: any) => e.manual).length,
+              autoCount: d.emails.length - d.emails.filter((e: any) => e.manual).length
+            });
+            return setSentEmails(d.emails);
+          }
           return setSentEmails([]);
         })
         .catch(() => setSentEmails([]));
@@ -917,9 +1018,7 @@ export default function EmailAgentPage() {
     }
   };
 
-  const totalSent = sentEmails.length;
-  const manualCount = sentEmails.filter((e) => e.manual).length;
-  const autoCount = totalSent - manualCount;
+  const { totalSent, manualCount, autoCount } = emailTotals;
 
   return (
     <div className="relative min-h-[calc(100vh-4rem)] flex flex-col items-center overflow-hidden rounded-3xl">
@@ -1064,81 +1163,103 @@ export default function EmailAgentPage() {
               <p className="font-bold text-sm text-slate-400">No emails sent yet</p>
             </div>
           ) : (
-            <div className="space-y-2 relative z-10">
-              {sentEmails.map((email, index) => {
-                const isExpanded = expandedId === email.id;
-                return (
-                  <motion.div
-                    key={email.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.03 }}
-                    className="border border-slate-100 dark:border-zinc-800 rounded-2xl overflow-hidden hover:border-slate-300 dark:border-zinc-600 transition-all bg-slate-50 dark:bg-zinc-950"
-                  >
-                    <button
-                      onClick={() => setExpandedId(isExpanded ? null : email.id)}
-                      className="w-full flex items-center justify-between p-4 hover:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 transition-colors text-left"
-                    >
-                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                          email.manual ? "bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100" : "bg-blue-500 text-slate-800 dark:text-zinc-100"
-                        }`}>
-                          {email.manual ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-slate-800 dark:text-zinc-100 text-sm truncate">{email.subject || "(No subject)"}</p>
-                          <div className="flex items-center gap-3 mt-0.5">
-                            <span className="text-xs text-slate-500 dark:text-zinc-400 truncate flex items-center gap-1">
-                              <Send className="w-3 h-3 shrink-0" /> {email.to_email}
+            <div className="overflow-x-auto relative z-10 w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl mt-4">
+              <table className="w-full text-left border-collapse font-sans">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-zinc-700 text-[11px] text-slate-500 dark:text-zinc-400 uppercase tracking-widest bg-slate-50 dark:bg-zinc-900/50">
+                    <th className="py-4 px-5 font-black">Type</th>
+                    <th className="py-4 px-5 font-black">Recipient</th>
+                    <th className="py-4 px-5 font-black">Subject</th>
+                    <th className="py-4 px-5 font-black">Status</th>
+                    <th className="py-4 px-5 font-black">Date</th>
+                    <th className="py-4 px-5 font-black text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sentEmails.map((email) => {
+                    const isExpanded = expandedId === email.id;
+                    return (
+                      <Fragment key={email.id}>
+                        <tr className={`border-b border-slate-100 dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-900/50 transition-colors cursor-pointer ${isExpanded ? 'bg-slate-50 dark:bg-zinc-900/50' : ''}`} onClick={() => setExpandedId(isExpanded ? null : email.id)}>
+                          <td className="py-4 px-5 align-middle">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+                              email.manual ? "bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700" : "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20"
+                            }`}>
+                              {email.manual ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3" />}
+                              {email.manual ? "Manual" : "Auto"}
                             </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0 ml-4">
-                        <span className={`text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full ${
-                          email.manual ? "bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100" : "bg-blue-500 text-slate-800 dark:text-zinc-100"
-                        }`}>
-                          {email.manual ? "Manual" : "Auto"}
-                        </span>
-                        {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-800 dark:text-zinc-100" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-                      </div>
-                    </button>
-
-                    {isExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        className="border-t border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 p-5"
-                      >
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {email.english_body && (
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">English Body</p>
-                                <CopyButton text={email.english_body} />
-                              </div>
-                              <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl p-4 text-sm text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed font-mono custom-scrollbar">
-                                {email.english_body}
-                              </div>
+                          </td>
+                          <td className="py-4 px-5 align-middle">
+                            <div className="flex items-center gap-2">
+                              <Send className="w-3.5 h-3.5 text-slate-400" />
+                              <span className="text-sm font-semibold text-slate-700 dark:text-zinc-200">{email.to_email}</span>
                             </div>
-                          )}
-                          {email.spanish_body && (
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Spanish Body</p>
-                                <CopyButton text={email.spanish_body} />
-                              </div>
-                              <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl p-4 text-sm text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed font-mono custom-scrollbar">
-                                {email.spanish_body}
-                              </div>
+                          </td>
+                          <td className="py-4 px-5 align-middle">
+                            <span className="text-sm font-bold text-slate-800 dark:text-zinc-100 line-clamp-1">{email.subject || "(No subject)"}</span>
+                          </td>
+                          <td className="py-4 px-5 align-middle">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+                              email.status === "Opened" ? "bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30" :
+                              email.status === "Replied" ? "bg-green-100 text-green-600 dark:bg-green-500/20 dark:text-green-400 border border-green-200 dark:border-green-500/30" :
+                              "bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400 border border-purple-200 dark:border-purple-500/30"
+                            }`}>
+                              {email.status || "Sent"}
+                            </span>
+                          </td>
+                          <td className="py-4 px-5 align-middle">
+                            <div className="flex items-center gap-2">
+                              <Clock className="w-3.5 h-3.5 text-slate-400" />
+                              <span className="text-sm font-medium text-slate-600 dark:text-zinc-400">
+                                {email.sent_at ? new Date(email.sent_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Unknown'}
+                              </span>
                             </div>
-                          )}
-                        </div>
-                      </motion.div>
-                    )}
-                  </motion.div>
-                );
-              })}
+                          </td>
+                          <td className="py-4 px-5 align-middle text-right">
+                            {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-800 dark:text-zinc-100 inline-block" /> : <ChevronDown className="w-4 h-4 text-slate-400 inline-block" />}
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={5} className="p-0 border-b border-slate-100 dark:border-zinc-800">
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                className="bg-slate-50/50 dark:bg-zinc-950/50 p-6 overflow-hidden"
+                              >
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  {email.english_body && (
+                                    <div>
+                                      <div className="flex items-center justify-between mb-3">
+                                        <p className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">English Body</p>
+                                        <CopyButton text={email.english_body} />
+                                      </div>
+                                      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-5 text-sm text-slate-700 dark:text-zinc-200 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed font-mono custom-scrollbar shadow-sm">
+                                        {email.english_body}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {email.spanish_body && (
+                                    <div>
+                                      <div className="flex items-center justify-between mb-3">
+                                        <p className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">Spanish Body</p>
+                                        <CopyButton text={email.spanish_body} />
+                                      </div>
+                                      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-5 text-sm text-slate-700 dark:text-zinc-200 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed font-mono custom-scrollbar shadow-sm">
+                                        {email.spanish_body}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </motion.div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
