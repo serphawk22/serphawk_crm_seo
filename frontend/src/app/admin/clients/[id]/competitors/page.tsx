@@ -457,7 +457,7 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
              </div>
              
              {/* Using the shared CompetitorTable which handles the 4 sorting modes automatically */}
-             <div className="[&>div]:bg-white dark:bg-zinc-900 [&>div]:border-gray-200 dark:border-zinc-800 [&_th]:bg-gray-50 dark:bg-zinc-950 [&_th]:border-gray-200 dark:border-zinc-800 [&_th]:text-zinc-500 [&_td]:border-gray-200 dark:border-zinc-800 [&_td]:text-slate-700 dark:text-zinc-300 [&_button]:bg-zinc-800 [&_button]:border-gray-300 dark:border-zinc-700 [&_button:hover]:bg-zinc-700 [&_button.bg-indigo-600]:bg-indigo-600 [&_button.bg-indigo-600]:text-white [&_button.bg-indigo-600]:border-transparent">
+            <div className="[&>div]:bg-white dark:[&>div]:bg-zinc-900 [&>div]:border-gray-200 dark:[&>div]:border-zinc-800 [&_th]:bg-gray-50 dark:[&_th]:bg-zinc-950 [&_th]:border-gray-200 dark:[&_th]:border-zinc-800 [&_th]:text-zinc-500 [&_td]:border-gray-200 dark:[&_td]:border-zinc-800 [&_td]:text-slate-700 dark:[&_td]:text-zinc-300 [&_button:not(.bg-indigo-600)]:bg-white dark:[&_button:not(.bg-indigo-600)]:bg-zinc-800 [&_button:not(.bg-indigo-600)]:border-gray-300 dark:[&_button:not(.bg-indigo-600)]:border-zinc-700 hover:[&_button:not(.bg-indigo-600)]:bg-gray-50 dark:hover:[&_button:not(.bg-indigo-600)]:bg-zinc-700 [&_button.bg-indigo-600]:text-white [&_button.bg-indigo-600]:border-transparent">
                <CompetitorTable
                   rankings={radarResult.rankings}
                   onAddToClients={handleAddToClients}
