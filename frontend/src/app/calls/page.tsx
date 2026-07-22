@@ -160,25 +160,40 @@ export default function CallsPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [expandedSchedId, setExpandedSchedId] = useState<number | null>(null);
 
-  const fetchAll = async () => {
+  const fetchCallsData = async () => {
     try {
-      const [callsRes, schedRes, clientsRes, leadsRes, contactsRes] = await Promise.all([
+      const [callsRes, schedRes] = await Promise.all([
         fetch(`${API_BASE_URL}/calls`),
         fetch(`${API_BASE_URL}/scheduled-calls`),
-        fetch(`${API_BASE_URL}/clients?per_page=1000`),
-        fetch(`${API_BASE_URL}/leads?per_page=1000`),
-        fetch(`${API_BASE_URL}/contacts?per_page=1000`),
       ]);
       setCalls((await callsRes.json()).calls || []);
       setScheduledCalls((await schedRes.json()).scheduled_calls || []);
-      setClients((await clientsRes.json()).clients || []);
-      setLeads((await leadsRes.json()).leads || []);
-      setContacts((await contactsRes.json()).contacts || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  const fetchDropdownData = async () => {
+    try {
+      const [clientsRes, leadsRes, contactsRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/clients?per_page=1000`),
+        fetch(`${API_BASE_URL}/leads?per_page=1000`),
+        fetch(`${API_BASE_URL}/contacts?per_page=1000`),
+      ]);
+      setClients((await clientsRes.json()).clients || []);
+      setLeads((await leadsRes.json()).leads || []);
+      setContacts((await contactsRes.json()).contacts || []);
+    } catch (e) { console.error(e); }
+  };
+
+  const fetchAll = async () => {
+    setLoading(true);
+    await fetchCallsData();
+  };
+
+  useEffect(() => { 
+    fetchAll(); 
+    fetchDropdownData();
+  }, []);
 
   const getEntityName = (type: string, id: string) => {
     if (type === "client") return clients.find(c => c.id.toString() === id)?.companyName || clients.find(c => c.id.toString() === id)?.projectName || "Unknown";

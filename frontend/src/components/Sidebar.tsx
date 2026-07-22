@@ -13,8 +13,10 @@ import { cn } from "@/lib/utils";
 import { useRole, Role } from "@/context/RoleContext";
 import { useSidebar } from "@/context/SidebarContext";
 import { useTheme } from "@/context/ThemeContext";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { API_BASE_URL } from "@/config";
+import { useTranslation } from "react-i18next";
+import { useLanguage, Language } from "@/context/LanguageContext";
 
 // --- DND Kit Imports ---
 import {
@@ -310,6 +312,45 @@ export function Sidebar({ role }: SidebarProps) {
     }
   };
 
+  // ── Language Toggle ──
+  const { i18n } = useTranslation();
+  const { setLanguage } = useLanguage();
+  const [activeLang, setActiveLang] = useState<"en" | "es">("en");
+
+  const switchLanguage = useCallback((lang: "en" | "es") => {
+    i18n.changeLanguage(lang);
+    localStorage.setItem("crm-language", lang);
+    setLanguage(lang as Language);
+    setActiveLang(lang);
+
+    if (lang === "en") {
+      // Set flag BEFORE reload — sync script in <head> reads this and adds
+      // 'notranslate' to <html> BEFORE GT loads, so GT never retranslates.
+      sessionStorage.setItem("crm_gt_restore_en", "1");
+      document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${window.location.hostname}`;
+      window.location.reload();
+      return;
+    }
+
+    // Switching TO Spanish:
+    // Remove notranslate so GT is allowed to translate the page.
+    document.documentElement.classList.remove("notranslate");
+    document.documentElement.removeAttribute("translate");
+
+    const triggerGT = (attempts = 0) => {
+      const select = document.querySelector<HTMLSelectElement>(".goog-te-combo");
+      if (select) {
+        select.value = lang;
+        select.dispatchEvent(new Event("change"));
+      } else if (attempts < 25) {
+        setTimeout(() => triggerGT(attempts + 1), 100);
+      }
+    };
+    triggerGT();
+  }, [i18n, setLanguage]);
+
   return (
     <>
       <motion.div
@@ -356,6 +397,52 @@ export function Sidebar({ role }: SidebarProps) {
               </motion.div>
             )}
           </AnimatePresence>
+        </div>
+
+        {/* ── LANGUAGE TOGGLE (top-left, below branding) ── */}
+        <div className={cn("shrink-0 pb-3", collapsed ? "flex justify-center px-2" : "px-3")}>
+          {collapsed ? (
+            // Collapsed: single flag, click cycles EN ↔ ES
+            <button
+              onClick={() => switchLanguage(activeLang === "en" ? "es" : "en")}
+              title={activeLang === "en" ? "Switch to Español" : "Switch to English"}
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-lg hover:bg-white/10 transition-all"
+            >
+              {activeLang === "en" ? "🇺🇸" : "🇪🇸"}
+            </button>
+          ) : (
+            // Expanded: full pill toggle
+            <div
+              className="flex items-center gap-0.5 p-0.5 rounded-xl border"
+              style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+            >
+              <button
+                onClick={() => switchLanguage("en")}
+                title="Switch to English"
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all duration-200",
+                  activeLang === "en" ? "bg-white shadow-sm" : "hover:opacity-70"
+                )}
+                style={activeLang === "en" ? { color: "var(--accent)" } : { color: "var(--text-secondary)" }}
+              >
+                <span className="text-[14px] leading-none">🇺🇸</span>
+                <span>EN</span>
+              </button>
+
+              <button
+                onClick={() => switchLanguage("es")}
+                title="Cambiar a Español"
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all duration-200",
+                  activeLang === "es" ? "bg-white shadow-sm" : "hover:opacity-70"
+                )}
+                style={activeLang === "es" ? { color: "var(--accent)" } : { color: "var(--text-secondary)" }}
+              >
+                <span className="text-[14px] leading-none">🇪🇸</span>
+                <span>ES</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── SEARCH BAR ── */}

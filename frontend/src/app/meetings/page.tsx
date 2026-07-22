@@ -223,7 +223,7 @@ export default function MeetingsPage() {
                 <div className="flex items-center gap-1.5 mb-2">
                   <MapPin className="w-3.5 h-3.5 text-slate-400" />
                   {m.location.startsWith("http") ? (
-                    <a href={m.location} target="_blank" rel="noreferrer" className="text-xs text-indigo-500 hover:underline truncate">
+                    <a href={m.location} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline truncate">
                       {m.location}
                     </a>
                   ) : (
