@@ -1158,7 +1158,7 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
                     return str(sv).strip()
         return None
 
-    website         = _get(cp.websiteUrl, "Website URL", "Website", "url", "Company Website", "website_url", "Domain")
+    website         = _get(cp.websiteUrl, "Website URL", "Website", "url", "Company Website", "Company Web Site", "website_url", "Domain")
     company_name    = _get(cp.companyName, "Client Name", "Company", "Company Name", "Name")
     
     # If company name is STILL blank (e.g. legacy import with no company column), derive from website
