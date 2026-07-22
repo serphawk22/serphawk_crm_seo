@@ -53,54 +53,58 @@ def send_whatsapp_message(message: str, to_number: str = None):
 def send_ai_polished_whatsapp_message(event_type: str, raw_data: dict, link: str = None):
     import json
     import openai
+    import threading
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        print("Missing OPENAI_API_KEY. Falling back to basic formatting.")
-        # Basic fallback formatting
-        info_lines = [f"- {str(k).replace('_', ' ').title()}: {v}" for k, v in raw_data.items() if v and k not in ["id", "created_at", "updated_at"]]
-        info_str = "\n".join(info_lines)
-        msg = f"🚨 *{event_type}*\n\n{info_str}"
-        if link:
-            msg += f"\n\n🔗 Link: {link}"
-        send_whatsapp_message(msg)
-        return
+    def _send():
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            print("Missing OPENAI_API_KEY. Falling back to basic formatting.")
+            # Basic fallback formatting
+            info_lines = [f"- {str(k).replace('_', ' ').title()}: {v}" for k, v in raw_data.items() if v and k not in ["id", "created_at", "updated_at"]]
+            info_str = "\n".join(info_lines)
+            msg = f"🚨 *{event_type}*\n\n{info_str}"
+            if link:
+                msg += f"\n\n🔗 Link: {link}"
+            send_whatsapp_message(msg)
+            return
 
-    client = openai.OpenAI(api_key=api_key)
-    
-    prompt = f"""
-    An event of type '{event_type}' just occurred in the CRM.
-    Here is the raw JSON data associated with the event:
-    {json.dumps(raw_data, indent=2, default=str)}
-    
-    Your task:
-    Write a SHORT, STRAIGHTFORWARD WhatsApp message to alert the business owner.
-    - Give exactly the relevant details for the action that happened.
-    - DO NOT include extra fluff like "Actionable items", "Next steps", "We have a fresh potential opportunity", or "Executive Assistant" sign-offs.
-    - DO NOT greet the owner or say "Hello".
-    - Just format the raw data cleanly with some emojis and bold text, and give the summary.
-    - DO NOT include the link in your output. I will append the link manually at the end.
-    - Just output the message directly. No preamble.
-    """
-    
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=500
-        )
-        ai_message = response.choices[0].message.content.strip()
-        if link:
-            ai_message += f"\n\n🔗 Link: {link}"
+        client = openai.OpenAI(api_key=api_key)
         
-        send_whatsapp_message(ai_message)
-    except Exception as e:
-        print("Failed to polish message with AI:", e)
-        # Fallback
-        info_lines = [f"- {str(k).replace('_', ' ').title()}: {v}" for k, v in raw_data.items() if v and k not in ["id", "created_at", "updated_at"]]
-        msg = f"🚨 *{event_type}*\n\n" + "\n".join(info_lines)
-        if link: msg += f"\n\n🔗 Link: {link}"
-        send_whatsapp_message(msg)
+        prompt = f"""
+        An event of type '{event_type}' just occurred in the CRM.
+        Here is the raw JSON data associated with the event:
+        {json.dumps(raw_data, indent=2, default=str)}
+        
+        Your task:
+        Write a SHORT, STRAIGHTFORWARD WhatsApp message to alert the business owner.
+        - Give exactly the relevant details for the action that happened.
+        - DO NOT include extra fluff like "Actionable items", "Next steps", "We have a fresh potential opportunity", or "Executive Assistant" sign-offs.
+        - DO NOT greet the owner or say "Hello".
+        - Just format the raw data cleanly with some emojis and bold text, and give the summary.
+        - DO NOT include the link in your output. I will append the link manually at the end.
+        - Just output the message directly. No preamble.
+        """
+        
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500
+            )
+            ai_message = response.choices[0].message.content.strip()
+            if link:
+                ai_message += f"\n\n🔗 Link: {link}"
+            
+            send_whatsapp_message(ai_message)
+        except Exception as e:
+            print("Failed to polish message with AI:", e)
+            # Fallback
+            info_lines = [f"- {str(k).replace('_', ' ').title()}: {v}" for k, v in raw_data.items() if v and k not in ["id", "created_at", "updated_at"]]
+            msg = f"🚨 *{event_type}*\n\n" + "\n".join(info_lines)
+            if link: msg += f"\n\n🔗 Link: {link}"
+            send_whatsapp_message(msg)
+            
+    threading.Thread(target=_send).start()
 
 
 def transcribe_voice_message(media_url: str, account_sid: str, auth_token: str) -> str:
