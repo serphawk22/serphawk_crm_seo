@@ -15,6 +15,16 @@ const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyAJ
 function loadGoogleMapsScript(apiKey: string): Promise<void> {
   return new Promise((resolve) => {
     if (typeof window === "undefined") return;
+    
+    // Suppress Google Maps API auth/billing alerts
+    // @ts-ignore
+    window.gm_authFailure = () => {
+      const errorDiv = document.querySelector('.gm-err-container');
+      if (errorDiv) {
+        (errorDiv as HTMLElement).style.display = 'none';
+      }
+    };
+
     if (window.google?.maps) { resolve(); return; }
     const existing = document.querySelector(`script[src*="maps.googleapis.com"]`);
     if (existing) { existing.addEventListener("load", () => resolve()); return; }
@@ -249,6 +259,8 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
           source_client_id: parseInt(id),
           source_client_name: client.companyName || "Radar Analysis",
           radar_id: radarResult.radar_id,
+          websiteUrl: c.website,
+          phone: c.phone,
         }),
       });
       const data = await res.json();

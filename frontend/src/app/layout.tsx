@@ -15,6 +15,7 @@ import { GlobalLoader } from "@/components/GlobalLoader";
 import { usePathname } from "next/navigation";
 import { CallNotificationBar } from "@/components/CallNotificationBar";
 import SpaceAtmosphere from "@/components/SpaceAtmosphere";
+import Script from "next/script";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
@@ -108,7 +109,51 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Suppress Google Translate native toolbar */}
+        <style>{`
+          .goog-te-banner-frame, .goog-te-balloon-frame { display: none !important; }
+          .goog-te-gadget { display: none !important; }
+          body { top: 0 !important; }
+          .skiptranslate { display: none !important; }
+          #google_translate_element { display: none !important; }
+        `}</style>
+        {/*
+          SYNC SCRIPT — runs before GT loads.
+          If user clicked EN, we mark the html element with 'notranslate'
+          so Google Translate sees it and skips the page entirely.
+          This is the ONLY reliable way to prevent GT re-applying Spanish.
+        */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function() {
+            if (sessionStorage.getItem('crm_gt_restore_en') === '1') {
+              sessionStorage.removeItem('crm_gt_restore_en');
+              document.documentElement.classList.add('notranslate');
+              document.documentElement.setAttribute('translate', 'no');
+            }
+          })();
+        `}} />
+      </head>
       <body className={inter.className}>
+        <div id="google_translate_element" style={{ display: "none" }} />
+        <Script
+          id="google-translate-init"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              function googleTranslateElementInit() {
+                new google.translate.TranslateElement(
+                  { pageLanguage: 'en', includedLanguages: 'es,fr,de,it', autoDisplay: false },
+                  'google_translate_element'
+                );
+              }
+            `,
+          }}
+        />
+        <Script
+          src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"
+          strategy="afterInteractive"
+        />
         <ThemeProvider>
           <I18nProvider>
             <LanguageProvider>

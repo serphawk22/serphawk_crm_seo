@@ -31,6 +31,32 @@ export default function LanguageSelector() {
     localStorage.setItem('crm-language', code); // Persist across sessions
     setLanguage(code as Language); // Sync the secondary context
     setIsOpen(false);
+
+    // ── Google Translate full-page translation ──
+    const triggerGoogleTranslate = (lang: string, attempts = 0) => {
+      if (lang === 'en') {
+        // Sync script in <head> reads this flag on reload and adds
+        // 'notranslate' to <html> BEFORE GT loads — GT never retranslates.
+        sessionStorage.setItem('crm_gt_restore_en', '1');
+        document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
+        document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${window.location.hostname}`;
+        window.location.reload();
+        return;
+      }
+      // Remove notranslate so GT is allowed to translate the page
+      document.documentElement.classList.remove('notranslate');
+      document.documentElement.removeAttribute('translate');
+      // Trigger GT via the hidden combo select
+      const select = document.querySelector<HTMLSelectElement>('.goog-te-combo');
+      if (select) {
+        select.value = lang;
+        select.dispatchEvent(new Event('change'));
+      } else if (attempts < 25) {
+        setTimeout(() => triggerGoogleTranslate(lang, attempts + 1), 100);
+      }
+    };
+    triggerGoogleTranslate(code);
   };
 
   return (

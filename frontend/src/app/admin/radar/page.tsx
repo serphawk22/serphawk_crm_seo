@@ -181,10 +181,10 @@ export default function RadarAnalysisPage() {
   }, [radarResult, sourceClientId, foundPlace]);
 
   const colorConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
-    red:    { bg: "bg-red-500/10",    text: "text-red-400",    dot: "bg-red-500",    label: "Direct Competitor (≥70%)" },
-    orange: { bg: "bg-orange-500/10", text: "text-orange-400", dot: "bg-orange-500", label: "Strong Competitor (50–70%)" },
-    yellow: { bg: "bg-yellow-500/10", text: "text-yellow-400", dot: "bg-yellow-500", label: "Moderate (30–50%)" },
-    green:  { bg: "bg-green-500/10",  text: "text-green-400",  dot: "bg-green-500",  label: "Weak Competitor (<30%)" },
+    red:    { bg: "bg-red-500/10",    text: "text-red-600 dark:text-red-400",    dot: "bg-red-500",    label: "Direct Competitor (≥70%)" },
+    orange: { bg: "bg-orange-500/10", text: "text-orange-600 dark:text-orange-400", dot: "bg-orange-500", label: "Strong Competitor (50–70%)" },
+    yellow: { bg: "bg-yellow-500/10", text: "text-yellow-600 dark:text-yellow-400", dot: "bg-yellow-500", label: "Moderate (30–50%)" },
+    green:  { bg: "bg-green-500/10",  text: "text-green-600 dark:text-green-400",  dot: "bg-green-500",  label: "Weak Competitor (<30%)" },
   };
 
   return (
