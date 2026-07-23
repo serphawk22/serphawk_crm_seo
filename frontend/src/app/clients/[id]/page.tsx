@@ -176,7 +176,7 @@ export default function ClientDetailPage() {
         fetchStatuses(),
         fetchServiceRequests(),
         fetchTimeline(),
-      ]).finally(() => setPageLoading(false));
+      ]).catch(console.error).finally(() => setPageLoading(false));
     }
   }, [id]);
 

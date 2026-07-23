@@ -26,6 +26,7 @@ export default function QuotesPage() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: "", status: "Draft", currency: "USD",
     valid_until: "", notes: "",
@@ -44,6 +45,10 @@ export default function QuotesPage() {
       setQuotes(Array.isArray(qd.quotes) ? qd.quotes : []);
       setLeads(Array.isArray(ld.leads) ? ld.leads : []);
       setClients(Array.isArray(cd.clients) ? cd.clients : []);
+      setError(null);
+    }).catch(e => {
+      console.error(e);
+      setError("Failed to load data. Please refresh.");
     }).finally(() => setLoading(false));
   };
   useEffect(load, []);
@@ -197,17 +202,18 @@ export default function QuotesPage() {
                       </button>
                     ))}
                   </div>
+                  {error && <p className="text-xs text-red-500 font-bold mb-3">{error}</p>}
                   {form.linked_to === "lead" ? (
                     <select value={form.lead_id} onChange={e => setForm(f => ({ ...f, lead_id: e.target.value }))}
-                      className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500">
-                      <option value="">Select a lead...</option>
-                      {leads.map(l => <option key={l.id} value={l.id}>{l.company_name}{l.email ? ` — ${l.email}` : ""}</option>)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
+                      <option className="text-slate-900 dark:text-zinc-100" value="">Select a lead...</option>
+                      {leads.map(l => <option className="text-slate-900 dark:text-zinc-100" key={l.id} value={l.id}>{l.company_name}{l.email ? ` — ${l.email}` : ""}</option>)}
                     </select>
                   ) : form.linked_to === "client" ? (
                     <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
-                      className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500">
-                      <option value="">Select a client...</option>
-                      {clients.map(c => <option key={c.id} value={c.id}>{c.companyName || `Client #${c.id}`}</option>)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
+                      <option className="text-slate-900 dark:text-zinc-100" value="">Select a client...</option>
+                      {clients.map(c => <option className="text-slate-900 dark:text-zinc-100" key={c.id} value={c.id}>{c.companyName || `Client #${c.id}`}</option>)}
                     </select>
                   ) : (
                     <div className="text-xs text-amber-700 dark:text-amber-500 mt-2">Standalone quote with no client attached.</div>

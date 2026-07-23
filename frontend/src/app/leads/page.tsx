@@ -91,6 +91,8 @@ export default function LeadsPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/leads`);
       if (res.ok) setLeads((await res.json()).leads || []);
+    } catch (e) {
+      console.error("Failed to fetch leads", e);
     } finally { setLoading(false); }
   };
 
