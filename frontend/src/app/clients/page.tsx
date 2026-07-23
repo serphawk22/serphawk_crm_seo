@@ -93,6 +93,7 @@ interface Client {
   lastActivity?: string;
   lastActivityDate?: string;
   assignedEmployeeName?: string;
+  phone?: string;
 }
 
 interface ClientStatusOption {
@@ -686,6 +687,11 @@ export default function ClientsPage() {
                                 <Mail className="w-3 h-3" /> {client.email}
                               </span>
                             )}
+                            {client.phone && (
+                              <span className="text-[12px] text-slate-500 flex items-center gap-1 mt-0.5">
+                                <Phone className="w-3 h-3" /> {client.phone}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -709,7 +715,7 @@ export default function ClientsPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center justify-end gap-1 opacity-100 transition-opacity">
                             <button onClick={(e) => { e.stopPropagation(); setExpandedRowId(p => p === client.id ? null : client.id); }} title="Quick Actions" className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors">
                               <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", expandedRowId === client.id && "rotate-90")} />
                             </button>

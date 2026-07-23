@@ -3716,7 +3716,7 @@ def dashboard_stats(
                 {
                     "id": m.id, "title": m.title, "description": m.description,
                     "due_date": m.due_date, "status": m.status, "order": m.order,
-                    "created_at": m.created_at.isoformat(),
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
                 }
                 for m in milestones
             ],
@@ -3727,7 +3727,7 @@ def dashboard_stats(
                     "status": inv.status, "due_date": inv.due_date,
                     "notes": inv.notes, "line_items": inv.line_items or [],
                     "paid_at": inv.paid_at.isoformat() if inv.paid_at else None,
-                    "created_at": inv.created_at.isoformat(),
+                    "created_at": inv.created_at.isoformat() if inv.created_at else None,
                 }
                 for inv in invoices
             ],
@@ -3741,7 +3741,7 @@ def dashboard_stats(
                 {
                     "id": f.id, "filename": f.filename, "file_url": f.file_url,
                     "file_size": f.file_size, "mime_type": f.mime_type,
-                    "description": f.description, "created_at": f.created_at.isoformat(),
+                    "description": f.description, "created_at": f.created_at.isoformat() if f.created_at else None,
                 }
                 for f in files
             ],
@@ -3757,7 +3757,7 @@ def dashboard_stats(
                 {
                     "id": n.id, "title": n.title, "message": n.message,
                     "type": n.type, "link": n.link, "is_read": n.is_read,
-                    "created_at": n.created_at.isoformat(),
+                    "created_at": n.created_at.isoformat() if n.created_at else None,
                 }
                 for n in notifications
             ],
@@ -3766,7 +3766,7 @@ def dashboard_stats(
                 {
                     "id": p.id, "title": p.title, "status": p.status,
                     "total_value": p.total_value, "valid_until": p.valid_until,
-                    "created_at": p.created_at.isoformat(),
+                    "created_at": p.created_at.isoformat() if p.created_at else None,
                 }
                 for p in proposals
             ],
@@ -3774,7 +3774,7 @@ def dashboard_stats(
                 {
                     "id": p.id, "name": p.name, "status": p.status,
                     "progress": p.progress,
-                    "created_at": p.createdAt.isoformat(),
+                    "created_at": p.createdAt.isoformat() if p.createdAt else None,
                 }
                 for p in projects
             ],
@@ -4680,7 +4680,7 @@ def get_notifications(
                 "type": n.type,
                 "link": n.link,
                 "is_read": n.is_read,
-                "created_at": n.created_at.isoformat(),
+                "created_at": n.created_at.isoformat() if n.created_at else None,
             }
             for n in notifs
         ],
@@ -7662,6 +7662,76 @@ def get_quote(quote_id: int, session: Session = Depends(get_session)):
     if not q:
         raise HTTPException(status_code=404, detail="Quote not found")
     return {"quote": _quote_dict(q, session)}
+
+@app.get("/quotes/{quote_id}/pdf")
+def quote_pdf(quote_id: int, session: Session = Depends(get_session)):
+    """Generate a professional PDF for a quote."""
+    from fastapi.responses import StreamingResponse
+    import io
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    q = session.get(CRMQuote, quote_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+        
+    client_name = ""
+    if q.client_id:
+        c = session.get(ClientProfile, q.client_id)
+        if c: client_name = c.companyName or f"Client #{c.id}"
+    elif q.lead_id:
+        from database import Lead
+        l = session.get(Lead, q.lead_id)
+        if l: client_name = l.company_name
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=50, bottomMargin=40)
+    styles = getSampleStyleSheet()
+    title_s = ParagraphStyle("PTitle", parent=styles["Title"], fontSize=22, textColor=colors.HexColor("#1e293b"))
+    h2 = ParagraphStyle("PH2", parent=styles["Heading2"], fontSize=13, textColor=colors.HexColor("#334155"), spaceBefore=18)
+    normal = styles["Normal"]
+    small = ParagraphStyle("PSmall", parent=normal, fontSize=9, textColor=colors.grey)
+
+    els = []
+    els.append(Paragraph("QUOTE", title_s))
+    els.append(Spacer(1, 10))
+
+    info = [
+        ["Quote No:", q.quote_number or f"#{q.id}"],
+        ["Title:", q.title],
+        ["For:", client_name or "—"],
+        ["Status:", q.status],
+        ["Total Amount:", f"{q.currency} {q.grand_total:,.2f}"],
+        ["Valid Until:", q.valid_until or "—"],
+        ["Created:", q.created_at.strftime("%B %d, %Y") if q.created_at else "—"],
+    ]
+    it = Table(info, colWidths=[100, 350])
+    it.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("PADDING", (0, 0), (-1, -1), 6),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#64748b")),
+    ]))
+    els.append(it)
+    els.append(Spacer(1, 18))
+
+    if q.notes:
+        els.append(Paragraph("Notes & Terms", h2))
+        for para in q.notes.split("\n"):
+            if para.strip():
+                els.append(Paragraph(para.strip(), normal))
+                els.append(Spacer(1, 4))
+
+    els.append(Spacer(1, 30))
+    els.append(Paragraph("— SERP Hawk CRM", small))
+
+    doc.build(els)
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="quote-{q.quote_number or q.id}.pdf"'
+    })
 
 @app.put("/quotes/{quote_id}")
 def update_quote(quote_id: int, body: QuoteCreateRequest, session: Session = Depends(get_session)):

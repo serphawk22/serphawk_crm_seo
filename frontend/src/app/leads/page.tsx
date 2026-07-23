@@ -70,6 +70,7 @@ export default function LeadsPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('list');
   const [activities, setActivities] = useState<ActivityLogEntry[]>([]);
+  const [sortOption, setSortOption] = useState<"recent" | "name">("recent");
 
   useEffect(() => { fetchLeads(); fetchActivities(); }, []);
 
@@ -94,7 +95,7 @@ export default function LeadsPage() {
   };
 
   const filtered = useMemo(() => {
-    return leads.filter(l => {
+    let result = leads.filter(l => {
       const q = searchQuery.toLowerCase();
       const matchSearch = !q || (l.company_name || "").toLowerCase().includes(q)
         || (l.email || "").toLowerCase().includes(q)
@@ -104,7 +105,15 @@ export default function LeadsPage() {
         || (statusFilter === "Converted" ? l.is_converted : l.status === statusFilter);
       return matchSearch && matchStatus;
     });
-  }, [leads, searchQuery, statusFilter]);
+
+    if (sortOption === "recent") {
+      result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    } else if (sortOption === "name") {
+      result.sort((a, b) => (a.company_name || "").localeCompare(b.company_name || ""));
+    }
+
+    return result;
+  }, [leads, searchQuery, statusFilter, sortOption]);
 
   const openCreate = () => {
     setEditLead(null);
@@ -232,12 +241,26 @@ export default function LeadsPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <ViewSwitcher currentView={currentView} onViewChange={setCurrentView} />
-          {["All", ...STATUSES, "Converted"].map(s => (
-            <button key={s} onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${statusFilter === s ? "bg-blue-600 dark:bg-white text-white dark:text-black shadow-sm" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
-              {s}
-            </button>
-          ))}
+          
+          {/* Sort Dropdown */}
+          <select 
+            value={sortOption} 
+            onChange={e => setSortOption(e.target.value as "recent" | "name")}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 focus:outline-none border-r-8 border-transparent"
+          >
+            <option value="recent">Recent</option>
+            <option value="name">Name</option>
+          </select>
+
+          {["All", ...STATUSES, "Converted"].map(s => {
+            const count = s === "All" ? leads.length : (s === "Converted" ? leads.filter(l => l.is_converted).length : leads.filter(l => l.status === s).length);
+            return (
+              <button key={s} onClick={() => setStatusFilter(s)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${statusFilter === s ? "bg-blue-600 dark:bg-white text-white dark:text-black shadow-sm" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
+                {s} ({count})
+              </button>
+            );
+          })}
         </div>
       </div>
 
