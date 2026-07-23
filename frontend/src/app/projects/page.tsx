@@ -67,7 +67,7 @@ export default function ProjectsPage() {
     const newStatus = e.target.value;
     try {
       await fetch(`${API_BASE_URL}/projects/${id}`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
