@@ -63,7 +63,7 @@ export default function ProjectDetailPage() {
     setIsUpdating(true);
     try {
       await fetch(`${API_BASE_URL}/projects/${id}`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ progress: val })
       });
@@ -79,7 +79,7 @@ export default function ProjectDetailPage() {
     setIsUpdating(true);
     try {
       await fetch(`${API_BASE_URL}/projects/${id}`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
@@ -124,7 +124,7 @@ export default function ProjectDetailPage() {
     setIsUpdating(true);
     try {
       await fetch(`${API_BASE_URL}/projects/${id}`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [field]: [...currentIds, userId] })
       });
