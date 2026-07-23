@@ -19,6 +19,7 @@ export default function SalesOrdersPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ linked_to: "lead" as "lead" | "client", lead_id: "" as string | number, client_id: "" as string | number, status: "Pending", grand_total: "", currency: "USD", delivery_date: "", notes: "" });
   const [clients, setClients] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const load = () => { 
     setLoading(true); 
@@ -30,6 +31,10 @@ export default function SalesOrdersPage() {
       setOrders(Array.isArray(od.orders) ? od.orders : []);
       setLeads(Array.isArray(ld.leads) ? ld.leads : []);
       setClients(Array.isArray(cd.clients) ? cd.clients : []);
+      setError(null);
+    }).catch(e => {
+      console.error(e);
+      setError("Failed to load data. Please refresh.");
     }).finally(() => setLoading(false));
   };
   useEffect(load, []);
@@ -132,17 +137,18 @@ export default function SalesOrdersPage() {
                       </button>
                     ))}
                   </div>
+                  {error && <p className="text-xs text-red-500 font-bold mb-3">{error}</p>}
                   {form.linked_to === "lead" ? (
                     <select value={form.lead_id} onChange={e => setForm(f => ({ ...f, lead_id: e.target.value }))}
-                      className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-blue-200 dark:border-blue-700/40 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Select a lead...</option>
-                      {leads.map(l => <option key={l.id} value={l.id}>{l.company_name}{l.email ? ` — ${l.email}` : ""}</option>)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-blue-200 dark:border-blue-700/40 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
+                      <option className="text-slate-900 dark:text-zinc-100" value="">Select a lead...</option>
+                      {leads.map(l => <option className="text-slate-900 dark:text-zinc-100" key={l.id} value={l.id}>{l.company_name}{l.email ? ` — ${l.email}` : ""}</option>)}
                     </select>
                   ) : (
                     <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
-                      className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-blue-200 dark:border-blue-700/40 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Select a client...</option>
-                      {clients.map(c => <option key={c.id} value={c.id}>{c.companyName || `Client #${c.id}`}</option>)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-blue-200 dark:border-blue-700/40 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
+                      <option className="text-slate-900 dark:text-zinc-100" value="">Select a client...</option>
+                      {clients.map(c => <option className="text-slate-900 dark:text-zinc-100" key={c.id} value={c.id}>{c.companyName || `Client #${c.id}`}</option>)}
                     </select>
                   )}
                 </div>

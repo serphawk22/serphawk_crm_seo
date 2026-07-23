@@ -65,18 +65,25 @@ export default function InvoicesPage() {
 
   async function fetchAll() {
     setLoading(true);
+    setError(null);
     const invoiceUrl = isClient && clientId
       ? `${API_BASE_URL}/invoices?client_id=${clientId}`
       : `${API_BASE_URL}/invoices`;
-    const [inv, cl, sr] = await Promise.all([
-      fetch(invoiceUrl).then(r => r.json()),
-      isClient ? Promise.resolve({ clients: [] }) : fetch(`${API_BASE_URL}/clients?per_page=1000`).then(r => r.json()),
-      isClient ? Promise.resolve({ requests: [] }) : fetch(`${API_BASE_URL}/services/requests`).then(r => r.json()),
-    ]);
-    setInvoices(inv.invoices || []);
-    setClients(cl.clients || []);
-    setServiceRequests(sr.requests || []);
-    setLoading(false);
+    try {
+      const [inv, cl, sr] = await Promise.all([
+        fetch(invoiceUrl).then(r => r.json()),
+        isClient ? Promise.resolve({ clients: [] }) : fetch(`${API_BASE_URL}/clients?per_page=1000`).then(r => r.json()),
+        isClient ? Promise.resolve({ requests: [] }) : fetch(`${API_BASE_URL}/services/requests`).then(r => r.json()),
+      ]);
+      setInvoices(inv.invoices || []);
+      setClients(cl.clients || []);
+      setServiceRequests(sr.requests || []);
+    } catch (e) {
+      console.error(e);
+      setError("Failed to load data. Please refresh.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function downloadInvoice(inv: Invoice) {
@@ -251,12 +258,25 @@ export default function InvoicesPage() {
               <button onClick={() => setShowModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <form onSubmit={createInvoice} className="space-y-4">
+              {error && <p className="text-xs text-red-500 font-bold">{error}</p>}
+              {!isClient && (
+                <div>
+                  <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">Client</label>
+                  <select required value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
+                    <option className="text-slate-900 dark:text-zinc-100" value="">Select a client...</option>
+                    {clients.map((c: any) => <option className="text-slate-900 dark:text-zinc-100" key={c.id} value={c.id}>{c.companyName || c.name || `Client #${c.id}`}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Client *</label>
-                <select required value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}
-                  className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="">Select client...</option>
-                  {clients.map((c: any) => <option key={c.id} value={c.id}>{c.companyName || c.name || `Client #${c.id}`}</option>)}
+                <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">Link to Service Request (Optional)</label>
+                <select value={form.service_request_id} onChange={e => setForm(p => ({ ...p, service_request_id: e.target.value }))}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
+                  <option className="text-slate-900 dark:text-zinc-100" value="">None</option>
+                  {serviceRequests.filter(sr => !isClient || sr.client_id === Number(clientId)).map(sr => (
+                    <option className="text-slate-900 dark:text-zinc-100" key={sr.id} value={sr.id}>REQ-{sr.id} — {sr.status}</option>
+                  ))}
                 </select>
               </div>
               <div>

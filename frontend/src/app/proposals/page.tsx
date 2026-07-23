@@ -51,21 +51,29 @@ export default function ProposalsPage() {
     title: "", client_id: "", content: "",
     valid_until: "", total_value: "",
   });
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => { fetchAll(); }, []);
 
   async function fetchAll() {
     setLoading(true);
+    setError(null);
     const proposalUrl = isClient && clientId
       ? `${API_BASE_URL}/proposals?client_id=${clientId}`
       : `${API_BASE_URL}/proposals`;
-    const [p, c] = await Promise.all([
-      fetch(proposalUrl).then(r => r.json()),
-      isClient ? Promise.resolve({ clients: [] }) : fetch(`${API_BASE_URL}/clients`).then(r => r.json()),
-    ]);
-    setProposals(p.proposals || []);
-    setClients(c.clients || []);
-    setLoading(false);
+    try {
+      const [p, c] = await Promise.all([
+        fetch(proposalUrl).then(r => r.json()),
+        isClient ? Promise.resolve({ clients: [] }) : fetch(`${API_BASE_URL}/clients?per_page=1000`).then(r => r.json()),
+      ]);
+      setProposals(p.proposals || []);
+      setClients(c.clients || []);
+    } catch (e) {
+      console.error(e);
+      setError("Failed to load data. Please refresh.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function createProposal(e: React.FormEvent) {
@@ -252,6 +260,7 @@ export default function ProposalsPage() {
               <button onClick={() => setShowModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <form onSubmit={createProposal} className="space-y-4">
+              {error && <p className="text-xs text-red-500 font-bold">{error}</p>}
               <div>
                 <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Title *</label>
                 <input required value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
@@ -262,9 +271,9 @@ export default function ProposalsPage() {
                 <div>
                   <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Client</label>
                   <select value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}
-                    className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="">Select client...</option>
-                    {clients.map((c: any) => <option key={c.id} value={c.id}>{c.companyName || c.name || `Client #${c.id}`}</option>)}
+                    className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
+                    <option className="text-slate-900 dark:text-zinc-100" value="">Select client...</option>
+                    {clients.map((c: any) => <option className="text-slate-900 dark:text-zinc-100" key={c.id} value={c.id}>{c.companyName || c.name || `Client #${c.id}`}</option>)}
                   </select>
                 </div>
                 <div>
