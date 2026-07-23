@@ -100,6 +100,7 @@ from database import (
     Notification,
     Project,
     ProjectTicket,
+    ProjectTicketHistory,
     Proposal,
     RadarAnalysis,
     RankingTracker,
@@ -777,6 +778,7 @@ class ProjectTicketRequest(BaseModel):
     date_qa_start: str | None = None
     date_qa_complete: str | None = None
     date_release_prod: str | None = None
+    user_name: str | None = None
 
 
 class ProjectCreateRequest(BaseModel):
@@ -4722,12 +4724,44 @@ def create_project_ticket(project_id: int, body: ProjectTicketRequest, session: 
 def update_project_ticket(ticket_id: int, body: ProjectTicketRequest, session: Session = Depends(get_session)):
     t = session.get(ProjectTicket, ticket_id)
     if not t: raise HTTPException(404, "Ticket not found")
+    
+    old_state = t.current_state
+    new_state = body.current_state
+    
     for k, v in body.model_dump(exclude_unset=True).items():
-        setattr(t, k, v)
+        if k != "user_name":
+            setattr(t, k, v)
+            
+    if old_state != new_state:
+        now_str = datetime.utcnow().date().isoformat()
+        if new_state == "In Dev":
+            t.date_dev_start = now_str
+        elif new_state == "Given to QA":
+            if not t.date_dev_complete:
+                t.date_dev_complete = now_str
+            t.date_qa_start = now_str
+        elif new_state == "Prod Release":
+            if not t.date_qa_complete:
+                t.date_qa_complete = now_str
+            t.date_release_prod = now_str
+            
+        history = ProjectTicketHistory(
+            ticket_id=ticket_id,
+            old_state=old_state,
+            new_state=new_state,
+            user_name=body.user_name
+        )
+        session.add(history)
+
     session.add(t)
     session.commit()
     session.refresh(t)
     return t
+
+@app.get("/projects/tickets/{ticket_id}/history")
+def get_project_ticket_history(ticket_id: int, session: Session = Depends(get_session)):
+    history = session.exec(select(ProjectTicketHistory).where(ProjectTicketHistory.ticket_id == ticket_id).order_by(ProjectTicketHistory.moved_at.desc())).all()
+    return {"history": history}
 
 @app.delete("/projects/tickets/{ticket_id}")
 def delete_project_ticket(ticket_id: int, session: Session = Depends(get_session)):

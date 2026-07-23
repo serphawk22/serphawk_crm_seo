@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { Plus, X, AlignLeft, Calendar, User, GitBranch, Link as LinkIcon } from "lucide-react";
+import { Plus, X, AlignLeft, Calendar, User, GitBranch, Link as LinkIcon, History, Clock } from "lucide-react";
 import { API_BASE_URL } from "@/config";
+import { useRole } from "@/context/RoleContext";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 
 type ProjectTicket = {
@@ -25,8 +26,11 @@ type ProjectTicket = {
 const KANBAN_COLUMNS = ["Planning", "In Dev", "Given to QA", "Prod Release"];
 
 export default function KanbanTab({ projectId }: { projectId: string }) {
+  const { user } = useRole();
   const [tickets, setTickets] = useState<ProjectTicket[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [historyLogs, setHistoryLogs] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'details'|'history'>('details');
   const [selectedTicket, setSelectedTicket] = useState<ProjectTicket | null>(null);
 
   // Form state
@@ -77,7 +81,7 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
       await fetch(`${API_BASE_URL}/projects/tickets/${ticketId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ current_state: newStatus })
+        body: JSON.stringify({ current_state: newStatus, user_name: user?.name })
       });
     } catch (e) {
       console.error("Failed to update status", e);
@@ -95,7 +99,7 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
     await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form)
+      body: JSON.stringify({ ...form, user_name: user?.name })
     });
     
     setShowModal(false);
@@ -104,9 +108,24 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
     fetchTickets();
   };
 
+  const fetchHistory = async (ticketId: number) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/projects/tickets/${ticketId}/history`);
+      if (res.ok) {
+        const data = await res.json();
+        setHistoryLogs(data.history || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const openTicket = (t: ProjectTicket) => {
     setSelectedTicket(t);
     setForm(t);
+    setActiveTab('details');
+    setHistoryLogs([]);
+    if (t.id) fetchHistory(t.id);
     setShowModal(true);
   };
 
@@ -198,7 +217,27 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
               </button>
             </div>
             
+            {selectedTicket && (
+              <div className="px-8 pt-4 border-b border-gray-100 dark:border-zinc-800 flex gap-6">
+                <button 
+                  type="button"
+                  onClick={() => setActiveTab('details')}
+                  className={`pb-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'details' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-900'}`}
+                >
+                  Details
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setActiveTab('history')}
+                  className={`pb-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'history' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-900'}`}
+                >
+                  History & Metrics
+                </button>
+              </div>
+            )}
+            
             <form onSubmit={handleSave} className="p-8">
+              {activeTab === 'details' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 
                 {/* Left Column */}
@@ -283,6 +322,44 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                   </div>
                 </div>
               </div>
+              )}
+              
+              {activeTab === 'history' && (
+                <div className="space-y-6">
+                  {form.date_dev_start && form.date_dev_complete && (
+                    <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-2xl flex items-center gap-4">
+                      <div className="p-3 bg-indigo-100 dark:bg-indigo-800/50 rounded-xl text-indigo-600 dark:text-indigo-400">
+                        <Clock size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-indigo-900 dark:text-indigo-100">Time Spent in Dev</h4>
+                        <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1">
+                          {Math.max(1, Math.ceil((new Date(form.date_dev_complete).getTime() - new Date(form.date_dev_start).getTime()) / (1000 * 60 * 60 * 24)))} Days
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="relative pl-6 border-l-2 border-slate-100 dark:border-zinc-800 space-y-8 mt-6">
+                    {historyLogs.map((log: any) => (
+                      <div key={log.id} className="relative">
+                        <div className="absolute -left-[33px] top-1 bg-white dark:bg-zinc-900 border-2 border-indigo-500 rounded-full p-1.5 shadow-sm">
+                          <History size={12} className="text-indigo-500" />
+                        </div>
+                        <p className="text-sm text-slate-800 dark:text-zinc-200">
+                          <span className="font-bold">{log.user_name || 'Someone'}</span> moved this ticket from <span className="font-bold text-slate-500 dark:text-zinc-400">{log.old_state}</span> to <span className="font-bold text-slate-900 dark:text-white">{log.new_state}</span>
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          {new Date(log.moved_at).toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
+                    {historyLogs.length === 0 && (
+                      <p className="text-sm text-slate-500 italic">No history available for this ticket yet.</p>
+                    )}
+                  </div>
+                </div>
+              )}
               
               <div className="mt-8 pt-6 border-t border-slate-100 dark:border-zinc-800 flex justify-end gap-3">
                 {selectedTicket?.id && (

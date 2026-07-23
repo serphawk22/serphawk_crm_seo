@@ -250,6 +250,20 @@ class ProjectTicket(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ProjectTicketHistory(SQLModel, table=True):
+    """
+    Logs state transitions and metadata for project tickets.
+    """
+    __tablename__ = "project_ticket_history"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ticket_id: int = Field(foreign_key="project_tickets.id")
+    user_name: Optional[str] = None
+    old_state: str
+    new_state: str
+    moved_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class ClientProfile(SQLModel, table=True):
     """
     Detailed profile for clients
