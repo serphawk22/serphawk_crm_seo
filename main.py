@@ -192,6 +192,14 @@ def on_startup():
     from sqlalchemy import text
     try:
         with engine.connect() as conn:
+            conn.execute(text('ALTER TABLE projects ADD COLUMN "projectMemberIds" JSON;'))
+            conn.commit()
+            print("Successfully added projectMemberIds to projects table.")
+    except Exception as e:
+        print("projectMemberIds column already exists or error:", e)
+        
+    try:
+        with engine.connect() as conn:
             conn.execute(text("ALTER TABLE users ADD COLUMN sidebar_preferences JSON;"))
             conn.commit()
             print("Successfully added sidebar_preferences to users table.")
