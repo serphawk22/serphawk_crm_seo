@@ -120,20 +120,39 @@ export function AdminTopbar() {
 
   const badge = ROLE_BADGE[role as Role];
 
-  useEffect(() => {
-    if (!user?.id) return;
-    const fetchNotifs = async () => {
+  const loadNotifs = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/notifications/${user.id}?unread_only=true`);
+        const res = await fetch(`${API_BASE_URL}/notifications/${user?.id}?unread_only=true`);
         const data = await res.json();
         setUnreadCount(data.unread_count || 0);
         setRecentNotifs((data.notifications || []).slice(0, 3));
       } catch {}
-    };
-    fetchNotifs();
-    const interval = setInterval(fetchNotifs, 30000);
-    return () => clearInterval(interval);
-  }, [user?.id]);
+  };
+
+  useEffect(() => {
+    let int: NodeJS.Timeout;
+    if (user) {
+      loadNotifs();
+      int = setInterval(loadNotifs, 30000); // refresh every 30s
+    }
+    return () => clearInterval(int);
+  }, [user]);
+
+  const handleOpenNotifs = async () => {
+    const isOpening = !notifOpen;
+    setNotifOpen(isOpening);
+    setUserMenuOpen(false);
+    
+    if (isOpening && unreadCount > 0 && user) {
+      // Mark all as read when opening the dropdown
+      try {
+        await fetch(`${API_BASE_URL}/notifications/read-all/${user.id}`, { method: 'POST' });
+        setUnreadCount(0);
+      } catch (err) {
+        console.error("Failed to mark notifications read", err);
+      }
+    }
+  };
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -291,7 +310,7 @@ export function AdminTopbar() {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => { setNotifOpen(!notifOpen); setUserMenuOpen(false); }}
+            onClick={handleOpenNotifs}
             className="relative p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:bg-zinc-800 transition-all"
           >
             <Bell className="w-4.5 h-4.5" />
