@@ -757,6 +757,28 @@ class ClientFollowUpRequest(BaseModel):
     email_agent_data: Optional[str] = None
 
 
+class ProjectTeamRequest(BaseModel):
+    emails: list[str]
+    roles: list[str]
+
+class ProjectTicketRequest(BaseModel):
+    competitor: str | None = None
+    category: str | None = None
+    task: str
+    github_link: str | None = None
+    production_url: str | None = None
+    current_state: str = "Planning"
+    requested_date: str | None = None
+    requested_by: str | None = None
+    current_owner_role: str | None = None
+    current_owner: str | None = None
+    date_dev_start: str | None = None
+    date_dev_complete: str | None = None
+    date_qa_start: str | None = None
+    date_qa_complete: str | None = None
+    date_release_prod: str | None = None
+
+
 class ProjectCreateRequest(BaseModel):
     name: str
     description: Optional[str] = None

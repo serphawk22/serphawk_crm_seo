@@ -225,9 +225,9 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                   </motion.span>
                 )}
               </AnimatePresence>
-              {item.badge && item.badge > 0 && !collapsed && (
+              {(item.id === "item-notifications" ? unreadCount : item.badge) > 0 && !collapsed && (
                 <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
-                  {item.badge}
+                  {item.id === "item-notifications" ? unreadCount : item.badge}
                 </span>
               )}
             </Link>
@@ -248,13 +248,26 @@ export function Sidebar({ role }: SidebarProps) {
   
   const [sections, setSections] = useState<any[]>(defaultSidebarSections);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const initial = user?.name?.charAt(0).toUpperCase() || "B";
   const userName = user?.name || "Brajesh";
 
   useEffect(() => {
     fetchSidebarPrefs();
-  }, []);
+    
+    if (!user?.id) return;
+    const fetchNotifs = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/notifications/${user.id}?unread_only=true`);
+        const data = await res.json();
+        setUnreadCount(data.unread_count || 0);
+      } catch {}
+    };
+    fetchNotifs();
+    const interval = setInterval(fetchNotifs, 30000);
+    return () => clearInterval(interval);
+  }, [user?.id]);
 
   const fetchSidebarPrefs = async () => {
     try {
