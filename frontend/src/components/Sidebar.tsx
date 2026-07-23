@@ -131,7 +131,7 @@ const defaultSidebarSections = [
 ];
 
 // --- Sortable Section Component ---
-function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection }) {
+function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection, unreadCount }: any) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -493,6 +493,7 @@ export function Sidebar({ role }: SidebarProps) {
                 <SortableSection 
                   key={section.id} 
                   section={section} 
+                  unreadCount={unreadCount}
                   role={role} 
                   pathname={pathname} 
                   collapsed={collapsed} 
