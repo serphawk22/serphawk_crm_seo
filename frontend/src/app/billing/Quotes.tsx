@@ -156,7 +156,16 @@ export default function QuotesPage() {
               className={`text-xs font-bold px-2 py-1 rounded-lg border-0 outline-none cursor-pointer ${STATUS_COLORS[q.status]}`}>
               {STATUSES.map(s => <option key={s}>{s}</option>)}
             </select>
-            <button onClick={() => handleDelete(q.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+              <a href={`${API_BASE_URL}/quotes/${q.id}/pdf`} target="_blank" rel="noreferrer" title="Export PDF"
+                className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20">
+                <FileText className="w-3.5 h-3.5" />
+              </a>
+              <button onClick={() => handleDelete(q.id)} title="Delete Quote"
+                className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </motion.div>
         ))}
       </div>
@@ -181,10 +190,10 @@ export default function QuotesPage() {
                     <Building2 className="w-3.5 h-3.5" /> Who is this quote for? *
                   </p>
                   <div className="flex gap-2 mb-3">
-                    {(["lead", "client"] as const).map(type => (
-                      <button key={type} onClick={() => setForm(f => ({ ...f, linked_to: type, lead_id: "", client_id: "" }))}
+                    {(["none", "lead", "client"] as const).map(type => (
+                      <button key={type} onClick={() => setForm(f => ({ ...f, linked_to: type as any, lead_id: "", client_id: "" }))}
                         className={`flex-1 py-2 rounded-xl text-xs font-bold capitalize transition-all ${form.linked_to === type ? "bg-amber-500 text-white shadow" : "bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:border-amber-400"}`}>
-                        {type === "lead" ? "🎯 Lead" : "✅ Client"}
+                        {type === "none" ? "🚫 None" : type === "lead" ? "🎯 Lead" : "✅ Client"}
                       </button>
                     ))}
                   </div>
@@ -194,12 +203,14 @@ export default function QuotesPage() {
                       <option value="">Select a lead...</option>
                       {leads.map(l => <option key={l.id} value={l.id}>{l.company_name}{l.email ? ` — ${l.email}` : ""}</option>)}
                     </select>
-                  ) : (
+                  ) : form.linked_to === "client" ? (
                     <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500">
                       <option value="">Select a client...</option>
                       {clients.map(c => <option key={c.id} value={c.id}>{c.companyName || `Client #${c.id}`}</option>)}
                     </select>
+                  ) : (
+                    <div className="text-xs text-amber-700 dark:text-amber-500 mt-2">Standalone quote with no client attached.</div>
                   )}
                 </div>
 

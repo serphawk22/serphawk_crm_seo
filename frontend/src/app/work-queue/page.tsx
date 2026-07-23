@@ -221,7 +221,7 @@ export default function WorkQueuePage() {
                 : "bg-slate-100 dark:bg-zinc-800 text-slate-500"
               }`}>
                 {tab.id === 'combined' 
-                  ? Object.values(data).reduce((acc:any, curr:any) => acc + curr.length, 0)
+                  ? Object.values(data).reduce((acc:any, curr:any) => acc + (Array.isArray(curr) ? curr.length : 0), 0)
                   : (data[tab.id]?.length || 0)}
               </span>
             </button>
