@@ -120,7 +120,6 @@ export function AdminTopbar() {
 
   const badge = ROLE_BADGE[role as Role];
 
-  useEffect(() => {
   const loadNotifs = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/notifications/${user?.id}?unread_only=true`);
