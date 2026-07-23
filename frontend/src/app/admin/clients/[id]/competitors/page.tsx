@@ -56,10 +56,11 @@ function RadarMapLoader({ target, competitors, radiusKm }: { target: any; compet
       { featureType: "water", elementType: "geometry", stylers: [{ color: "#000000" }] },
     ];
 
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     if (!mapInstanceRef.current) {
       mapInstanceRef.current = new g.Map(mapRef.current, {
         center, zoom: radiusKm <= 2 ? 15 : radiusKm <= 5 ? 14 : radiusKm <= 10 ? 13 : 12,
-        styles: darkStyles, mapTypeControl: false, streetViewControl: false,
+        styles: isDark ? darkStyles : [], mapTypeControl: false, streetViewControl: false,
       });
     } else {
       mapInstanceRef.current.panTo(center);
@@ -284,14 +285,14 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
     <div className="max-w-[1500px] mx-auto space-y-8 pb-20 dark">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <button onClick={() => router.back()} className="p-2 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white transition-colors shadow-sm">
+        <button onClick={() => router.back()} className="p-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-slate-500 dark:text-zinc-400 hover:text-white transition-colors shadow-sm">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
           <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400 flex items-center gap-3">
             Advanced Competitor Radar <Radar className="w-7 h-7 text-indigo-400" />
           </h1>
-          <p className="text-zinc-400 font-medium text-sm mt-1">
+          <p className="text-slate-500 dark:text-zinc-400 font-medium text-sm mt-1">
             Google Maps Intelligence Scan for {client?.companyName || 'Target Client'}
           </p>
         </div>
@@ -299,22 +300,22 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
 
       {/* Loading States */}
       {loadingStep !== 'complete' && loadingStep !== 'error' && (
-        <div className="h-[60vh] bg-zinc-900 border border-zinc-800 rounded-[2rem] flex flex-col items-center justify-center p-10 text-center shadow-lg relative overflow-hidden">
+        <div className="h-[60vh] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-[2rem] flex flex-col items-center justify-center p-10 text-center shadow-lg relative overflow-hidden">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/20 via-zinc-900 to-zinc-900"></div>
           
           <div className="relative mb-8 z-10">
             <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-3xl animate-pulse"></div>
-            <div className="w-24 h-24 rounded-full border-4 border-zinc-800 border-t-indigo-500 animate-spin flex items-center justify-center relative">
+            <div className="w-24 h-24 rounded-full border-4 border-gray-200 dark:border-zinc-800 border-t-indigo-500 animate-spin flex items-center justify-center relative">
               <Radar className="w-8 h-8 text-indigo-400" />
             </div>
           </div>
           
-          <h2 className="text-2xl font-black text-zinc-100 mb-2 relative z-10">
+          <h2 className="text-2xl font-black text-slate-900 dark:text-zinc-100 mb-2 relative z-10">
             {loadingStep === 'fetching_client' && "Loading Client Profile..."}
             {loadingStep === 'locating_target' && "Pinpointing Target on Google Maps..."}
             {loadingStep === 'scanning_radar' && "Scanning Local Radius via Places API..."}
           </h2>
-          <p className="text-zinc-400 max-w-md relative z-10">
+          <p className="text-slate-500 dark:text-zinc-400 max-w-md relative z-10">
             Our AI is mapping the local competitive landscape using exact Google coordinates, parsing employee records, and calculating market saturation.
           </p>
         </div>
@@ -322,26 +323,26 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
 
       {/* Error State with Fallback */}
       {loadingStep === 'error' && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 max-w-2xl mx-auto shadow-xl relative overflow-hidden">
+        <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl p-8 max-w-2xl mx-auto shadow-xl relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-red-500" />
           <div className="flex flex-col items-center text-center">
             <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
               <AlertCircle className="w-8 h-8 text-red-500" />
             </div>
-            <h2 className="text-2xl font-black text-zinc-100 mb-2">Target Not Found</h2>
-            <p className="text-zinc-400 mb-6 max-w-md">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-zinc-100 mb-2">Target Not Found</h2>
+            <p className="text-slate-500 dark:text-zinc-400 mb-6 max-w-md">
               We couldn't automatically find <strong>{client?.companyName}</strong> on Google Maps. The business might not be registered or the name is ambiguous.
             </p>
             
-            <div className="w-full bg-black/40 rounded-2xl p-6 border border-zinc-800">
-              <h3 className="text-sm font-bold text-zinc-300 mb-4 text-left">Manual Override:</h3>
+            <div className="w-full bg-black/40 rounded-2xl p-6 border border-gray-200 dark:border-zinc-800">
+              <h3 className="text-sm font-bold text-slate-700 dark:text-zinc-300 mb-4 text-left">Manual Override:</h3>
               <form onSubmit={handleManualSearch} className="flex flex-col sm:flex-row gap-3">
                 <input 
                   type="text" 
                   value={manualQuery}
                   onChange={e => setManualQuery(e.target.value)}
                   placeholder="e.g. SerpHawk Digital Marketing Miami" 
-                  className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500 transition-colors"
+                  className="flex-1 bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-indigo-500 transition-colors"
                 />
                 <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-3 rounded-xl transition-colors whitespace-nowrap">
                   Force Search
@@ -376,19 +377,19 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
               { label: "Radius Scanned", value: `${radarResult.radius_km} km`, icon: Target, color: "text-blue-400", bg: "bg-blue-500/10" },
               { label: "Exact Coordinates", value: "Verified", icon: MapPin, color: "text-emerald-400", bg: "bg-emerald-500/10" },
             ].map((stat, i) => (
-              <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-sm">
+              <div key={i} className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm">
                 <div className="flex items-center gap-3 mb-3">
                   <div className={`p-2 rounded-lg ${stat.bg}`}><stat.icon size={16} className={stat.color} /></div>
                   <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">{stat.label}</p>
                 </div>
-                <p className="text-2xl font-black text-zinc-100">{stat.value}</p>
+                <p className="text-2xl font-black text-slate-900 dark:text-zinc-100">{stat.value}</p>
               </div>
             ))}
           </div>
 
           {/* Map Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-3 bg-zinc-900 border border-zinc-800 rounded-3xl shadow-sm overflow-hidden" style={{ minHeight: "500px" }}>
+            <div className="lg:col-span-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl shadow-sm overflow-hidden" style={{ minHeight: "500px" }}>
               {mapReady ? (
                 <RadarMapLoader target={radarResult.target} competitors={radarResult.competitors} radiusKm={radarResult.radius_km} />
               ) : (
@@ -400,14 +401,14 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
 
             <div className="space-y-4">
               {/* Target Identification */}
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-sm">
+              <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm">
                 <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-4">Target Identified</p>
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white font-black text-lg shrink-0 shadow-lg shadow-indigo-500/20">
                     {foundPlace?.name?.charAt(0) || "T"}
                   </div>
                   <div>
-                    <h2 className="text-sm font-black text-zinc-100">{foundPlace?.name}</h2>
+                    <h2 className="text-sm font-black text-slate-900 dark:text-zinc-100">{foundPlace?.name}</h2>
                     <p className="text-xs text-zinc-500 mt-1">{foundPlace?.address}</p>
                     {foundPlace?.rating && (
                       <div className="flex items-center gap-1 mt-1.5">
@@ -421,18 +422,18 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
               </div>
 
               {/* Pin Legend */}
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-sm">
+              <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm">
                 <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-4">Radar Pin Legend</p>
                 <div className="space-y-3">
                   {Object.entries(colorConfig).map(([key, cfg]) => (
                     <div key={key} className="flex items-center gap-3">
                       <div className={`w-3 h-3 rounded-full ${cfg.dot} shadow-sm shadow-${key}-500/50 shrink-0`} />
-                      <span className="text-xs text-zinc-300 font-medium">{cfg.label}</span>
+                      <span className="text-xs text-slate-700 dark:text-zinc-300 font-medium">{cfg.label}</span>
                     </div>
                   ))}
-                  <div className="flex items-center gap-3 pt-2 border-t border-zinc-800">
+                  <div className="flex items-center gap-3 pt-2 border-t border-gray-200 dark:border-zinc-800">
                     <div className="w-3 h-3 rounded-full bg-indigo-500 shadow-sm shadow-indigo-500/50 shrink-0" />
-                    <span className="text-xs text-zinc-300 font-medium">Target Business</span>
+                    <span className="text-xs text-slate-700 dark:text-zinc-300 font-medium">Target Business</span>
                   </div>
                 </div>
               </div>
@@ -452,11 +453,11 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
           <div className="pt-4">
              <div className="flex items-center gap-3 mb-6 px-2">
                 <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-xl"><Building2 className="w-5 h-5" /></div>
-                <h3 className="text-xl font-black text-zinc-100">Advanced Competitor Rankings</h3>
+                <h3 className="text-xl font-black text-slate-900 dark:text-zinc-100">Advanced Competitor Rankings</h3>
              </div>
              
              {/* Using the shared CompetitorTable which handles the 4 sorting modes automatically */}
-             <div className="[&>div]:bg-zinc-900 [&>div]:border-zinc-800 [&_th]:bg-zinc-950 [&_th]:border-zinc-800 [&_th]:text-zinc-500 [&_td]:border-zinc-800 [&_td]:text-zinc-300 [&_button]:bg-zinc-800 [&_button]:border-zinc-700 [&_button:hover]:bg-zinc-700 [&_button.bg-indigo-600]:bg-indigo-600 [&_button.bg-indigo-600]:text-white [&_button.bg-indigo-600]:border-transparent">
+            <div className="[&>div]:bg-white dark:[&>div]:bg-zinc-900 [&>div]:border-gray-200 dark:[&>div]:border-zinc-800 [&_th]:bg-gray-50 dark:[&_th]:bg-zinc-950 [&_th]:border-gray-200 dark:[&_th]:border-zinc-800 [&_th]:text-zinc-500 [&_td]:border-gray-200 dark:[&_td]:border-zinc-800 [&_td]:text-slate-700 dark:[&_td]:text-zinc-300 [&_button:not(.bg-indigo-600)]:bg-white dark:[&_button:not(.bg-indigo-600)]:bg-zinc-800 [&_button:not(.bg-indigo-600)]:border-gray-300 dark:[&_button:not(.bg-indigo-600)]:border-zinc-700 hover:[&_button:not(.bg-indigo-600)]:bg-gray-50 dark:hover:[&_button:not(.bg-indigo-600)]:bg-zinc-700 [&_button.bg-indigo-600]:text-white [&_button.bg-indigo-600]:border-transparent">
                <CompetitorTable
                   rankings={radarResult.rankings}
                   onAddToClients={handleAddToClients}

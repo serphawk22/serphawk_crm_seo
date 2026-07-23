@@ -209,12 +209,45 @@ class Project(SQLModel, table=True):
     employeeIds: Optional[List[int]] = Field(default_factory=list, sa_column=Column(JSON))
     internIds: Optional[List[int]] = Field(default_factory=list, sa_column=Column(JSON))
     clientIds: Optional[List[int]] = Field(default_factory=list, sa_column=Column(JSON))
+    projectMemberIds: Optional[List[int]] = Field(default_factory=list, sa_column=Column(JSON))
     
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
     
     # Relationships
     remarks: List["Remark"] = Relationship(back_populates="project")
+
+class ProjectTicket(SQLModel, table=True):
+    """
+    Jira-style tickets for project management (Kanban).
+    """
+    __tablename__ = "project_tickets"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="projects.id")
+    
+    competitor: Optional[str] = None
+    category: Optional[str] = None
+    task: str = Field(max_length=500)
+    github_link: Optional[str] = None
+    production_url: Optional[str] = None
+    
+    current_state: str = Field(default="Planning") # Planning, In Dev, Given to QA, Prod Release
+    
+    requested_date: Optional[str] = None
+    requested_by: Optional[str] = None
+    
+    current_owner_role: Optional[str] = None
+    current_owner: Optional[str] = None
+    
+    date_dev_start: Optional[str] = None
+    date_dev_complete: Optional[str] = None
+    date_qa_start: Optional[str] = None
+    date_qa_complete: Optional[str] = None
+    date_release_prod: Optional[str] = None
+    
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ClientProfile(SQLModel, table=True):
@@ -523,6 +556,7 @@ class SentEmail(SQLModel, table=True):
     recommended_services: Optional[str] = Field(default=None, sa_column=Column(Text))
     manual: Optional[bool] = Field(default=False)
     draft_json: Optional[str] = Field(default=None, sa_column=Column(Text))  # Store the whole draft as JSON
+    status: str = Field(default="Sent", max_length=50)  # Sent, Opened, Replied
     sent_at: datetime = Field(default_factory=datetime.utcnow)
 
 

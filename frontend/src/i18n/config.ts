@@ -47,7 +47,7 @@ if (!i18n.isInitialized) {
       },
       detection: {
         // Priority order for language detection
-        order: ['localStorage', 'navigator', 'htmlTag'],
+        order: ['localStorage'],
         lookupLocalStorage: 'crm-language',
         caches: ['localStorage'],
       },

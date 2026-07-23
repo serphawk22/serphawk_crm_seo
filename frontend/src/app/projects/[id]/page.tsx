@@ -9,6 +9,8 @@ import {
 import { API_BASE_URL } from '@/config';
 import { cn } from "@/lib/utils";
 import PageGuide from '@/components/PageGuide';
+import KanbanTab from './KanbanTab';
+import TeamTab from './TeamTab';
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useRole } from "@/context/RoleContext";
@@ -28,6 +30,7 @@ export default function ProjectDetailPage() {
   // Dropdown states
   const [allEmployees, setAllEmployees] = useState([]);
   const [allInterns, setAllInterns] = useState([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'kanban' | 'team'>('overview');
   const [showAssignModal, setShowAssignModal] = useState(false);
 
   const fetchData = async () => {
@@ -209,7 +212,33 @@ export default function ProjectDetailPage() {
         ]}
       />
 
+            {/* Tabs */}
+      <div className="flex border-b border-gray-200 dark:border-zinc-800 mb-8 space-x-8">
+        <button
+          onClick={() => setActiveTab('overview')}
+          className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'overview' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200'}`}
+        >
+          Overview
+        </button>
+        <button
+          onClick={() => setActiveTab('kanban')}
+          className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'kanban' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200'}`}
+        >
+          Kanban Board
+        </button>
+        <button
+          onClick={() => setActiveTab('team')}
+          className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'team' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200'}`}
+        >
+          Team & Access
+        </button>
+      </div>
+
+      {activeTab === 'kanban' && <KanbanTab projectId={id as string} />}
+      {activeTab === 'team' && <TeamTab projectId={id as string} onUpdate={fetchData} />}
+      {activeTab === 'overview' && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
         {/* Left Column: Progress & Description */}
         <div className="lg:col-span-2 space-y-8 font-poppins text-gray-800 dark:text-zinc-100">
            {/* Progress Card */}
@@ -256,17 +285,9 @@ export default function ProjectDetailPage() {
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">Assignees</p>
                     <p className="text-xl font-black text-gray-900 dark:text-zinc-50">{(project.employeeIds?.length || 0) + (project.internIds?.length || 0)}</p>
                  </div>
-                 <div className="p-6 bg-gray-50 dark:bg-zinc-950 rounded-[2rem] border border-gray-100 dark:border-zinc-800 text-center">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">Total Milestones</p>
-                    <p className="text-xl font-black text-gray-900 dark:text-zinc-50">8</p>
-                 </div>
-                 <div className="p-6 bg-gray-50 dark:bg-zinc-950 rounded-[2rem] border border-gray-100 dark:border-zinc-800 text-center">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">Active Tasks</p>
-                    <p className="text-xl font-black text-gray-900 dark:text-zinc-50">3</p>
-                 </div>
-                 <div className="p-6 bg-gray-50 dark:bg-zinc-950 rounded-[2rem] border border-gray-100 dark:border-zinc-800 text-center">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">Health</p>
-                    <p className="text-xl font-black text-green-600">GOOD</p>
+                 <div className="p-6 bg-gray-50 dark:bg-zinc-950 rounded-[2rem] border border-gray-100 dark:border-zinc-800 text-center col-span-2 md:col-span-4">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">Total Assignees</p>
+                    <p className="text-xl font-black text-gray-900 dark:text-zinc-50">{(project.employeeIds?.length || 0) + (project.internIds?.length || 0)}</p>
                  </div>
               </div>
            </div>
@@ -439,6 +460,7 @@ export default function ProjectDetailPage() {
            </div>
         </div>
       </div>
+      )}
 
       {/* Assignment Modal */}
       {showAssignModal && (
