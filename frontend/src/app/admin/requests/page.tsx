@@ -32,7 +32,7 @@ export default function AdminRequestsPage() {
     try {
       const [reqRes, empRes] = await Promise.all([
         fetch(`${API_BASE_URL}/services/requests`),
-        fetch(`${API_BASE_URL}/users?role=Employee,SalesManager`)
+        fetch(`${API_BASE_URL}/users?role=Admin,Employee,SalesManager`)
       ]);
       const reqData = await reqRes.json();
       const empData = await empRes.json();

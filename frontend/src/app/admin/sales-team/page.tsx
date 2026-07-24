@@ -60,7 +60,7 @@ export default function SalesTeamPage() {
   const fetchSalesTeam = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/users?role=SalesManager`);
+      const res = await fetch(`${API_BASE_URL}/users?role=Admin,SalesManager,Employee`);
       const data = await res.json();
       setSalesTeam(data.users || []);
     } catch (err) {
