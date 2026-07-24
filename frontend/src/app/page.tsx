@@ -137,7 +137,7 @@ function Dashboard() {
     { href: "/admin/sales-team", icon: UserCheck, gradient: "from-teal-500 to-emerald-500", title: language === 'es' ? "Equipo de Ventas" : "Sales Team", description: language === 'es' ? "Espacio de trabajo del administrador para agregar vendedores, gestionar cuentas y crear acceso de inicio de sesión para los Gerentes de Ventas." : "Admin workspace for adding salespeople, managing accounts, and creating Sales Manager login access.", roles: ["Admin"] },
     { href: "/email-agent", icon: Bot, gradient: "from-violet-500 to-purple-600", title: language === 'es' ? "Agente de Email" : "Email Agent", description: language === 'es' ? "Motor de Crecimiento: Alcance automatizado por IA que analiza prospectos y redacta correos personalizados bilingües para escalar sus ingresos." : "Growth Engine: AI-powered outreach that auto-analyzes leads and drafts personalized bilingual emails to scale your revenue automatically.", roles: ["Admin", "Employee", "SalesManager"] },
     { href: "/calls", icon: Phone, gradient: "from-amber-500 to-orange-600", title: language === 'es' ? "Centro de Llamadas" : "Call Center", description: language === 'es' ? "Inteligencia de Puntos de Contacto: Registre cada conversación, haga seguimiento y asegúrese de que ningún prospecto quede sin un próximo paso claro." : "Touchpoint Intelligence: Log every conversation, track follow-ups, and ensure no lead is ever left without a clear next step or work assignment.", roles: ["Admin", "Employee", "SalesManager"] },
-    { href: "/projects", icon: FolderKanban, gradient: "from-sky-400 to-cyan-500", title: language === 'es' ? "Tablero de Proyectos" : "Project Board", description: language === 'es' ? "Capa de Ejecución: Supervise flujos de trabajo complejos, asigne miembros del equipo y asegúrese de que cada hito se entregue con precisión." : "Execution Layer: Oversee complex workflows, assign specialized team members, and ensure every milestone is delivered with precision and quality.", roles: ["Admin", "Employee", "Intern"] },
+    { href: "/projects", icon: FolderKanban, gradient: "from-sky-400 to-cyan-500", title: language === 'es' ? "Tablero de Proyectos" : "Project Board", description: language === 'es' ? "Capa de Ejecución: Supervise flujos de trabajo complejos, asigne miembros del equipo y asegúrese de que cada hito se entregue con precisión." : "Execution Layer: Oversee complex workflows, assign specialized team members, and ensure every milestone is delivered with precision and quality.", roles: ["Admin", "Employee", "Intern", "ProjectMember"] },
     { href: "/interns", icon: GraduationCap, gradient: "from-rose-400 to-rose-500", title: language === 'es' ? "Grupo de Talentos" : "Talent Pool", description: language === 'es' ? "Soporte de Escala: Administre a sus pasantes, asigne tareas de aprendizaje y monitoree su contribución." : "Scale Support: Manage your interns, assign learning tasks, and monitor their contribution to the core team's productivity and growth.", roles: ["Admin", "Employee"] },
     { href: "/admin/services-overview", icon: Briefcase, gradient: "from-fuchsia-500 to-pink-600", title: language === 'es' ? "Resumen de Servicios" : "Services Overview", description: language === 'es' ? "Tablero Principal: Vista de toda la organización de las líneas de servicio activas, clientes consumidores y equipos de ejecución asignados." : "Master Board: Organization-wide view of all active service lines, client consumers, and assigned execution teams.", roles: ["Admin", "Employee"] },
     { href: "/setup", icon: Globe, gradient: "from-indigo-500 to-indigo-600", title: language === 'es' ? "Configuración Inicial" : "Initial Setup", description: language === 'es' ? "Conecte su sitio web y perfiles de redes sociales para análisis automático multicanal." : "Connect your website and social media profiles for automated cross-channel analysis.", roles: ["Client"] },
@@ -545,6 +545,46 @@ function Dashboard() {
                       </div>
                     </motion.div>
                   )}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ═══ CHAPTER: YOUR PROJECTS (For ProjectMembers / Interns / Clients) ═══ */}
+          {clientStats && (clientStats.projects?.length ?? 0) > 0 && (
+            <section className="bg-zinc-950 text-white border-t border-white/5">
+              <div className="max-w-5xl mx-auto px-8 md:px-16 py-24 md:py-32">
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                >
+                  <p className="text-amber-600 text-[11px] font-bold tracking-[0.3em] uppercase mb-4">Your Assignments</p>
+                  <h2 className="text-5xl md:text-7xl font-black text-white mb-12" style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }}>
+                    Projects
+                  </h2>
+                </motion.div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {clientStats.projects.map((project: any, index: number) => (
+                    <Link key={project.id} href={`/projects/${project.id}`}>
+                      <motion.div 
+                        initial={{ opacity: 0, y: 15 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.4, delay: index * 0.1 }}
+                        className="p-8 border border-white/10 rounded-xl bg-white/5 hover:border-amber-500/30 transition-all cursor-pointer group"
+                      >
+                        <h3 className="text-2xl font-black mb-2 group-hover:text-amber-500 transition-colors" style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }}>
+                          {project.name}
+                        </h3>
+                        <p className="text-stone-400 text-sm mb-6">Status: {project.status}</p>
+                        <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                          <div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${project.progress}%` }} />
+                        </div>
+                      </motion.div>
+                    </Link>
+                  ))}
                 </div>
               </div>
             </section>

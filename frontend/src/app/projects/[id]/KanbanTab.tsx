@@ -25,6 +25,13 @@ type ProjectTicket = {
 
 const KANBAN_COLUMNS = ["Planning", "In Dev", "Given to QA", "Prod Release"];
 
+function computeDays(start?: string, end?: string) {
+  if (!start) return 0;
+  const d1 = new Date(start).getTime();
+  const d2 = end ? new Date(end).getTime() : new Date().getTime();
+  return Math.max(0, Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24)));
+}
+
 export default function KanbanTab({ projectId }: { projectId: string }) {
   const { user } = useRole();
   const [tickets, setTickets] = useState<ProjectTicket[]>([]);
@@ -88,6 +95,10 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
         body: JSON.stringify({ ...ticket, current_state: newStatus, user_name: user?.name })
       });
       if (!res.ok) throw new Error("Failed to update status");
+      const data = await res.json();
+      if (data.ticket) {
+        setTickets(prev => prev.map(t => t.id === ticketId ? data.ticket : t));
+      }
     } catch (e) {
       console.error("Failed to update status", e);
       fetchTickets(); // Revert on failure
@@ -191,10 +202,25 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                               </p>
                             )}
                             
-                            <div className="flex items-center justify-between text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800">
-                              <span className="flex items-center gap-1">
-                                <User size={12} /> {ticket.current_owner || 'Unassigned'}
+                            <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800">
+                              <span className="flex items-center gap-1 text-[10px] bg-slate-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-slate-500">
+                                <User size={10} /> {ticket.current_owner || 'Unassigned'}
                               </span>
+                              {ticket.requested_date && (
+                                <span className="flex items-center gap-1 text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded">
+                                  Age: {computeDays(ticket.requested_date, ticket.date_release_prod)}d
+                                </span>
+                              )}
+                              {ticket.date_dev_start && (
+                                <span className="flex items-center gap-1 text-[10px] bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded">
+                                  Dev: {computeDays(ticket.date_dev_start, ticket.date_dev_complete)}d
+                                </span>
+                              )}
+                              {ticket.date_qa_start && (
+                                <span className="flex items-center gap-1 text-[10px] bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded">
+                                  QA: {computeDays(ticket.date_qa_start, ticket.date_qa_complete)}d
+                                </span>
+                              )}
                             </div>
                           </div>
                         )}
