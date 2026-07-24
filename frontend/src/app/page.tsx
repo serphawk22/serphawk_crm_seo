@@ -762,7 +762,7 @@ function Dashboard() {
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true }}
                       transition={{ delay: index * 0.08 }}
-                      className="p-8 bg-white dark:bg-zinc-900 rounded-xl border border-stone-200/60 hover:border-amber-600/30 hover:shadow-lg transition-all group"
+                      className="p-8 bg-white rounded-xl border border-stone-200/60 hover:border-amber-600/30 hover:shadow-lg transition-all group"
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className="p-3 rounded-xl bg-gradient-to-br from-sky-400 to-cyan-500">
@@ -1117,7 +1117,7 @@ function Dashboard() {
                       viewport={{ once: true }}
                       transition={{ delay: index * 0.06 }}
                       whileHover={{ y: -2 }}
-                      className="p-8 bg-white dark:bg-zinc-900 rounded-xl border border-stone-200/60 hover:border-amber-600/30 hover:shadow-lg transition-all group cursor-pointer"
+                      className="p-8 bg-white rounded-xl border border-stone-200/60 hover:border-amber-600/30 hover:shadow-lg transition-all group cursor-pointer"
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className={cn("p-3 rounded-xl bg-gradient-to-br", card.gradient)}>
@@ -1143,7 +1143,7 @@ function Dashboard() {
                   <p className="text-amber-700 text-[10px] font-bold tracking-[0.25em] uppercase mb-4">Recommended For You</p>
                   <div className="flex flex-wrap gap-3">
                     {clientStats.recommended_services.split(',').map((s: string) => (
-                      <span key={s} className="px-5 py-2.5 bg-white dark:bg-zinc-900 border border-stone-200 text-stone-700 font-bold text-sm rounded-lg">{s.trim()}</span>
+                      <span key={s} className="px-5 py-2.5 bg-white border border-stone-200 text-stone-700 font-bold text-sm rounded-lg">{s.trim()}</span>
                     ))}
                   </div>
                 </motion.div>

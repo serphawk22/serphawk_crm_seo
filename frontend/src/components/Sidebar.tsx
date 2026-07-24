@@ -75,7 +75,6 @@ const defaultSidebarSections = [
     items: [
       { id: "item-meetings", name: "Meetings", icon: "Calendar", href: "/meetings", roles: ["Admin", "Employee", "SalesManager"] },
       { id: "item-calls", name: "Calls", icon: "Phone", href: "/calls", roles: ["Admin", "Employee", "SalesManager"] },
-      { id: "item-tasks", name: "Tasks", icon: "CheckSquare", href: "/tasks", roles: ["Admin", "Employee", "Intern"] },
     ],
   },
   {

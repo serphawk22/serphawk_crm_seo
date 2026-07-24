@@ -214,6 +214,30 @@ def on_startup():
             print("Successfully added ai_analysis_results to leads table.")
     except Exception as e:
         print("ai_analysis_results column already exists or error:", e)
+        
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE projects ADD COLUMN project_type VARCHAR DEFAULT 'Development';"))
+            conn.commit()
+            print("Successfully added project_type to projects table.")
+    except Exception as e:
+        print("project_type column already exists or error:", e)
+        
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE projects ADD COLUMN \"clientId\" INTEGER;"))
+            conn.commit()
+            print("Successfully added clientId to projects table.")
+    except Exception as e:
+        print("clientId column already exists or error:", e)
+        
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE projects ADD COLUMN \"leadId\" INTEGER;"))
+            conn.commit()
+            print("Successfully added leadId to projects table.")
+    except Exception as e:
+        print("leadId column already exists or error:", e)
 
 allowed_origins = [
     "https://serphawk-crm-seo.vercel.app",
@@ -789,6 +813,10 @@ class ProjectCreateRequest(BaseModel):
     employeeIds: List[int] = []
     internIds: List[int] = []
     clientIds: List[int] = []
+    projectMemberIds: List[int] = []
+    project_type: str = "Development"
+    clientId: Optional[int] = None
+    leadId: Optional[int] = None
 
 
 class ProjectUpdateRequest(BaseModel):
@@ -796,9 +824,13 @@ class ProjectUpdateRequest(BaseModel):
     description: Optional[str] = None
     status: Optional[str] = None
     progress: Optional[int] = None
+    project_type: Optional[str] = None
+    clientId: Optional[int] = None
+    leadId: Optional[int] = None
     employeeIds: Optional[List[int]] = None
     internIds: Optional[List[int]] = None
     clientIds: Optional[List[int]] = None
+    projectMemberIds: Optional[List[int]] = None
 
 
 class ServiceCreateRequest(BaseModel):

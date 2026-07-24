@@ -51,7 +51,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
   const { role, loading } = useRole();
   const pathname = usePathname();
   const isClient = role === "Client";
-  const isAdminOrEmployee = role === "Admin" || role === "Employee" || role === "Intern" || role === "SalesManager";
+  const isAdminOrEmployee = role === "Admin" || role === "Employee" || role === "Intern" || role === "SalesManager" || role === "ProjectMember";
 
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
