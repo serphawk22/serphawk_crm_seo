@@ -281,7 +281,17 @@ export function Sidebar({ role }: SidebarProps) {
       if (res.ok) {
         const data = await res.json();
         if (data.ok && data.sidebar_preferences?.sections) {
-          setSections(data.sidebar_preferences.sections);
+          const savedSections = data.sidebar_preferences.sections;
+          
+          // Merge in any new default sections that the user doesn't have yet
+          const savedSectionIds = new Set(savedSections.map((s: any) => s.id));
+          const missingSections = defaultSidebarSections.filter(s => !savedSectionIds.has(s.id));
+          
+          if (missingSections.length > 0) {
+            setSections([...savedSections, ...missingSections]);
+          } else {
+            setSections(savedSections);
+          }
         }
       }
     } catch (e) {

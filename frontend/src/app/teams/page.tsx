@@ -258,8 +258,13 @@ export default function TeamsPage() {
       )}
 
       <PageGuide 
+        pageKey="teams-directory"
         title="Team Directory"
         description="View and manage all your team members, separated into Sales and Development."
+        steps={[
+          { icon: <Users className="w-5 h-5 text-blue-500" />, text: "View members grouped by Sales and Development teams." },
+          { icon: <Plus className="w-5 h-5 text-blue-500" />, text: "Add new team members and assign them roles instantly." }
+        ]}
       />
     </div>
   );
