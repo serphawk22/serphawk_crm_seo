@@ -2707,6 +2707,10 @@ def get_project(project_id: int, session: Session = Depends(get_session)):
     if p.internIds:
         interns = [{"id": i.id, "name": i.name, "email": i.email} for i in session.exec(select(User).where(User.id.in_(p.internIds))).all()]
         
+    project_members = []
+    if p.projectMemberIds:
+        project_members = [{"id": pm.id, "name": pm.name, "email": pm.email} for pm in session.exec(select(User).where(User.id.in_(p.projectMemberIds))).all()]
+        
     return {
         "project": _project_dict(p),
         "remarks": [
@@ -2715,7 +2719,8 @@ def get_project(project_id: int, session: Session = Depends(get_session)):
         ],
         "team": {
             "employees": employees,
-            "interns": interns
+            "interns": interns,
+            "projectMembers": project_members
         }
     }
 
@@ -3591,13 +3596,11 @@ def dashboard_stats(
     email: str = Query(""),
     session: Session = Depends(get_session),
 ):
-    if role == "Client":
+    if role in ["Client", "ProjectMember", "Intern"]:
         user = session.exec(select(User).where(User.email == email)).first()
         if not user:
             return {"isClient": True}
         cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
-        if not cp:
-            return {"isClient": True}
 
         service_reqs = session.exec(
             select(ServiceRequest).where(ServiceRequest.client_id == cp.id)
@@ -3658,9 +3661,12 @@ def dashboard_stats(
             .order_by(Proposal.created_at.desc())
         ).all()
 
-        # Projects for this client (clientIds is a JSON list)
+        # Projects for this user/client (clientIds or projectMemberIds is a JSON list)
         all_projects = session.exec(select(Project)).all()
-        projects = [p for p in all_projects if cp.id in (p.clientIds or [])]
+        if cp:
+            projects = [p for p in all_projects if cp.id in (p.clientIds or [])]
+        else:
+            projects = [p for p in all_projects if user.id in (p.projectMemberIds or []) or user.id in (p.employeeIds or []) or user.id in (p.internIds or [])]
 
         # Invoice summary stats
         total_billed = sum(inv.total for inv in invoices)
@@ -3670,19 +3676,19 @@ def dashboard_stats(
 
         return {
             "isClient": True,
-            "companyName": cp.companyName or "",
-            "projectName": cp.projectName or "",
-            "website": cp.websiteUrl or "",
-            "status": cp.status,
-            "seoStrategy": cp.seoStrategy or "",
-            "recommended_services": cp.recommended_services or "",
-            "targetKeywords": cp.targetKeywords or [],
-            "nextMilestone": cp.nextMilestone or "",
-            "nextMilestoneDate": cp.nextMilestoneDate or "",
+            "companyName": cp.companyName if cp else user.name,
+            "projectName": cp.projectName if cp else "",
+            "website": cp.websiteUrl if cp else "",
+            "status": cp.status if cp else "Active",
+            "seoStrategy": cp.seoStrategy if cp else "",
+            "recommended_services": cp.recommended_services if cp else "",
+            "targetKeywords": cp.targetKeywords if cp else [],
+            "nextMilestone": cp.nextMilestone if cp else "",
+            "nextMilestoneDate": cp.nextMilestoneDate if cp else "",
             "active_services_list": [
                 {"id": r.id, "service_id": r.service_id, "status": r.status, "service_name": _resolve_service_name(r.service_id)}
                 for r in active_services
-            ],
+            ] if cp else [],
             "pending_quotes_list": [
                 {
                     "id": r.id,
@@ -3692,8 +3698,8 @@ def dashboard_stats(
                     "service_name": _resolve_service_name(r.service_id),
                 }
                 for r in pending_quotes
-            ],
-            "pending_requests_count": len([r for r in service_reqs if r.status == "Pending"]),
+            ] if cp else [],
+            "pending_requests_count": len([r for r in service_reqs if r.status == "Pending"]) if cp else 0,
             "milestones": [
                 {
                     "id": m.id, "title": m.title, "description": m.description,
@@ -3701,7 +3707,7 @@ def dashboard_stats(
                     "created_at": m.created_at.isoformat() if m.created_at else None,
                 }
                 for m in milestones
-            ],
+            ] if cp else [],
             "invoices": [
                 {
                     "id": inv.id, "invoice_number": inv.invoice_number,
@@ -3712,12 +3718,12 @@ def dashboard_stats(
                     "created_at": inv.created_at.isoformat() if inv.created_at else None,
                 }
                 for inv in invoices
-            ],
+            ] if cp else [],
             "invoice_summary": {
-                "total_billed": total_billed,
-                "total_paid": total_paid,
-                "total_pending": total_pending_inv,
-                "total_overdue": total_overdue,
+                "total_billed": total_billed if cp else 0,
+                "total_paid": total_paid if cp else 0,
+                "total_pending": total_pending_inv if cp else 0,
+                "total_overdue": total_overdue if cp else 0,
             },
             "files": [
                 {
@@ -3726,7 +3732,7 @@ def dashboard_stats(
                     "description": f.description, "created_at": f.created_at.isoformat() if f.created_at else None,
                 }
                 for f in files
-            ],
+            ] if cp else [],
             "activities": [
                 {
                     "id": a.id, "action": a.action, "method": a.method,
@@ -3734,7 +3740,7 @@ def dashboard_stats(
                     "createdAt": a.createdAt.isoformat(),
                 }
                 for a in activities
-            ],
+            ] if cp else [],
             "notifications": [
                 {
                     "id": n.id, "title": n.title, "message": n.message,
@@ -3751,7 +3757,7 @@ def dashboard_stats(
                     "created_at": p.created_at.isoformat() if p.created_at else None,
                 }
                 for p in proposals
-            ],
+            ] if cp else [],
             "projects": [
                 {
                     "id": p.id, "name": p.name, "status": p.status,

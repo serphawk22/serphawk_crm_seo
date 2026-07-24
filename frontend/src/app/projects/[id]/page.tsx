@@ -287,7 +287,7 @@ export default function ProjectDetailPage() {
                  </div>
                  <div className="p-6 bg-gray-50 dark:bg-zinc-950 rounded-[2rem] border border-gray-100 dark:border-zinc-800 text-center col-span-2 md:col-span-4">
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">Total Assignees</p>
-                    <p className="text-xl font-black text-gray-900 dark:text-zinc-50">{(project.employeeIds?.length || 0) + (project.internIds?.length || 0)}</p>
+                    <p className="text-xl font-black text-gray-900 dark:text-zinc-50">{(project.employeeIds?.length || 0) + (project.internIds?.length || 0) + (project.projectMemberIds?.length || 0)}</p>
                  </div>
               </div>
            </div>
@@ -411,7 +411,32 @@ export default function ProjectDetailPage() {
                     </div>
                  </div>
                  
-                 {(team?.employees?.length === 0 && team?.interns?.length === 0) && (
+                 {/* Project Members */}
+                 <div>
+                    <h3 className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+                       <User size={12} className="w-3 h-3" /> Project Members ({(team?.projectMembers?.length || 0)})
+                    </h3>
+                    <div className="space-y-3">
+                       {team?.projectMembers?.map((pm: any) => (
+                          <div key={pm.id} className="flex justify-between items-center p-4 bg-gray-50 dark:bg-zinc-950 rounded-3xl border border-gray-100 dark:border-zinc-800 group hover:border-blue-100 transition-all">
+                             <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-white dark:bg-zinc-900 rounded-2xl border shadow-sm flex items-center justify-center font-black text-purple-600">
+                                   {pm.name.charAt(0)}
+                                </div>
+                                <div className="leading-tight">
+                                   <p className="text-sm font-black text-gray-900 dark:text-zinc-50">{pm.name}</p>
+                                   <p className="text-[10px] font-bold text-gray-400 tracking-tighter italic">{pm.email}</p>
+                                </div>
+                             </div>
+                             <button className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100">
+                                <Trash2 className="w-4 h-4" />
+                             </button>
+                          </div>
+                       ))}
+                    </div>
+                 </div>
+                 
+                 {(team?.employees?.length === 0 && team?.interns?.length === 0 && team?.projectMembers?.length === 0) && (
                    <div className="text-center py-10 px-6 border-2 border-dashed border-gray-100 dark:border-zinc-800 rounded-[2.5rem]">
                       <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-4">Unassigned Initiative</p>
                       <button 
