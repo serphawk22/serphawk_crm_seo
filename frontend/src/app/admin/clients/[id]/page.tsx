@@ -520,7 +520,7 @@ export default function AdminClientDetailPage() {
     try {
       const [clientRes, empRes, actRes, emailRes, svcRes, tlRes, notesRes, convRes, taskRes, filesRes, researchRes] = await Promise.allSettled([
         fetch(`${API_BASE_URL}/clients/${id}`).then(r => r.json()),
-        fetch(`${API_BASE_URL}/users?role=Employee,SalesManager`).then(r => r.json()),
+        fetch(`${API_BASE_URL}/users?role=Admin,Employee,SalesManager`).then(r => r.json()),
         fetch(`${API_BASE_URL}/clients/${id}/activities`).then(r => r.json()),
         fetch(`${API_BASE_URL}/clients/${id}/emails`).then(r => r.json()),
         fetch(`${API_BASE_URL}/services/requests`).then(r => r.json()),
