@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { 
   StickyNote, Users, Check, Loader2, ArrowLeft, 
   MessageSquare, Plus, Clock, UserPlus, Trash2, 
-  ChevronRight, Activity, Target, Shield, Briefcase, X
+  ChevronRight, Activity, Target, Shield, Briefcase, X, User
 } from "lucide-react";
 import { API_BASE_URL } from '@/config';
 import { cn } from "@/lib/utils";
