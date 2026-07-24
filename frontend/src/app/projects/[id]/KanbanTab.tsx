@@ -74,15 +74,20 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
     const ticketId = Number(draggableId);
     const newStatus = destination.droppableId;
     
+    // Find the ticket to send its required 'task' field
+    const ticket = tickets.find(t => t.id === ticketId);
+    if (!ticket) return;
+
     // Optimistic UI update
     setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, current_state: newStatus } : t));
 
     try {
-      await fetch(`${API_BASE_URL}/projects/tickets/${ticketId}`, {
+      const res = await fetch(`${API_BASE_URL}/projects/tickets/${ticketId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ current_state: newStatus, user_name: user?.name })
+        body: JSON.stringify({ ...ticket, current_state: newStatus, user_name: user?.name })
       });
+      if (!res.ok) throw new Error("Failed to update status");
     } catch (e) {
       console.error("Failed to update status", e);
       fetchTickets(); // Revert on failure
@@ -335,6 +340,34 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                         <h4 className="text-sm font-bold text-indigo-900 dark:text-indigo-100">Time Spent in Dev</h4>
                         <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1">
                           {Math.max(1, Math.ceil((new Date(form.date_dev_complete).getTime() - new Date(form.date_dev_start).getTime()) / (1000 * 60 * 60 * 24)))} Days
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {form.date_qa_start && form.date_qa_complete && (
+                    <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-2xl flex items-center gap-4 mt-4">
+                      <div className="p-3 bg-purple-100 dark:bg-purple-800/50 rounded-xl text-purple-600 dark:text-purple-400">
+                        <Clock size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-purple-900 dark:text-purple-100">Time Spent in QA</h4>
+                        <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
+                          {Math.max(1, Math.ceil((new Date(form.date_qa_complete).getTime() - new Date(form.date_qa_start).getTime()) / (1000 * 60 * 60 * 24)))} Days
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {form.requested_date && (
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-2xl flex items-center gap-4 mt-4">
+                      <div className="p-3 bg-emerald-100 dark:bg-emerald-800/50 rounded-xl text-emerald-600 dark:text-emerald-400">
+                        <Calendar size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-emerald-900 dark:text-emerald-100">Task Age</h4>
+                        <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">
+                          {Math.max(1, Math.ceil((new Date().getTime() - new Date(form.requested_date).getTime()) / (1000 * 60 * 60 * 24)))} Days Since Request
                         </p>
                       </div>
                     </div>

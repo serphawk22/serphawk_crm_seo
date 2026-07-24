@@ -4727,6 +4727,8 @@ def get_project_tickets(project_id: int, session: Session = Depends(get_session)
 
 @app.post("/projects/{project_id}/tickets")
 def create_project_ticket(project_id: int, body: ProjectTicketRequest, session: Session = Depends(get_session)):
+    if not body.requested_date:
+        body.requested_date = datetime.utcnow().date().isoformat()
     t = ProjectTicket(**body.model_dump(), project_id=project_id)
     session.add(t)
     session.commit()
