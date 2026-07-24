@@ -6,6 +6,10 @@ import Link from "next/link";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from "recharts";
 import { cn } from "@/lib/utils";
 
+import { useEffect, useState } from "react";
+import { API_BASE_URL } from "@/config";
+import { useRole } from "@/context/RoleContext";
+
 // Data comes from adminStats from the backend
 const itemVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -13,6 +17,29 @@ const itemVariants = {
 };
 
 export function AdminDashboard({ adminStats, NAV_CARDS, language }: any) {
+  const { role, user } = useRole();
+  const [users, setUsers] = useState<any[]>([]);
+  const [myClients, setMyClients] = useState<any[]>([]);
+  const [myLeads, setMyLeads] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/users`).then(r => r.json()).then(d => setUsers(d.users || []));
+    if (role === 'SalesManager' || role === 'Employee' || role === 'Admin') {
+      fetch(`${API_BASE_URL}/clients`).then(r => r.json()).then(d => {
+        // filter clients assigned to me or if I'm admin
+        const list = d.clients || [];
+        setMyClients(list);
+      });
+      fetch(`${API_BASE_URL}/leads`).then(r => r.json()).then(d => {
+        setMyLeads(d.leads || []);
+      });
+    }
+  }, [role]);
+
+  const salesTeam = users.filter(u => ['Admin', 'SalesManager', 'Employee'].includes(u.role));
+  const devTeam = users.filter(u => ['ProjectMember', 'Intern'].includes(u.role));
+  const isSales = role === 'SalesManager' || role === 'Employee' || role === 'Admin';
+
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto w-full">
       {/* HEADER SECTION */}
@@ -60,7 +87,7 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language }: any) {
           <h3 className="font-bold text-[var(--text-primary)]">Quick Links</h3>
         </div>
         <div className="p-5 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {NAV_CARDS.filter((c: any) => c.roles.includes("Admin") && !c.title.includes("Pipeline")).map((card: any) => (
+          {NAV_CARDS.filter((c: any) => c.roles.includes(role || "Admin") && !c.title.includes("Pipeline")).map((card: any) => (
             <Link key={card.href} href={card.href} className="p-4 border border-[var(--border)] rounded-xl hover:border-[var(--primary)] hover:bg-[var(--sidebar-hover)] transition-all group flex flex-col items-center justify-center text-center gap-3">
               <card.icon className="w-7 h-7 text-[var(--text-secondary)] group-hover:text-[var(--primary)] transition-colors" />
               <span className="text-xs font-bold text-[var(--text-primary)]">{card.title}</span>
@@ -68,6 +95,89 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language }: any) {
           ))}
         </div>
       </motion.div>
+
+      {/* TEAM DIRECTORY */}
+      <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
+            <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2"><Briefcase className="w-5 h-5 text-indigo-500"/> Sales & Management Team</h3>
+          </div>
+          <div className="divide-y divide-[var(--border)]">
+            {salesTeam.map(u => (
+              <div key={u.id} className="p-4 flex items-center gap-4 hover:bg-[var(--sidebar-hover)] transition-colors">
+                <div className="w-10 h-10 rounded-full bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold">{u.name?.charAt(0)}</div>
+                <div>
+                  <p className="text-sm font-bold text-[var(--text-primary)]">{u.name}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{u.email} • {u.role}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
+            <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2"><GraduationCap className="w-5 h-5 text-emerald-500"/> Development Team</h3>
+          </div>
+          <div className="divide-y divide-[var(--border)]">
+            {devTeam.map(u => (
+              <div key={u.id} className="p-4 flex items-center gap-4 hover:bg-[var(--sidebar-hover)] transition-colors">
+                <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">{u.name?.charAt(0)}</div>
+                <div>
+                  <p className="text-sm font-bold text-[var(--text-primary)]">{u.name}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{u.email} • {u.role}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+
+      {/* SALESPERSON UI - MY CLIENTS */}
+      {isSales && (
+        <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
+              <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2"><Users className="w-5 h-5 text-blue-500"/> My Clients</h3>
+              <Link href="/clients" className="text-xs text-[var(--primary)] hover:underline font-bold">View All</Link>
+            </div>
+            <div className="divide-y divide-[var(--border)]">
+              {myClients.slice(0, 5).map(c => (
+                <div key={c.id} className="p-4 flex items-center justify-between hover:bg-[var(--sidebar-hover)] transition-colors">
+                  <div>
+                    <p className="text-sm font-bold text-[var(--text-primary)]">{c.companyName || c.name || c.email}</p>
+                    <p className="text-xs text-[var(--text-secondary)]">{c.industry || 'No Industry'} • {c.status}</p>
+                  </div>
+                  <Link href={`/clients/${c.id}`} className="p-2 hover:bg-[var(--primary)]/10 text-[var(--primary)] rounded-lg transition-colors">
+                    <ArrowUpRight className="w-4 h-4" />
+                  </Link>
+                </div>
+              ))}
+              {myClients.length === 0 && <div className="p-8 text-center text-sm text-[var(--text-secondary)]">No clients assigned yet.</div>}
+            </div>
+          </div>
+          
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
+              <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2"><Target className="w-5 h-5 text-amber-500"/> My Leads</h3>
+              <Link href="/leads" className="text-xs text-[var(--primary)] hover:underline font-bold">View All</Link>
+            </div>
+            <div className="divide-y divide-[var(--border)]">
+              {myLeads.slice(0, 5).map(l => (
+                <div key={l.id} className="p-4 flex items-center justify-between hover:bg-[var(--sidebar-hover)] transition-colors">
+                  <div>
+                    <p className="text-sm font-bold text-[var(--text-primary)]">{l.name || l.email}</p>
+                    <p className="text-xs text-[var(--text-secondary)]">{l.company || 'No Company'} • {l.status}</p>
+                  </div>
+                  <Link href={`/leads`} className="p-2 hover:bg-[var(--primary)]/10 text-[var(--primary)] rounded-lg transition-colors">
+                    <ArrowUpRight className="w-4 h-4" />
+                  </Link>
+                </div>
+              ))}
+              {myLeads.length === 0 && <div className="p-8 text-center text-sm text-[var(--text-secondary)]">No leads assigned yet.</div>}
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* RECENT ACTIVITY */}
       <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm">

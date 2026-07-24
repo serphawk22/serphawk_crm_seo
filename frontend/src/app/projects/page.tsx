@@ -19,6 +19,22 @@ export default function ProjectsPage() {
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("Planning");
   const [progress, setProgress] = useState(0);
+  const [projectType, setProjectType] = useState("Development");
+  const [clientId, setClientId] = useState("");
+  const [leadId, setLeadId] = useState("");
+  const [projectMemberIds, setProjectMemberIds] = useState<number[]>([]);
+
+  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+  const [availableClients, setAvailableClients] = useState<any[]>([]);
+  const [availableLeads, setAvailableLeads] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (showCreateModal) {
+      fetch(`${API_BASE_URL}/users`).then(r => r.json()).then(d => setAvailableUsers(d.users || []));
+      fetch(`${API_BASE_URL}/clients`).then(r => r.json()).then(d => setAvailableClients(d.clients || []));
+      fetch(`${API_BASE_URL}/leads`).then(r => r.json()).then(d => setAvailableLeads(d.leads || []));
+    }
+  }, [showCreateModal]);
 
   const fetchProjects = async () => {
     try {
@@ -43,7 +59,16 @@ export default function ProjectsPage() {
       const res = await fetch(`${API_BASE_URL}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description, status, progress })
+        body: JSON.stringify({ 
+          name, 
+          description, 
+          status, 
+          progress,
+          project_type: projectType,
+          clientId: clientId ? parseInt(clientId) : null,
+          leadId: leadId ? parseInt(leadId) : null,
+          projectMemberIds
+        })
       });
       if (res.ok) {
         setShowCreateModal(false);
@@ -53,6 +78,10 @@ export default function ProjectsPage() {
         setDescription("");
         setStatus("Planning");
         setProgress(0);
+        setProjectType("Development");
+        setClientId("");
+        setLeadId("");
+        setProjectMemberIds([]);
       }
     } catch (error) {
       console.error("Failed to create project:", error);
@@ -81,8 +110,8 @@ export default function ProjectsPage() {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">Project Dashboard</h1>
-          <p className="text-gray-500 dark:text-zinc-400 font-medium">Create, track, and manage all your team initiatives.</p>
+          <h1 className="text-3xl font-black text-gray-900 tracking-tight">Project Dashboard</h1>
+          <p className="text-gray-500 font-medium">Create, track, and manage all your team initiatives.</p>
         </div>
         <button 
           onClick={() => setShowCreateModal(true)}
@@ -112,7 +141,7 @@ export default function ProjectsPage() {
             <Link 
               href={`/projects/${project.id}`} 
               key={project.id} 
-              className="bg-white dark:bg-zinc-900 p-8 rounded-[2.5rem] border shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group relative overflow-hidden"
+              className="bg-white p-8 rounded-[2.5rem] border shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group relative overflow-hidden"
             >
               <div className="flex justify-between items-start mb-6">
                 <div className={cn(
@@ -143,7 +172,7 @@ export default function ProjectsPage() {
                 </div>
               </div>
               
-              <h3 className="text-xl font-black text-gray-900 dark:text-zinc-50 mb-2 truncate group-hover:text-blue-600 transition-colors uppercase tracking-tight">{project.name}</h3>
+              <h3 className="text-xl font-black text-gray-900 mb-2 truncate group-hover:text-blue-600 transition-colors uppercase tracking-tight" title={project.name}>{project.name}</h3>
               <p className="text-sm text-gray-400 font-medium mb-6 line-clamp-2 min-h-[2.5rem]">
                 {project.description || "No project description provided."}
               </p>
@@ -151,9 +180,9 @@ export default function ProjectsPage() {
               <div className="space-y-3">
                 <div className="flex justify-between items-end">
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Progress</p>
-                  <p className="text-sm font-black text-gray-900 dark:text-zinc-50">{project.progress}%</p>
+                  <p className="text-sm font-black text-gray-900">{project.progress}%</p>
                 </div>
-                <div className="w-full bg-gray-100 dark:bg-zinc-800 h-3 rounded-full overflow-hidden">
+                <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden">
                   <div 
                     className={cn(
                       "h-full rounded-full transition-all duration-1000",
@@ -226,6 +255,62 @@ export default function ProjectsPage() {
                   placeholder="Describe the main goals and scope of this project..." 
                   className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none resize-none"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Project Type</label>
+                <select 
+                  value={projectType}
+                  onChange={(e) => setProjectType(e.target.value)}
+                  className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"
+                >
+                  <option value="Development">Development Project</option>
+                  <option value="Sales">Sales Project</option>
+                </select>
+              </div>
+
+              {projectType === 'Sales' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Assign to Client (Optional)</label>
+                    <select 
+                      value={clientId}
+                      onChange={(e) => setClientId(e.target.value)}
+                      className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"
+                    >
+                      <option value="">-- None --</option>
+                      {availableClients.map(c => <option key={c.id} value={c.id}>{c.companyName || c.email}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Assign to Lead (Optional)</label>
+                    <select 
+                      value={leadId}
+                      onChange={(e) => setLeadId(e.target.value)}
+                      className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"
+                    >
+                      <option value="">-- None --</option>
+                      {availableLeads.map(l => <option key={l.id} value={l.id}>{l.name || l.email}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Assign Team Members (Multi-select)</label>
+                <select 
+                  multiple
+                  value={projectMemberIds.map(String)}
+                  onChange={(e) => {
+                    const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value));
+                    setProjectMemberIds(selected);
+                  }}
+                  className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                  style={{ minHeight: '100px' }}
+                >
+                  {availableUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+                </select>
+                <p className="text-[10px] text-gray-400 ml-1">Hold Ctrl/Cmd to select multiple members</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

@@ -211,6 +211,10 @@ class Project(SQLModel, table=True):
     clientIds: Optional[List[int]] = Field(default_factory=list, sa_column=Column(JSON))
     projectMemberIds: Optional[List[int]] = Field(default_factory=list, sa_column=Column(JSON))
     
+    project_type: str = Field(default="Development")
+    clientId: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    leadId: Optional[int] = Field(default=None, foreign_key="leads.id")
+    
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
     
