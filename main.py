@@ -4788,6 +4788,12 @@ def get_project_ticket_history(ticket_id: int, session: Session = Depends(get_se
 def delete_project_ticket(ticket_id: int, session: Session = Depends(get_session)):
     t = session.get(ProjectTicket, ticket_id)
     if not t: raise HTTPException(404, "Ticket not found")
+    
+    # Manually delete related history to avoid foreign key constraints
+    history_records = session.exec(select(ProjectTicketHistory).where(ProjectTicketHistory.ticket_id == ticket_id)).all()
+    for h in history_records:
+        session.delete(h)
+        
     session.delete(t)
     session.commit()
     return {"ok": True}
