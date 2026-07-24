@@ -86,6 +86,13 @@ const defaultSidebarSections = [
     ],
   },
   {
+    id: "section-teams",
+    heading: "TEAMS",
+    items: [
+      { id: "item-teams", name: "Team Directory", icon: "Users", href: "/teams", roles: ["Admin", "SalesManager", "Employee"] },
+    ],
+  },
+  {
     id: "section-ai-agents",
     heading: "AI AGENTS",
     items: [
