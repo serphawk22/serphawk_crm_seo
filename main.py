@@ -100,6 +100,7 @@ from database import (
     Notification,
     Project,
     ProjectTicket,
+    ProjectTicketHistory,
     Proposal,
     RadarAnalysis,
     RankingTracker,
@@ -777,6 +778,7 @@ class ProjectTicketRequest(BaseModel):
     date_qa_start: str | None = None
     date_qa_complete: str | None = None
     date_release_prod: str | None = None
+    user_name: str | None = None
 
 
 class ProjectCreateRequest(BaseModel):
@@ -1551,7 +1553,7 @@ async def _auto_research_client_bg(client_id: int, website: str):
 def export_clients_csv(session: Session = Depends(get_session)):
     from fastapi.responses import StreamingResponse
 
-    clients_list = session.exec(select(ClientProfile)).all()
+    clients_list = session.exec(select(ClientProfile).order_by(ClientProfile.id.asc())).all()
     output = _io.StringIO()
     writer = _csv.writer(output)
     writer.writerow(["S.No","Client Name","Website URL","Email","Phone/Contact","Country",
@@ -2660,7 +2662,7 @@ def admin_client_xray(client_id: int, session: Session = Depends(get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 @app.get("/projects")
 def list_projects(session: Session = Depends(get_session)):
-    projects = session.exec(select(Project)).all()
+    projects = session.exec(select(Project).order_by(Project.id.desc())).all()
     return {"projects": [_project_dict(p) for p in projects]}
 
 
@@ -2696,12 +2698,25 @@ def get_project(project_id: int, session: Session = Depends(get_session)):
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
     remarks = session.exec(select(Remark).where(Remark.projectId == project_id)).all()
+    
+    employees = []
+    if p.employeeIds:
+        employees = [{"id": e.id, "name": e.name, "email": e.email} for e in session.exec(select(User).where(User.id.in_(p.employeeIds))).all()]
+        
+    interns = []
+    if p.internIds:
+        interns = [{"id": i.id, "name": i.name, "email": i.email} for i in session.exec(select(User).where(User.id.in_(p.internIds))).all()]
+        
     return {
         "project": _project_dict(p),
         "remarks": [
             {"id": r.id, "content": r.content, "createdAt": r.createdAt.isoformat()}
             for r in remarks
         ],
+        "team": {
+            "employees": employees,
+            "interns": interns
+        }
     }
 
 
@@ -4722,12 +4737,44 @@ def create_project_ticket(project_id: int, body: ProjectTicketRequest, session: 
 def update_project_ticket(ticket_id: int, body: ProjectTicketRequest, session: Session = Depends(get_session)):
     t = session.get(ProjectTicket, ticket_id)
     if not t: raise HTTPException(404, "Ticket not found")
+    
+    old_state = t.current_state
+    new_state = body.current_state
+    
     for k, v in body.model_dump(exclude_unset=True).items():
-        setattr(t, k, v)
+        if k != "user_name":
+            setattr(t, k, v)
+            
+    if old_state != new_state:
+        now_str = datetime.utcnow().date().isoformat()
+        if new_state == "In Dev":
+            t.date_dev_start = now_str
+        elif new_state == "Given to QA":
+            if not t.date_dev_complete:
+                t.date_dev_complete = now_str
+            t.date_qa_start = now_str
+        elif new_state == "Prod Release":
+            if not t.date_qa_complete:
+                t.date_qa_complete = now_str
+            t.date_release_prod = now_str
+            
+        history = ProjectTicketHistory(
+            ticket_id=ticket_id,
+            old_state=old_state,
+            new_state=new_state,
+            user_name=body.user_name
+        )
+        session.add(history)
+
     session.add(t)
     session.commit()
     session.refresh(t)
     return t
+
+@app.get("/projects/tickets/{ticket_id}/history")
+def get_project_ticket_history(ticket_id: int, session: Session = Depends(get_session)):
+    history = session.exec(select(ProjectTicketHistory).where(ProjectTicketHistory.ticket_id == ticket_id).order_by(ProjectTicketHistory.moved_at.desc())).all()
+    return {"history": history}
 
 @app.delete("/projects/tickets/{ticket_id}")
 def delete_project_ticket(ticket_id: int, session: Session = Depends(get_session)):
