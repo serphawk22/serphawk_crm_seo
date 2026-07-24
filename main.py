@@ -1553,7 +1553,7 @@ async def _auto_research_client_bg(client_id: int, website: str):
 def export_clients_csv(session: Session = Depends(get_session)):
     from fastapi.responses import StreamingResponse
 
-    clients_list = session.exec(select(ClientProfile)).all()
+    clients_list = session.exec(select(ClientProfile).order_by(ClientProfile.id.asc())).all()
     output = _io.StringIO()
     writer = _csv.writer(output)
     writer.writerow(["S.No","Client Name","Website URL","Email","Phone/Contact","Country",
@@ -2662,7 +2662,7 @@ def admin_client_xray(client_id: int, session: Session = Depends(get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 @app.get("/projects")
 def list_projects(session: Session = Depends(get_session)):
-    projects = session.exec(select(Project)).all()
+    projects = session.exec(select(Project).order_by(Project.id.desc())).all()
     return {"projects": [_project_dict(p) for p in projects]}
 
 
@@ -2698,12 +2698,25 @@ def get_project(project_id: int, session: Session = Depends(get_session)):
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
     remarks = session.exec(select(Remark).where(Remark.projectId == project_id)).all()
+    
+    employees = []
+    if p.employeeIds:
+        employees = [{"id": e.id, "name": e.name, "email": e.email} for e in session.exec(select(User).where(User.id.in_(p.employeeIds))).all()]
+        
+    interns = []
+    if p.internIds:
+        interns = [{"id": i.id, "name": i.name, "email": i.email} for i in session.exec(select(User).where(User.id.in_(p.internIds))).all()]
+        
     return {
         "project": _project_dict(p),
         "remarks": [
             {"id": r.id, "content": r.content, "createdAt": r.createdAt.isoformat()}
             for r in remarks
         ],
+        "team": {
+            "employees": employees,
+            "interns": interns
+        }
     }
 
 
