@@ -11920,12 +11920,19 @@ def get_demo_account_detail(user_id: int, session: Session = Depends(get_session
     tid = user.tenant_id
 
     def q(model, order_col):
-        """Query rows belonging to this tenant."""
+        """Query rows belonging to this tenant.
+        skip_tenant=True prevents the SQLAlchemy do_orm_execute hook from adding
+        a second conflicting tenant_id filter (admin's tid vs demo user's tid).
+        """
         if not tid:
             return []
-        return session.exec(
-            select(model).where(getattr(model, "tenant_id") == tid).order_by(order_col.desc())
-        ).all()
+        stmt = (
+            select(model)
+            .where(getattr(model, "tenant_id") == tid)
+            .order_by(order_col.desc())
+            .execution_options(skip_tenant=True)
+        )
+        return session.exec(stmt).all()
 
     raw_clients  = q(ClientProfile, ClientProfile.id)
     raw_leads    = q(Lead, Lead.created_at)
@@ -11940,7 +11947,9 @@ def get_demo_account_detail(user_id: int, session: Session = Depends(get_session
     raw_team = []
     if tid:
         raw_team = session.exec(
-            select(User).where(User.tenant_id == tid, User.id != user_id)
+            select(User)
+            .where(User.tenant_id == tid, User.id != user_id)
+            .execution_options(skip_tenant=True)
         ).all()
 
     limits = None
@@ -12013,7 +12022,9 @@ def backfill_tenant_data(user_id: int, session: Session = Depends(get_session)):
 
     # Fix ClientProfile records linked to this user
     cp_fix = session.exec(
-        select(ClientProfile).where(ClientProfile.userId == user.id, ClientProfile.tenant_id == None)
+        select(ClientProfile)
+        .where(ClientProfile.userId == user.id, ClientProfile.tenant_id == None)
+        .execution_options(skip_tenant=True)
     ).all()
     for r in cp_fix:
         r.tenant_id = tid
@@ -12023,14 +12034,18 @@ def backfill_tenant_data(user_id: int, session: Session = Depends(get_session)):
 
     # Get all client IDs now assigned to this tenant
     all_client_ids = [c.id for c in session.exec(
-        select(ClientProfile).where(ClientProfile.tenant_id == tid)
+        select(ClientProfile)
+        .where(ClientProfile.tenant_id == tid)
+        .execution_options(skip_tenant=True)
     ).all()]
 
     # Fix Contacts linked to those clients
     contact_fix = []
     if all_client_ids and hasattr(Contact, "client_id"):
         contact_fix = session.exec(
-            select(Contact).where(Contact.client_id.in_(all_client_ids), Contact.tenant_id == None)
+            select(Contact)
+            .where(Contact.client_id.in_(all_client_ids), Contact.tenant_id == None)
+            .execution_options(skip_tenant=True)
         ).all()
         for r in contact_fix:
             r.tenant_id = tid
@@ -12041,7 +12056,9 @@ def backfill_tenant_data(user_id: int, session: Session = Depends(get_session)):
     lead_fix = []
     if all_client_ids and hasattr(Lead, "client_id"):
         lead_fix = session.exec(
-            select(Lead).where(Lead.client_id.in_(all_client_ids), Lead.tenant_id == None)
+            select(Lead)
+            .where(Lead.client_id.in_(all_client_ids), Lead.tenant_id == None)
+            .execution_options(skip_tenant=True)
         ).all()
         for r in lead_fix:
             r.tenant_id = tid
