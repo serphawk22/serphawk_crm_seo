@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, Mail, Radar, Globe, UserPlus, ArrowLeft,
   BarChart2, Clock, TrendingUp, Eye, Search, RefreshCw,
-  Activity, CheckCircle2, AlertTriangle, Calendar, PhoneCall, Folder
+  Activity, CheckCircle2, AlertTriangle, Calendar, PhoneCall, Folder, UserCheck, Wrench
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
@@ -26,7 +26,11 @@ interface DemoDetail {
   contacts: Array<{ id: number; name: string; email: string; designation: string }>;
   radar:    Array<{ id: number; target_name: string; target_website: string; competitor_count: number; radius_km: number; run_date: string }>;
   emails:   Array<{ id: number; to: string; subject: string; status: string; sent_at: string }>;
-  limits:   { clients: LimitData; emails: LimitData; searches: LimitData; projects: LimitData } | null;
+  meetings: Array<{ id: number; title: string; status: string; scheduled_at: string }>;
+  calls:    Array<{ id: number; phone: string; duration: number; summary: string; received_at: string }>;
+  projects: Array<{ id: number; name: string; status: string; progress: number }>;
+  team_members: Array<{ id: number; name: string; email: string; role: string }>;
+  limits:   { clients: LimitData; emails: LimitData; searches: LimitData; projects: LimitData; calls?: LimitData } | null;
 }
 
 // ─── Helper components ────────────────────────────────────────────────────────
@@ -87,21 +91,33 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
   const { user } = useRole();
   const [detail, setDetail] = useState<DemoDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"overview" | "clients" | "leads" | "contacts" | "radar" | "emails" | "meetings" | "calls" | "projects">("overview");
+  const [backfilling, setBackfilling] = useState(false);
+  const [tab, setTab] = useState<"overview" | "clients" | "leads" | "contacts" | "radar" | "emails" | "meetings" | "calls" | "projects" | "team">("overview");
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(`${API_BASE_URL}/telemetry/demo-account/${account.id}`, {
-          headers: { "X-Tenant-ID": "" }
-        });
-        const data = await res.json();
-        if (data.success) setDetail(data);
-      } catch {}
-      setLoading(false);
-    })();
-  }, [account.id]);
+  const loadDetail = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/telemetry/demo-account/${account.id}`, {
+        headers: { "X-Tenant-ID": "" }
+      });
+      const data = await res.json();
+      if (data.success) setDetail(data);
+    } catch {}
+    setLoading(false);
+  };
+
+  const handleBackfill = async () => {
+    setBackfilling(true);
+    try {
+      await fetch(`${API_BASE_URL}/admin/backfill-tenant-data/${account.id}`, {
+        method: "POST", headers: { "X-Tenant-ID": "" }
+      });
+      await loadDetail();
+    } catch {}
+    setBackfilling(false);
+  };
+
+  useEffect(() => { loadDetail(); }, [account.id]);
 
   const tabs = [
     { key: "overview",  label: "Overview",        icon: <BarChart2  className="w-3.5 h-3.5" /> },
@@ -113,6 +129,7 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
     { key: "meetings",  label: "Meetings",         icon: <Calendar   className="w-3.5 h-3.5" />, count: detail?.meetings?.length },
     { key: "calls",     label: "Calls/Pitches",    icon: <PhoneCall  className="w-3.5 h-3.5" />, count: detail?.calls?.length },
     { key: "projects",  label: "Projects",         icon: <Folder     className="w-3.5 h-3.5" />, count: detail?.projects?.length },
+    { key: "team",      label: "Team Members",     icon: <UserCheck  className="w-3.5 h-3.5" />, count: detail?.team_members?.length },
   ] as const;
 
   return (
@@ -129,9 +146,20 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
           <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100">{account.name}</h2>
           <p className="text-sm text-slate-500 dark:text-zinc-400">{account.email}</p>
         </div>
-        <div className="ml-auto text-xs text-slate-400 flex items-center gap-1.5">
-          <Clock className="w-3.5 h-3.5" />
-          Demo since {account.created_at ? new Date(account.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleBackfill}
+            disabled={backfilling}
+            title="Fix legacy data: assign tenant_id to old records so they appear in telemetry"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-100 transition-all disabled:opacity-50"
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            {backfilling ? "Fixing..." : "Fix Data"}
+          </button>
+          <span className="text-xs text-slate-400 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5" />
+            Demo since {account.created_at ? new Date(account.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+          </span>
         </div>
       </div>
 
@@ -161,11 +189,15 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
             {tab === "overview" && (
               <div className="space-y-5">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <StatCard icon={<Users   className="w-5 h-5" />} label="Clients"          value={detail.clients.length}  color="bg-gradient-to-br from-blue-500 to-blue-600" />
-                  <StatCard icon={<TrendingUp className="w-5 h-5" />} label="Leads"          value={detail.leads.length}    color="bg-gradient-to-br from-violet-500 to-purple-600" />
-                  <StatCard icon={<UserPlus className="w-5 h-5" />} label="Contacts"         value={detail.contacts.length} color="bg-gradient-to-br from-pink-500 to-rose-500" />
-                  <StatCard icon={<Radar   className="w-5 h-5" />} label="Radar Analyses"    value={detail.radar.length}    color="bg-gradient-to-br from-cyan-500 to-teal-600" />
-                  <StatCard icon={<Mail    className="w-5 h-5" />} label="Emails Sent"       value={detail.emails.length}   color="bg-gradient-to-br from-orange-500 to-amber-500" />
+                  <StatCard icon={<Users      className="w-5 h-5" />} label="Clients"        value={detail.clients?.length ?? 0}       color="bg-gradient-to-br from-blue-500 to-blue-600" />
+                  <StatCard icon={<TrendingUp className="w-5 h-5" />} label="Leads"          value={detail.leads?.length ?? 0}         color="bg-gradient-to-br from-violet-500 to-purple-600" />
+                  <StatCard icon={<UserPlus   className="w-5 h-5" />} label="Contacts"       value={detail.contacts?.length ?? 0}      color="bg-gradient-to-br from-pink-500 to-rose-500" />
+                  <StatCard icon={<Radar      className="w-5 h-5" />} label="Radar Analyses" value={detail.radar?.length ?? 0}         color="bg-gradient-to-br from-cyan-500 to-teal-600" />
+                  <StatCard icon={<Mail       className="w-5 h-5" />} label="Emails Sent"    value={detail.emails?.length ?? 0}        color="bg-gradient-to-br from-orange-500 to-amber-500" />
+                  <StatCard icon={<Calendar   className="w-5 h-5" />} label="Meetings"       value={detail.meetings?.length ?? 0}      color="bg-gradient-to-br from-emerald-500 to-green-600" />
+                  <StatCard icon={<PhoneCall  className="w-5 h-5" />} label="Calls/Pitches"  value={detail.calls?.length ?? 0}         color="bg-gradient-to-br from-green-500 to-teal-500" />
+                  <StatCard icon={<Folder     className="w-5 h-5" />} label="Projects"       value={detail.projects?.length ?? 0}      color="bg-gradient-to-br from-indigo-500 to-blue-600" />
+                  <StatCard icon={<UserCheck  className="w-5 h-5" />} label="Team Members"   value={detail.team_members?.length ?? 0}  color="bg-gradient-to-br from-fuchsia-500 to-pink-600" />
                 </div>
 
                 {detail.limits && (
@@ -362,6 +394,25 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
                     <span className="font-semibold">{p.name}</span>,
                     <Badge text={p.status} color="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" />,
                     <span className="text-xs text-slate-500">{p.progress}%</span>
+                  ])}
+                />
+              </div>
+            )}
+
+            {/* TEAM MEMBERS */}
+            {tab === "team" && (
+              <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+                <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 bg-fuchsia-50/40 dark:bg-fuchsia-900/10 flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-fuchsia-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">Team Members</h3>
+                  <span className="ml-auto text-xs font-black bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-600 px-2 py-0.5 rounded-full">{detail.team_members?.length || 0}</span>
+                </div>
+                <DataTable
+                  headers={["Name", "Email", "Role"]}
+                  empty="No team members added yet."
+                  rows={(detail.team_members || []).map(u => [
+                    <span className="font-semibold">{u.name}</span>,
+                    <span className="text-xs text-slate-400">{u.email}</span>,
+                    <Badge text={u.role} color="bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-700 dark:text-fuchsia-400" />
                   ])}
                 />
               </div>

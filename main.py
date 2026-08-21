@@ -2049,17 +2049,20 @@ def create_user(body: CreateUserRequest, session: Session = Depends(get_session)
     existing = session.exec(select(User).where(User.email == body.email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already exists")
+    caller_tenant_id = current_tenant_id.get()
     user = User(
         email=body.email,
         password=_hash_password(body.password),
         name=body.name,
         role=body.role,
+        # Assign to same tenant as the caller so team members are visible in demo accounts
+        tenant_id=caller_tenant_id,
     )
     session.add(user)
     session.commit()
     session.refresh(user)
     if body.role == "Client":
-        cp = ClientProfile(userId=user.id)
+        cp = ClientProfile(userId=user.id, tenant_id=caller_tenant_id)
         session.add(cp)
         session.commit()
     return {"user": _user_dict(user)}
@@ -11906,7 +11909,7 @@ def request_demo_upgrade(session: Session = Depends(get_session)):
 
 @app.get("/telemetry/demo-account/{user_id}")
 def get_demo_account_detail(user_id: int, session: Session = Depends(get_session)):
-    """Return full summary of a Demo user's activity."""
+    """Return full summary of a Demo user's activity - queries by tenant_id."""
     from database import (User, Tenant, ClientProfile, Lead, RadarAnalysis, SentEmail, Contact, Meeting, CallLog, Project)
     from sqlmodel import select
 
@@ -11917,17 +11920,28 @@ def get_demo_account_detail(user_id: int, session: Session = Depends(get_session
     tid = user.tenant_id
 
     def q(model, order_col):
-        if not tid: return []
-        return session.exec(select(model).where(getattr(model, "tenant_id") == tid).order_by(order_col.desc())).all()
+        """Query rows belonging to this tenant."""
+        if not tid:
+            return []
+        return session.exec(
+            select(model).where(getattr(model, "tenant_id") == tid).order_by(order_col.desc())
+        ).all()
 
-    raw_clients = q(ClientProfile, ClientProfile.id)
-    raw_leads   = q(Lead, Lead.created_at)
-    raw_radar   = q(RadarAnalysis, RadarAnalysis.run_date)
-    raw_emails  = q(SentEmail, SentEmail.sent_at)
+    raw_clients  = q(ClientProfile, ClientProfile.id)
+    raw_leads    = q(Lead, Lead.created_at)
+    raw_radar    = q(RadarAnalysis, RadarAnalysis.run_date)
+    raw_emails   = q(SentEmail, SentEmail.sent_at)
     raw_contacts = q(Contact, Contact.id)
     raw_meetings = q(Meeting, Meeting.scheduled_at)
-    raw_calls = q(CallLog, CallLog.received_at)
+    raw_calls    = q(CallLog, CallLog.received_at)
     raw_projects = q(Project, Project.id)
+
+    # Team members: all users in the same tenant (excluding the demo user themselves)
+    raw_team = []
+    if tid:
+        raw_team = session.exec(
+            select(User).where(User.tenant_id == tid, User.id != user_id)
+        ).all()
 
     limits = None
     if tid:
@@ -11943,15 +11957,19 @@ def get_demo_account_detail(user_id: int, session: Session = Depends(get_session
 
     return {
         "success": True,
-        "user": {"id": user.id, "name": user.name, "email": user.email,
-                 "created_at": user.createdAt.isoformat() if user.createdAt else None, "tenant_id": tid},
+        "user": {
+            "id": user.id, "name": user.name, "email": user.email,
+            "created_at": user.createdAt.isoformat() if user.createdAt else None,
+            "tenant_id": tid,
+        },
         "clients":  [{"id": c.id, "company": c.companyName or c.projectName or "—",
                        "website": c.websiteUrl or "—", "status": c.status or "—",
                        "created_at": None} for c in raw_clients],
         "leads":    [{"id": l.id, "name": l.company_name or "—", "email": l.email or "—",
                        "company": l.company_name or "—", "status": l.status or "—",
                        "created_at": l.created_at.isoformat() if l.created_at else None} for l in raw_leads],
-        "contacts": [{"id": c.id, "name": (c.full_name or f"{c.first_name} {c.last_name or ''}").strip() or "—",
+        "contacts": [{"id": c.id,
+                       "name": (c.full_name or f"{c.first_name} {c.last_name or ''}").strip() or "—",
                        "email": c.email or "—", "designation": c.designation or "—",
                        "created_at": c.created_at.isoformat() if c.created_at else None} for c in raw_contacts],
         "radar":    [{"id": r.id, "target_name": r.target_name or "—",
@@ -11968,8 +11986,70 @@ def get_demo_account_detail(user_id: int, session: Session = Depends(get_session
                        "received_at": c.received_at.isoformat() if c.received_at else None} for c in raw_calls],
         "projects": [{"id": p.id, "name": p.name or "—", "status": p.status or "—",
                        "progress": p.progress or 0} for p in raw_projects],
+        "team_members": [{"id": u.id, "name": u.name or "—", "email": u.email or "—",
+                           "role": u.role or "—"} for u in raw_team],
         "limits": limits,
     }
+
+
+@app.post("/admin/backfill-tenant-data/{user_id}")
+def backfill_tenant_data(user_id: int, session: Session = Depends(get_session)):
+    """
+    Admin tool: Fix existing data with NULL tenant_id for a demo user.
+    Patches old records created before tenant isolation was enforced.
+    """
+    from database import (User, ClientProfile, Lead, Contact, Meeting, CallLog, Project, SentEmail, RadarAnalysis)
+    from sqlmodel import select
+
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    tid = user.tenant_id
+    if not tid:
+        raise HTTPException(status_code=400, detail="User has no tenant_id assigned")
+
+    counts = {}
+
+    # Fix ClientProfile records linked to this user
+    cp_fix = session.exec(
+        select(ClientProfile).where(ClientProfile.userId == user.id, ClientProfile.tenant_id == None)
+    ).all()
+    for r in cp_fix:
+        r.tenant_id = tid
+        session.add(r)
+    counts["client_profiles_fixed"] = len(cp_fix)
+    session.flush()
+
+    # Get all client IDs now assigned to this tenant
+    all_client_ids = [c.id for c in session.exec(
+        select(ClientProfile).where(ClientProfile.tenant_id == tid)
+    ).all()]
+
+    # Fix Contacts linked to those clients
+    contact_fix = []
+    if all_client_ids and hasattr(Contact, "client_id"):
+        contact_fix = session.exec(
+            select(Contact).where(Contact.client_id.in_(all_client_ids), Contact.tenant_id == None)
+        ).all()
+        for r in contact_fix:
+            r.tenant_id = tid
+            session.add(r)
+    counts["contacts_fixed"] = len(contact_fix)
+
+    # Fix Leads linked to those clients
+    lead_fix = []
+    if all_client_ids and hasattr(Lead, "client_id"):
+        lead_fix = session.exec(
+            select(Lead).where(Lead.client_id.in_(all_client_ids), Lead.tenant_id == None)
+        ).all()
+        for r in lead_fix:
+            r.tenant_id = tid
+            session.add(r)
+    counts["leads_fixed"] = len(lead_fix)
+
+    session.commit()
+    return {"success": True, "tenant_id": tid, "user_id": user_id, "fixed": counts}
 
 
 @app.post("/demo/request-upgrade")
