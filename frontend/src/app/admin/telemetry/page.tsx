@@ -20,7 +20,7 @@ interface DemoAccount {
 
 interface LimitData { usage: number; limit: number }
 interface DemoDetail {
-  user: { id: number; name: string; email: string; created_at: string };
+  user: { id: number; name: string; email: string; created_at: string; upgrade_requested?: boolean };
   clients:  Array<{ id: number; company: string; website: string; status: string; created_at: string }>;
   leads:    Array<{ id: number; name: string; email: string; company: string; status: string; created_at: string }>;
   contacts: Array<{ id: number; name: string; email: string; designation: string }>;
@@ -143,7 +143,14 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
           {account.name.charAt(0).toUpperCase()}
         </div>
         <div>
-          <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100">{account.name}</h2>
+          <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2">
+            {account.name}
+            {detail?.user?.upgrade_requested && (
+              <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 text-[10px] uppercase font-black px-2 py-0.5 rounded-full flex items-center gap-1 border border-amber-200 dark:border-amber-800/50">
+                ⭐ Upgrade Requested
+              </span>
+            )}
+          </h2>
           <p className="text-sm text-slate-500 dark:text-zinc-400">{account.email}</p>
         </div>
         <div className="ml-auto flex items-center gap-2 flex-wrap">

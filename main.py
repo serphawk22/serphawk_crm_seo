@@ -11910,7 +11910,7 @@ def request_demo_upgrade(session: Session = Depends(get_session)):
 @app.get("/telemetry/demo-account/{user_id}")
 def get_demo_account_detail(user_id: int, session: Session = Depends(get_session)):
     """Return full summary of a Demo user's activity - queries by tenant_id."""
-    from database import (User, Tenant, ClientProfile, Lead, RadarAnalysis, SentEmail, Contact, Meeting, CallLog, Project)
+    from database import (User, Tenant, ClientProfile, Lead, RadarAnalysis, SentEmail, Contact, Meeting, CallLog, Project, Notification)
     from sqlmodel import select
 
     user = session.get(User, user_id)
@@ -11964,12 +11964,28 @@ def get_demo_account_detail(user_id: int, session: Session = Depends(get_session
                 "calls":    {"usage": getattr(tenant, "usage_calls", 0), "limit": getattr(tenant, "limit_calls", 5)},
             }
 
+    upgrade_requested = False
+    admin = session.exec(select(User).where(User.role == "Admin")).first()
+    if admin:
+        upgrade_notif = session.exec(
+            select(Notification)
+            .where(
+                Notification.user_id == admin.id,
+                Notification.title == "Demo Upgrade Request",
+                Notification.message.contains(user.email)
+            )
+            .execution_options(skip_tenant=True)
+        ).first()
+        if upgrade_notif:
+            upgrade_requested = True
+
     return {
         "success": True,
         "user": {
             "id": user.id, "name": user.name, "email": user.email,
             "created_at": user.createdAt.isoformat() if user.createdAt else None,
             "tenant_id": tid,
+            "upgrade_requested": upgrade_requested,
         },
         "clients":  [{"id": c.id, "company": c.companyName or c.projectName or "—",
                        "website": c.websiteUrl or "—", "status": c.status or "—",
@@ -12064,6 +12080,25 @@ def backfill_tenant_data(user_id: int, session: Session = Depends(get_session)):
             r.tenant_id = tid
             session.add(r)
     counts["leads_fixed"] = len(lead_fix)
+
+    # Helper for generic backfill linked to client_ids
+    def backfill_model(model_cls):
+        if not all_client_ids or not hasattr(model_cls, "client_id"): return 0
+        fixes = session.exec(
+            select(model_cls)
+            .where(model_cls.client_id.in_(all_client_ids), model_cls.tenant_id == None)
+            .execution_options(skip_tenant=True)
+        ).all()
+        for r in fixes:
+            r.tenant_id = tid
+            session.add(r)
+        return len(fixes)
+
+    counts["projects_fixed"] = backfill_model(Project)
+    counts["meetings_fixed"] = backfill_model(Meeting)
+    counts["emails_fixed"] = backfill_model(SentEmail)
+    counts["radar_fixed"] = backfill_model(RadarAnalysis)
+    counts["calls_fixed"] = backfill_model(CallLog)
 
     session.commit()
     return {"success": True, "tenant_id": tid, "user_id": user_id, "fixed": counts}
