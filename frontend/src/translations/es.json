@@ -207,5 +207,16 @@
     "pricing": "Precios",
     "milestones": "Hitos",
     "my_files": "Mis Archivos"
+  },
+  "timeline": {
+    "all_events": "Todos los Eventos",
+    "emails": "Correos",
+    "calls": "Llamadas",
+    "invoices": "Facturas",
+    "milestones": "Hitos",
+    "files": "Archivos",
+    "activities": "Actividades",
+    "no_events": "No se encontraron eventos",
+    "no_events_desc": "No se encontró actividad que coincida con los filtros seleccionados."
   }
 }

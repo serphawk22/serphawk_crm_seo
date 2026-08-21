@@ -207,5 +207,16 @@
     "pricing": "Pricing",
     "milestones": "Milestones",
     "my_files": "My Files"
+  },
+  "timeline": {
+    "all_events": "All Events",
+    "emails": "Emails",
+    "calls": "Calls",
+    "invoices": "Invoices",
+    "milestones": "Milestones",
+    "files": "Files",
+    "activities": "Activities",
+    "no_events": "No events found",
+    "no_events_desc": "No activity matching the selected filters was found."
   }
 }
