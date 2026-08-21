@@ -294,17 +294,27 @@ export function Sidebar({ role }: SidebarProps) {
             const savedSectionIds = new Set(savedSections.map((s: any) => s.id));
             const missingSections = defaultSidebarSections.filter(s => !savedSectionIds.has(s.id));
             
+            // Deep merge: update existing items with latest roles/icons and add missing items
             const mergedSections = savedSections.map((savedSec: any) => {
+              const updatedSavedItems = savedSec.items.map((savedItem: any) => {
+                let defaultItemRef = null;
+                for (const ds of defaultSidebarSections) {
+                  const found = ds.items.find(i => i.id === savedItem.id);
+                  if (found) { defaultItemRef = found; break; }
+                }
+                if (defaultItemRef) {
+                  return { ...savedItem, roles: defaultItemRef.roles, icon: defaultItemRef.icon, href: defaultItemRef.href, name: defaultItemRef.name };
+                }
+                return savedItem;
+              });
+
               const defaultSec = defaultSidebarSections.find(s => s.id === savedSec.id);
-              if (!defaultSec) return savedSec;
+              if (!defaultSec) return { ...savedSec, items: updatedSavedItems };
               
-              const savedItemIds = new Set(savedSec.items.map((i: any) => i.id));
+              const savedItemIds = new Set(updatedSavedItems.map((i: any) => i.id));
               const missingItems = defaultSec.items.filter(i => !savedItemIds.has(i.id));
               
-              if (missingItems.length > 0) {
-                return { ...savedSec, items: [...savedSec.items, ...missingItems] };
-              }
-              return savedSec;
+              return { ...savedSec, items: [...updatedSavedItems, ...missingItems] };
             });
             
             if (missingSections.length > 0) {
