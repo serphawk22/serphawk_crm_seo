@@ -57,11 +57,13 @@ class Tenant(SQLModel, table=True):
     limit_emails: int = Field(default=5)
     limit_searches: int = Field(default=5)
     limit_projects: int = Field(default=5)
+    limit_calls: int = Field(default=5)
     
     usage_clients: int = Field(default=0)
     usage_emails: int = Field(default=0)
     usage_searches: int = Field(default=0)
     usage_projects: int = Field(default=0)
+    usage_calls: int = Field(default=0)
 
 class EmailSettings(SQLModel, table=True):
     __tablename__ = "email_settings"

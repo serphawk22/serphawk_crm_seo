@@ -510,6 +510,15 @@ def on_startup():
         
     try:
         with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS limit_calls INTEGER DEFAULT 5;"))
+            conn.execute(text("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS usage_calls INTEGER DEFAULT 0;"))
+            conn.commit()
+            print("Successfully added call limit/usage columns to tenants table.")
+    except Exception as e:
+        print("tenant call limit/usage columns already exist or error:", e)
+        
+    try:
+        with engine.connect() as conn:
             conn.execute(text("ALTER TABLE leads ADD COLUMN ai_analysis_results JSON;"))
             conn.commit()
             print("Successfully added ai_analysis_results to leads table.")
@@ -1813,11 +1822,28 @@ def get_global_telemetry(session: Session = Depends(get_session)):
 
 @app.get("/dashboard-call-pitch")
 def get_dashboard_call_pitch(session: Session = Depends(get_session)):
-    client = session.exec(select(ClientProfile).where(ClientProfile.call_pitch_done == False).order_by(ClientProfile.id.desc())).first()
+    tenant_id = current_tenant_id.get()
+    q = select(ClientProfile).where(ClientProfile.call_pitch_done == False)
+    if tenant_id:
+        q = q.where(ClientProfile.tenant_id == tenant_id)
+    client = session.exec(q.order_by(ClientProfile.id.desc())).first()
+    
     if not client:
         return {"client": None, "pitch_text": None}
         
     if not client.call_pitch_text:
+        # Check limit for Demo users
+        if tenant_id:
+            tenant = session.get(Tenant, tenant_id)
+            if tenant:
+                user = session.exec(select(User).where(User.tenant_id == tenant_id)).first()
+                if user and user.role == "Demo":
+                    if tenant.usage_calls >= tenant.limit_calls:
+                        return {"client": _client_dict(client, session), "pitch_text": "Demo limit reached. You can only generate up to 5 pitches."}
+                    tenant.usage_calls += 1
+                    session.add(tenant)
+                    session.commit()
+
         # Generate pitch using OpenAI
         try:
             import openai
@@ -2042,6 +2068,10 @@ def create_user(body: CreateUserRequest, session: Session = Depends(get_session)
 @app.get("/users")
 def list_users(role: Optional[str] = None, session: Session = Depends(get_session)):
     query = select(User)
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        query = query.where(User.tenant_id == tenant_id)
+        
     if role:
         roles = [r.strip() for r in role.split(",") if r.strip()]
         if roles:
@@ -2065,7 +2095,11 @@ def delete_user(user_id: int, session: Session = Depends(get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 @app.get("/employees")
 def list_employees(session: Session = Depends(get_session)):
-    employees = session.exec(select(User).where(User.role.in_(["Employee", "Admin", "SalesManager"]))).all()
+    query = select(User).where(User.role.in_(["Employee", "Admin", "SalesManager"]))
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        query = query.where(User.tenant_id == tenant_id)
+    employees = session.exec(query).all()
     return {"employees": [_user_dict(u) for u in employees]}
 
 
@@ -3761,7 +3795,12 @@ def admin_client_xray(client_id: int, session: Session = Depends(get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 @app.get("/projects")
 def list_projects(member_id: Optional[int] = None, session: Session = Depends(get_session)):
-    projects = session.exec(select(Project).order_by(Project.id.desc())).all()
+    q = select(Project).order_by(Project.id.desc())
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        q = q.where(Project.tenant_id == tenant_id)
+        
+    projects = session.exec(q).all()
     if member_id is not None:
         filtered = []
         for p in projects:
@@ -3784,6 +3823,7 @@ def create_project(body: ProjectCreateRequest, session: Session = Depends(get_se
         employeeIds=body.employeeIds,
         internIds=body.internIds,
         clientIds=body.clientIds,
+        tenant_id=current_tenant_id.get()
     )
     session.add(p)
     session.commit()
@@ -4210,6 +4250,10 @@ def _get_sender_name_from_map(sender_id: int, users_map: dict) -> str:
 @app.get("/calls")
 def list_calls(unsummarized: Optional[bool] = None, session: Session = Depends(get_session)):
     q = select(CallLog).order_by(CallLog.received_at.desc())
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        q = q.where(CallLog.tenant_id == tenant_id)
+        
     calls = session.exec(q).all()
     result = []
     for c in calls:
@@ -4222,6 +4266,19 @@ def list_calls(unsummarized: Optional[bool] = None, session: Session = Depends(g
 
 @app.post("/calls")
 def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
+    tenant_id = current_tenant_id.get()
+    
+    # Check limit for Demo users
+    if tenant_id:
+        tenant = session.get(Tenant, tenant_id)
+        if tenant:
+            user = session.exec(select(User).where(User.tenant_id == tenant_id)).first()
+            if user and user.role == "Demo":
+                if tenant.usage_calls >= tenant.limit_calls:
+                    raise HTTPException(status_code=403, detail=f"Demo limit reached. You can only log up to {tenant.limit_calls} calls/pitches.")
+                tenant.usage_calls += 1
+                session.add(tenant)
+                
     c = CallLog(
         phone_number=body.phone_number,
         duration_seconds=body.duration_seconds,
@@ -4231,6 +4288,7 @@ def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
         followup_needed=getattr(body, "followup_needed", False),
         followup_date=getattr(body, "followup_date", None),
         client_id=getattr(body, "client_id", None),
+        tenant_id=tenant_id
     )
     session.add(c)
     session.commit()
@@ -9289,6 +9347,10 @@ def list_meetings(
     session: Session = Depends(get_session)
 ):
     q = select(Meeting).order_by(Meeting.scheduled_at.desc())
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        q = q.where(Meeting.tenant_id == tenant_id)
+        
     if status:
         q = q.where(Meeting.status == status)
     if lead_id:
@@ -9309,6 +9371,7 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
     else:
         data["scheduled_at"] = None
     m = Meeting(**data)
+    m.tenant_id = current_tenant_id.get()
     session.add(m)
     session.commit()
     session.refresh(m)
@@ -10158,6 +10221,18 @@ def simulate_lead_call(lead_id: int, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
     if not lead: raise HTTPException(status_code=404, detail="Lead not found")
     
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        tenant = session.get(Tenant, tenant_id)
+        if tenant:
+            user = session.exec(select(User).where(User.tenant_id == tenant_id)).first()
+            if user and user.role == "Demo":
+                if tenant.usage_calls >= tenant.limit_calls:
+                    raise HTTPException(status_code=403, detail=f"Demo limit reached. You can only log up to {tenant.limit_calls} calls/pitches.")
+                tenant.usage_calls += 1
+                session.add(tenant)
+                session.commit()
+    
     client_name = lead.company_name or "Valued Lead"
     industry = lead.industry or "Unknown Industry"
     notes = lead.notes or "No prior notes."
@@ -10204,6 +10279,7 @@ Instructions:
         duration_seconds=180,
         summary=f"Pitch Generation for {client_name}",
         description=pitch,
+        tenant_id=tenant_id
     )
     session.add(call)
     session.commit()
@@ -10215,6 +10291,19 @@ Instructions:
 def simulate_contact_call(contact_id: int, session: Session = Depends(get_session)):
     contact = session.get(Contact, contact_id)
     if not contact: raise HTTPException(status_code=404, detail="Contact not found")
+    
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        tenant = session.get(Tenant, tenant_id)
+        if tenant:
+            user = session.exec(select(User).where(User.tenant_id == tenant_id)).first()
+            if user and user.role == "Demo":
+                if tenant.usage_calls >= tenant.limit_calls:
+                    raise HTTPException(status_code=403, detail=f"Demo limit reached. You can only log up to {tenant.limit_calls} calls/pitches.")
+                tenant.usage_calls += 1
+                session.add(tenant)
+                session.commit()
+    
     
     client_name = f"{contact.first_name} {contact.last_name or ''}".strip() or "Valued Contact"
     department = contact.department or "Unknown Department"
@@ -10261,6 +10350,7 @@ Instructions:
         duration_seconds=180,
         summary=f"Pitch Generation for {client_name}",
         description=pitch,
+        tenant_id=tenant_id
     )
     session.add(call)
     session.commit()
@@ -11817,7 +11907,7 @@ def request_demo_upgrade(session: Session = Depends(get_session)):
 @app.get("/telemetry/demo-account/{user_id}")
 def get_demo_account_detail(user_id: int, session: Session = Depends(get_session)):
     """Return full summary of a Demo user's activity."""
-    from database import (User, Tenant, ClientProfile, Lead, RadarAnalysis, SentEmail, Contact)
+    from database import (User, Tenant, ClientProfile, Lead, RadarAnalysis, SentEmail, Contact, Meeting, CallLog, Project)
     from sqlmodel import select
 
     user = session.get(User, user_id)
@@ -11835,6 +11925,9 @@ def get_demo_account_detail(user_id: int, session: Session = Depends(get_session
     raw_radar   = q(RadarAnalysis, RadarAnalysis.run_date)
     raw_emails  = q(SentEmail, SentEmail.sent_at)
     raw_contacts = q(Contact, Contact.id)
+    raw_meetings = q(Meeting, Meeting.scheduled_at)
+    raw_calls = q(CallLog, CallLog.received_at)
+    raw_projects = q(Project, Project.id)
 
     limits = None
     if tid:
@@ -11845,6 +11938,7 @@ def get_demo_account_detail(user_id: int, session: Session = Depends(get_session
                 "emails":   {"usage": tenant.usage_emails,   "limit": tenant.limit_emails},
                 "searches": {"usage": tenant.usage_searches, "limit": tenant.limit_searches},
                 "projects": {"usage": tenant.usage_projects, "limit": tenant.limit_projects},
+                "calls":    {"usage": getattr(tenant, "usage_calls", 0), "limit": getattr(tenant, "limit_calls", 5)},
             }
 
     return {
@@ -11867,6 +11961,13 @@ def get_demo_account_detail(user_id: int, session: Session = Depends(get_session
         "emails":   [{"id": e.id, "to": e.to_email or "—", "subject": e.subject or "—",
                        "status": e.status or "—",
                        "sent_at": e.sent_at.isoformat() if e.sent_at else None} for e in raw_emails],
+        "meetings": [{"id": m.id, "title": m.title or "—", "status": m.status or "—",
+                       "scheduled_at": m.scheduled_at.isoformat() if m.scheduled_at else None} for m in raw_meetings],
+        "calls":    [{"id": c.id, "phone": c.phone_number or "—", "duration": c.duration_seconds or 0,
+                       "summary": c.summary or c.description or "—",
+                       "received_at": c.received_at.isoformat() if c.received_at else None} for c in raw_calls],
+        "projects": [{"id": p.id, "name": p.name or "—", "status": p.status or "—",
+                       "progress": p.progress or 0} for p in raw_projects],
         "limits": limits,
     }
 

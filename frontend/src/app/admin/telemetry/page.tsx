@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, Mail, Radar, Globe, UserPlus, ArrowLeft,
   BarChart2, Clock, TrendingUp, Eye, Search, RefreshCw,
-  Activity, CheckCircle2, AlertTriangle
+  Activity, CheckCircle2, AlertTriangle, Calendar, PhoneCall, Folder
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
@@ -87,7 +87,7 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
   const { user } = useRole();
   const [detail, setDetail] = useState<DemoDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"overview" | "clients" | "leads" | "contacts" | "radar" | "emails">("overview");
+  const [tab, setTab] = useState<"overview" | "clients" | "leads" | "contacts" | "radar" | "emails" | "meetings" | "calls" | "projects">("overview");
 
   useEffect(() => {
     (async () => {
@@ -105,11 +105,14 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
 
   const tabs = [
     { key: "overview",  label: "Overview",        icon: <BarChart2  className="w-3.5 h-3.5" /> },
-    { key: "clients",   label: "Clients",          icon: <Users      className="w-3.5 h-3.5" />, count: detail?.clients.length },
-    { key: "leads",     label: "Leads",            icon: <TrendingUp className="w-3.5 h-3.5" />, count: detail?.leads.length },
-    { key: "contacts",  label: "Contacts",         icon: <UserPlus   className="w-3.5 h-3.5" />, count: detail?.contacts.length },
-    { key: "radar",     label: "Radar Analysis",   icon: <Radar      className="w-3.5 h-3.5" />, count: detail?.radar.length },
-    { key: "emails",    label: "Email Agent",      icon: <Mail       className="w-3.5 h-3.5" />, count: detail?.emails.length },
+    { key: "clients",   label: "Clients",          icon: <Users      className="w-3.5 h-3.5" />, count: detail?.clients?.length },
+    { key: "leads",     label: "Leads",            icon: <TrendingUp className="w-3.5 h-3.5" />, count: detail?.leads?.length },
+    { key: "contacts",  label: "Contacts",         icon: <UserPlus   className="w-3.5 h-3.5" />, count: detail?.contacts?.length },
+    { key: "radar",     label: "Radar Analysis",   icon: <Radar      className="w-3.5 h-3.5" />, count: detail?.radar?.length },
+    { key: "emails",    label: "Email Agent",      icon: <Mail       className="w-3.5 h-3.5" />, count: detail?.emails?.length },
+    { key: "meetings",  label: "Meetings",         icon: <Calendar   className="w-3.5 h-3.5" />, count: detail?.meetings?.length },
+    { key: "calls",     label: "Calls/Pitches",    icon: <PhoneCall  className="w-3.5 h-3.5" />, count: detail?.calls?.length },
+    { key: "projects",  label: "Projects",         icon: <Folder     className="w-3.5 h-3.5" />, count: detail?.projects?.length },
   ] as const;
 
   return (
@@ -173,6 +176,7 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
                       <UsageBar label="Email Agent"      usage={detail.limits.emails.usage}   limit={detail.limits.emails.limit}   color="bg-orange-500" />
                       <UsageBar label="Radar Searches"   usage={detail.limits.searches.usage} limit={detail.limits.searches.limit} color="bg-cyan-500" />
                       <UsageBar label="Projects/Sites"   usage={detail.limits.projects.usage} limit={detail.limits.projects.limit} color="bg-violet-500" />
+                      {detail.limits.calls && <UsageBar label="Calls/Pitches" usage={detail.limits.calls.usage} limit={detail.limits.calls.limit} color="bg-green-500" />}
                     </div>
                   </div>
                 )}
@@ -300,6 +304,64 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
                     <span className="font-semibold max-w-xs truncate block">{e.subject}</span>,
                     <Badge text={e.status} color="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" />,
                     <span className="text-xs text-slate-400">{e.sent_at ? new Date(e.sent_at).toLocaleString() : "—"}</span>
+                  ])}
+                />
+              </div>
+            )}
+
+            {/* MEETINGS */}
+            {tab === "meetings" && (
+              <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+                <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 bg-emerald-50/40 dark:bg-emerald-900/10 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-emerald-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">Meetings</h3>
+                  <span className="ml-auto text-xs font-black bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 px-2 py-0.5 rounded-full">{detail.meetings?.length || 0}</span>
+                </div>
+                <DataTable
+                  headers={["Title", "Status", "Scheduled At"]}
+                  empty="No meetings scheduled yet."
+                  rows={(detail.meetings || []).map(m => [
+                    <span className="font-semibold">{m.title}</span>,
+                    <Badge text={m.status} color="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400" />,
+                    <span className="text-xs text-slate-400">{m.scheduled_at ? new Date(m.scheduled_at).toLocaleString() : "—"}</span>
+                  ])}
+                />
+              </div>
+            )}
+
+            {/* CALLS */}
+            {tab === "calls" && (
+              <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+                <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 bg-green-50/40 dark:bg-green-900/10 flex items-center gap-2">
+                  <PhoneCall className="w-4 h-4 text-green-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">Calls / Pitches</h3>
+                  <span className="ml-auto text-xs font-black bg-green-100 dark:bg-green-900/30 text-green-600 px-2 py-0.5 rounded-full">{detail.calls?.length || 0}</span>
+                </div>
+                <DataTable
+                  headers={["Phone", "Duration", "Summary", "Logged At"]}
+                  empty="No calls logged yet."
+                  rows={(detail.calls || []).map(c => [
+                    <span className="font-semibold">{c.phone}</span>,
+                    <span className="text-xs text-slate-500">{c.duration}s</span>,
+                    <span className="text-xs text-slate-600 truncate max-w-[200px] block">{c.summary}</span>,
+                    <span className="text-xs text-slate-400">{c.received_at ? new Date(c.received_at).toLocaleString() : "—"}</span>
+                  ])}
+                />
+              </div>
+            )}
+
+            {/* PROJECTS */}
+            {tab === "projects" && (
+              <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+                <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 bg-blue-50/40 dark:bg-blue-900/10 flex items-center gap-2">
+                  <Folder className="w-4 h-4 text-blue-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">Projects</h3>
+                  <span className="ml-auto text-xs font-black bg-blue-100 dark:bg-blue-900/30 text-blue-600 px-2 py-0.5 rounded-full">{detail.projects?.length || 0}</span>
+                </div>
+                <DataTable
+                  headers={["Project Name", "Status", "Progress"]}
+                  empty="No projects created yet."
+                  rows={(detail.projects || []).map(p => [
+                    <span className="font-semibold">{p.name}</span>,
+                    <Badge text={p.status} color="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" />,
+                    <span className="text-xs text-slate-500">{p.progress}%</span>
                   ])}
                 />
               </div>
