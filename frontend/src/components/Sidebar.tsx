@@ -89,6 +89,7 @@ const defaultSidebarSections = [
     heading: "AI AGENTS",
     items: [
       { id: "item-email-agent", name: "Email Agent", icon: "Mail", href: "/email-agent", roles: ["Admin", "Demo"] },
+      { id: "item-radar-analysis", name: "Radar Analysis", icon: "Radar", href: "/admin/radar", roles: ["Admin", "Demo", "SalesManager"] },
     ],
   },
   {

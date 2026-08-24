@@ -37,7 +37,7 @@ import LinkedContacts from '@/components/LinkedContacts';
 import { cn } from '@/lib/utils';
 import PageGuide from '@/components/PageGuide';
 import axios from 'axios';
-import { DollarSign, XCircle } from 'lucide-react';
+import { DollarSign, XCircle, Radar, Navigation } from 'lucide-react';
 
 // Framer Motion Variants
 const containerVariants = {
@@ -496,9 +496,19 @@ export default function ClientDetailPage() {
               <h1 className="text-6xl md:text-7xl font-black mb-4 leading-tight">
                 {client.companyName}
               </h1>
-              <p className="text-xl text-white/90 font-medium max-w-2xl">
+              <p className="text-xl text-white/90 font-medium max-w-2xl mb-6">
                 Your intelligent growth partner is ready to scale your business to new heights. Let's unlock extraordinary results together.
               </p>
+              <div className="flex gap-4 mt-6">
+                <button onClick={() => router.push(`/clients/${client.id}/competitors`)} className="px-6 py-3 bg-white text-blue-600 font-bold rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2">
+                  <Navigation className="w-5 h-5" /> Radar Scan
+                </button>
+                {client?.websiteUrl && (
+                  <a href={client.websiteUrl} target="_blank" rel="noreferrer" className="px-6 py-3 bg-blue-600/50 border border-blue-400/30 text-white font-bold rounded-xl shadow-lg hover:bg-blue-600 transition-all flex items-center gap-2">
+                    <Globe className="w-5 h-5" /> Visit Site
+                  </a>
+                )}
+              </div>
             </motion.div>
 
             {/* Stats Preview */}
