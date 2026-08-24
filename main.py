@@ -287,19 +287,19 @@ def check_tenant_limit(session: Session, limit_type: str):
         
     if limit_type == "clients":
         if tenant.usage_clients >= tenant.limit_clients:
-            raise HTTPException(status_code=403, detail=f"Trial limit reached. You can only add up to {tenant.limit_clients} clients.")
+            raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED", "limit_type": "clients", "message": f"Trial limit reached. You can only add up to {tenant.limit_clients} clients."})
         tenant.usage_clients += 1
     elif limit_type == "emails":
         if tenant.usage_emails >= tenant.limit_emails:
-            raise HTTPException(status_code=403, detail=f"Trial limit reached. You can only generate {tenant.limit_emails} AI emails.")
+            raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED", "limit_type": "emails", "message": f"Trial limit reached. You can only generate {tenant.limit_emails} AI emails."})
         tenant.usage_emails += 1
     elif limit_type == "searches":
         if tenant.usage_searches >= tenant.limit_searches:
-            raise HTTPException(status_code=403, detail=f"Trial limit reached. You can only perform {tenant.limit_searches} AI searches.")
+            raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED", "limit_type": "searches", "message": f"Trial limit reached. You can only perform {tenant.limit_searches} AI searches."})
         tenant.usage_searches += 1
     elif limit_type == "projects":
         if tenant.usage_projects >= tenant.limit_projects:
-            raise HTTPException(status_code=403, detail=f"Trial limit reached. You can only add up to {tenant.limit_projects} websites.")
+            raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED", "limit_type": "projects", "message": f"Trial limit reached. You can only add up to {tenant.limit_projects} websites."})
         tenant.usage_projects += 1
         
     session.add(tenant)
@@ -1729,6 +1729,45 @@ def get_all_tenants(session: Session = Depends(get_session)):
         return result
     finally:
         current_tenant_id.set(old_tenant)
+
+class RequestUpgradeRequest(BaseModel):
+    limit_type: str
+
+@app.post("/tenant/request-upgrade")
+def request_upgrade(body: RequestUpgradeRequest, session: Session = Depends(get_session)):
+    """User hits a limit and requests a plan upgrade."""
+    tenant_id = current_tenant_id.get()
+    user_id = current_salesperson_id.get()
+    if not tenant_id or not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    from database import ActivityLog, Notification, User
+    
+    # 1. Telemetry / ActivityLog
+    log = ActivityLog(
+        tenant_id=tenant_id,
+        userId=user_id,
+        action="Upgrade Requested",
+        method="System",
+        details=f"User requested account upgrade after hitting trial limit for: {body.limit_type}"
+    )
+    session.add(log)
+    
+    # 2. Notification to Admin(s) of this tenant
+    # Find admins for this tenant
+    admins = session.exec(select(User).where(User.tenant_id == tenant_id, User.role == "Admin")).all()
+    for admin in admins:
+        notif = Notification(
+            tenant_id=tenant_id,
+            user_id=admin.id,
+            title="Upgrade Requested",
+            message=f"A user has hit the {body.limit_type} limit and requested an account upgrade.",
+            type="warning"
+        )
+        session.add(notif)
+        
+    session.commit()
+    return {"success": True}
 
 class TenantLimitUpdateRequest(BaseModel):
     limit_clients: Optional[int] = None
@@ -8354,7 +8393,7 @@ async def radar_search(body: RadarSearchRequest):
 @app.post("/radar/analyze")
 async def radar_analyze(body: RadarAnalyzeRequest, session: Session = Depends(get_session)):
     """Run full competitor discovery around target business."""
-    # NOTE: Radar analysis is NOT gated by trial limits — it should always work.
+    check_tenant_limit(session, "searches")
     try:
         radius_m = body.radius_km * 1000
         competitors = await find_nearby_competitors(
