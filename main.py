@@ -1730,6 +1730,46 @@ def get_all_tenants(session: Session = Depends(get_session)):
     finally:
         current_tenant_id.set(old_tenant)
 
+class TenantLimitUpdateRequest(BaseModel):
+    limit_clients: Optional[int] = None
+    limit_emails: Optional[int] = None
+    limit_searches: Optional[int] = None
+    limit_projects: Optional[int] = None
+    reset_usage: Optional[bool] = False
+    is_trial: Optional[bool] = None
+
+@app.patch("/superadmin/tenants/{tenant_id}/limits")
+def update_tenant_limits(tenant_id: int, body: TenantLimitUpdateRequest, session: Session = Depends(get_session)):
+    """Superadmin: update limits and optionally reset usage for a tenant."""
+    old_tenant = current_tenant_id.get()
+    current_tenant_id.set(None)
+    try:
+        tenant = session.exec(select(Tenant).where(Tenant.id == tenant_id)).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        if body.limit_clients is not None:
+            tenant.limit_clients = body.limit_clients
+        if body.limit_emails is not None:
+            tenant.limit_emails = body.limit_emails
+        if body.limit_searches is not None:
+            tenant.limit_searches = body.limit_searches
+        if body.limit_projects is not None:
+            tenant.limit_projects = body.limit_projects
+        if body.is_trial is not None:
+            tenant.is_trial = body.is_trial
+        if body.reset_usage:
+            tenant.usage_clients = 0
+            tenant.usage_emails = 0
+            tenant.usage_searches = 0
+            tenant.usage_projects = 0
+        session.add(tenant)
+        session.commit()
+        session.refresh(tenant)
+        return {"success": True, "tenant_id": tenant_id, "limit_searches": tenant.limit_searches, "usage_searches": tenant.usage_searches}
+    finally:
+        current_tenant_id.set(old_tenant)
+
+
 class PageVisitRequest(BaseModel):
     page_path: str
     time_spent_seconds: int
@@ -8319,7 +8359,7 @@ async def radar_search(body: RadarSearchRequest):
 @app.post("/radar/analyze")
 async def radar_analyze(body: RadarAnalyzeRequest, session: Session = Depends(get_session)):
     """Run full competitor discovery around target business."""
-    check_tenant_limit(session, "searches")
+    # NOTE: Radar analysis is NOT gated by trial limits — it should always work.
     try:
         radius_m = body.radius_km * 1000
         competitors = await find_nearby_competitors(
