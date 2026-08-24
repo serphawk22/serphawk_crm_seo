@@ -1474,7 +1474,7 @@ def _verify_password(plain: str, user: User) -> bool:
 
 
 def _user_dict(u: User) -> dict:
-    return {"id": u.id, "email": u.email, "name": u.name, "role": _normalize_role(u.role)}
+    return {"id": u.id, "email": u.email, "name": u.name, "role": _normalize_role(u.role), "tenant_id": u.tenant_id}
 
 
 def _client_dict(cp: ClientProfile, session: Session) -> dict:
@@ -2053,7 +2053,6 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
     if not _verify_password(body.password, user):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     result = _user_dict(user)
-    result["tenant_id"] = user.tenant_id
     if user.role == "Client":
         cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
         if cp:
@@ -2107,7 +2106,6 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
         session.refresh(user)
 
     result = _user_dict(user)
-    result["tenant_id"] = user.tenant_id
     if user.role == "Client":
         cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
         if cp:
