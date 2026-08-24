@@ -146,7 +146,7 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
 
         // Step 1: Locate Target on Google Maps
         setLoadingStep('locating_target');
-        const query = overrideQuery || `${clientData.companyName || clientData.projectName} ${clientData.address || clientData.city || ''}`.trim();
+        const query = overrideQuery || `${clientData.companyName || clientData.projectName} ${clientData.websiteUrl || clientData.website || ''} ${clientData.address || clientData.city || ''}`.trim();
         const searchRes = await fetch(`${API_BASE_URL}/radar/search`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
