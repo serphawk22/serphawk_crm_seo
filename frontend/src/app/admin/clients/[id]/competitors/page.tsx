@@ -158,7 +158,10 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
           }),
         });
         
-        if (!searchRes.ok) throw new Error("Failed to pinpoint client on Google Maps.");
+        if (!searchRes.ok) {
+          const errData = await searchRes.json().catch(() => null);
+          throw new Error(errData?.detail || "Failed to pinpoint client on Google Maps.");
+        }
         const searchData = await searchRes.json();
         setFoundPlace(searchData.place);
 
@@ -183,7 +186,10 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
           }),
         });
 
-        if (!analyzeRes.ok) throw new Error("Failed to analyze competitors.");
+        if (!analyzeRes.ok) {
+          const errData = await analyzeRes.json().catch(() => null);
+          throw new Error(errData?.detail || "Failed to analyze competitors.");
+        }
         const analyzeData = await analyzeRes.json();
         setRadarResult(analyzeData);
         setLoadingStep('complete');
@@ -218,7 +224,10 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ query: manualQuery, location_hint: client.city }),
                 });
-                if (!searchRes.ok) throw new Error("Failed to pinpoint on Google Maps.");
+                if (!searchRes.ok) {
+                  const errData = await searchRes.json().catch(() => null);
+                  throw new Error(errData?.detail || "Failed to pinpoint on Google Maps.");
+                }
                 const searchData = await searchRes.json();
                 setFoundPlace(searchData.place);
                 
@@ -241,7 +250,10 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
                     client_id: parseInt(id),
                   }),
                 });
-                if (!analyzeRes.ok) throw new Error("Failed to analyze competitors.");
+                if (!analyzeRes.ok) {
+                  const errData = await analyzeRes.json().catch(() => null);
+                  throw new Error(errData?.detail || "Failed to analyze competitors.");
+                }
                 const analyzeData = await analyzeRes.json();
                 setRadarResult(analyzeData);
                 setLoadingStep('complete');
@@ -336,7 +348,11 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
             </div>
             <h2 className="text-2xl font-black text-slate-900 dark:text-zinc-100 mb-2">Target Not Found</h2>
             <p className="text-slate-500 dark:text-zinc-400 mb-6 max-w-md">
-              We couldn't automatically find <strong>{client?.companyName}</strong> on Google Maps. The business might not be registered or the name is ambiguous.
+              {error && error !== "An error occurred." && error !== "Manual search failed" ? (
+                error
+              ) : (
+                <>We couldn't automatically find <strong>{client?.companyName}</strong> on Google Maps. The business might not be registered or the name is ambiguous.</>
+              )}
             </p>
             
             <div className="w-full bg-black/40 rounded-2xl p-6 border border-gray-200 dark:border-zinc-800">
@@ -353,7 +369,6 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
                   Force Search
                 </button>
               </form>
-              {error && <p className="text-xs font-medium text-red-400 mt-3 text-left">{error}</p>}
             </div>
           </div>
         </div>

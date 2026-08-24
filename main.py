@@ -8334,21 +8334,16 @@ async def radar_search(body: RadarSearchRequest):
                     "types": [],
                     "business_status": "OPERATIONAL"
                 }
-            else:
-                # Ultimate fallback: Never 404. Default to New York, let user drag map.
-                place = {
-                    "place_id": "synthetic_default_id",
-                    "name": body.company_name or (body.query.split()[0] if body.query else "Target Business"),
-                    "address": "Location not found (Defaulted to NY)",
-                    "lat": 40.7128,
-                    "lng": -74.0060,
-                    "website": website_to_scrape or "",
-                    "phone": "",
-                    "rating": 5.0,
-                    "reviews": 1,
-                    "types": [],
-                    "business_status": "OPERATIONAL"
-                }
+                # If no location is found from Google API or GPT, we don't default to NY.
+                # We tell the user exactly what happened.
+                if not fallback_location and not scraped_text:
+                    err = f"Could not find a location on the website for '{body.company_name or body.query}'. The business might be fully remote. Please provide a manual location below."
+                elif not fallback_location and scraped_text:
+                    err = f"Our AI scanned the website, but '{body.company_name or body.query}' appears to be a fully remote business with no physical headquarters. Please manually enter a target city to scan."
+                else:
+                    err = f"Could not find the target location '{fallback_location}' on Google Maps. The name might be ambiguous."
+                
+                raise HTTPException(status_code=404, detail=err)
 
         return {"place": place}
     except HTTPException:
