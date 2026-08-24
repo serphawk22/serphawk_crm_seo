@@ -144,6 +144,9 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
   const [extractResult, setExtractResult] = React.useState<{ count: number; marketplace: number } | null>(null);
   const [extractError, setExtractError] = React.useState<string | null>(null);
 
+  const [isGeneratingDraft, setIsGeneratingDraft] = React.useState(false);
+  const [isAnalyzingCompetitor, setIsAnalyzingCompetitor] = React.useState(false);
+
   // Radar Discovery Graph State
   const [radarData, setRadarData] = React.useState<any>(null);
   const [loadingRadar, setLoadingRadar] = React.useState(false);
@@ -157,6 +160,42 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
       .catch(console.error)
       .finally(() => setLoadingRadar(false));
   }, [client?.id]);
+
+  const handleGenerateDraft = async () => {
+    try {
+      setIsGeneratingDraft(true);
+      const res = await fetch(`${API_BASE_URL}/clients/${client?.id}/generate-outbound-draft`, { method: 'POST' });
+      if (res.ok) {
+        window.dispatchEvent(new CustomEvent('refresh-client-data'));
+        // Trigger emails refetch if needed
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsGeneratingDraft(false);
+    }
+  };
+
+  const handleRunCompetitorAnalysis = async (domain: string) => {
+    try {
+      setIsAnalyzingCompetitor(true);
+      const res = await fetch(`${API_BASE_URL}/competitors/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: client?.id, competitor_domain: domain })
+      });
+      if (res.ok) {
+        const rRes = await fetch(`${API_BASE_URL}/radar/relationships/${client?.id}`);
+        const rData = await rRes.json();
+        setRadarData(rData);
+        (document.getElementById('compDomain') as HTMLInputElement).value = '';
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsAnalyzingCompetitor(false);
+    }
+  };
 
   const handleAutoResearch = async () => {
     try {
@@ -436,7 +475,11 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
             ) : (
               <div className="text-center py-12 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/30 rounded-2xl border border-slate-200 dark:border-zinc-700 dark:border-slate-800 border-dashed">
                  <p className="text-slate-600 dark:text-zinc-300 dark:text-slate-400 text-sm font-medium mb-3">No AI Agent data found for this client.</p>
-                 <p className="text-xs text-slate-500 dark:text-zinc-400">Run the AI Email Agent and save a draft to capture deep intelligence.</p>
+                 <p className="text-xs text-slate-500 dark:text-zinc-400 mb-4">Run the AI Email Agent and save a draft to capture deep intelligence.</p>
+                 <button onClick={handleGenerateDraft} disabled={isGeneratingDraft} className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50">
+                   {isGeneratingDraft ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
+                   Generate AI Pitch Strategy & Draft
+                 </button>
               </div>
             )}
           </div>
@@ -689,8 +732,21 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                       ))}
                     </div>
                   ) : (
-                    <div className="text-sm text-slate-500 italic">No competitors discovered from this client yet.</div>
+                    <div className="text-sm text-slate-500 italic mb-4">No competitors discovered from this client yet.</div>
                   )}
+                  <div className="flex items-center gap-2 mt-4 max-w-sm">
+                    <input type="text" id="compDomain" placeholder="Competitor Domain (e.g. competitor.com)" className="flex-1 px-3 py-2 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm outline-none focus:border-indigo-500" />
+                    <button onClick={() => {
+                        const input = document.getElementById('compDomain') as HTMLInputElement;
+                        if (input && input.value) handleRunCompetitorAnalysis(input.value);
+                      }}
+                      disabled={isAnalyzingCompetitor}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isAnalyzingCompetitor ? <Loader2 size={16} className="animate-spin" /> : <Radar size={16} />}
+                      Analyze
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
