@@ -3453,7 +3453,7 @@ def auto_research_client(client_id: int, session: Session = Depends(get_session)
         
         research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
         if not research:
-            research = ClientResearch(client_id=client_id)
+            research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
             
         research.company_overview = data.get("company_overview", "")
         research.competitors = data.get("competitors", "")
@@ -7567,6 +7567,7 @@ Return ONLY valid JSON, no markdown."""
             keyword_gap_data=analysis.get("keyword_gap", {}),
             backlink_comparison=analysis.get("backlink_estimate", {}),
             content_benchmarks=analysis.get("content_analysis", {}),
+            tenant_id=current_tenant_id.get(),
         )
         session.add(ca)
 
@@ -12077,7 +12078,7 @@ def request_demo_upgrade(session: Session = Depends(get_session)):
 @app.get("/telemetry/demo-account/{user_id}")
 def get_demo_account_detail(user_id: int, session: Session = Depends(get_session)):
     """Return full summary of a Demo user's activity - queries by tenant_id."""
-    from database import (User, Tenant, ClientProfile, Lead, RadarAnalysis, SentEmail, Contact, Meeting, CallLog, Project, Notification)
+    from database import (User, Tenant, ClientProfile, Lead, RadarAnalysis, SentEmail, Contact, Meeting, CallLog, Project, Notification, ClientResearch, CompetitorAnalysis)
     from sqlmodel import select
 
     user = session.get(User, user_id)
@@ -12109,6 +12110,8 @@ def get_demo_account_detail(user_id: int, session: Session = Depends(get_session
     raw_meetings = q(Meeting, Meeting.scheduled_at)
     raw_calls    = q(CallLog, CallLog.received_at)
     raw_projects = q(Project, Project.id)
+    raw_research = q(ClientResearch, ClientResearch.updated_at)
+    raw_competitor = q(CompetitorAnalysis, CompetitorAnalysis.last_updated)
 
     # Team members: all users in the same tenant (excluding the demo user themselves)
     raw_team = []
@@ -12180,6 +12183,8 @@ def get_demo_account_detail(user_id: int, session: Session = Depends(get_session
                        "progress": p.progress or 0} for p in raw_projects],
         "team_members": [{"id": u.id, "name": u.name or "—", "email": u.email or "—",
                            "role": u.role or "—"} for u in raw_team],
+        "researches": [{"id": r.id, "company_overview": r.company_overview or "", "updated_at": r.updated_at.isoformat() if r.updated_at else None} for r in raw_research],
+        "competitors": [{"id": c.id, "competitor_domain": c.competitor_domain or "", "last_updated": c.last_updated.isoformat() if c.last_updated else None} for c in raw_competitor],
         "limits": limits,
     }
 

@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, Mail, Radar, Globe, UserPlus, ArrowLeft,
   BarChart2, Clock, TrendingUp, Eye, Search, RefreshCw,
-  Activity, CheckCircle2, AlertTriangle, Calendar, PhoneCall, Folder, UserCheck, Wrench
+  Activity, CheckCircle2, AlertTriangle, Calendar, PhoneCall, Folder, UserCheck, Wrench,
+  Brain, Target
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
@@ -30,6 +31,8 @@ interface DemoDetail {
   calls:    Array<{ id: number; phone: string; duration: number; summary: string; received_at: string }>;
   projects: Array<{ id: number; name: string; status: string; progress: number }>;
   team_members: Array<{ id: number; name: string; email: string; role: string }>;
+  researches: Array<{ id: number; company_overview: string; updated_at: string }>;
+  competitors: Array<{ id: number; competitor_domain: string; last_updated: string }>;
   limits:   { clients: LimitData; emails: LimitData; searches: LimitData; projects: LimitData; calls?: LimitData } | null;
 }
 
@@ -130,6 +133,7 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
     { key: "calls",     label: "Calls/Pitches",    icon: <PhoneCall  className="w-3.5 h-3.5" />, count: detail?.calls?.length },
     { key: "projects",  label: "Projects",         icon: <Folder     className="w-3.5 h-3.5" />, count: detail?.projects?.length },
     { key: "team",      label: "Team Members",     icon: <UserCheck  className="w-3.5 h-3.5" />, count: detail?.team_members?.length },
+    { key: "ai",        label: "AI Activities",    icon: <Brain      className="w-3.5 h-3.5" />, count: (detail?.researches?.length || 0) + (detail?.competitors?.length || 0) },
   ] as const;
 
   return (
@@ -205,6 +209,8 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
                   <StatCard icon={<PhoneCall  className="w-5 h-5" />} label="Calls/Pitches"  value={detail.calls?.length ?? 0}         color="bg-gradient-to-br from-green-500 to-teal-500" />
                   <StatCard icon={<Folder     className="w-5 h-5" />} label="Projects"       value={detail.projects?.length ?? 0}      color="bg-gradient-to-br from-indigo-500 to-blue-600" />
                   <StatCard icon={<UserCheck  className="w-5 h-5" />} label="Team Members"   value={detail.team_members?.length ?? 0}  color="bg-gradient-to-br from-fuchsia-500 to-pink-600" />
+                  <StatCard icon={<Brain      className="w-5 h-5" />} label="AI Researches"  value={detail.researches?.length ?? 0}    color="bg-gradient-to-br from-purple-500 to-indigo-600" />
+                  <StatCard icon={<Target     className="w-5 h-5" />} label="Competitor Scans" value={detail.competitors?.length ?? 0} color="bg-gradient-to-br from-rose-500 to-red-600" />
                 </div>
 
                 {detail.limits && (
