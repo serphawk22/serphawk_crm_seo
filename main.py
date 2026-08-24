@@ -8260,8 +8260,9 @@ async def radar_search(body: RadarSearchRequest):
                     except Exception:
                         scraped_text = ""
                         
-                    client_ai = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-                    resp = await client_ai.chat.completions.create(
+                    from modules.llm_engine import get_openai_client
+                    client_ai = get_openai_client()
+                    resp = client_ai.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[
                             {"role": "system", "content": "You are a data extraction assistant. Return ONLY the primary physical city and state (e.g. 'Miami, FL' or 'San Francisco, CA') for the given company. Use the provided website content if available, otherwise use your internal knowledge. If totally unknown, reply 'UNKNOWN'."},
