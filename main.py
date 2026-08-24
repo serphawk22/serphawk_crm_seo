@@ -359,11 +359,12 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
                 else:
                     current_tenant_id.set(None)
         else:
-            # Unauthenticated requests (if allowed) fall back to header (insecure, but preserving legacy behavior)
+            # Unauthenticated requests CANNOT be given SuperAdmin access (None).
+            # Force to an invalid tenant ID so they see nothing instead of everything.
             if tenant_header and tenant_header.isdigit():
                 current_tenant_id.set(int(tenant_header))
             else:
-                current_tenant_id.set(None)
+                current_tenant_id.set(-1)
         
         # Try to infer client_id from path parameters
         # Example paths: /clients/123/something or /projects/456 where we might need to lookup client

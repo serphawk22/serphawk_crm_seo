@@ -26,6 +26,65 @@ interface RoleContextType {
 
 const RoleContext = createContext<RoleContextType | undefined>(undefined);
 
+if (typeof window !== 'undefined' && !(window as any)._fetchPatched) {
+  (window as any)._fetchPatched = true;
+  const originalFetch = window.fetch;
+  window.fetch = async (...args) => {
+    let [resource, config] = args;
+    const saved = localStorage.getItem('crm_user');
+    
+    // Only inject tenant_id for internal API calls, not external ones like docs.google.com
+    const isInternalApi = typeof resource === 'string' && (resource.startsWith(API_BASE_URL) || resource.startsWith('/'));
+
+    if (saved && isInternalApi) {
+      try {
+        const parsed = JSON.parse(saved);
+        config = config || {};
+        if (parsed.id) {
+          config.headers = {
+            ...config.headers,
+            'X-User-ID': String(parsed.id)
+          };
+        }
+        // Skip sending tenant ID if the user is a SuperAdmin, giving them global access
+        if (parsed.tenant_id && parsed.role !== 'SuperAdmin') {
+          config.headers = {
+            ...config.headers,
+            'X-Tenant-ID': String(parsed.tenant_id)
+          };
+        }
+      } catch (e) {}
+    }
+    if (!navigator.onLine && config && config.method && config.method !== 'GET') {
+      try {
+        const { openDB } = await import('idb');
+        const db = await openDB("crm-sync-queue", 1);
+        await db.add("requests", {
+          url: resource,
+          method: config.method,
+          headers: config.headers,
+          body: config.body,
+          timestamp: Date.now(),
+        });
+        return new Response(JSON.stringify({ id: -1, status: "offline", message: "Saved offline" }), { status: 200, statusText: "OK" });
+      } catch(err) {}
+    }
+    const response = await originalFetch(resource, config);
+    
+    // If we get a 401 from an internal API (other than the login endpoint itself)
+    if (response.status === 401 && isInternalApi && typeof resource === 'string' && !resource.endsWith('/login')) {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('crm_user');
+        if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+        }
+      }
+    }
+    
+    return response;
+  };
+}
+
 export function RoleProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -34,63 +93,6 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && !(window as any)._fetchPatched) {
-      const originalFetch = window.fetch;
-      window.fetch = async (...args) => {
-        let [resource, config] = args;
-        const saved = localStorage.getItem('crm_user');
-        
-        // Only inject tenant_id for internal API calls, not external ones like docs.google.com
-        const isInternalApi = typeof resource === 'string' && (resource.startsWith(API_BASE_URL) || resource.startsWith('/'));
-
-        if (saved && isInternalApi) {
-          try {
-            const parsed = JSON.parse(saved);
-            config = config || {};
-            if (parsed.id) {
-              config.headers = {
-                ...config.headers,
-                'X-User-ID': String(parsed.id)
-              };
-            }
-            // Skip sending tenant ID if the user is a SuperAdmin, giving them global access
-            if (parsed.tenant_id && parsed.role !== 'SuperAdmin') {
-              config.headers = {
-                ...config.headers,
-                'X-Tenant-ID': String(parsed.tenant_id)
-              };
-            }
-          } catch (e) {}
-        }
-        if (!navigator.onLine && config && config.method && config.method !== 'GET') {
-          try {
-            const { openDB } = await import('idb');
-            const db = await openDB("crm-sync-queue", 1);
-            await db.add("requests", {
-              url: resource,
-              method: config.method,
-              headers: config.headers,
-              body: config.body,
-              timestamp: Date.now(),
-            });
-            return new Response(JSON.stringify({ id: -1, status: "offline", message: "Saved offline" }), { status: 200, statusText: "OK" });
-          } catch(err) {}
-        }
-        const response = await originalFetch(resource, config);
-        
-        // If we get a 401 from an internal API (other than the login endpoint itself)
-        if (response.status === 401 && isInternalApi && typeof resource === 'string' && !resource.endsWith('/login')) {
-          localStorage.removeItem('crm_user');
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login';
-          }
-        }
-        
-        return response;
-      };
-      (window as any)._fetchPatched = true;
-    }
-
     const savedUser = localStorage.getItem('crm_user');
     if (savedUser) {
       setUser(JSON.parse(savedUser));
