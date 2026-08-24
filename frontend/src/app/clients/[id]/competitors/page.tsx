@@ -150,7 +150,12 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
         const searchRes = await fetch(`${API_BASE_URL}/radar/search`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query, location_hint: clientData.city }),
+          body: JSON.stringify({ 
+            query, 
+            location_hint: clientData.city,
+            company_name: clientData.companyName || clientData.projectName,
+            website: clientData.websiteUrl || clientData.website
+          }),
         });
         
         if (!searchRes.ok) throw new Error("Failed to pinpoint client on Google Maps.");

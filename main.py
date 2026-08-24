@@ -8201,6 +8201,8 @@ class RadarSearchRequest(BaseModel):
     query: str
     location_hint: Optional[str] = None
     place_id: Optional[str] = None
+    company_name: Optional[str] = None
+    website: Optional[str] = None
 
 class RadarAnalyzeRequest(BaseModel):
     place_id: str
@@ -8227,11 +8229,55 @@ class RadarAddClientRequest(BaseModel):
 async def radar_search(body: RadarSearchRequest):
     """Search for a business on Google Maps and return its exact place details."""
     try:
+        from modules.radar_engine import find_place
         if body.place_id:
             from modules.radar_engine import get_place_details
             place = await get_place_details(body.place_id)
         else:
             place = await find_place(body.query, body.location_hint)
+            
+        if not place:
+            fallback_location = body.location_hint
+            
+            if not fallback_location and body.website:
+                try:
+                    from modules.scraper import scrape_website
+                    from openai import AsyncOpenAI
+                    import os
+                    
+                    scraped_text = await scrape_website(body.website)
+                    client_ai = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+                    resp = await client_ai.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "Extract the physical city and state, or full address, of the business from the website content. Only return the location string (e.g. 'Miami, FL' or '123 Main St, Austin, TX'). If not found, reply 'UNKNOWN'."},
+                            {"role": "user", "content": scraped_text[:10000]}
+                        ],
+                        temperature=0
+                    )
+                    extracted = resp.choices[0].message.content.strip()
+                    if extracted and extracted != "UNKNOWN":
+                        fallback_location = extracted
+                except Exception as e:
+                    print(f"Failed to scrape/extract location: {e}")
+            
+            if fallback_location:
+                geocode_place = await find_place(fallback_location)
+                if geocode_place:
+                    place = {
+                        "place_id": geocode_place.get("place_id", "synthetic_id"),
+                        "name": body.company_name or (body.query.split()[0] if body.query else "Target Business"),
+                        "address": geocode_place.get("address", fallback_location),
+                        "lat": geocode_place.get("lat"),
+                        "lng": geocode_place.get("lng"),
+                        "website": body.website or "",
+                        "phone": "",
+                        "rating": 5.0,
+                        "reviews": 1,
+                        "types": [],
+                        "business_status": "OPERATIONAL"
+                    }
+
         if not place:
             raise HTTPException(status_code=404, detail="Business not found on Google Maps")
         return {"place": place}
