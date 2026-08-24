@@ -23,6 +23,7 @@ import TelemetryTracker from "@/components/TelemetryTracker";
 import Script from "next/script";
 import TopRightControls from "@/components/TopRightControls";
 import { GoogleOAuthProvider } from "@react-oauth/google";
+import { GlobalLimitModal } from "@/components/GlobalLimitModal";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
@@ -70,7 +71,30 @@ function AppContent({ children }: { children: React.ReactNode }) {
       console.groupEnd();
     };
     window.addEventListener("error", handleError);
-    return () => window.removeEventListener("error", handleError);
+
+    // Global fetch interceptor for LIMIT_REACHED
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      if (response.status === 403) {
+        try {
+          const cloned = response.clone();
+          const data = await cloned.json();
+          if (data?.detail?.error === "LIMIT_REACHED") {
+            const event = new CustomEvent("limit-reached", { detail: data.detail });
+            window.dispatchEvent(event);
+          }
+        } catch (e) {
+          // ignore parsing errors
+        }
+      }
+      return response;
+    };
+
+    return () => {
+      window.removeEventListener("error", handleError);
+      window.fetch = originalFetch;
+    };
   }, []);
 
   if (loading) {
@@ -209,6 +233,7 @@ export default function RootLayout({
                   <AppContent>{children}</AppContent>
                   <OmniSearch />
                   <QuickAddFab />
+                  <GlobalLimitModal />
                 </RoleProvider>
               </LanguageProvider>
             </I18nProvider>
