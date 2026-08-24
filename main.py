@@ -3561,6 +3561,18 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
             sent_at=datetime.utcnow()
         )
         session.add(draft)
+        
+        # Save to research so the UI can display it in OpportunitiesTab
+        if not research:
+            research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
+            session.add(research)
+        
+        ea_payload = {
+            "draft": data,
+            "email_hook": data.get("whatsapp_draft", "Custom outreach generated from latest interactions.")
+        }
+        research.email_agent_data = _json.dumps(ea_payload)
+        
         session.commit()
         return {"ok": True, "draft": data, "email_id": draft.id}
         
