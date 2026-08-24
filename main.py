@@ -8391,6 +8391,7 @@ async def radar_search(body: RadarSearchRequest):
                     "types": [],
                     "business_status": "OPERATIONAL"
                 }
+            else:
                 # If no location is found from Google API or GPT, we don't default to NY.
                 # We tell the user exactly what happened.
                 if not fallback_location and not scraped_text:
