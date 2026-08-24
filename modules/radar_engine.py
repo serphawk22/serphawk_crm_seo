@@ -194,7 +194,7 @@ async def find_nearby_competitors(lat, lng, radius_m, keyword, target_name=""):
         }
         data = {
             "textQuery": keyword,
-            "locationRestriction": {
+            "locationBias": {
                 "circle": {
                     "center": {"latitude": lat, "longitude": lng},
                     "radius": radius_m
