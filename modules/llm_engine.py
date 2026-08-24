@@ -312,6 +312,21 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
             {
                 "type": "function",
                 "function": {
+                    "name": "research_lead",
+                    "description": "Researches a company/website using AI and creates a Lead in the CRM automatically.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "company_name": {"type": "string", "description": "Name of the company"},
+                            "website": {"type": "string", "description": "Website URL of the company"}
+                        },
+                        "required": ["company_name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "bulk_import_websites",
                     "description": "Scrapes and imports a list of website URLs into the CRM as new clients.",
                     "parameters": {
@@ -559,3 +574,150 @@ Return ONLY valid JSON matching this structure:
     except Exception as e:
         print(f"Error in extract_client_profile: {e}")
         return {}
+
+
+def process_whatsapp_command(message: str, previous_state: dict = None, image_data: dict = None):
+    """
+    Analyzes an incoming WhatsApp message (or image) to determine the CRM action using OpenAI function calling.
+    If image_data is provided (dict with 'base64' and 'mime_type'), it uses GPT-4o's vision capabilities.
+    If previous_state is provided, it merges the new message into the existing context.
+    """
+    try:
+        client = get_openai_client()
+        system_prompt = """
+        You are an intelligent AI assistant embedded in a CRM system, processing commands from the
+        business owner sent via WhatsApp — often as informal voice message transcripts.
+
+        Your STRICT rules:
+        1. ALWAYS call a tool if the user's intent matches a CRM action, NO MATTER how badly formatted, incomplete, or ambiguous the data is.
+        2. NEVER ask conversational clarifying questions (e.g., "Could you confirm the email address?"). The backend will automatically ask the user for confirmation. Just extract what you can and call the tool!
+        3. AGGRESSIVELY correct speech-to-text errors. For example, if you see "VarsitAdre, gmail.com", format it as "VarsitAdre@gmail.com".
+        4. If a required parameter is vaguely hinted at, make your best guess.
+        5. "add john doe from acme" means add_entity. "book a meeting with..." means schedule_meeting.
+        6. "note that ravi is interested" means add_note. "create a task to follow up" means add_task.
+        """
+        
+        if previous_state:
+            system_prompt += f"\n\nIMPORTANT CONTEXT:\nThe user is providing a correction or additional information for their PREVIOUS command.\nPrevious intent: {previous_state.get('action')}\nPrevious parameters: {previous_state.get('parameters')}\n\nMERGE the user's new message into these previous parameters. Keep the same tool intent (unless they explicitly change it), update any fields they mentioned, and RETURN THE FULL SET of merged parameters."
+
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_entity",
+                    "description": "Adds a new person or company to the CRM. Use this for Leads, Clients, or Contacts.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "The name of the company or person."},
+                            "email": {"type": "string", "description": "Email address."},
+                            "phone": {"type": "string", "description": "Phone number."},
+                            "website": {"type": "string", "description": "Website URL, if provided."},
+                            "notes": {"type": "string", "description": "Any initial notes about them."}
+                        },
+                        "required": ["name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "schedule_meeting",
+                    "description": "Schedules a meeting or call.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "target_name": {"type": "string", "description": "The name of the lead or company to meet with."},
+                            "time_str": {"type": "string", "description": "The time or date mentioned (e.g. 'tomorrow at 5pm')."}
+                        },
+                        "required": ["target_name", "time_str"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_note",
+                    "description": "Adds a note or update to an existing client or lead.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "target_name": {"type": "string", "description": "The name of the client or company to add a note to."},
+                            "content": {"type": "string", "description": "The full content/body of the note."}
+                        },
+                        "required": ["target_name", "content"]
+                    }
+                }
+            },
+
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_task",
+                    "description": "Creates a new task or to-do in the CRM. Use when the owner wants to create a reminder, follow-up task, or work item.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string", "description": "A short title for the task."},
+                            "description": {"type": "string", "description": "More detail about what the task involves."},
+                            "due_date": {"type": "string", "description": "When the task should be done (e.g. 'tomorrow', 'July 20', '2026-07-20')."},
+                            "priority": {"type": "string", "description": "Priority level: Low, Medium, High, or Urgent. Default Medium."},
+                            "client_name": {"type": "string", "description": "Name of the client this task is related to, if any."}
+                        },
+                        "required": ["title"]
+                    }
+                }
+            }
+        ]
+
+        user_content = []
+        if message:
+            user_content.append({"type": "text", "text": message})
+        
+        if image_data:
+            if not message:
+                user_content.append({"type": "text", "text": "Please extract the CRM entity details from this image (e.g. business card, ID) and trigger the add_entity action with the extracted information."})
+            user_content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{image_data['mime_type']};base64,{image_data['base64']}"
+                }
+            })
+
+        # If we only have text, we can just pass a string or the array.
+        # But if we have an image, we must pass the array.
+        messages = [{"role": "system", "content": system_prompt}]
+        if user_content:
+            messages.append({"role": "user", "content": user_content if image_data else message or "No text provided."})
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            tools=tools,
+            tool_choice="auto"
+        )
+        
+        msg = response.choices[0].message
+        
+        if msg.tool_calls:
+            tool_call = msg.tool_calls[0]
+            import json as _json
+            args = _json.loads(tool_call.function.arguments)
+            return {
+                "action": tool_call.function.name,
+                "parameters": args,
+                "reply": "Confirm action"
+            }
+        else:
+            return {
+                "action": "none",
+                "parameters": {},
+                "reply": msg.content or "I didn't quite catch that. Try saying something like 'add lead Microsoft microsoft.com'."
+            }
+    except Exception as e:
+        print(f"Error in process_whatsapp_command: {e}")
+        return {
+            "action": "error",
+            "parameters": {},
+            "reply": "Sorry, I ran into an error processing your command."
+        }

@@ -37,6 +37,23 @@ engine = create_engine(
     }
 )
 
+from sqlalchemy import event
+
+@event.listens_for(engine, "connect")
+def set_connection_timeouts(dbapi_connection, connection_record):
+    """
+    Set PostgreSQL query/lock timeouts to prevent any future database locks from hanging the backend process.
+    """
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("SET lock_timeout = 5000;")       # 5 second timeout to acquire a table lock
+        cursor.execute("SET statement_timeout = 30000;")  # 30 second timeout for any query statement
+    except Exception:
+        # Ignore for SQLite or other database engines that do not support these session variables
+        pass
+    finally:
+        cursor.close()
+
 
 class ClientStatus(SQLModel, table=True):
     """
@@ -64,6 +81,7 @@ class User(SQLModel, table=True):
     role: str = Field(default="Client") # Admin, Employee, Client
     is_active: bool = Field(default=True)
     status: str = Field(default="Active")
+    sidebar_preferences: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
     createdAt: datetime = Field(default_factory=datetime.utcnow, sa_column=Column("created_at", DateTime))
     updatedAt: datetime = Field(default_factory=datetime.utcnow, sa_column=Column("updated_at", DateTime))
     
@@ -505,6 +523,55 @@ class ScheduledCall(SQLModel, table=True):
     status: str = Field(default="Scheduled", max_length=50)  # Scheduled, Completed, Cancelled
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+    # Vapi AI Call tracking fields
+    ai_call_status: Optional[str] = Field(default=None, max_length=50)    # pending | completed | failed
+    ai_call_initiated_at: Optional[datetime] = Field(default=None)
+    ai_call_completed_at: Optional[datetime] = Field(default=None)
+
+
+class AiCallLog(SQLModel, table=True):
+    """
+    Stores results of Vapi AI outbound calls initiated from the CRM.
+    Created when Vapi/n8n POSTs the call result back via webhook.
+    """
+    __tablename__ = "ai_call_logs"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    entity_type: str = Field(default="lead", max_length=50)       # client | lead
+    entity_id: int = Field()
+    entity_name: Optional[str] = Field(default=None, max_length=255)
+    phone_number: Optional[str] = Field(default=None, max_length=50)
+    generated_pitch: Optional[str] = Field(default=None, sa_column=Column(Text))
+    transcript: Optional[str] = Field(default=None, sa_column=Column(Text))
+    recording_url: Optional[str] = Field(default=None, max_length=1000)
+    call_url: Optional[str] = Field(default=None, max_length=1000)
+    duration_seconds: Optional[int] = Field(default=None)
+    call_status: str = Field(default="completed", max_length=50)  # completed | failed | no-answer
+    initiated_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = Field(default=None)
+    n8n_call_id: Optional[str] = Field(default=None, max_length=255)  # Vapi/n8n call ID for tracking
+
+
+class CallingAgentLog(SQLModel, table=True):
+    """
+    Stores all the details of the AI calling agent.
+    """
+    __tablename__ = "calling_agent_logs"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    entity_type: str = Field(default="lead", max_length=50)       # client | lead
+    entity_id: int = Field()
+    entity_name: Optional[str] = Field(default=None, max_length=255)
+    phone_number: Optional[str] = Field(default=None, max_length=50)
+    generated_pitch: Optional[str] = Field(default=None, sa_column=Column(Text))
+    transcript: Optional[str] = Field(default=None, sa_column=Column(Text))
+    recording_url: Optional[str] = Field(default=None, max_length=1000)
+    duration_seconds: Optional[int] = Field(default=None)
+    call_status: str = Field(default="pending", max_length=50)  # pending | completed | failed | no-answer
+    initiated_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = Field(default=None)
+    n8n_call_id: Optional[str] = Field(default=None, max_length=255)
+
 
 class SentEmail(SQLModel, table=True):
     """
@@ -522,6 +589,7 @@ class SentEmail(SQLModel, table=True):
     recommended_services: Optional[str] = Field(default=None, sa_column=Column(Text))
     manual: Optional[bool] = Field(default=False)
     draft_json: Optional[str] = Field(default=None, sa_column=Column(Text))  # Store the whole draft as JSON
+    status: str = Field(default="Sent", max_length=50)  # Sent, Opened, Replied
     sent_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -813,6 +881,16 @@ class ClientResearch(SQLModel, table=True):
     email_agent_data: Optional[str] = Field(default=None, sa_column=Column(Text))
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+class EmailAgent(SQLModel, table=True):
+    """Stores full research results for the Email Agent"""
+    __tablename__ = "email_agent"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_name: str = Field(max_length=255)
+    company_url: Optional[str] = Field(default=None, max_length=500)
+    result_data: str = Field(sa_column=Column(Text))  # Storing the JSON data as a text string
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 
 class ClientTicket(SQLModel, table=True):
     """Internal support tickets raised by Salesperson to Admin"""
@@ -859,6 +937,7 @@ class Lead(SQLModel, table=True):
     account_id: Optional[int] = Field(default=None, foreign_key="accounts.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_activity: Optional[str] = Field(default=None, max_length=500)
+    ai_analysis_results: Optional[dict] = Field(default=None, sa_column=Column(JSON))
 
     account: Optional[Account] = Relationship(back_populates="leads")
     contacts: List["Contact"] = Relationship(back_populates="lead")
@@ -1128,6 +1207,9 @@ def create_db_and_tables():
         "ALTER TABLE client_research ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
         "ALTER TABLE sent_emails ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
         "ALTER TABLE activity_logs ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
+        "ALTER TABLE whatsappsession ADD COLUMN active_live_chat_session VARCHAR",
+        "ALTER TABLE whatsappsession ALTER COLUMN pending_action DROP NOT NULL",
+        "ALTER TABLE whatsappsession ALTER COLUMN action_data DROP NOT NULL",
     ]
     
     with engine.connect() as conn:
@@ -1135,9 +1217,9 @@ def create_db_and_tables():
             try:
                 conn.execute(text(query))
                 conn.commit()
-            except Exception:
+            except Exception as e:
                 # Column likely already exists
-                pass
+                conn.rollback()
         
     # Seed default statuses if none exist
     try:
@@ -1218,6 +1300,43 @@ class ApiAlert(SQLModel, table=True):
     target: Optional[str] = Field(default="global", max_length=100)
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WhatsAppSession(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    phone_number: str = Field(index=True)
+    pending_action: Optional[str] = None
+    action_data: Optional[str] = None  # JSON string of parameters
+    active_live_chat_session: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ChatbotSession(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True, unique=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ChatbotMessage(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True, foreign_key="chatbotsession.session_id")
+    role: str = Field(default="user") # user, assistant
+    content: str = Field(sa_column=Column(Text))
+    action_taken: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class LiveChatSession(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True, unique=True)
+    status: str = Field(default="pending") # pending, active, ended
+    client_id: Optional[int] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class LiveChatMessage(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True)
+    sender: str = Field(default="user") # user, admin
+    message: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
 def get_session():

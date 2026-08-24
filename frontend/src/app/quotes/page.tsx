@@ -20,6 +20,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function QuotesPage() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -38,9 +39,11 @@ export default function QuotesPage() {
     Promise.all([
       fetch(`${API_BASE_URL}/quotes`).then(r => r.json()),
       fetch(`${API_BASE_URL}/leads`).then(r => r.json()),
-    ]).then(([qd, ld]) => {
+      fetch(`${API_BASE_URL}/clients?per_page=1000`).then(r => r.json()),
+    ]).then(([qd, ld, cd]) => {
       setQuotes(Array.isArray(qd.quotes) ? qd.quotes : []);
       setLeads(Array.isArray(ld.leads) ? ld.leads : []);
+      setClients(Array.isArray(cd.clients) ? cd.clients : []);
     }).finally(() => setLoading(false));
   };
   useEffect(load, []);
@@ -59,6 +62,7 @@ export default function QuotesPage() {
   const canSave = () => {
     if (!form.title.trim()) return false;
     if (form.linked_to === "lead" && !form.lead_id) return false;
+    if (form.linked_to === "client" && !form.client_id) return false;
     return true;
   };
 
@@ -191,7 +195,11 @@ export default function QuotesPage() {
                       {leads.map(l => <option key={l.id} value={l.id}>{l.company_name}{l.email ? ` — ${l.email}` : ""}</option>)}
                     </select>
                   ) : (
-                    <p className="text-xs text-slate-500 italic">Client linking — enter client ID manually for now</p>
+                    <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                      <option value="">Select a client...</option>
+                      {clients.map(c => <option key={c.id} value={c.id}>{c.companyName || `Client #${c.id}`}</option>)}
+                    </select>
                   )}
                 </div>
 

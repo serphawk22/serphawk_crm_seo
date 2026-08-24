@@ -17,16 +17,19 @@ export default function SalesOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ lead_id: "" as string | number, status: "Pending", grand_total: "", currency: "USD", delivery_date: "", notes: "" });
+  const [form, setForm] = useState({ linked_to: "lead" as "lead" | "client", lead_id: "" as string | number, client_id: "" as string | number, status: "Pending", grand_total: "", currency: "USD", delivery_date: "", notes: "" });
+  const [clients, setClients] = useState<any[]>([]);
 
   const load = () => { 
     setLoading(true); 
     Promise.all([
       fetch(`${API_BASE_URL}/sales-orders`).then(r => r.json()),
       fetch(`${API_BASE_URL}/leads`).then(r => r.json()),
-    ]).then(([od, ld]) => {
+      fetch(`${API_BASE_URL}/clients?per_page=1000`).then(r => r.json()),
+    ]).then(([od, ld, cd]) => {
       setOrders(Array.isArray(od.orders) ? od.orders : []);
       setLeads(Array.isArray(ld.leads) ? ld.leads : []);
+      setClients(Array.isArray(cd.clients) ? cd.clients : []);
     }).finally(() => setLoading(false));
   };
   useEffect(load, []);
@@ -38,9 +41,13 @@ export default function SalesOrdersPage() {
   }), [orders, search, statusFilter]);
 
   const handleSave = async () => {
-    if (!form.lead_id) { alert("Please select a lead first"); return; }
+    if (form.linked_to === "lead" && !form.lead_id) { alert("Please select a lead first"); return; }
+    if (form.linked_to === "client" && !form.client_id) { alert("Please select a client first"); return; }
     setSaving(true);
-    await fetch(`${API_BASE_URL}/sales-orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, lead_id: Number(form.lead_id), grand_total: parseFloat(form.grand_total as string) || 0 }) });
+    const payload: any = { ...form, grand_total: parseFloat(form.grand_total as string) || 0 };
+    if (form.linked_to === "lead") payload.lead_id = Number(form.lead_id);
+    if (form.linked_to === "client") payload.client_id = Number(form.client_id);
+    await fetch(`${API_BASE_URL}/sales-orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     setSaving(false); setShowModal(false); load();
   };
   const handleDelete = async (id: number) => { if (!confirm("Delete order?")) return; await fetch(`${API_BASE_URL}/sales-orders/${id}`, { method: "DELETE" }); load(); };
@@ -112,16 +119,32 @@ export default function SalesOrdersPage() {
                 <button onClick={() => setShowModal(false)}><X className="w-4 h-4" /></button>
               </div>
               <div className="space-y-4">
-                {/* Lead Selector — required */}
+                {/* Lead / Client Selector — required */}
                 <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700/40">
-                  <label className="text-xs font-black text-blue-700 dark:text-blue-400 uppercase tracking-widest mb-2 block flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5" /> For which Lead? *
-                  </label>
-                  <select value={form.lead_id} onChange={e => setForm(f => ({ ...f, lead_id: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-blue-200 dark:border-blue-700/40 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Select a lead...</option>
-                    {leads.map(l => <option key={l.id} value={l.id}>{l.company_name}{l.email ? ` — ${l.email}` : ""}</option>)}
-                  </select>
+                  <p className="text-xs font-black text-blue-700 dark:text-blue-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5" /> Who is this order for? *
+                  </p>
+                  <div className="flex gap-2 mb-3">
+                    {(["lead", "client"] as const).map(type => (
+                      <button key={type} onClick={() => setForm(f => ({ ...f, linked_to: type, lead_id: "", client_id: "" }))}
+                        className={`flex-1 py-2 rounded-xl text-xs font-bold capitalize transition-all ${form.linked_to === type ? "bg-blue-600 text-white shadow" : "bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:border-blue-400"}`}>
+                        {type === "lead" ? "🎯 Lead" : "✅ Client"}
+                      </button>
+                    ))}
+                  </div>
+                  {form.linked_to === "lead" ? (
+                    <select value={form.lead_id} onChange={e => setForm(f => ({ ...f, lead_id: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-blue-200 dark:border-blue-700/40 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">Select a lead...</option>
+                      {leads.map(l => <option key={l.id} value={l.id}>{l.company_name}{l.email ? ` — ${l.email}` : ""}</option>)}
+                    </select>
+                  ) : (
+                    <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-blue-200 dark:border-blue-700/40 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">Select a client...</option>
+                      {clients.map(c => <option key={c.id} value={c.id}>{c.companyName || `Client #${c.id}`}</option>)}
+                    </select>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Amount</label>
@@ -137,7 +160,7 @@ export default function SalesOrdersPage() {
               </div>
               <div className="flex gap-3 mt-6">
                 <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 font-bold text-sm hover:bg-slate-200 transition-all">Cancel</button>
-                <button onClick={handleSave} disabled={saving || !form.lead_id} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-sm hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2">
+                <button onClick={handleSave} disabled={saving || (form.linked_to === "lead" ? !form.lead_id : !form.client_id)} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-sm hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2">
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />} Create Order
                 </button>
               </div>

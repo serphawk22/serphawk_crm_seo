@@ -1,18 +1,20 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Fragment } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Sparkles, Mail, Clock, User, Globe, ChevronDown, ChevronUp,
   CheckCircle, Building2, Briefcase, Target, AtSign, FileText, Copy, Check,
-  TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign, MessageCircle
+  TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign, MessageCircle, Trash2, Youtube
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import PageGuide from "@/components/PageGuide";
+import GmailAgentLoop from "./GmailAgentLoop";
 
 interface SentEmail {
   id: number;
   client_id: number | null;
+  company_name?: string;
   to_email: string;
   subject: string;
   english_body: string | null;
@@ -20,6 +22,7 @@ interface SentEmail {
   recommended_services: string | null;
   manual: boolean;
   draft_json: string | null;
+  status: string;
   sent_at: string | null;
 }
 
@@ -51,15 +54,27 @@ interface ResearchResultData {
     best_conversion_opportunity?: string;
     sales_follow_up_focus?: string;
     website?: string;
-    extracted_emails?: string;
+    extracted_emails?: string | string[];
     extracted_phone_numbers?: string;
     extracted_linkedin?: string;
     extracted_twitter?: string;
+    source_pages?: string[];
+    company_social_media?: {
+      linkedin?: string;
+      twitter?: string;
+      instagram?: string;
+      facebook?: string;
+      youtube?: string;
+    };
     contacts?: Array<{
       email?: string;
       name?: string;
       role?: string;
       phone_number?: string;
+      personal_social_media?: {
+        linkedin?: string;
+        twitter?: string;
+      };
     }>;
   };
   contact?: {
@@ -79,6 +94,7 @@ interface ResearchResultData {
     spanish_body?: string;
     body?: string;
     subject?: string;
+    whatsapp_draft?: string;
   };
   assigned_sales_manager?: string;
   company_url?: string;
@@ -102,6 +118,10 @@ interface ResearchResult {
 
 type SendEmailResult = {
   client_id?: number;
+  lead_id?: number;
+  success?: boolean;
+  message?: string;
+  sent_email_id?: number;
 } | null;
 
 function CopyButton({ text }: { text: string }) {
@@ -120,18 +140,24 @@ function CopyButton({ text }: { text: string }) {
 function buildProspectingPoints(result: ResearchResultData) {
   const hasServices = (result.recommended_services || []).map((s) => typeof s === 'string' ? s : s.service_name).filter(Boolean) as string[];
   
+  const toArray = (val: any) => Array.isArray(val) ? val : (typeof val === 'string' ? val.split(",") : []);
+  
   // Extract contact information with fallbacks
-  const primaryEmail = result.contact?.email || result.company_info?.extracted_emails?.split(",")[0]?.trim() || "No email found.";
-  const allEmails = result.company_info?.extracted_emails ? result.company_info.extracted_emails.split(",").map(e => e.trim()).slice(0, 2).join(", ") : primaryEmail;
+  const emails = toArray(result.company_info?.extracted_emails);
+  const primaryEmail = result.contact?.email || emails[0]?.trim() || "No email found.";
+  const allEmails = emails.length > 0 ? emails.map((e: string) => e.trim()).slice(0, 2).join(", ") : primaryEmail;
   
-  const primaryPhone = result.contact?.phone_number || result.contact?.whatsapp || result.company_info?.extracted_phone_numbers?.split(",")[0]?.trim() || "No phone available.";
-  const allPhones = result.company_info?.extracted_phone_numbers ? result.company_info.extracted_phone_numbers.split(",").map(p => p.trim()).slice(0, 2).join(", ") : primaryPhone;
+  const phones = toArray(result.company_info?.extracted_phone_numbers);
+  const primaryPhone = result.contact?.phone_number || result.contact?.whatsapp || phones[0]?.trim() || "No phone available.";
+  const allPhones = phones.length > 0 ? phones.map((p: string) => p.trim()).slice(0, 2).join(", ") : primaryPhone;
   
-  const linkedinProfile = result.contact?.linkedin || result.company_info?.linkedin || result.company_info?.extracted_linkedin?.split(",")[0]?.trim() || "No LinkedIn profile found.";
-  const allLinkedIn = result.company_info?.extracted_linkedin ? result.company_info.extracted_linkedin.split(",").map(l => l.trim()).slice(0, 2).join(", ") : linkedinProfile;
+  const linkedins = toArray(result.company_info?.extracted_linkedin);
+  const linkedinProfile = result.contact?.linkedin || result.company_info?.linkedin || linkedins[0]?.trim() || "No LinkedIn profile found.";
+  const allLinkedIn = linkedins.length > 0 ? linkedins.map((l: string) => l.trim()).slice(0, 2).join(", ") : linkedinProfile;
   
-  const twitterProfile = result.contact?.twitter || result.company_info?.extracted_twitter?.split(",")[0]?.trim() || "No Twitter/X profile found.";
-  const allTwitter = result.company_info?.extracted_twitter ? result.company_info.extracted_twitter.split(",").map(t => t.trim()).slice(0, 2).join(", ") : twitterProfile;
+  const twitters = toArray(result.company_info?.extracted_twitter);
+  const twitterProfile = result.contact?.twitter || twitters[0]?.trim() || "No Twitter/X profile found.";
+  const allTwitter = twitters.length > 0 ? twitters.map((t: string) => t.trim()).slice(0, 2).join(", ") : twitterProfile;
   
   return [
     {
@@ -208,31 +234,138 @@ function BottomUpFillMail() {
   );
 }
 
-function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAutomatically, onSaveFollowUp }: { result: ResearchResultData; companyName: string; companyUrl: string; onSendManually: (r: ResearchResultData, name: string, url: string, skip_send?: boolean, action_type?: string) => Promise<SendEmailResult>; onSendAutomatically: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSaveFollowUp: (r: ResearchResultData, note: string, title: string) => Promise<boolean>; }) {
-  const [activeTab, setActiveTab] = useState<"english" | "spanish">("english");
+function CopyableEmailItem({ email }: { email: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(email);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <div className="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-600 transition-all group/item shadow-sm">
+      <span className="text-xs font-mono text-slate-800 dark:text-zinc-200 break-all select-all pr-1">{email}</span>
+      <button
+        onClick={handleCopy}
+        className="p-1 rounded hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 transition-colors shadow-sm bg-slate-50 dark:bg-zinc-950 flex-shrink-0"
+        title="Copy email"
+      >
+        {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+      </button>
+    </div>
+  );
+}
+
+function ResultCard({ historyId, result, companyName, companyUrl, onSendManually, onSendAutomatically, onSaveFollowUp, onRemove }: { historyId: string; result: ResearchResultData; companyName: string; companyUrl: string; onSendManually: (r: ResearchResultData, name: string, url: string, skip_send?: boolean, action_type?: string) => Promise<SendEmailResult>; onSendAutomatically: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSaveFollowUp: (r: ResearchResultData, note: string, title: string) => Promise<boolean>; onRemove: (id: string) => void; }) {
+  const [activeTab, setActiveTab] = useState<"english" | "spanish" | "whatsapp">("english");
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
   const [followUpNote, setFollowUpNote] = useState("");
+
   const [followUpTitle, setFollowUpTitle] = useState(`Follow up with ${companyName}`);
   const [followUpStatus, setFollowUpStatus] = useState<string | null>(null);
   const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
-  const extractedEmail = result.company_info?.extracted_emails?.split(",")[0]?.trim();
-  const directContactEmail = Array.isArray((result.company_info as any)?.contacts) ? (result.company_info as any).contacts[0]?.email : (result.company_info as any)?.email;
-  const contactEmail = result.contact?.email || directContactEmail || extractedEmail;
+  const formatBody = (body: any) => {
+    if (typeof body !== 'string') return "";
+    return body.replace(/<br\s*\/?>/gi, '\n');
+  };
 
-  const englishText = result.draft?.english_body || result.draft?.body || "";
-  const spanishText = result.draft?.spanish_body || "";
+  const [editableSubject, setEditableSubject] = useState(result.draft?.subject || "");
+  const [editableEnglishBody, setEditableEnglishBody] = useState(formatBody(result.draft?.english_body || result.draft?.body));
+  const [editableSpanishBody, setEditableSpanishBody] = useState(formatBody(result.draft?.spanish_body));
+  const [editableWhatsappBody, setEditableWhatsappBody] = useState(formatBody(result.draft?.whatsapp_draft));
+  const [fromEmail, setFromEmail] = useState("support.crm@serphawk.in");
+
+  const extractedEmailsArray = (Array.isArray(result.company_info?.extracted_emails) ? result.company_info.extracted_emails : (result.company_info?.extracted_emails?.split(",") || []))
+    .filter((e: string) => e.trim().toLowerCase() !== "test@example.com" && e.trim().toLowerCase() !== "support.crm@serphawk.in");
+  const extractedEmail = extractedEmailsArray[0]?.trim();
+  const directContactEmail = Array.isArray((result.company_info as any)?.contacts) ? (result.company_info as any).contacts[0]?.email : (result.company_info as any)?.email;
+  
+  let rawInitialEmail = result.contact?.email || directContactEmail || extractedEmail || "";
+  if (Array.isArray(rawInitialEmail)) rawInitialEmail = rawInitialEmail[0];
+  let initialContactEmail = typeof rawInitialEmail === 'string' ? rawInitialEmail : String(rawInitialEmail || "");
+  
+  if (initialContactEmail.trim().toLowerCase() === "test@example.com" || initialContactEmail.trim().toLowerCase() === "support.crm@serphawk.in") {
+    initialContactEmail = "";
+  }
+
+  const [toEmail, setToEmail] = useState(initialContactEmail);
+
+  useEffect(() => {
+    if (sendSuccess) {
+      const timer = setTimeout(() => {
+        onRemove(historyId);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [sendSuccess, historyId, onRemove]);
+
+  if (sendSuccess) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        className="w-full bg-white dark:bg-zinc-900 border border-emerald-500/30 rounded-2xl p-12 flex flex-col items-center justify-center shadow-sm"
+      >
+        <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mb-4">
+          <CheckCircle className="w-10 h-10 text-emerald-500" />
+        </div>
+        <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 mb-2">Mail Sent Successfully!</h2>
+        <p className="text-slate-500 dark:text-zinc-400 text-sm mb-6">Moving this to your recent outreach log...</p>
+      </motion.div>
+    );
+  }
+
+  if (sending) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="w-full bg-white dark:bg-zinc-900 border border-indigo-500/30 rounded-2xl p-12 flex flex-col items-center justify-center shadow-sm h-64"
+      >
+        <Clock className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
+        <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">Sending Email...</h2>
+        <p className="text-slate-500 dark:text-zinc-400 text-sm">Please wait while the system processes your request.</p>
+      </motion.div>
+    );
+  }
+
+
+
+  const englishText = editableEnglishBody;
+  const spanishText = editableSpanishBody;
   const gmailBodyText = spanishText && !englishText.includes(spanishText) 
     ? `${englishText}\n\n---\n\n${spanishText}`
     : englishText;
 
+  const getUpdatedResult = () => ({
+    ...result,
+    contact: {
+      ...(result.contact || {}),
+      email: toEmail
+    },
+    draft: {
+      ...result.draft,
+      subject: editableSubject,
+      english_body: activeTab === "english" ? editableEnglishBody : "",
+      spanish_body: activeTab === "spanish" ? editableSpanishBody : "",
+      whatsapp_draft: editableWhatsappBody,
+      body: activeTab === "english" ? editableEnglishBody : editableSpanishBody
+    }
+  });
+
   const handleSend = async () => {
+    if (!toEmail || !toEmail.trim()) {
+      setSendError("Please provide a recipient email address in the 'To:' field.");
+      return;
+    }
     setSending(true);
     setSendError(null);
     try {
-      await onSendManually(result, companyName, companyUrl, false, "System");
+      await onSendManually(getUpdatedResult(), companyName, companyUrl, false, "System");
       setSendSuccess("Mail sent");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to send email";
@@ -241,11 +374,33 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
     setSending(false);
   };
 
+  const handleSendViaSystem = () => {
+    if (!toEmail || !toEmail.trim()) {
+      setSendError("Please provide a recipient email address in the 'To:' field.");
+      return;
+    }
+    
+    // Open the default custom mail app instantly (mailto:)
+    const bodyText = activeTab === "english" ? editableEnglishBody : activeTab === "spanish" ? editableSpanishBody : editableWhatsappBody;
+    const mailtoLink = `mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(editableSubject)}&body=${encodeURIComponent(bodyText)}`;
+    window.location.href = mailtoLink;
+    
+    // Log to backend in the background without freezing the UI
+    onSendManually(getUpdatedResult(), companyName, companyUrl, true, "System").catch(console.error);
+    
+    // Show success immediately
+    setSendSuccess("Mail sent");
+  };
+
   const handleSendAutomatically = async () => {
+    if (!toEmail || !toEmail.trim()) {
+      setSendError("Please provide a recipient email address in the 'To:' field.");
+      return;
+    }
     setSending(true);
     setSendError(null);
     try {
-      await onSendAutomatically(result, companyName, companyUrl);
+      await onSendAutomatically(getUpdatedResult(), companyName, companyUrl);
       setSendSuccess("Sent Automatically");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to send email";
@@ -279,27 +434,33 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
     >
       {/* Top row: Company Info + Contact */}
       <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-800 dark:text-zinc-100 font-black text-lg shadow-inner">
-                {(result.company_info?.company_name || companyName).charAt(0).toUpperCase()}
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-800 dark:text-zinc-100 font-black text-lg shadow-inner">
+                  {(result.company_info?.company_name || companyName).charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100">{result.company_info?.company_name || companyName}</h2>
+                  <p className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
+                    {result.company_info?.likely_industry || result.company_info?.industry || "Business"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100">{result.company_info?.company_name || companyName}</h2>
-                <p className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
-                  {result.company_info?.likely_industry || result.company_info?.industry || "Business"}
-                </p>
+              
+              <div className="flex items-center gap-2">
+                {result.package_suggestion && (
+                  <span className="px-3 py-1 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
+                    <Package className="w-3 h-3" /> {result.package_suggestion}
+                  </span>
+                )}
+                <button onClick={() => onRemove(historyId)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all" title="Delete Result">
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
-            {result.package_suggestion && (
-              <span className="px-3 py-1 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
-                <Package className="w-3 h-3" /> {result.package_suggestion}
-              </span>
-            )}
-          </div>
 
           <p className="text-slate-500 dark:text-zinc-400 text-sm leading-relaxed mb-5">
-            {result.company_info?.summary || result.company_info?.what_they_do || "Company information loading..."}
+            {result.company_info?.summary || result.company_info?.what_they_do || "Company information gathered successfully."}
           </p>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -331,11 +492,20 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
             <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
-              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Emails</p>
-              <div className="flex flex-col gap-1">
-                {result.company_info?.extracted_emails ? result.company_info.extracted_emails.split(',').map((e: string, i: number) => (
-                  <a key={i} href={`mailto:${e.trim()}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-mono break-all">{e.trim()}</a>
-                )) : <p className="text-sm text-slate-500 dark:text-zinc-500 font-mono">None</p>}
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1.5">Emails</p>
+              <div className="flex flex-col gap-1.5">
+                {result.company_info?.extracted_emails ? (
+                  (Array.isArray(result.company_info.extracted_emails) 
+                    ? result.company_info.extracted_emails 
+                    : result.company_info.extracted_emails.split(',')
+                  )
+                  .filter((e: string) => e.trim().toLowerCase() !== "test@example.com" && e.trim().toLowerCase() !== "support.crm@serphawk.in")
+                  .map((e: string, i: number) => (
+                    <CopyableEmailItem key={i} email={e.trim()} />
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-zinc-500 font-mono">None</p>
+                )}
               </div>
             </div>
             <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
@@ -353,6 +523,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
                 {result.company_info?.company_social_media?.twitter ? <a href={result.company_info.company_social_media.twitter} target="_blank" rel="noreferrer" className="px-3 py-1 bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300 rounded-md text-xs font-bold hover:bg-slate-200 transition-colors">X / Twitter</a> : null}
                 {result.company_info?.company_social_media?.instagram ? <a href={result.company_info.company_social_media.instagram} target="_blank" rel="noreferrer" className="px-3 py-1 bg-pink-500/10 text-pink-600 dark:bg-pink-500/20 dark:text-pink-400 rounded-md text-xs font-bold hover:bg-pink-500/20 transition-colors">Instagram</a> : null}
                 {result.company_info?.company_social_media?.facebook ? <a href={result.company_info.company_social_media.facebook} target="_blank" rel="noreferrer" className="px-3 py-1 bg-blue-600/10 text-blue-700 dark:bg-blue-600/20 dark:text-blue-400 rounded-md text-xs font-bold hover:bg-blue-600/20 transition-colors">Facebook</a> : null}
+                {result.company_info?.company_social_media?.youtube ? <a href={result.company_info.company_social_media.youtube} target="_blank" rel="noreferrer" className="px-3 py-1 bg-red-600/10 text-red-700 dark:bg-red-600/20 dark:text-red-400 rounded-md text-xs font-bold hover:bg-red-600/20 transition-colors flex items-center gap-1"><Youtube className="w-3 h-3" /> YouTube</a> : null}
                 {result.company_info?.extracted_linkedin && !result.company_info?.company_social_media?.linkedin ? <a href={result.company_info.extracted_linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn (Fallback)</a> : null}
                 {(!result.company_info?.company_social_media || Object.values(result.company_info.company_social_media).every(v => !v)) && !result.company_info?.extracted_linkedin && <span className="text-sm text-slate-500 dark:text-zinc-500">No social profiles detected.</span>}
               </div>
@@ -416,67 +587,47 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
           )}
         </div>
 
-      {/* Recommended Services */}
-      {result.recommended_services && result.recommended_services.length > 0 && (
-        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center gap-2 mb-5">
-            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
-              <Zap className="w-4 h-4" />
+        {/* Source Pages / Reference URLs */}
+        {result.company_info?.source_pages && result.company_info.source_pages.length > 0 && (
+          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center gap-2 mb-5">
+              <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
+                <Globe className="w-4 h-4" />
+              </div>
+              <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Source Pages / Reference URLs</p>
             </div>
-            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Recommended Services</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {result.company_info.source_pages.map((url: string, i: number) => (
+                <a key={i} href={url} target="_blank" rel="noreferrer" className="p-3 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl hover:border-slate-300 dark:hover:border-zinc-600 hover:bg-slate-100 dark:hover:bg-zinc-900 transition-all flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-zinc-300 truncate">
+                  <Globe className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                  <span className="truncate">{url}</span>
+                </a>
+              ))}
+            </div>
           </div>
-          {result.email_hook && (
-            <p className="text-sm text-slate-800 dark:text-zinc-100 italic mb-5 bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-800">
-              &ldquo;{result.email_hook}&rdquo;
-            </p>
-          )}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {result.recommended_services && result.recommended_services.map((svc, i: number) => {
-              const service = typeof svc === 'string' ? { service_name: svc } : svc;
-              return (
-                <div key={i} className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl hover:border-slate-300 dark:border-zinc-600 hover:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 transition-all">
-                  <div className="flex items-start gap-3">
-                    <div className="p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 shrink-0 mt-0.5">
-                      <TrendingUp className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-800 dark:text-zinc-100 text-sm">{service.service_name}</p>
-                      <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{service.why_relevant}</p>
-                      {service.expected_impact && (
-                        <p className="text-[10px] text-green-400 font-bold mt-2 flex items-center gap-1">
-                          <CheckCircle className="w-3 h-3" /> {service.expected_impact}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+        )}
 
       {/* Extracted Client Services */}
       {result.extracted_services && result.extracted_services.length > 0 && (
-        <div className="bg-white dark:bg-zinc-900 border border-emerald-500/30 rounded-2xl p-6 shadow-sm">
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-2 mb-5">
-            <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">
+            <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
               <Store className="w-4 h-4" />
             </div>
-            <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Services Offered by This Company</p>
-            <span className="ml-auto text-[9px] font-black text-emerald-500/60 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Services Offered by This Company</p>
+            <span className="ml-auto text-[9px] font-black text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2 py-0.5 rounded-full">
               {result.extracted_services.length} detected
             </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {result.extracted_services.map((svc, i) => (
-              <div key={i} className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all">
+              <div key={i} className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl hover:border-slate-300 dark:hover:border-zinc-600 hover:bg-slate-100 dark:hover:bg-zinc-900 transition-all">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2 py-0.5 rounded-full">
                     {svc.category}
                   </span>
                   {svc.approx_cost > 0 && (
-                    <span className="ml-auto text-[9px] font-black text-amber-400 flex items-center gap-0.5">
+                    <span className="ml-auto text-[9px] font-black text-amber-500 flex items-center gap-0.5">
                       <DollarSign className="w-2.5 h-2.5" />
                       {svc.approx_cost.toLocaleString()}
                       {svc.cost_is_estimated ? ' est.' : ''}
@@ -488,7 +639,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[10px] text-emerald-500/50 font-medium">
+          <p className="mt-3 text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
             ✦ These services have been saved to the client profile and Marketplace catalog.
           </p>
         </div>
@@ -504,18 +655,82 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
               </div>
               <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Generated Email Draft</p>
             </div>
-            <CopyButton text={activeTab === "english" ? (result.draft.english_body || result.draft.body || "") : (result.draft.spanish_body || "")} />
+            <CopyButton text={activeTab === "english" ? editableEnglishBody : activeTab === "spanish" ? editableSpanishBody : editableWhatsappBody} />
           </div>
 
-          {result.draft.subject && (
-            <div className="mb-4 p-3 bg-slate-50 dark:bg-zinc-950 rounded-xl border border-slate-100 dark:border-zinc-800 flex items-center justify-between">
-              <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Subject</p>
-                <p className="text-sm font-bold text-slate-800 dark:text-zinc-100">{result.draft.subject}</p>
-              </div>
-              <CopyButton text={result.draft.subject} />
+          {result.email_hook && (
+            <div className="mb-6 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-xl p-4 shadow-sm">
+              <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Suggested Hook</p>
+              <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{result.email_hook}</p>
             </div>
           )}
+
+          {/* Send Box at the top */}
+          <div className="mb-6 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 space-y-4 shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100 group relative">
+                  <span className="text-slate-500 w-12">From:</span>
+                  <input 
+                    type="text" 
+                    value="vkanjali@serphawk.com"
+                    readOnly
+                    disabled
+                    className="flex-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 px-3 py-1.5 text-sm text-slate-500 cursor-not-allowed focus:outline-none transition-all"
+                  />
+                  <div className="absolute bottom-full left-14 mb-2 hidden group-hover:block bg-slate-800 text-white text-xs rounded-lg px-3 py-1.5 shadow-lg whitespace-nowrap z-50 font-medium">
+                    Automated sending email address
+                    <div className="absolute -bottom-1 left-4 w-2 h-2 bg-slate-800 rotate-45"></div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100">
+                  <span className="text-slate-500 w-12">To:</span>
+                  <input 
+                    type="text" 
+                    value={toEmail}
+                    onChange={(e) => setToEmail(e.target.value)}
+                    placeholder="recipient@example.com"
+                    className="flex-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 transition-all"
+                  />
+                </div>
+              </div>
+
+                <div className="flex flex-col gap-2">
+                  <div className="w-full px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-center gap-2 shadow-sm">
+                    <motion.div
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ type: "spring", stiffness: 200, damping: 10, delay: 0.5 }}
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                    </motion.div>
+                    Mail Sent Automatically via AI
+                  </div>
+                  <button
+                    onClick={handleSendViaSystem}
+                    disabled={sending || !!sendSuccess}
+                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-50 dark:bg-zinc-950 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    Send via System
+                  </button>
+                </div>
+              </div>
+              {sendError && (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+                  {sendError}
+                </div>
+              )}
+            </div>
+          <div className="mb-4">
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Subject</p>
+            <input 
+              type="text"
+              value={editableSubject}
+              onChange={(e) => setEditableSubject(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-zinc-950 rounded-xl border border-slate-100 dark:border-zinc-800 p-3 text-sm font-bold text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-indigo-500 transition-all"
+            />
+          </div>
 
           <div className="flex gap-2 mb-4">
             {[
@@ -535,124 +750,70 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
             ))}
           </div>
 
-          <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl p-5 text-sm text-slate-700 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed max-h-80 overflow-auto font-mono custom-scrollbar">
-            {activeTab === "english"
-              ? (result.draft.english_body || result.draft.body || "No English draft generated")
-              : activeTab === "spanish"
-              ? (result.draft.spanish_body || "No Spanish draft generated")
-              : (result.draft.whatsapp_draft || "No WhatsApp draft generated")}
+          <div className="mb-6">
+            <textarea
+              value={activeTab === "english" ? editableEnglishBody : activeTab === "spanish" ? editableSpanishBody : editableWhatsappBody}
+              onChange={(e) => {
+                if (activeTab === "english") setEditableEnglishBody(e.target.value);
+                else if (activeTab === "spanish") setEditableSpanishBody(e.target.value);
+                else setEditableWhatsappBody(e.target.value);
+              }}
+              rows={12}
+              className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl p-5 text-sm text-slate-700 dark:text-zinc-200 leading-relaxed font-mono custom-scrollbar focus:outline-none focus:border-indigo-500 transition-all resize-y"
+            />
           </div>
 
-          {contactEmail && (
-            <div className="space-y-6">
-              <div className="grid gap-3 md:grid-cols-3">
-                {buildProspectingPoints(result).map((point, idx) => {
-                  const Icon = point.icon;
-                  return (
-                    <div key={idx} className="rounded-3xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 p-4 text-sm text-slate-700 dark:text-zinc-200 shadow-sm">
-                      <div className="flex items-center gap-2 mb-3 text-slate-500 dark:text-zinc-400">
-                        <Icon className="w-4 h-4" />
-                        <span className="font-bold uppercase tracking-[0.18em] text-[10px]">{point.title}</span>
-                      </div>
-                      <p className="leading-snug text-slate-600 dark:text-zinc-300 font-medium">{point.body}</p>
+          <div className="space-y-6">
+            <div className="grid gap-3 md:grid-cols-3">
+              {buildProspectingPoints(result).map((point, idx) => {
+                const Icon = point.icon;
+                return (
+                  <div key={idx} className="rounded-3xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 p-4 text-sm text-slate-700 dark:text-zinc-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3 text-slate-500 dark:text-zinc-400">
+                      <Icon className="w-4 h-4" />
+                      <span className="font-bold uppercase tracking-[0.18em] text-[10px]">{point.title}</span>
                     </div>
-                  );
-                })}
+                    <p className="leading-snug text-slate-600 dark:text-zinc-300 font-medium">{point.body}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 space-y-3">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Next Follow-up Note</label>
+                <input
+                  type="text"
+                  value={followUpTitle}
+                  onChange={(e) => setFollowUpTitle(e.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-white"
+                  placeholder="Follow-up title"
+                />
               </div>
-
-              <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 space-y-4">
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100">
-                      <Send className="w-4 h-4 text-slate-500 dark:text-zinc-400" />
-                      <span>Ready to send to: {contactEmail}</span>
-                    </div>
-                    <p className="text-xs text-slate-400 mt-1">Use your Gmail credentials to send the outreach email instantly.</p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={handleSendAutomatically}
-                      disabled={sending || !!sendSuccess}
-                      className="px-4 py-2 rounded-xl bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-indigo-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                    >
-                      {sending ? <Clock className="w-3.5 h-3.5 animate-spin" /> : sendSuccess ? <CheckCircle className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
-                      Send Automatically
-                    </button>
-                    <button
-                      onClick={handleSend}
-                      disabled={sending || !!sendSuccess}
-                      className="px-4 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 font-bold text-xs flex items-center gap-2 hover:bg-slate-50 dark:bg-zinc-950 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                    >
-                      <UserPlus className="w-3.5 h-3.5" />
-                      Send via System
-                    </button>
-                    <a
-                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${contactEmail || ''}&su=${encodeURIComponent(result.draft?.subject || '')}&body=${encodeURIComponent(gmailBodyText)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => onSendManually(result, companyName, companyUrl, true, "Gmail").catch(console.error)}
-                      className="px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-amber-600 transition-all shrink-0"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      Send through Gmail
-                    </a>
-                    {result.draft?.whatsapp_draft && result.contact?.phone_number && (
-                      <a
-                        href={`https://wa.me/${result.contact.phone_number.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(result.draft.whatsapp_draft)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => onSendManually(result, companyName, companyUrl, true, "WhatsApp").catch(console.error)}
-                        className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 hover:bg-emerald-600 transition-all shrink-0"
-                      >
-                        <MessageCircle className="w-3.5 h-3.5" /> Send via WhatsApp
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Next Follow-up Note</label>
-                    <input
-                      type="text"
-                      value={followUpTitle}
-                      onChange={(e) => setFollowUpTitle(e.target.value)}
-                      className="mt-2 w-full rounded-xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-white"
-                      placeholder="Follow-up title"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Note for the sales team</label>
-                    <textarea
-                      value={followUpNote}
-                      onChange={(e) => setFollowUpNote(e.target.value)}
-                      rows={4}
-                      className="mt-2 w-full rounded-2xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 px-3 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-white resize-none"
-                      placeholder="Capture the follow-up summary, next steps, or internal action items."
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <button
-                      onClick={handleSaveFollowUp}
-                      disabled={savingFollowUp || !followUpNote.trim()}
-                      className="px-4 py-2 rounded-xl bg-sky-500 text-slate-800 dark:text-zinc-100 font-bold text-xs hover:bg-sky-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {savingFollowUp ? "Saving..." : "Save Follow-Up"}
-                    </button>
-                    {followUpStatus && (
-                      <p className="text-xs text-slate-500 dark:text-zinc-400">{followUpStatus}</p>
-                    )}
-                  </div>
-                  {sendError && (
-                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-                      {sendError}
-                    </div>
-                  )}
-                </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Note for the sales team</label>
+                <textarea
+                  value={followUpNote}
+                  onChange={(e) => setFollowUpNote(e.target.value)}
+                  rows={4}
+                  className="mt-2 w-full rounded-2xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 px-3 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-white resize-none"
+                  placeholder="Capture the follow-up summary, next steps, or internal action items."
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  onClick={handleSaveFollowUp}
+                  disabled={savingFollowUp || !followUpNote.trim()}
+                  className="px-4 py-2 rounded-xl bg-sky-500 text-slate-800 dark:text-zinc-100 font-bold text-xs hover:bg-sky-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingFollowUp ? "Saving..." : "Save Follow-Up"}
+                </button>
+                {followUpStatus && (
+                  <p className="text-xs text-slate-500 dark:text-zinc-400">{followUpStatus}</p>
+                )}
               </div>
             </div>
-          )}
+          </div>
         </div>
       )}
     </motion.div>
@@ -660,6 +821,7 @@ function ResultCard({ result, companyName, companyUrl, onSendManually, onSendAut
 }
 
 export default function EmailAgentPage() {
+  const [mode, setMode] = useState<"single" | "bulk">("single");
   const [companyName, setCompanyName] = useState("");
   const [inputValue, setInputValue] = useState("");
   
@@ -672,30 +834,125 @@ export default function EmailAgentPage() {
   const [resultsHistory, setResultsHistory] = useState<ResearchResult[]>([]);
 
   const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
+  const [emailTotals, setEmailTotals] = useState({ totalSent: 0, autoCount: 0, manualCount: 0 });
   const [emailsLoading, setEmailsLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expandedCompanies, setExpandedCompanies] = useState<string[]>([]);
+  const [selectedEmails, setSelectedEmails] = useState<number[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Added for Gmail Agent Migration: Allows user to dismiss a specific research result and refocuses on the input field seamlessly
+  const handleRemoveResult = async (id: string) => {
+    setResultsHistory(prev => prev.filter(r => r.id !== id));
+    if (!id.startsWith("res-")) {
+      try {
+        await fetch(`${API_BASE_URL}/email-agent/results/${id}`, { method: 'DELETE' });
+      } catch (e) {
+        console.error("Failed to delete result from DB", e);
+      }
+    }
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Updated for Gmail Agent Migration: Smoothly scrolls the specific chat container to the bottom instead of the whole page
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: "smooth"
+      });
+    }
   };
 
   useEffect(() => {
     scrollToBottom();
   }, [messages, chatStep]);
 
+
+
   useEffect(() => {
-    fetch(`${API_BASE_URL}/sent-emails?limit=30`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) return setSentEmails(data);
-        if (data?.emails && Array.isArray(data.emails)) return setSentEmails(data.emails);
-        return setSentEmails([]);
-      })
-      .catch(() => setSentEmails([]))
-      .finally(() => setEmailsLoading(false));
+    const fetchEmailsData = () => {
+      fetch(`${API_BASE_URL}/sent-emails?limit=30`, { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && typeof data === 'object' && !Array.isArray(data) && 'totalSent' in data) {
+            setEmailTotals({
+              totalSent: data.totalSent,
+              autoCount: data.autoCount,
+              manualCount: data.manualCount
+            });
+            return setSentEmails(data.emails || []);
+          }
+          if (Array.isArray(data)) {
+            setEmailTotals({
+              totalSent: data.length,
+              manualCount: data.filter(e => e.manual).length,
+              autoCount: data.length - data.filter(e => e.manual).length
+            });
+            return setSentEmails(data);
+          }
+          if (data?.emails && Array.isArray(data.emails)) {
+            setEmailTotals({
+              totalSent: data.emails.length,
+              manualCount: data.emails.filter((e: any) => e.manual).length,
+              autoCount: data.emails.length - data.emails.filter((e: any) => e.manual).length
+            });
+            return setSentEmails(data.emails);
+          }
+          return setSentEmails([]);
+        })
+        .catch(() => setSentEmails([]))
+        .finally(() => setEmailsLoading(false));
+    };
+
+    fetchEmailsData();
+    const interval = setInterval(fetchEmailsData, 10000); // Refresh every 10 seconds
+    return () => clearInterval(interval);
   }, []);
+
+  const handleDeleteEmail = async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    // Optimistic delete
+    setSentEmails(prev => prev.filter(email => email.id !== id));
+    setEmailTotals(prev => ({
+      ...prev,
+      totalSent: Math.max(0, prev.totalSent - 1)
+    }));
+    try {
+      await fetch(`${API_BASE_URL}/sent-emails/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error("Failed to delete email", err);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedEmails.length === 0) return;
+    const idsToDelete = [...selectedEmails];
+    
+    // Optimistic UI update
+    setSentEmails(prev => prev.filter(email => !idsToDelete.includes(email.id)));
+    setEmailTotals(prev => ({
+      ...prev,
+      totalSent: Math.max(0, prev.totalSent - idsToDelete.length)
+    }));
+    setSelectedEmails([]);
+
+    // Background delete using bulk endpoint
+    try {
+      await fetch(`${API_BASE_URL}/sent-emails/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: idsToDelete })
+      });
+    } catch (err) {
+      console.error("Failed to bulk delete emails", err);
+    }
+  };
 
   const handleSendInput = async () => {
     if (chatStep === "website_url") {
@@ -724,12 +981,13 @@ export default function EmailAgentPage() {
 
   const performResearch = async (name: string, url: string) => {
     try {
+      const cleanUrl = url.replace(/^https?:\/\//i, "");
       const res = await fetch(`${API_BASE_URL}/smart-research`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           company_name: name,
-          company_url: url || null,
+          company_url: cleanUrl || null,
         }),
       });
       
@@ -747,12 +1005,12 @@ export default function EmailAgentPage() {
         ];
       });
       
-      setResultsHistory(prev => [
-        { id: `res-${Date.now()}`, resultData: data, companyName: name, companyUrl: url },
-        ...prev
+      setResultsHistory([
+        { id: data.db_id ? String(data.db_id) : `res-${Date.now()}`, resultData: data, companyName: name, companyUrl: url }
       ]);
       
-      setChatStep("company_name");
+      // Updated for Gmail Agent Migration: Moved step to 'website_url' (previously 'company_name') to enable multi-company sequential searches
+      setChatStep("website_url");
       setCompanyName("");
       setTimeout(() => {
         setMessages(prev => [
@@ -769,7 +1027,7 @@ export default function EmailAgentPage() {
           { id: `msg-${Date.now()}`, role: "ai", type: "text", content: `Error: Something went wrong. Please try again.` }
         ];
       });
-      setChatStep("company_name");
+      setChatStep("website_url");
     }
   };
 
@@ -793,7 +1051,8 @@ export default function EmailAgentPage() {
     try {
       const serviceNames = (result.recommended_services || []).map((s) => (typeof s === 'string' ? s : s.service_name || '')).filter(Boolean).join(", ");
       const fallbackEmail = Array.isArray(result.company_info?.contacts) ? result.company_info.contacts[0]?.email : undefined;
-      const extractedEmail = result.company_info?.extracted_emails?.split(",")[0]?.trim();
+      const extractedEmailsArray = Array.isArray(result.company_info?.extracted_emails) ? result.company_info.extracted_emails : (result.company_info?.extracted_emails?.split(",") || []);
+      const extractedEmail = extractedEmailsArray[0]?.trim();
       const emailToSend = result.contact?.email || fallbackEmail || extractedEmail || undefined;
       if (!emailToSend) {
         throw new Error("No recipient email available to send.");
@@ -824,11 +1083,33 @@ export default function EmailAgentPage() {
       }
 
       const data = await res.json();
-      fetch(`${API_BASE_URL}/sent-emails?limit=30`)
+      fetch(`${API_BASE_URL}/sent-emails?limit=30`, { cache: 'no-store' })
         .then((r) => r.json())
         .then((d) => {
-          if (Array.isArray(d)) return setSentEmails(d);
-          if (d?.emails && Array.isArray(d.emails)) return setSentEmails(d.emails);
+          if (d && typeof d === 'object' && !Array.isArray(d) && 'totalSent' in d) {
+            setEmailTotals({
+              totalSent: d.totalSent,
+              autoCount: d.autoCount,
+              manualCount: d.manualCount
+            });
+            return setSentEmails(d.emails || []);
+          }
+          if (Array.isArray(d)) {
+            setEmailTotals({
+              totalSent: d.length,
+              manualCount: d.filter(e => e.manual).length,
+              autoCount: d.length - d.filter(e => e.manual).length
+            });
+            return setSentEmails(d);
+          }
+          if (d?.emails && Array.isArray(d.emails)) {
+            setEmailTotals({
+              totalSent: d.emails.length,
+              manualCount: d.emails.filter((e: any) => e.manual).length,
+              autoCount: d.emails.length - d.emails.filter((e: any) => e.manual).length
+            });
+            return setSentEmails(d.emails);
+          }
           return setSentEmails([]);
         })
         .catch(() => setSentEmails([]));
@@ -867,9 +1148,7 @@ export default function EmailAgentPage() {
     }
   };
 
-  const totalSent = sentEmails.length;
-  const manualCount = sentEmails.filter((e) => e.manual).length;
-  const autoCount = totalSent - manualCount;
+  const { totalSent, manualCount, autoCount } = emailTotals;
 
   return (
     <div className="relative min-h-[calc(100vh-4rem)] flex flex-col items-center overflow-hidden rounded-3xl">
@@ -888,6 +1167,20 @@ export default function EmailAgentPage() {
             <div>
               <h1 className="text-xl font-black text-slate-800 dark:text-zinc-100">Email Agent</h1>
               <p className="text-slate-500 dark:text-zinc-400 text-xs font-medium">Research • Match • Draft</p>
+            </div>
+            <div className="flex bg-slate-200 dark:bg-zinc-800 p-1 rounded-lg ml-4">
+              <button
+                onClick={() => setMode("single")}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${mode === "single" ? "bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700"}`}
+              >
+                Single
+              </button>
+              <button
+                onClick={() => setMode("bulk")}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${mode === "bulk" ? "bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700"}`}
+              >
+                Bulk
+              </button>
             </div>
           </div>
           <div className="flex gap-4 hidden sm:flex">
@@ -909,7 +1202,9 @@ export default function EmailAgentPage() {
         </div>
 
         {/* Chatbot Interface Top Box - HAS BLUR and WHITE TEXT */}
-        <div className="relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl w-full max-w-4xl mx-auto flex flex-col h-[400px] shadow-sm">
+        {mode === "single" ? (
+          <>
+            <div className="relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl w-full max-w-4xl mx-auto flex flex-col h-[400px] shadow-sm">
           <PageGuide
             pageKey="email-agent"
             title="How the Email Agent works"
@@ -927,7 +1222,7 @@ export default function EmailAgentPage() {
             <Bot className="w-4 h-4 text-slate-800 dark:text-zinc-100" /> AI Research Assistant
           </div>
           
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar" ref={chatContainerRef}>
             <AnimatePresence initial={false}>
               {messages.map((msg) => (
                 <motion.div 
@@ -962,6 +1257,7 @@ export default function EmailAgentPage() {
               </div>
               
               <input
+                ref={inputRef}
                 type="url"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
@@ -986,8 +1282,14 @@ export default function EmailAgentPage() {
           <div className="w-full mt-8 space-y-8">
             <h3 className="font-black text-xl text-slate-800 dark:text-zinc-100 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 backdrop-blur-md px-4 py-2 rounded-xl inline-block shadow-lg border border-slate-100 dark:border-zinc-800">Research Results</h3>
             {resultsHistory.map(res => (
-              <ResultCard key={res.id} result={res.resultData} companyName={res.companyName} companyUrl={res.companyUrl} onSendManually={handleSendManually} onSendAutomatically={handleSendAutomatically} onSaveFollowUp={handleSaveFollowUp} />
+              <ResultCard key={res.id} historyId={res.id} result={res.resultData} companyName={res.companyName} companyUrl={res.companyUrl} onSendManually={handleSendManually} onSendAutomatically={handleSendAutomatically} onSaveFollowUp={handleSaveFollowUp} onRemove={handleRemoveResult} />
             ))}
+          </div>
+        )}
+          </>
+        ) : (
+          <div className="w-full max-w-4xl mx-auto">
+            <GmailAgentLoop />
           </div>
         )}
 
@@ -999,6 +1301,32 @@ export default function EmailAgentPage() {
                 <Mail className="w-4 h-4" />
               </div>
               <h3 className="font-black text-[15px] text-slate-800 dark:text-zinc-100">Recent Email Outreach</h3>
+              {sentEmails.length > 0 && (
+                <div className="flex items-center gap-2 ml-4 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 rounded-lg shadow-sm">
+                  <input 
+                    type="checkbox"
+                    checked={selectedEmails.length === sentEmails.length && sentEmails.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedEmails(sentEmails.map(email => email.id));
+                      } else {
+                        setSelectedEmails([]);
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Select All</span>
+                </div>
+              )}
+              {selectedEmails.length > 0 && (
+                <button 
+                  onClick={handleDeleteSelected}
+                  className="ml-2 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-600 dark:bg-red-500/20 dark:hover:bg-red-500/30 dark:text-red-400 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete ({selectedEmails.length})
+                </button>
+              )}
             </div>
             <span className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
               {totalSent} total
@@ -1013,79 +1341,122 @@ export default function EmailAgentPage() {
               <p className="font-bold text-sm text-slate-400">No emails sent yet</p>
             </div>
           ) : (
-            <div className="space-y-2 relative z-10">
-              {sentEmails.map((email, index) => {
-                const isExpanded = expandedId === email.id;
+                 <div className="w-full mt-4 space-y-4">
+              {Object.entries(
+                sentEmails.reduce((acc, email) => {
+                  const key = email.company_name && email.company_name !== "Unknown Company" ? email.company_name : "Prospect";
+                  if (!acc[key]) acc[key] = [];
+                  acc[key].push(email);
+                  return acc;
+                }, {} as Record<string, SentEmail[]>)
+              ).map(([company, emails]) => {
+                const isCompanyExpanded = expandedCompanies.includes(company);
                 return (
-                  <motion.div
-                    key={email.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.03 }}
-                    className="border border-slate-100 dark:border-zinc-800 rounded-2xl overflow-hidden hover:border-slate-300 dark:border-zinc-600 transition-all bg-slate-50 dark:bg-zinc-950"
-                  >
-                    <button
-                      onClick={() => setExpandedId(isExpanded ? null : email.id)}
-                      className="w-full flex items-center justify-between p-4 hover:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 transition-colors text-left"
+                  <div key={company} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden shadow-sm">
+                    <div 
+                      className="flex items-center justify-between px-6 py-4 bg-slate-50 dark:bg-zinc-950 border-b border-slate-100 dark:border-zinc-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-zinc-900 transition-colors"
+                      onClick={() => setExpandedCompanies(prev => prev.includes(company) ? prev.filter(c => c !== company) : [...prev, company])}
                     >
-                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                          email.manual ? "bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100" : "bg-blue-500 text-slate-800 dark:text-zinc-100"
-                        }`}>
-                          {email.manual ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                      <div className="flex items-center gap-4">
+                        <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20">
+                          <Building2 className="w-5 h-5" />
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-slate-800 dark:text-zinc-100 text-sm truncate">{email.subject || "(No subject)"}</p>
-                          <div className="flex items-center gap-3 mt-0.5">
-                            <span className="text-xs text-slate-500 dark:text-zinc-400 truncate flex items-center gap-1">
-                              <Send className="w-3 h-3 shrink-0" /> {email.to_email}
-                            </span>
+                        <div>
+                          <h4 className="font-black text-lg text-slate-800 dark:text-zinc-100">{company}</h4>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{emails.length} Emails Extracted & Sent</span>
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 shrink-0 ml-4">
-                        <span className={`text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full ${
-                          email.manual ? "bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100" : "bg-blue-500 text-slate-800 dark:text-zinc-100"
-                        }`}>
-                          {email.manual ? "Manual" : "Auto"}
-                        </span>
-                        {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-800 dark:text-zinc-100" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                      <div className="flex items-center gap-3">
+                         <div className="flex items-center">
+                           <input 
+                              type="checkbox" 
+                              checked={emails.every(e => selectedEmails.includes(e.id))}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                if (e.target.checked) setSelectedEmails(prev => [...new Set([...prev, ...emails.map(em => em.id)])]);
+                                else setSelectedEmails(prev => prev.filter(id => !emails.map(em => em.id).includes(id)));
+                              }}
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4 mr-4"
+                              title="Select all in company"
+                           />
+                         </div>
+                         {isCompanyExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
                       </div>
-                    </button>
+                    </div>
 
-                    {isExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        className="border-t border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 p-5"
-                      >
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {email.english_body && (
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">English Body</p>
-                                <CopyButton text={email.english_body} />
+                    {isCompanyExpanded && (
+                      <div className="p-6 bg-slate-50/30 dark:bg-zinc-950/30 space-y-4">
+                        {emails.map(email => (
+                          <div key={email.id} className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl p-5 shadow-sm relative group hover:border-indigo-200 transition-colors">
+                            <div className="absolute top-5 right-5 flex items-center gap-2">
+                              <input 
+                                type="checkbox" 
+                                checked={selectedEmails.includes(email.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) setSelectedEmails(prev => [...prev, email.id]);
+                                  else setSelectedEmails(prev => prev.filter(id => id !== email.id));
+                                }}
+                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
+                              />
+                              <button onClick={(e) => handleDeleteEmail(e, email.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors" title="Delete">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            
+                            <div className="flex flex-wrap items-center gap-6 mb-4 pr-20">
+                              <div className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-950 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-zinc-800">
+                                <Mail className="w-4 h-4 text-slate-400" />
+                                <span className="text-sm font-black text-slate-700 dark:text-zinc-200">{email.to_email}</span>
                               </div>
-                              <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl p-4 text-sm text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed font-mono custom-scrollbar">
-                                {email.english_body}
+                              <div className="flex flex-col justify-center">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Status</p>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${
+                                  email.status === "Opened" ? "bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400" :
+                                  email.status === "Replied" ? "bg-green-100 text-green-600 dark:bg-green-500/20 dark:text-green-400" :
+                                  "bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400"
+                                }`}>
+                                  {email.status || "Sent"}
+                                </span>
+                              </div>
+                              <div className="flex flex-col justify-center">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Subject</p>
+                                <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">{email.subject || "(No subject)"}</span>
                               </div>
                             </div>
-                          )}
-                          {email.spanish_body && (
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Spanish Body</p>
-                                <CopyButton text={email.spanish_body} />
+
+                            {(email.english_body || email.spanish_body) && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {email.english_body && (
+                                  <div>
+                                    <div className="flex justify-between items-center mb-1">
+                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">English Draft</p>
+                                      <CopyButton text={email.english_body} />
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl p-4 text-[13px] text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar font-sans leading-relaxed">
+                                      {email.english_body}
+                                    </div>
+                                  </div>
+                                )}
+                                {email.spanish_body && (
+                                  <div>
+                                    <div className="flex justify-between items-center mb-1">
+                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Spanish Draft</p>
+                                      <CopyButton text={email.spanish_body} />
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl p-4 text-[13px] text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar font-sans leading-relaxed">
+                                      {email.spanish_body}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                              <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl p-4 text-sm text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed font-mono custom-scrollbar">
-                                {email.spanish_body}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </motion.div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     )}
-                  </motion.div>
+                  </div>
                 );
               })}
             </div>

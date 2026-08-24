@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useRole } from "@/context/RoleContext";
+import { API_BASE_URL } from "@/config";
 import { AdminTopbar } from "@/components/AdminTopbar";
 import { Sidebar } from "@/components/Sidebar";
 import { 
@@ -49,7 +50,7 @@ export default function PipelinePage() {
 
   const fetchDeals = async () => {
     try {
-      const url = role === "SalesManager" ? `http://localhost:8000/deals?user_id=${userId}` : "http://localhost:8000/deals";
+      const url = role === "SalesManager" ? `${API_BASE_URL}/deals?user_id=${userId}` : `${API_BASE_URL}/deals`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch deals");
       const data = await res.json();
@@ -63,7 +64,7 @@ export default function PipelinePage() {
 
   const fetchClients = async () => {
     try {
-      const res = await fetch("http://localhost:8000/clients");
+      const res = await fetch(`${API_BASE_URL}/clients`);
       if (res.ok) {
         const data = await res.json();
         setClients(data.clients || []);
@@ -97,7 +98,7 @@ export default function PipelinePage() {
     setDeals(updatedDeals);
 
     try {
-      const res = await fetch(`http://localhost:8000/deals/${draggedDeal.id}`, {
+      const res = await fetch(`${API_BASE_URL}/deals/${draggedDeal.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stage: newStage })
@@ -114,7 +115,7 @@ export default function PipelinePage() {
   const handleAddDeal = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("http://localhost:8000/deals", {
+      const res = await fetch(`${API_BASE_URL}/deals`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
