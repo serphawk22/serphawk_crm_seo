@@ -319,14 +319,6 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         current_client_id.set(None)
         current_salesperson_id.set(None)
         current_endpoint.set(request.url.path)
-        # Try to infer tenant_id from header
-        tenant_header = request.headers.get("X-Tenant-ID")
-        if tenant_header and tenant_header.isdigit():
-            current_tenant_id.set(int(tenant_header))
-        else:
-            current_tenant_id.set(None)
-
-
         # Try to infer user from X-User-ID header, query parameter, or JWT token
         user_header = request.headers.get("X-User-ID")
         if user_header and user_header.isdigit():
@@ -346,6 +338,32 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
                         current_salesperson_id.set(int(user_id))
                 except:
                     pass
+                    
+        # Now securely resolve tenant_id based on the authenticated user.
+        # This prevents malicious spoofing of X-Tenant-ID and fixes legacy missing headers.
+        user_id_val = current_salesperson_id.get()
+        tenant_header = request.headers.get("X-Tenant-ID")
+        
+        if user_id_val:
+            with Session(engine) as session:
+                user_obj = session.get(User, user_id_val)
+                if user_obj and user_obj.role != "SuperAdmin":
+                    # Force tenant_id to be the user's actual tenant in the DB
+                    current_tenant_id.set(user_obj.tenant_id)
+                elif user_obj and user_obj.role == "SuperAdmin":
+                    # SuperAdmins can optionally impersonate a tenant via header
+                    if tenant_header and tenant_header.isdigit():
+                        current_tenant_id.set(int(tenant_header))
+                    else:
+                        current_tenant_id.set(None)
+                else:
+                    current_tenant_id.set(None)
+        else:
+            # Unauthenticated requests (if allowed) fall back to header (insecure, but preserving legacy behavior)
+            if tenant_header and tenant_header.isdigit():
+                current_tenant_id.set(int(tenant_header))
+            else:
+                current_tenant_id.set(None)
         
         # Try to infer client_id from path parameters
         # Example paths: /clients/123/something or /projects/456 where we might need to lookup client
