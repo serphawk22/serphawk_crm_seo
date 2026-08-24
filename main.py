@@ -8238,48 +8238,77 @@ async def radar_search(body: RadarSearchRequest):
             
         if not place:
             fallback_location = body.location_hint
+            website_to_scrape = body.website
             
-            if not fallback_location and body.website:
+            # Extract website from query if not provided explicitly
+            if not website_to_scrape:
+                import re
+                urls = re.findall(r'(https?://\S+|www\.\S+|\b\w+\.\w{2,}\b)', body.query)
+                for u in urls:
+                    if "." in u and len(u.split(".")[-1]) >= 2:
+                        website_to_scrape = u
+                        break
+            
+            if not fallback_location and website_to_scrape:
                 try:
                     from modules.scraper import scrape_website
                     from openai import AsyncOpenAI
                     import os
                     
-                    scraped_text = await scrape_website(body.website)
+                    try:
+                        scraped_text = await scrape_website(website_to_scrape)
+                    except Exception:
+                        scraped_text = ""
+                        
                     client_ai = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
                     resp = await client_ai.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[
-                            {"role": "system", "content": "Extract the physical city and state, or full address, of the business from the website content. Only return the location string (e.g. 'Miami, FL' or '123 Main St, Austin, TX'). If not found, reply 'UNKNOWN'."},
-                            {"role": "user", "content": scraped_text[:10000]}
+                            {"role": "system", "content": "You are a data extraction assistant. Return ONLY the primary physical city and state (e.g. 'Miami, FL' or 'San Francisco, CA') for the given company. Use the provided website content if available, otherwise use your internal knowledge. If totally unknown, reply 'UNKNOWN'."},
+                            {"role": "user", "content": f"Company: {body.company_name or body.query}\nWebsite: {website_to_scrape}\n\nWebsite Content:\n{scraped_text[:10000]}"}
                         ],
                         temperature=0
                     )
                     extracted = resp.choices[0].message.content.strip()
-                    if extracted and extracted != "UNKNOWN":
+                    if extracted and extracted.upper() != "UNKNOWN":
                         fallback_location = extracted
                 except Exception as e:
                     print(f"Failed to scrape/extract location: {e}")
             
+            geocode_place = None
             if fallback_location:
                 geocode_place = await find_place(fallback_location)
-                if geocode_place:
-                    place = {
-                        "place_id": geocode_place.get("place_id", "synthetic_id"),
-                        "name": body.company_name or (body.query.split()[0] if body.query else "Target Business"),
-                        "address": geocode_place.get("address", fallback_location),
-                        "lat": geocode_place.get("lat"),
-                        "lng": geocode_place.get("lng"),
-                        "website": body.website or "",
-                        "phone": "",
-                        "rating": 5.0,
-                        "reviews": 1,
-                        "types": [],
-                        "business_status": "OPERATIONAL"
-                    }
+                
+            if geocode_place:
+                place = {
+                    "place_id": geocode_place.get("place_id", "synthetic_id"),
+                    "name": body.company_name or (body.query.split()[0] if body.query else "Target Business"),
+                    "address": geocode_place.get("address", fallback_location),
+                    "lat": geocode_place.get("lat"),
+                    "lng": geocode_place.get("lng"),
+                    "website": website_to_scrape or "",
+                    "phone": "",
+                    "rating": 5.0,
+                    "reviews": 1,
+                    "types": [],
+                    "business_status": "OPERATIONAL"
+                }
+            else:
+                # Ultimate fallback: Never 404. Default to New York, let user drag map.
+                place = {
+                    "place_id": "synthetic_default_id",
+                    "name": body.company_name or (body.query.split()[0] if body.query else "Target Business"),
+                    "address": "Location not found (Defaulted to NY)",
+                    "lat": 40.7128,
+                    "lng": -74.0060,
+                    "website": website_to_scrape or "",
+                    "phone": "",
+                    "rating": 5.0,
+                    "reviews": 1,
+                    "types": [],
+                    "business_status": "OPERATIONAL"
+                }
 
-        if not place:
-            raise HTTPException(status_code=404, detail="Business not found on Google Maps")
         return {"place": place}
     except HTTPException:
         raise
