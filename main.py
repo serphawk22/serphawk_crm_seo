@@ -2170,6 +2170,39 @@ def create_user(body: CreateUserRequest, session: Session = Depends(get_session)
         session.commit()
     return {"user": _user_dict(user)}
 
+@app.get("/users/me")
+def get_current_user_profile(session: Session = Depends(get_session)):
+    user_id = current_salesperson_id.get()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"user": _user_dict(user)}
+
+class UserUpdateMe(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+
+@app.put("/users/me")
+def update_current_user(body: UserUpdateMe, session: Session = Depends(get_session)):
+    user_id = current_salesperson_id.get()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    if body.name is not None:
+        user.name = body.name
+    if body.phone is not None:
+        user.phone = body.phone
+        
+    session.commit()
+    session.refresh(user)
+    return {"user": _user_dict(user)}
+
 
 @app.get("/users")
 def list_users(role: Optional[str] = None, session: Session = Depends(get_session)):
