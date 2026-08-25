@@ -524,6 +524,14 @@ def on_startup():
             print("Successfully added sidebar_preferences to users table.")
     except Exception as e:
         print("sidebar_preferences column already exists or error:", e)
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);"))
+            conn.commit()
+            print("Successfully added phone to users table.")
+    except Exception as e:
+        print("phone column already exists or error:", e)
         
     try:
         with engine.connect() as conn:
@@ -1500,7 +1508,7 @@ def _verify_password(plain: str, user: User) -> bool:
 
 
 def _user_dict(u: User) -> dict:
-    return {"id": u.id, "email": u.email, "name": u.name, "role": _normalize_role(u.role), "tenant_id": u.tenant_id}
+    return {"id": u.id, "email": u.email, "name": u.name, "phone": getattr(u, "phone", None), "role": _normalize_role(u.role), "tenant_id": u.tenant_id}
 
 
 def _client_dict(cp: ClientProfile, session: Session) -> dict:
