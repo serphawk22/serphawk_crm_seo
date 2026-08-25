@@ -671,41 +671,51 @@ Return ONLY valid JSON matching this structure:
 def process_whatsapp_command(message: str, previous_state: dict = None, image_data: dict = None):
     """
     Analyzes an incoming WhatsApp message (or image) to determine the CRM action using OpenAI function calling.
-    If image_data is provided (dict with 'base64' and 'mime_type'), it uses GPT-4o's vision capabilities.
-    If previous_state is provided, it merges the new message into the existing context.
+    Supports conversational replies, CRM actions, radar search, call pitch, and client research.
     """
     try:
         client = get_openai_client()
-        system_prompt = """
-        You are an intelligent AI assistant embedded in a CRM system, processing commands from the
-        business owner sent via WhatsApp — often as informal voice message transcripts.
+        system_prompt = """You are *Hawk* 🦅 — a friendly, sharp, and conversational AI assistant built into the SerpHawk CRM. You work directly with the business owner via WhatsApp.
 
-        Your STRICT rules:
-        1. ALWAYS call a tool if the user's intent matches a CRM action, NO MATTER how badly formatted, incomplete, or ambiguous the data is.
-        2. NEVER ask conversational clarifying questions (e.g., "Could you confirm the email address?"). The backend will automatically ask the user for confirmation. Just extract what you can and call the tool!
-        3. AGGRESSIVELY correct speech-to-text errors. For example, if you see "VarsitAdre, gmail.com", format it as "VarsitAdre@gmail.com".
-        4. If a required parameter is vaguely hinted at, make your best guess.
-        5. "add john doe from acme" means add_entity. "book a meeting with..." means schedule_meeting.
-        6. "note that ravi is interested" means add_note. "create a task to follow up" means add_task.
-        """
-        
+Your personality:
+- Warm, professional, and efficient. Like a brilliant assistant who actually gets things done.
+- Respond naturally to greetings, thank-yous, and small talk. Be brief and human.
+- When a CRM action is detected, call the right tool immediately — don't ask unnecessary questions.
+- Always confirm you understood voice notes by briefly echoing what you heard.
+
+Your CRM capabilities:
+1. **add_entity** — Add a Lead, Client, or Contact. Trigger on: "add john from acme", "new client xyz", "met someone named Ravi from Infosys".
+2. **schedule_meeting** — Schedule a meeting/call. Trigger on: "book meeting with X tomorrow 5pm", "call Y on Monday".
+3. **add_note** — Add a note to a client/lead. Trigger on: "note that X is interested", "log that Y called back".
+4. **add_task** — Create a task/reminder. Trigger on: "remind me to follow up", "create task to send proposal".
+5. **radar_search** — Search for competitors or research a business via radar. Trigger on: "radar on acme.com", "research competitors for X", "analyze mysore restaurant market".
+6. **get_call_pitch** — Get the AI call pitch for a client. Trigger on: "get pitch for X", "what do I say to Y", "call pitch for Acme".
+7. **research_client** — Run AI research on a client/lead/website. Trigger on: "research X", "find info about acme.com", "what does Y company do".
+
+Rules:
+- ALWAYS call a tool if user intent matches any of the 7 actions above — no matter how informal or broken the speech-to-text is.
+- Aggressively fix speech-to-text errors (e.g., "varsit adre gmail dot com" → "varsitadre@gmail.com").
+- For pure conversation (greetings, questions about CRM status, thank-yous) — respond naturally without calling any tool. Keep it brief.
+- Never say "I cannot" or "I don't have access to". Just do it.
+"""
+
         if previous_state:
-            system_prompt += f"\n\nIMPORTANT CONTEXT:\nThe user is providing a correction or additional information for their PREVIOUS command.\nPrevious intent: {previous_state.get('action')}\nPrevious parameters: {previous_state.get('parameters')}\n\nMERGE the user's new message into these previous parameters. Keep the same tool intent (unless they explicitly change it), update any fields they mentioned, and RETURN THE FULL SET of merged parameters."
+            system_prompt += f"\n\nCONTEXT: User is correcting/updating a previous command.\nPrevious intent: {previous_state.get('action')}\nPrevious parameters: {previous_state.get('parameters')}\nMERGE the new message into the previous parameters, keep same tool unless explicitly changed."
 
         tools = [
             {
                 "type": "function",
                 "function": {
                     "name": "add_entity",
-                    "description": "Adds a new person or company to the CRM. Use this for Leads, Clients, or Contacts.",
+                    "description": "Adds a new Lead, Client, or Contact to the CRM.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "name": {"type": "string", "description": "The name of the company or person."},
+                            "name": {"type": "string", "description": "Name of the company or person."},
                             "email": {"type": "string", "description": "Email address."},
                             "phone": {"type": "string", "description": "Phone number."},
-                            "website": {"type": "string", "description": "Website URL, if provided."},
-                            "notes": {"type": "string", "description": "Any initial notes about them."}
+                            "website": {"type": "string", "description": "Website URL."},
+                            "notes": {"type": "string", "description": "Initial notes."}
                         },
                         "required": ["name"]
                     }
@@ -715,12 +725,12 @@ def process_whatsapp_command(message: str, previous_state: dict = None, image_da
                 "type": "function",
                 "function": {
                     "name": "schedule_meeting",
-                    "description": "Schedules a meeting or call.",
+                    "description": "Schedules a meeting or call with a lead or client.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "target_name": {"type": "string", "description": "The name of the lead or company to meet with."},
-                            "time_str": {"type": "string", "description": "The time or date mentioned (e.g. 'tomorrow at 5pm')."}
+                            "target_name": {"type": "string", "description": "Name of the lead/client to meet."},
+                            "time_str": {"type": "string", "description": "When (e.g. 'tomorrow at 5pm', 'Monday 3pm')."}
                         },
                         "required": ["target_name", "time_str"]
                     }
@@ -734,29 +744,71 @@ def process_whatsapp_command(message: str, previous_state: dict = None, image_da
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "target_name": {"type": "string", "description": "The name of the client or company to add a note to."},
-                            "content": {"type": "string", "description": "The full content/body of the note."}
+                            "target_name": {"type": "string", "description": "Name of the client or lead."},
+                            "content": {"type": "string", "description": "The note content."}
                         },
                         "required": ["target_name", "content"]
                     }
                 }
             },
-
             {
                 "type": "function",
                 "function": {
                     "name": "add_task",
-                    "description": "Creates a new task or to-do in the CRM. Use when the owner wants to create a reminder, follow-up task, or work item.",
+                    "description": "Creates a task or to-do in the CRM.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "title": {"type": "string", "description": "A short title for the task."},
-                            "description": {"type": "string", "description": "More detail about what the task involves."},
-                            "due_date": {"type": "string", "description": "When the task should be done (e.g. 'tomorrow', 'July 20', '2026-07-20')."},
-                            "priority": {"type": "string", "description": "Priority level: Low, Medium, High, or Urgent. Default Medium."},
-                            "client_name": {"type": "string", "description": "Name of the client this task is related to, if any."}
+                            "title": {"type": "string", "description": "Short task title."},
+                            "description": {"type": "string", "description": "Task details."},
+                            "due_date": {"type": "string", "description": "Due date (e.g. 'tomorrow', 'July 20')."},
+                            "priority": {"type": "string", "description": "Low, Medium, High, or Urgent."},
+                            "client_name": {"type": "string", "description": "Related client name if any."}
                         },
                         "required": ["title"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "radar_search",
+                    "description": "Runs a radar/competitor analysis on a website, keyword, or business type. Use for competitor research, local market analysis, or finding businesses in a niche.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "The website URL, keyword, or business niche to research (e.g. 'acme.com', 'SEO agencies in Hyderabad', 'restaurants in Mysore')."},
+                            "location": {"type": "string", "description": "Optional location context (e.g. 'Hyderabad', 'Bangalore')."}
+                        },
+                        "required": ["query"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_call_pitch",
+                    "description": "Retrieves or generates an AI-crafted call pitch for a specific client or lead.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "client_name": {"type": "string", "description": "Name of the client or lead to get the pitch for."}
+                        },
+                        "required": ["client_name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "research_client",
+                    "description": "Runs AI-powered research on a client, lead, or website and returns a summary with company info, contacts, and recommended services.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "Client/lead name or website URL to research (e.g. 'Acme Corp', 'acme.com')."}
+                        },
+                        "required": ["query"]
                     }
                 }
             }
@@ -765,10 +817,10 @@ def process_whatsapp_command(message: str, previous_state: dict = None, image_da
         user_content = []
         if message:
             user_content.append({"type": "text", "text": message})
-        
+
         if image_data:
             if not message:
-                user_content.append({"type": "text", "text": "Please extract the CRM entity details from this image (e.g. business card, ID) and trigger the add_entity action with the extracted information."})
+                user_content.append({"type": "text", "text": "Please extract all details from this image (business card, ID, document) and add them to the CRM using add_entity."})
             user_content.append({
                 "type": "image_url",
                 "image_url": {
@@ -776,11 +828,9 @@ def process_whatsapp_command(message: str, previous_state: dict = None, image_da
                 }
             })
 
-        # If we only have text, we can just pass a string or the array.
-        # But if we have an image, we must pass the array.
         messages = [{"role": "system", "content": system_prompt}]
         if user_content:
-            messages.append({"role": "user", "content": user_content if image_data else message or "No text provided."})
+            messages.append({"role": "user", "content": user_content if image_data else (message or "Hello!")})
 
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -788,9 +838,9 @@ def process_whatsapp_command(message: str, previous_state: dict = None, image_da
             tools=tools,
             tool_choice="auto"
         )
-        
+
         msg = response.choices[0].message
-        
+
         if msg.tool_calls:
             tool_call = msg.tool_calls[0]
             import json as _json
@@ -804,12 +854,14 @@ def process_whatsapp_command(message: str, previous_state: dict = None, image_da
             return {
                 "action": "none",
                 "parameters": {},
-                "reply": msg.content or "I didn't quite catch that. Try saying something like 'add lead Microsoft microsoft.com'."
+                "reply": msg.content or "Hey! I'm Hawk, your CRM assistant. Try: 'add lead Acme Corp', 'radar on acme.com', or send a business card photo! 🦅"
             }
     except Exception as e:
         print(f"Error in process_whatsapp_command: {e}")
         return {
             "action": "error",
             "parameters": {},
-            "reply": "Sorry, I ran into an error processing your command."
+            "reply": "Sorry, I ran into an error. Try again in a moment! 🙏"
         }
+
+

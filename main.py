@@ -10961,7 +10961,7 @@ async def whatsapp_webhook(
     # Inject tenant context so downstream DB operations attach to the right tenant
     current_tenant_id.set(auth_user.tenant_id)
     
-    msg_text = Body.strip().lower()
+    msg_text = Body.strip().lower()  # Note: refreshed after voice transcription below
     
     # 2. Check for existing session (pending action or active live chat)
     ws_session = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == From)).first()
@@ -11013,6 +11013,7 @@ async def whatsapp_webhook(
             voice_transcript = transcribe_voice_message(MediaUrl0, account_sid, auth_token)
             # Use the transcript as the body for downstream processing
             Body = voice_transcript
+            msg_text = voice_transcript.strip().lower()  # IMPORTANT: refresh msg_text with actual transcript
             print(f"[Voice] Final transcript: {voice_transcript}")
         except Exception as ve:
             print(f"[Voice] Transcription failed: {ve}")
@@ -11327,9 +11328,179 @@ async def whatsapp_webhook(
     # 3. No pending session (or a correction) — parse via AI
     print(f"[WhatsApp Flow] Processing command: {Body}")
     result = process_whatsapp_command(Body, previous_state, image_data)
-    print(f"[WhatsApp Flow] AI Result: {result}")
+    action_name_top = result.get("action", "none")
+    print(f"[WhatsApp Flow] AI Result: action={action_name_top}, params={result.get('parameters')}")
+
+    # ── Instant-execute read-only actions (no YES/NO confirm needed) ──────────
+    if action_name_top == "radar_search":
+        params_r = result["parameters"]
+        query_r = params_r.get("query", "")
+        location_r = params_r.get("location", "")
+        full_query = f"{query_r} {location_r}".strip()
+        print(f"[WhatsApp Radar] Starting research on: {full_query}")
+        send_whatsapp_message(f"🔍 Running radar research on *{full_query}*... give me a moment ⏳", From)
+        try:
+            import asyncio
+            from modules.scraper import scrape_website
+            from modules.llm_engine import analyze_content
+            # If it looks like a URL, scrape it; otherwise use AI knowledge directly
+            if query_r.startswith("http") or "." in query_r.split()[0]:
+                url = query_r if query_r.startswith("http") else f"https://{query_r}"
+                try:
+                    scraped = asyncio.run(scrape_website(url))
+                    text_to_analyze = scraped.get("text", "") or scraped.get("raw", "")
+                    analysis = analyze_content(f"Website: {url}\n\n{text_to_analyze}")
+                except Exception:
+                    analysis = analyze_content(f"Research this website and business: {url}")
+            else:
+                # Keyword/market — use AI knowledge
+                analysis = analyze_content(f"Market/keyword research: {full_query}\nProvide a market analysis, key players, recommended services.")
+
+            company = analysis.get("company_name", full_query)
+            what_they_do = analysis.get("what_they_do", "N/A")
+            services = analysis.get("key_value_props", [])
+            contacts = analysis.get("contacts", [])
+
+            radar_msg = (
+                f"🔭 *Radar Report: {company}*\n\n"
+                f"📋 *What they do:*\n{what_they_do}\n\n"
+            )
+            if services:
+                radar_msg += f"💡 *Relevant services for them:*\n" + "\n".join([f"• {s}" for s in services[:5]]) + "\n\n"
+            if contacts:
+                radar_msg += f"👥 *Key contacts found:*\n"
+                for c in contacts[:3]:
+                    name = c.get("name") or "Unknown"
+                    role = c.get("role") or ""
+                    email = c.get("email") or ""
+                    phone = c.get("phone_number") or ""
+                    radar_msg += f"• {name}" + (f" ({role})" if role else "") + (f" — {email}" if email else "") + (f" 📞 {phone}" if phone else "") + "\n"
+            radar_msg += "\n💬 Reply *pitch for [name]* to get a call pitch, or *add [name]* to CRM!"
+            send_whatsapp_message(radar_msg, From)
+        except Exception as re:
+            print(f"[WhatsApp Radar] Error: {re}")
+            send_whatsapp_message(f"❌ Radar research failed for *{full_query}*. Try again or check the name/URL.", From)
+        return EMPTY_TWIML
+
+    elif action_name_top == "get_call_pitch":
+        params_p = result["parameters"]
+        client_name_p = params_p.get("client_name", "")
+        print(f"[WhatsApp Pitch] Getting pitch for: {client_name_p}")
+        try:
+            from database import ClientProfile, Lead
+            from sqlalchemy import or_
+            # Fuzzy search across clients and leads
+            search_term = f"%{client_name_p}%"
+            client_p = session.exec(
+                select(ClientProfile).where(ClientProfile.company_name.ilike(search_term))
+            ).first()
+            lead_p = None
+            if not client_p:
+                lead_p = session.exec(
+                    select(Lead).where(or_(Lead.name.ilike(search_term), Lead.company.ilike(search_term)))
+                ).first()
+
+            entity_name = None
+            pitch_text = None
+            if client_p:
+                entity_name = client_p.company_name
+                if client_p.call_pitch_text:
+                    pitch_text = client_p.call_pitch_text
+                else:
+                    from modules.llm_engine import get_openai_client as _oai
+                    _c = _oai()
+                    _r = _c.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": f"Generate a short, punchy 30-second cold-call pitch for a digital marketing agency (SerpHawk) reaching out to {entity_name}. Keep it under 120 words. Be conversational and warm."}]
+                    )
+                    pitch_text = _r.choices[0].message.content
+                    client_p.call_pitch_text = pitch_text
+                    session.commit()
+            elif lead_p:
+                entity_name = lead_p.name or lead_p.company or client_name_p
+                from modules.llm_engine import get_openai_client as _oai
+                _c = _oai()
+                _r = _c.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": f"Generate a short, punchy 30-second cold-call pitch for a digital marketing agency (SerpHawk) reaching out to {entity_name}. Keep it under 120 words. Be conversational and warm."}]
+                )
+                pitch_text = _r.choices[0].message.content
+
+            if pitch_text:
+                pitch_msg = f"📞 *Call Pitch for {entity_name}:*\n\n{pitch_text}"
+            else:
+                pitch_msg = f"❌ Couldn't find *{client_name_p}* in your CRM. Add them first or try a different name."
+            send_whatsapp_message(pitch_msg, From)
+        except Exception as pe:
+            print(f"[WhatsApp Pitch] Error: {pe}")
+            send_whatsapp_message(f"❌ Error getting pitch for *{client_name_p}*. Try again!", From)
+        return EMPTY_TWIML
+
+    elif action_name_top == "research_client":
+        params_rc = result["parameters"]
+        query_rc = params_rc.get("query", "")
+        print(f"[WhatsApp Research] Researching: {query_rc}")
+        send_whatsapp_message(f"🔬 Researching *{query_rc}*... give me a moment ⏳", From)
+        try:
+            from database import ClientProfile, Lead
+            from sqlalchemy import or_
+            from modules.llm_engine import analyze_content
+            # Check if it's a URL or a name
+            if query_rc.startswith("http") or ("." in query_rc and " " not in query_rc):
+                url = query_rc if query_rc.startswith("http") else f"https://{query_rc}"
+                try:
+                    import asyncio
+                    from modules.scraper import scrape_website
+                    scraped = asyncio.run(scrape_website(url))
+                    text = scraped.get("text", "") or scraped.get("raw", "")
+                    analysis = analyze_content(f"Website: {url}\n\n{text}")
+                except Exception:
+                    analysis = analyze_content(f"Research this company from their website: {url}")
+            else:
+                # Name-based — check DB first for extra context, then AI research
+                search_term = f"%{query_rc}%"
+                client_rc = session.exec(select(ClientProfile).where(ClientProfile.company_name.ilike(search_term))).first()
+                lead_rc = session.exec(select(Lead).where(or_(Lead.name.ilike(search_term), Lead.company.ilike(search_term)))).first()
+                extra_ctx = ""
+                if client_rc:
+                    extra_ctx = f"CRM info — website: {client_rc.website or 'unknown'}, email: {client_rc.email or 'unknown'}, notes: {client_rc.notes or ''}"
+                elif lead_rc:
+                    extra_ctx = f"CRM info — website: {lead_rc.website or 'unknown'}, email: {lead_rc.email or 'unknown'}"
+                analysis = analyze_content(f"Research this company: {query_rc}\n{extra_ctx}")
+
+            company = analysis.get("company_name", query_rc)
+            what_they_do = analysis.get("what_they_do", "N/A")
+            services = analysis.get("key_value_props", [])
+            contacts = analysis.get("contacts", [])
+            socials = analysis.get("company_social_media", {})
+
+            res_msg = (
+                f"🔬 *Research: {company}*\n\n"
+                f"📋 *About:*\n{what_they_do}\n\n"
+            )
+            if services:
+                res_msg += "💡 *Best services for them:*\n" + "\n".join([f"• {s}" for s in services[:4]]) + "\n\n"
+            if contacts:
+                res_msg += "👥 *Key contacts:*\n"
+                for c in contacts[:3]:
+                    n = c.get("name") or "?"
+                    r = c.get("role") or ""
+                    e = c.get("email") or ""
+                    p = c.get("phone_number") or ""
+                    res_msg += f"• {n}" + (f" ({r})" if r else "") + (f" — {e}" if e else "") + (f" 📞{p}" if p else "") + "\n"
+            soc_links = [v for v in socials.values() if v]
+            if soc_links:
+                res_msg += "\n🌐 *Social:* " + " | ".join(soc_links[:3])
+            res_msg += "\n\n💬 Reply *pitch for [name]* or *add [name]* to add to CRM!"
+            send_whatsapp_message(res_msg, From)
+        except Exception as rce:
+            print(f"[WhatsApp Research] Error: {rce}")
+            send_whatsapp_message(f"❌ Research failed for *{query_rc}*. Try again!", From)
+        return EMPTY_TWIML
     
-    if result["action"] not in ["none", "error"]:
+    # action_name_top was already checked for instant actions above; remaining confirm-flow actions
+    INSTANT_ACTIONS = {"radar_search", "get_call_pitch", "research_client"}
+    if result["action"] not in ["none", "error"] and result["action"] not in INSTANT_ACTIONS:
         # Save pending session to await YES/NO
         try:
             if ws_session:
