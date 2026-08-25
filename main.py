@@ -279,8 +279,15 @@ def _audit_log_changes(session, flush_context):
 def check_tenant_limit(session: Session, limit_type: str):
     # This must be called inside the endpoint, it reads current_tenant_id
     t_id = current_tenant_id.get()
-    if not t_id:
+    u_id = current_salesperson_id.get()
+    
+    if not t_id or not u_id:
         return
+        
+    user = session.get(User, u_id)
+    if not user or user.role != "Demo":
+        return
+        
     tenant = session.exec(select(Tenant).where(Tenant.id == t_id)).first()
     if not tenant or not tenant.is_trial:
         return
