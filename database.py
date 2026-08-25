@@ -101,6 +101,7 @@ class User(SQLModel, table=True):
     password: str
     hashed_password: str = Field(default="")
     name: Optional[str] = None
+    phone: Optional[str] = Field(default=None, max_length=50)
     role: str = Field(default="Client") # Admin, Employee, Client
     is_active: bool = Field(default=True)
     status: str = Field(default="Active")
