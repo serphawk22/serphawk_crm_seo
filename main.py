@@ -10953,7 +10953,8 @@ async def whatsapp_webhook(
         print(f"[WhatsApp] Unauthorized sender {From} tried to use the bot.")
         return EMPTY_TWIML
         
-    if auth_user.role not in ["Admin", "SuperAdmin", "SalesManager", "Employee"]:
+    allowed_roles = {"admin", "superadmin", "salesmanager", "employee"}
+    if (auth_user.role or "").lower().replace(" ", "") not in allowed_roles:
         print(f"[WhatsApp] Sender {From} authorized but lacks CRM bot role ({auth_user.role}).")
         return EMPTY_TWIML
         
