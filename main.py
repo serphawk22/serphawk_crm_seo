@@ -11332,6 +11332,15 @@ async def whatsapp_webhook(
     print(f"[WhatsApp Flow] AI Result: action={action_name_top}, params={result.get('parameters')}")
 
     # ── Instant-execute read-only actions (no YES/NO confirm needed) ──────────
+    INSTANT_ACTIONS = {"radar_search", "get_call_pitch", "research_client"}
+    if action_name_top in INSTANT_ACTIONS:
+        if ws_session:
+            try:
+                session.delete(ws_session)
+                session.commit()
+            except Exception:
+                session.rollback()
+
     if action_name_top == "radar_search":
         params_r = result["parameters"]
         query_r = params_r.get("query", "")
@@ -11580,6 +11589,14 @@ async def whatsapp_webhook(
     else:
         # Conversational reply or unrecognized input
         print("[WhatsApp Flow] Sending conversational fallback.")
+        if ws_session:
+            try:
+                session.delete(ws_session)
+                session.commit()
+                print("[WhatsApp Flow] Cleared stale pending session.")
+            except Exception:
+                session.rollback()
+
         reply = result.get(
             "reply",
             "🤖 I didn't quite understand that.\n\nTry:\n• _Add client Acme Corp_\n• _Schedule meeting with Ravi tomorrow at 3pm_\n• _Note that Blue Barrier is interested in SEO_\n• Or just send a voice note!"
