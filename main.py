@@ -3544,10 +3544,8 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
             max_tokens=800,
         )
         content = resp.choices[0].message.content.strip()
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-        elif content.startswith("```"):
-            content = content[3:-3].strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
             
         data = _json.loads(content)
         
@@ -7548,7 +7546,7 @@ Return ONLY valid JSON, no markdown."""
         )
         analysis_raw = resp.choices[0].message.content or ""
     except Exception as e:
-        analysis_raw = "{}"
+        raise HTTPException(status_code=500, detail=f"AI Analysis Failed: {str(e)}")
 
     # Parse LLM response
     try:
