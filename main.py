@@ -11331,15 +11331,24 @@ async def whatsapp_webhook(
     
     if result["action"] not in ["none", "error"]:
         # Save pending session to await YES/NO
-        new_session = WhatsAppSession(
-            phone_number=From,
-            pending_action=result["action"],
-            action_data=json.dumps(result["parameters"])
-        )
-        if ws_session:
-            session.delete(ws_session)
-        session.add(new_session)
-        session.commit()
+        try:
+            if ws_session:
+                session.delete(ws_session)
+                session.flush()  # flush delete before adding new row
+            new_session = WhatsAppSession(
+                phone_number=From,
+                pending_action=result["action"],
+                action_data=json.dumps(result["parameters"])
+            )
+            session.add(new_session)
+            session.commit()
+            print(f"[WhatsApp Flow] Session saved: action={result['action']}, params={result['parameters']}")
+        except Exception as db_err:
+            print(f"[WhatsApp Flow] ERROR saving session: {db_err}")
+            try:
+                session.rollback()
+            except Exception:
+                pass
 
         # ── Build rich confirmation message ───────────────────────────────
         action_name = result["action"]
@@ -11393,7 +11402,7 @@ async def whatsapp_webhook(
             )
 
         # ③ Proactively push the confirmation — no TwiML reliance
-        print("[WhatsApp Flow] Sending confirmation message to user.")
+        print(f"[WhatsApp Flow] Sending confirmation message to user: {confirm_msg[:80]}...")
         send_whatsapp_message(confirm_msg, From)
         return EMPTY_TWIML
 
