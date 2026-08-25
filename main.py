@@ -7991,21 +7991,38 @@ async def chatbot_message(
                     
                     company = client_context["company_name"] if client_context else "Unknown Visitor"
                     msg = f"🚨 *Live Chat Request!* 🚨\n\n*From:* {company}\n*Issue:* {issue_summary}\n\n*Chat History:*\n{request.chat_history or request.message}\n\nReply *YES* to claim this chat and talk directly to the visitor!"
-                    send_whatsapp_message(msg, "whatsapp:+919502901416")
                     
-                    # Store a pending action in WhatsAppSession so if they reply YES it triggers live chat
-                    from database import WhatsAppSession
-                    import json
-                    pending = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == "whatsapp:+919502901416")).first()
-                    if pending:
-                        session.delete(pending)
-                    new_pending = WhatsAppSession(
-                        phone_number="whatsapp:+919502901416",
-                        pending_action="claim_live_chat",
-                        action_data=json.dumps({"session_id": request.session_id}) if request.session_id else "{}"
-                    )
-                    session.add(new_pending)
-                    session.commit()
+                    from database import User
+                    admins = session.exec(select(User).where(User.role.in_(["SuperAdmin", "Admin"]))).all()
+                    
+                    admin_phones = []
+                    for adm in admins:
+                        if adm.phone:
+                            p = adm.phone.replace("whatsapp:", "").replace("+", "").replace("-", "").replace(" ", "").strip()
+                            admin_phones.append(f"whatsapp:+{p}")
+                            
+                    if not admin_phones:
+                        print("No admins with phone numbers found for live chat handoff.")
+                    else:
+                        for phone_str in set(admin_phones):
+                            try:
+                                send_whatsapp_message(msg, phone_str)
+                                
+                                # Store a pending action in WhatsAppSession so if they reply YES it triggers live chat
+                                from database import WhatsAppSession
+                                import json
+                                pending = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == phone_str)).first()
+                                if pending:
+                                    session.delete(pending)
+                                new_pending = WhatsAppSession(
+                                    phone_number=phone_str,
+                                    pending_action="claim_live_chat",
+                                    action_data=json.dumps({"session_id": request.session_id}) if request.session_id else "{}"
+                                )
+                                session.add(new_pending)
+                            except Exception as e:
+                                print(f"Failed to send to {phone_str}: {e}")
+                        session.commit()
                     
                 except Exception as e:
                     print("WhatsApp Chatbot Handoff Error:", e)
@@ -10941,10 +10958,26 @@ async def whatsapp_webhook(
             )
             return EMPTY_TWIML
 
-    # 1. Authorize sender
-    if not From.endswith("9502901416"):
+    # 1. Authorize sender dynamically
+    from database import User
+    from main import current_tenant_id
+    
+    sender_phone = From.replace("whatsapp:", "").replace("+", "").replace("-", "").replace(" ", "").strip()
+    match_str = sender_phone[-10:] if len(sender_phone) >= 10 else sender_phone
+    
+    auth_user = session.exec(select(User).where(User.phone.like(f"%{match_str}%"))).first()
+    
+    if not auth_user:
+        print(f"[WhatsApp] Unauthorized sender {From} tried to use the bot.")
         return EMPTY_TWIML
         
+    if auth_user.role not in ["Admin", "SuperAdmin", "SalesManager", "Employee"]:
+        print(f"[WhatsApp] Sender {From} authorized but lacks CRM bot role ({auth_user.role}).")
+        return EMPTY_TWIML
+        
+    # Inject tenant context so downstream DB operations attach to the right tenant
+    current_tenant_id.set(auth_user.tenant_id)
+    
     msg_text = Body.strip().lower()
     
     # 2. Check for existing session (pending action or active live chat)
