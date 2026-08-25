@@ -43,8 +43,21 @@ def send_whatsapp_message(message: str, to_number: str = None):
             data=payload, 
             auth=HTTPBasicAuth(account_sid, auth_token)
         )
-        response.raise_for_status()
-        print(f"Twilio WhatsApp message sent to {recipient}")
+        resp_json = {}
+        try:
+            resp_json = response.json()
+        except Exception:
+            pass
+        if response.ok:
+            sid = resp_json.get("sid", "?")
+            status = resp_json.get("status", "?")
+            error_code = resp_json.get("error_code")
+            error_msg = resp_json.get("error_message")
+            print(f"Twilio WhatsApp message sent to {recipient} | SID={sid} | status={status}" + 
+                  (f" | error_code={error_code} | error_msg={error_msg}" if error_code else ""))
+        else:
+            print(f"Twilio returned non-2xx {response.status_code}: {response.text}")
+            response.raise_for_status()
     except Exception as e:
         print(f"Failed to send Twilio WhatsApp message: {e}")
         if isinstance(e, requests.exceptions.HTTPError):
