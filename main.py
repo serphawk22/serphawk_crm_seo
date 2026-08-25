@@ -7548,7 +7548,7 @@ Return ONLY valid JSON, no markdown."""
         )
         analysis_raw = resp.choices[0].message.content or ""
     except Exception as e:
-        analysis_raw = "{}"
+        raise HTTPException(status_code=500, detail=f"AI Analysis Failed: {str(e)}")
 
     # Parse LLM response
     try:

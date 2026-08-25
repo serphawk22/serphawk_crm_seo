@@ -168,9 +168,14 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
       if (res.ok) {
         window.dispatchEvent(new CustomEvent('refresh-client-data'));
         // Trigger emails refetch if needed
+      } else {
+        const errData = await res.json().catch(() => null);
+        const msg = errData?.detail?.message || errData?.detail || "Failed to generate draft.";
+        throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(`Error: ${e.message}`);
     } finally {
       setIsGeneratingDraft(false);
     }
@@ -189,9 +194,14 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         const rData = await rRes.json();
         setRadarData(rData);
         (document.getElementById('compDomain') as HTMLInputElement).value = '';
+      } else {
+        const errData = await res.json().catch(() => null);
+        const msg = errData?.detail?.message || errData?.detail || "Failed to run competitor analysis.";
+        throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(`Error: ${e.message}`);
     } finally {
       setIsAnalyzingCompetitor(false);
     }
