@@ -10899,6 +10899,62 @@ async def whatsapp_webhook(
         media_type="application/xml"
     )
 
+    # 1. Authorize sender dynamically
+    from database import User
+    from main import current_tenant_id
+    
+    sender_phone = From.replace("whatsapp:", "").replace("+", "").replace("-", "").replace(" ", "").strip()
+    match_str = sender_phone[-10:] if len(sender_phone) >= 10 else sender_phone
+    
+    auth_user = session.exec(select(User).where(User.phone.like(f"%{match_str}%"))).first()
+    
+    if not auth_user:
+        print(f"[WhatsApp] Unauthorized sender {From} tried to use the bot.")
+        return EMPTY_TWIML
+        
+    if auth_user.role not in ["Admin", "SuperAdmin", "SalesManager", "Employee"]:
+        print(f"[WhatsApp] Sender {From} authorized but lacks CRM bot role ({auth_user.role}).")
+        return EMPTY_TWIML
+        
+    # Inject tenant context so downstream DB operations attach to the right tenant
+    current_tenant_id.set(auth_user.tenant_id)
+    
+    msg_text = Body.strip().lower()
+    
+    # 2. Check for existing session (pending action or active live chat)
+    ws_session = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == From)).first()
+    
+    # 2.0 Check Session Expiration & Authentication
+    if ws_session:
+        from datetime import datetime, timedelta
+        if datetime.utcnow() - ws_session.created_at > timedelta(hours=24):
+            session.delete(ws_session)
+            session.commit()
+            ws_session = None
+            
+    expected_key = os.environ.get("WHATSAPP_SECURITY_KEY")
+    if expected_key:
+        if not ws_session:
+            new_session = WhatsAppSession(
+                phone_number=From,
+                pending_action="auth"
+            )
+            session.add(new_session)
+            session.commit()
+            send_whatsapp_message("🔒 Security Key required. Please enter your passcode to access the CRM.", From)
+            return EMPTY_TWIML
+            
+        if ws_session.pending_action == "auth":
+            if Body.strip() == expected_key:
+                from datetime import datetime
+                ws_session.pending_action = None
+                ws_session.created_at = datetime.utcnow() # Reset timer for 24h
+                session.commit()
+                send_whatsapp_message("✅ Access Granted. Welcome to the CRM! What would you like to do? (e.g. 'Add lead John Doe from example.com')", From)
+            else:
+                send_whatsapp_message("❌ Incorrect Security Key. Access denied.", From)
+            return EMPTY_TWIML
+            
     # ── Step 0: Voice message detection & transcription ───────────────────
     # Twilio sets NumMedia >= 1 and MediaContentType0 = audio/* for voice notes.
     voice_transcript = None
@@ -10958,31 +11014,6 @@ async def whatsapp_webhook(
             )
             return EMPTY_TWIML
 
-    # 1. Authorize sender dynamically
-    from database import User
-    from main import current_tenant_id
-    
-    sender_phone = From.replace("whatsapp:", "").replace("+", "").replace("-", "").replace(" ", "").strip()
-    match_str = sender_phone[-10:] if len(sender_phone) >= 10 else sender_phone
-    
-    auth_user = session.exec(select(User).where(User.phone.like(f"%{match_str}%"))).first()
-    
-    if not auth_user:
-        print(f"[WhatsApp] Unauthorized sender {From} tried to use the bot.")
-        return EMPTY_TWIML
-        
-    if auth_user.role not in ["Admin", "SuperAdmin", "SalesManager", "Employee"]:
-        print(f"[WhatsApp] Sender {From} authorized but lacks CRM bot role ({auth_user.role}).")
-        return EMPTY_TWIML
-        
-    # Inject tenant context so downstream DB operations attach to the right tenant
-    current_tenant_id.set(auth_user.tenant_id)
-    
-    msg_text = Body.strip().lower()
-    
-    # 2. Check for existing session (pending action or active live chat)
-    ws_session = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == From)).first()
-    
     # 2.1 Handle Active Live Chat Messages
     if ws_session and ws_session.active_live_chat_session:
         print(f"[WhatsApp Flow] User is in active live chat session: {ws_session.active_live_chat_session}")
