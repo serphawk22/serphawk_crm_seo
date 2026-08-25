@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, AlertCircle, Rocket, CheckCircle2 } from "lucide-react";
+import { API_BASE_URL } from "@/config";
 
 export function GlobalLimitModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -26,8 +27,7 @@ export function GlobalLimitModal() {
   const handleRequestUpgrade = async () => {
     setIsSubmitting(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const res = await fetch(`${apiUrl}/tenant/request-upgrade`, {
+      const res = await fetch(`${API_BASE_URL}/tenant/request-upgrade`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ limit_type: limitType })

@@ -160,7 +160,8 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
         
         if (!searchRes.ok) {
           const errData = await searchRes.json().catch(() => null);
-          throw new Error(errData?.detail || "Failed to pinpoint client on Google Maps.");
+          const msg = errData?.detail?.message || errData?.detail || "Failed to pinpoint client on Google Maps.";
+          throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
         }
         const searchData = await searchRes.json();
         setFoundPlace(searchData.place);
@@ -188,7 +189,8 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
 
         if (!analyzeRes.ok) {
           const errData = await analyzeRes.json().catch(() => null);
-          throw new Error(errData?.detail || "Failed to analyze competitors.");
+          const msg = errData?.detail?.message || errData?.detail || "Failed to analyze competitors.";
+          throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
         }
         const analyzeData = await analyzeRes.json();
         setRadarResult(analyzeData);
@@ -226,7 +228,8 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
                 });
                 if (!searchRes.ok) {
                   const errData = await searchRes.json().catch(() => null);
-                  throw new Error(errData?.detail || "Failed to pinpoint on Google Maps.");
+                  const msg = errData?.detail?.message || errData?.detail || "Failed to pinpoint on Google Maps.";
+                  throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
                 }
                 const searchData = await searchRes.json();
                 setFoundPlace(searchData.place);
@@ -252,7 +255,8 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
                 });
                 if (!analyzeRes.ok) {
                   const errData = await analyzeRes.json().catch(() => null);
-                  throw new Error(errData?.detail || "Failed to analyze competitors.");
+                  const msg = errData?.detail?.message || errData?.detail || "Failed to analyze competitors.";
+                  throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
                 }
                 const analyzeData = await analyzeRes.json();
                 setRadarResult(analyzeData);
