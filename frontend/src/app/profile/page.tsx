@@ -110,7 +110,15 @@ export default function ProfilePage() {
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Your Profile</h1>
                 <p className="text-slate-500 dark:text-slate-400 mt-1">Manage your personal information and contact details.</p>
               </div>
-              <PageGuide pageId="profile" />
+              <PageGuide 
+                pageKey="profile" 
+                title="Your Profile" 
+                description="Update your personal details here." 
+                steps={[
+                  { icon: <UserIcon className="w-5 h-5 text-indigo-500" />, text: "Update your full name." },
+                  { icon: <Phone className="w-5 h-5 text-indigo-500" />, text: "Add your phone number to enable WhatsApp features." }
+                ]} 
+              />
             </div>
 
             <motion.div 
