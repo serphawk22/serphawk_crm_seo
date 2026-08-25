@@ -445,7 +445,7 @@ export function AdminTopbar() {
                 </div>
                 
                 <div className="py-2">
-                  <button className="flex items-center gap-3 w-full px-4 py-2 text-[13px] font-medium text-slate-600 dark:text-zinc-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
+                  <button onClick={() => { setUserMenuOpen(false); router.push("/profile"); }} className="flex items-center gap-3 w-full px-4 py-2 text-[13px] font-medium text-slate-600 dark:text-zinc-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
                     <User className="w-4 h-4" /> {t("common.profile")}
                   </button>
                   <button className="flex items-center gap-3 w-full px-4 py-2 text-[13px] font-medium text-slate-600 dark:text-zinc-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
