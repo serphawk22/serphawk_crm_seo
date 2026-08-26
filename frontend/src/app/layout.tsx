@@ -22,7 +22,7 @@ import SpaceAtmosphere from "@/components/SpaceAtmosphere";
 import TelemetryTracker from "@/components/TelemetryTracker";
 import Script from "next/script";
 import TopRightControls from "@/components/TopRightControls";
-import { GoogleOAuthProvider } from "@react-oauth/google";
+import GoogleProviderWrapper from "@/components/GoogleProviderWrapper";
 import { GlobalLimitModal } from "@/components/GlobalLimitModal";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
@@ -223,7 +223,7 @@ export default function RootLayout({
             `,
           }}
         />
-        <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID"}>
+        <GoogleProviderWrapper>
           <ThemeProvider>
             <I18nProvider>
               <LanguageProvider>
@@ -238,7 +238,7 @@ export default function RootLayout({
               </LanguageProvider>
             </I18nProvider>
           </ThemeProvider>
-        </GoogleOAuthProvider>
+        </GoogleProviderWrapper>
       </body>
     </html>
   );
