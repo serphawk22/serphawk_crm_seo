@@ -22,7 +22,6 @@ interface Invoice {
   total: number;
   status: string;
   due_date?: string;
-  currency?: string;
   notes?: string;
   line_items: any[];
   paid_at?: string;
@@ -45,17 +44,12 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [clients, setClients] = useState<any[]>([]);
   const [serviceRequests, setServiceRequests] = useState<any[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
-  const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
-  const [downloadingInvoice, setDownloadingInvoice] = useState<Invoice | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [filterStatus, setFilterStatus] = useState("All");
-  const [billCurrency, setBillCurrency] = useState<'MXN'|'INR'>('MXN');
-  const [error, setError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     client_id: "", service_request_id: "", amount: "",
@@ -63,74 +57,37 @@ export default function InvoicesPage() {
   });
   const [lineItems, setLineItems] = useState([{ description: "", amount: "" }]);
 
-  const [modalDataLoaded, setModalDataLoaded] = useState(false);
-
   useEffect(() => { 
     if (!authLoading) {
-      fetchInvoices(); 
+      fetchAll(); 
     }
   }, [authLoading]);
 
-  async function fetchInvoices() {
+  async function fetchAll() {
     setLoading(true);
-    setError(null);
     const invoiceUrl = isClient && clientId
       ? `${API_BASE_URL}/invoices?client_id=${clientId}`
       : `${API_BASE_URL}/invoices`;
-    try {
-      const inv = await fetch(invoiceUrl).then(r => r.json());
-      setInvoices(inv.invoices || []);
-    } catch (e) {
-      console.error(e);
-      setError("Failed to load invoices. Please refresh.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadModalData() {
-    if (modalDataLoaded || isClient) return;
-    try {
-      const [cl, sr, pr] = await Promise.all([
-        fetch(`${API_BASE_URL}/clients?per_page=500`).then(r => r.json()),
-        fetch(`${API_BASE_URL}/services/requests`).then(r => r.json()),
-        fetch(`${API_BASE_URL}/products?active_only=true`).then(r => r.json()),
-      ]);
-      setClients(cl.clients || []);
-      setServiceRequests(sr.requests || []);
-      setProducts(pr.products || []);
-      setModalDataLoaded(true);
-    } catch (e) { console.error(e); }
-  }
-
-  async function fetchAll() {
-    fetchInvoices();
+    const [inv, cl, sr] = await Promise.all([
+      fetch(invoiceUrl).then(r => r.json()),
+      isClient ? Promise.resolve({ clients: [] }) : fetch(`${API_BASE_URL}/clients?per_page=1000`).then(r => r.json()),
+      isClient ? Promise.resolve({ requests: [] }) : fetch(`${API_BASE_URL}/services/requests`).then(r => r.json()),
+    ]);
+    setInvoices(inv.invoices || []);
+    setClients(cl.clients || []);
+    setServiceRequests(sr.requests || []);
+    setLoading(false);
   }
 
   function downloadInvoice(inv: Invoice) {
-    setDownloadingInvoice(inv);
-  }
-
-  function handleDownloadSelect(provider: 'SERP_HAWK' | 'DAPROS') {
-    if (downloadingInvoice) {
-      window.open(`${API_BASE_URL}/invoices/${downloadingInvoice.id}/pdf?provider=${provider}`, '_blank');
-      setDownloadingInvoice(null);
-    }
+    window.open(`${API_BASE_URL}/invoices/${inv.id}/pdf`, '_blank');
   }
 
   async function createInvoice(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
-    const multiplier = billCurrency === 'INR' ? 4.4 : 1;
-    const manualItems = lineItems.filter(l => l.description && l.amount).map(l => ({ description: l.description, amount: parseFloat(l.amount), provider: "Custom" }));
-    const catalogItems = selectedProductIds.map(id => {
-      const p = products.find(x => x.id === id);
-      return { description: p?.name, amount: p ? p.unit_price * multiplier : 0, provider: p?.sku || "Custom" };
-    }).filter(i => i.description);
-    
-    const allItems = [...catalogItems, ...manualItems];
-    const totalAmount = allItems.reduce((s, i) => s + (i.amount || 0), 0) || parseFloat(form.amount) || 0;
-    
+    const items = lineItems.filter(l => l.description && l.amount);
+    const totalAmount = items.reduce((s, i) => s + parseFloat(i.amount || "0"), 0) || parseFloat(form.amount);
     await fetch(`${API_BASE_URL}/invoices`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -138,18 +95,16 @@ export default function InvoicesPage() {
         client_id: Number(form.client_id),
         service_request_id: form.service_request_id ? Number(form.service_request_id) : null,
         amount: totalAmount,
-        currency: billCurrency,
         tax: parseFloat(form.tax) || 0,
         due_date: form.due_date || null,
         notes: form.notes || null,
-        line_items: allItems,
+        line_items: items.map(i => ({ description: i.description, amount: parseFloat(i.amount) })),
       }),
     });
     setShowModal(false);
     setForm({ client_id: "", service_request_id: "", amount: "", tax: "0", due_date: "", notes: "" });
     setLineItems([{ description: "", amount: "" }]);
-    setSelectedProductIds([]);
-    fetchInvoices();
+    fetchAll();
     setSubmitting(false);
   }
 
@@ -159,8 +114,7 @@ export default function InvoicesPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    setInvoices(prev => prev.map(i => i.id === id ? { ...i, status } : i));
-    if (selectedInvoice?.id === id) setSelectedInvoice(s => s ? { ...s, status } : s);
+    fetchAll();
     setShowDetailModal(false);
   }
 
@@ -189,8 +143,7 @@ export default function InvoicesPage() {
         </div>
         {!isClient && (
           <button onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-2xl font-bold text-sm hover:bg-black shadow-lg transition-all active:scale-95"
-            onClick={() => { setShowModal(true); loadModalData(); }}>
+            className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-2xl font-bold text-sm hover:bg-black shadow-lg transition-all active:scale-95">
             <Plus className="w-4 h-4" /> New Invoice
           </button>
         )}
@@ -264,7 +217,7 @@ export default function InvoicesPage() {
                   <tr key={inv.id} className="hover:bg-gray-50 dark:bg-zinc-950 transition-colors group">
                     <td className="px-4 py-4 font-bold text-gray-900 dark:text-zinc-50">{inv.invoice_number}</td>
                     <td className="px-4 py-4 text-gray-700 dark:text-zinc-200">{inv.client_name || "—"}</td>
-                    <td className="px-4 py-4 font-bold text-gray-900 dark:text-zinc-50">{inv.currency === 'INR' ? '₹' : '$'}{inv.total.toFixed(2)}</td>
+                    <td className="px-4 py-4 font-bold text-gray-900 dark:text-zinc-50">${inv.total.toFixed(2)}</td>
                     <td className="px-4 py-4">
                       <span className={cn("flex items-center gap-1.5 w-fit px-3 py-1 rounded-full text-xs font-bold", cfg.bg, cfg.color)}>
                         <cfg.icon className="w-3 h-3" />{inv.status}
@@ -294,62 +247,20 @@ export default function InvoicesPage() {
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-lg p-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <h2 className="text-xl font-black">New Invoice</h2>
-                <div className="flex bg-slate-100 dark:bg-zinc-800 p-1 rounded-lg">
-                  <button type="button" onClick={() => setBillCurrency('MXN')} className={`px-3 py-1 text-xs font-bold transition-all rounded ${billCurrency === 'MXN' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>MXN</button>
-                  <button type="button" onClick={() => setBillCurrency('INR')} className={`px-3 py-1 text-xs font-bold transition-all rounded ${billCurrency === 'INR' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>INR</button>
-                </div>
-              </div>
+              <h2 className="text-xl font-black">New Invoice</h2>
               <button onClick={() => setShowModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <form onSubmit={createInvoice} className="space-y-4">
-              {error && <p className="text-xs text-red-500 font-bold">{error}</p>}
-              {!isClient && (
-                <div>
-                  <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">Client</label>
-                  <select required value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
-                    <option className="text-slate-900 dark:text-zinc-100" value="">Select a client...</option>
-                    {clients.map((c: any) => <option className="text-slate-900 dark:text-zinc-100" key={c.id} value={c.id}>{c.companyName || c.name || `Client #${c.id}`}</option>)}
-                  </select>
-                </div>
-              )}
               <div>
-                <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">Link to Service Request (Optional)</label>
-                <select value={form.service_request_id} onChange={e => setForm(p => ({ ...p, service_request_id: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
-                  <option className="text-slate-900 dark:text-zinc-100" value="">None</option>
-                  {serviceRequests.filter(sr => !isClient || sr.client_id === Number(clientId)).map(sr => (
-                    <option className="text-slate-900 dark:text-zinc-100" key={sr.id} value={sr.id}>REQ-{sr.id} — {sr.status}</option>
-                  ))}
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Client *</label>
+                <select required value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}
+                  className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="">Select client...</option>
+                  {clients.map((c: any) => <option key={c.id} value={c.id}>{c.companyName || c.name || `Client #${c.id}`}</option>)}
                 </select>
               </div>
-              
               <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-2 block">Catalog Services</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-slate-200 dark:border-zinc-700 rounded-xl bg-slate-50 dark:bg-zinc-800">
-                  {products.map(p => (
-                    <label key={p.id} className="flex items-start gap-2 p-2 hover:bg-slate-100 dark:hover:bg-zinc-700 rounded-lg cursor-pointer transition-colors">
-                      <input type="checkbox"
-                        checked={selectedProductIds.includes(p.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) setSelectedProductIds(prev => [...prev, p.id]);
-                          else setSelectedProductIds(prev => prev.filter(id => id !== p.id));
-                        }}
-                        className="mt-1 accent-indigo-600"
-                      />
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-slate-900 dark:text-zinc-100">{p.name}</span>
-                        <span className="text-xs text-slate-500 font-bold">{billCurrency === 'INR' ? '₹' : '$'}{(p.unit_price * (billCurrency === 'INR' ? 4.4 : 1)).toFixed(2)} {billCurrency}</span>
-                      </div>
-                    </label>
-                  ))}
-                  {products.length === 0 && <p className="text-sm text-slate-500 col-span-2 text-center py-2">No services in catalog.</p>}
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Custom Line Items</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Line Items</label>
                 {lineItems.map((item, idx) => (
                   <div key={idx} className="flex gap-2 mb-2">
                     <input value={item.description} onChange={e => setLineItems(p => p.map((l, i) => i === idx ? { ...l, description: e.target.value } : l))}
@@ -413,14 +324,14 @@ export default function InvoicesPage() {
               {selectedInvoice.line_items?.map((item: any, i: number) => (
                 <div key={i} className="flex justify-between text-sm">
                   <span className="text-gray-700 dark:text-zinc-200">{item.description}</span>
-                  <span className="font-bold">{selectedInvoice.currency === 'INR' ? '₹' : '$'}{Number(item.amount).toFixed(2)}</span>
+                  <span className="font-bold">${Number(item.amount).toFixed(2)}</span>
                 </div>
               ))}
               <div className="border-t pt-2 flex justify-between font-bold">
-                <span>Tax</span><span>{selectedInvoice.currency === 'INR' ? '₹' : '$'}{selectedInvoice.tax.toFixed(2)}</span>
+                <span>Tax</span><span>${selectedInvoice.tax.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-lg font-black">
-                <span>Total</span><span>{selectedInvoice.currency === 'INR' ? '₹' : '$'}{selectedInvoice.total.toFixed(2)}</span>
+                <span>Total</span><span>${selectedInvoice.total.toFixed(2)}</span>
               </div>
             </div>
 
@@ -450,32 +361,6 @@ export default function InvoicesPage() {
                   <Trash2 className="w-4 h-4" />
                 </button>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {downloadingInvoice && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-sm shadow-2xl p-6 relative overflow-hidden border border-zinc-200 dark:border-zinc-800">
-            <button onClick={() => setDownloadingInvoice(null)} className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800/50 rounded-full transition-colors"><X className="w-5 h-5"/></button>
-            <h3 className="text-xl font-black text-zinc-900 dark:text-white mb-2 tracking-tight">Download Invoice</h3>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6 font-medium">Select the agency provider format for this PDF.</p>
-            <div className="space-y-3">
-              <button onClick={() => handleDownloadSelect('SERP_HAWK')} className="w-full flex items-center justify-between p-4 rounded-xl border-2 border-indigo-100 dark:border-indigo-900/30 bg-indigo-50/50 dark:bg-indigo-900/10 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-200 dark:hover:border-indigo-800 transition-all text-left group">
-                <div>
-                  <div className="font-bold text-indigo-900 dark:text-indigo-300">SERP Hawk</div>
-                  <div className="text-xs font-semibold text-indigo-600/70 dark:text-indigo-400/70">Formal Proforma (INR)</div>
-                </div>
-                <Download className="w-5 h-5 text-indigo-400 group-hover:text-indigo-600 transition-colors" />
-              </button>
-              <button onClick={() => handleDownloadSelect('DAPROS')} className="w-full flex items-center justify-between p-4 rounded-xl border-2 border-emerald-100 dark:border-emerald-900/30 bg-emerald-50/50 dark:bg-emerald-900/10 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-200 dark:hover:border-emerald-800 transition-all text-left group">
-                <div>
-                  <div className="font-bold text-emerald-900 dark:text-emerald-300">DaPros</div>
-                  <div className="text-xs font-semibold text-emerald-600/70 dark:text-emerald-400/70">Clean Format (MXN)</div>
-                </div>
-                <Download className="w-5 h-5 text-emerald-400 group-hover:text-emerald-600 transition-colors" />
-              </button>
             </div>
           </div>
         </div>

@@ -5,16 +5,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Sparkles, Mail, Clock, User, Globe, ChevronDown, ChevronUp,
   CheckCircle, Building2, Briefcase, Target, AtSign, FileText, Copy, Check,
-  TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign, MessageCircle, Settings
+  TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign, MessageCircle, Trash2, Youtube
 } from "lucide-react";
-import { v4 as uuidv4 } from "uuid";
 import { API_BASE_URL } from "@/config";
-import DemoLimits from "@/components/DemoLimits";
 import PageGuide from "@/components/PageGuide";
+import GmailAgentLoop from "./GmailAgentLoop";
 
 interface SentEmail {
   id: number;
   client_id: number | null;
+  company_name?: string;
   to_email: string;
   subject: string;
   english_body: string | null;
@@ -54,15 +54,17 @@ interface ResearchResultData {
     best_conversion_opportunity?: string;
     sales_follow_up_focus?: string;
     website?: string;
-    extracted_emails?: string;
+    extracted_emails?: string | string[];
     extracted_phone_numbers?: string;
     extracted_linkedin?: string;
     extracted_twitter?: string;
+    source_pages?: string[];
     company_social_media?: {
       linkedin?: string;
       twitter?: string;
       instagram?: string;
       facebook?: string;
+      youtube?: string;
     };
     contacts?: Array<{
       email?: string;
@@ -92,6 +94,7 @@ interface ResearchResultData {
     spanish_body?: string;
     body?: string;
     subject?: string;
+    whatsapp_draft?: string;
   };
   assigned_sales_manager?: string;
   company_url?: string;
@@ -115,6 +118,10 @@ interface ResearchResult {
 
 type SendEmailResult = {
   client_id?: number;
+  lead_id?: number;
+  success?: boolean;
+  message?: string;
+  sent_email_id?: number;
 } | null;
 
 function CopyButton({ text }: { text: string }) {
@@ -227,8 +234,30 @@ function BottomUpFillMail() {
   );
 }
 
+function CopyableEmailItem({ email }: { email: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(email);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <div className="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-600 transition-all group/item shadow-sm">
+      <span className="text-xs font-mono text-slate-800 dark:text-zinc-200 break-all select-all pr-1">{email}</span>
+      <button
+        onClick={handleCopy}
+        className="p-1 rounded hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 transition-colors shadow-sm bg-slate-50 dark:bg-zinc-950 flex-shrink-0"
+        title="Copy email"
+      >
+        {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+      </button>
+    </div>
+  );
+}
+
 function ResultCard({ historyId, result, companyName, companyUrl, onSendManually, onSendAutomatically, onSaveFollowUp, onRemove }: { historyId: string; result: ResearchResultData; companyName: string; companyUrl: string; onSendManually: (r: ResearchResultData, name: string, url: string, skip_send?: boolean, action_type?: string) => Promise<SendEmailResult>; onSendAutomatically: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSaveFollowUp: (r: ResearchResultData, note: string, title: string) => Promise<boolean>; onRemove: (id: string) => void; }) {
-  const [activeTab, setActiveTab] = useState<"english" | "spanish">("english");
+  const [activeTab, setActiveTab] = useState<"english" | "spanish" | "whatsapp">("english");
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
   const [followUpNote, setFollowUpNote] = useState("");
@@ -247,15 +276,20 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
   const [editableEnglishBody, setEditableEnglishBody] = useState(formatBody(result.draft?.english_body || result.draft?.body));
   const [editableSpanishBody, setEditableSpanishBody] = useState(formatBody(result.draft?.spanish_body));
   const [editableWhatsappBody, setEditableWhatsappBody] = useState(formatBody(result.draft?.whatsapp_draft));
-  const [fromEmail, setFromEmail] = useState("vkanjali@serphawk.com");
+  const [fromEmail, setFromEmail] = useState("support.crm@serphawk.in");
 
-  const extractedEmailsArray = Array.isArray(result.company_info?.extracted_emails) ? result.company_info.extracted_emails : (result.company_info?.extracted_emails?.split(",") || []);
+  const extractedEmailsArray = (Array.isArray(result.company_info?.extracted_emails) ? result.company_info.extracted_emails : (result.company_info?.extracted_emails?.split(",") || []))
+    .filter((e: string) => e.trim().toLowerCase() !== "test@example.com" && e.trim().toLowerCase() !== "support.crm@serphawk.in");
   const extractedEmail = extractedEmailsArray[0]?.trim();
   const directContactEmail = Array.isArray((result.company_info as any)?.contacts) ? (result.company_info as any).contacts[0]?.email : (result.company_info as any)?.email;
   
   let rawInitialEmail = result.contact?.email || directContactEmail || extractedEmail || "";
   if (Array.isArray(rawInitialEmail)) rawInitialEmail = rawInitialEmail[0];
-  const initialContactEmail = typeof rawInitialEmail === 'string' ? rawInitialEmail : String(rawInitialEmail || "");
+  let initialContactEmail = typeof rawInitialEmail === 'string' ? rawInitialEmail : String(rawInitialEmail || "");
+  
+  if (initialContactEmail.trim().toLowerCase() === "test@example.com" || initialContactEmail.trim().toLowerCase() === "support.crm@serphawk.in") {
+    initialContactEmail = "";
+  }
 
   const [toEmail, setToEmail] = useState(initialContactEmail);
 
@@ -400,27 +434,33 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
     >
       {/* Top row: Company Info + Contact */}
       <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-800 dark:text-zinc-100 font-black text-lg shadow-inner">
-                {(result.company_info?.company_name || companyName).charAt(0).toUpperCase()}
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-800 dark:text-zinc-100 font-black text-lg shadow-inner">
+                  {(result.company_info?.company_name || companyName).charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100">{result.company_info?.company_name || companyName}</h2>
+                  <p className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
+                    {result.company_info?.likely_industry || result.company_info?.industry || "Business"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100">{result.company_info?.company_name || companyName}</h2>
-                <p className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
-                  {result.company_info?.likely_industry || result.company_info?.industry || "Business"}
-                </p>
+              
+              <div className="flex items-center gap-2">
+                {result.package_suggestion && (
+                  <span className="px-3 py-1 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
+                    <Package className="w-3 h-3" /> {result.package_suggestion}
+                  </span>
+                )}
+                <button onClick={() => onRemove(historyId)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all" title="Delete Result">
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
-            {result.package_suggestion && (
-              <span className="px-3 py-1 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
-                <Package className="w-3 h-3" /> {result.package_suggestion}
-              </span>
-            )}
-          </div>
 
           <p className="text-slate-500 dark:text-zinc-400 text-sm leading-relaxed mb-5">
-            {result.company_info?.summary || result.company_info?.what_they_do || "Company information loading..."}
+            {result.company_info?.summary || result.company_info?.what_they_do || "Company information gathered successfully."}
           </p>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -452,11 +492,20 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
             <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
-              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Emails</p>
-              <div className="flex flex-col gap-1">
-                {result.company_info?.extracted_emails ? (Array.isArray(result.company_info.extracted_emails) ? result.company_info.extracted_emails : result.company_info.extracted_emails.split(',')).map((e: string, i: number) => (
-                  <a key={i} href={`mailto:${e.trim()}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-mono break-all">{e.trim()}</a>
-                )) : <p className="text-sm text-slate-500 dark:text-zinc-500 font-mono">None</p>}
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1.5">Emails</p>
+              <div className="flex flex-col gap-1.5">
+                {result.company_info?.extracted_emails ? (
+                  (Array.isArray(result.company_info.extracted_emails) 
+                    ? result.company_info.extracted_emails 
+                    : result.company_info.extracted_emails.split(',')
+                  )
+                  .filter((e: string) => e.trim().toLowerCase() !== "test@example.com" && e.trim().toLowerCase() !== "support.crm@serphawk.in")
+                  .map((e: string, i: number) => (
+                    <CopyableEmailItem key={i} email={e.trim()} />
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-zinc-500 font-mono">None</p>
+                )}
               </div>
             </div>
             <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
@@ -474,6 +523,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
                 {result.company_info?.company_social_media?.twitter ? <a href={result.company_info.company_social_media.twitter} target="_blank" rel="noreferrer" className="px-3 py-1 bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300 rounded-md text-xs font-bold hover:bg-slate-200 transition-colors">X / Twitter</a> : null}
                 {result.company_info?.company_social_media?.instagram ? <a href={result.company_info.company_social_media.instagram} target="_blank" rel="noreferrer" className="px-3 py-1 bg-pink-500/10 text-pink-600 dark:bg-pink-500/20 dark:text-pink-400 rounded-md text-xs font-bold hover:bg-pink-500/20 transition-colors">Instagram</a> : null}
                 {result.company_info?.company_social_media?.facebook ? <a href={result.company_info.company_social_media.facebook} target="_blank" rel="noreferrer" className="px-3 py-1 bg-blue-600/10 text-blue-700 dark:bg-blue-600/20 dark:text-blue-400 rounded-md text-xs font-bold hover:bg-blue-600/20 transition-colors">Facebook</a> : null}
+                {result.company_info?.company_social_media?.youtube ? <a href={result.company_info.company_social_media.youtube} target="_blank" rel="noreferrer" className="px-3 py-1 bg-red-600/10 text-red-700 dark:bg-red-600/20 dark:text-red-400 rounded-md text-xs font-bold hover:bg-red-600/20 transition-colors flex items-center gap-1"><Youtube className="w-3 h-3" /> YouTube</a> : null}
                 {result.company_info?.extracted_linkedin && !result.company_info?.company_social_media?.linkedin ? <a href={result.company_info.extracted_linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn (Fallback)</a> : null}
                 {(!result.company_info?.company_social_media || Object.values(result.company_info.company_social_media).every(v => !v)) && !result.company_info?.extracted_linkedin && <span className="text-sm text-slate-500 dark:text-zinc-500">No social profiles detected.</span>}
               </div>
@@ -537,29 +587,47 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
           )}
         </div>
 
-
+        {/* Source Pages / Reference URLs */}
+        {result.company_info?.source_pages && result.company_info.source_pages.length > 0 && (
+          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center gap-2 mb-5">
+              <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
+                <Globe className="w-4 h-4" />
+              </div>
+              <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Source Pages / Reference URLs</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {result.company_info.source_pages.map((url: string, i: number) => (
+                <a key={i} href={url} target="_blank" rel="noreferrer" className="p-3 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl hover:border-slate-300 dark:hover:border-zinc-600 hover:bg-slate-100 dark:hover:bg-zinc-900 transition-all flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-zinc-300 truncate">
+                  <Globe className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                  <span className="truncate">{url}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
 
       {/* Extracted Client Services */}
       {result.extracted_services && result.extracted_services.length > 0 && (
-        <div className="bg-white dark:bg-zinc-900 border border-emerald-500/30 rounded-2xl p-6 shadow-sm">
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-2 mb-5">
-            <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">
+            <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
               <Store className="w-4 h-4" />
             </div>
-            <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Services Offered by This Company</p>
-            <span className="ml-auto text-[9px] font-black text-emerald-500/60 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Services Offered by This Company</p>
+            <span className="ml-auto text-[9px] font-black text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2 py-0.5 rounded-full">
               {result.extracted_services.length} detected
             </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {result.extracted_services.map((svc, i) => (
-              <div key={i} className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all">
+              <div key={i} className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl hover:border-slate-300 dark:hover:border-zinc-600 hover:bg-slate-100 dark:hover:bg-zinc-900 transition-all">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2 py-0.5 rounded-full">
                     {svc.category}
                   </span>
                   {svc.approx_cost > 0 && (
-                    <span className="ml-auto text-[9px] font-black text-amber-400 flex items-center gap-0.5">
+                    <span className="ml-auto text-[9px] font-black text-amber-500 flex items-center gap-0.5">
                       <DollarSign className="w-2.5 h-2.5" />
                       {svc.approx_cost.toLocaleString()}
                       {svc.cost_is_estimated ? ' est.' : ''}
@@ -571,7 +639,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[10px] text-emerald-500/50 font-medium">
+          <p className="mt-3 text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
             ✦ These services have been saved to the client profile and Marketplace catalog.
           </p>
         </div>
@@ -590,6 +658,13 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
             <CopyButton text={activeTab === "english" ? editableEnglishBody : activeTab === "spanish" ? editableSpanishBody : editableWhatsappBody} />
           </div>
 
+          {result.email_hook && (
+            <div className="mb-6 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-xl p-4 shadow-sm">
+              <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Suggested Hook</p>
+              <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{result.email_hook}</p>
+            </div>
+          )}
+
           {/* Send Box at the top */}
           <div className="mb-6 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 space-y-4 shadow-sm">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
@@ -598,13 +673,13 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
                   <span className="text-slate-500 w-12">From:</span>
                   <input 
                     type="text" 
-                    value={fromEmail}
+                    value="vkanjali@serphawk.com"
                     readOnly
                     disabled
                     className="flex-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 px-3 py-1.5 text-sm text-slate-500 cursor-not-allowed focus:outline-none transition-all"
                   />
                   <div className="absolute bottom-full left-14 mb-2 hidden group-hover:block bg-slate-800 text-white text-xs rounded-lg px-3 py-1.5 shadow-lg whitespace-nowrap z-50 font-medium">
-                    If you want to change the from mail contact developer
+                    Automated sending email address
                     <div className="absolute -bottom-1 left-4 w-2 h-2 bg-slate-800 rotate-45"></div>
                   </div>
                 </div>
@@ -621,14 +696,16 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
               </div>
 
                 <div className="flex flex-col gap-2">
-                  <button
-                    onClick={handleSendAutomatically}
-                    disabled={sending || !!sendSuccess}
-                    className="w-full px-4 py-3 rounded-xl bg-black dark:bg-white text-white dark:text-black font-bold text-xs flex items-center justify-center gap-2 hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
-                  >
-                    {sending ? <Clock className="w-3.5 h-3.5 animate-spin" /> : sendSuccess ? <CheckCircle className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
-                    Send Automatically ( send mail )
-                  </button>
+                  <div className="w-full px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-center gap-2 shadow-sm">
+                    <motion.div
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ type: "spring", stiffness: 200, damping: 10, delay: 0.5 }}
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                    </motion.div>
+                    Mail Sent Automatically via AI
+                  </div>
                   <button
                     onClick={handleSendViaSystem}
                     disabled={sending || !!sendSuccess}
@@ -744,80 +821,39 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
 }
 
 export default function EmailAgentPage() {
+  const [mode, setMode] = useState<"single" | "bulk">("single");
   const [companyName, setCompanyName] = useState("");
   const [inputValue, setInputValue] = useState("");
   
   const [chatStep, setChatStep] = useState<"website_url" | "loading" | "idle">("website_url");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { id: "msg-1", role: "ai", type: "text", content: "Hello! Enter a company website URL to generate an outreach strategy and email draft." }
+  ]);
+  
   const [resultsHistory, setResultsHistory] = useState<ResearchResult[]>([]);
-
-  useEffect(() => {
-    const savedMessages = localStorage.getItem("emailAgentMessages");
-    const savedResults = localStorage.getItem("emailAgentResults");
-    
-    if (savedMessages) {
-      try { setMessages(JSON.parse(savedMessages)); } catch (e) {}
-    } else {
-      setMessages([{ id: "msg-1", role: "ai", type: "text", content: "Hello! Enter a company website URL to generate an outreach strategy and email draft." }]);
-    }
-    
-    if (savedResults) {
-      try { setResultsHistory(JSON.parse(savedResults)); } catch (e) {}
-    }
-  }, []);
-
-  useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem("emailAgentMessages", JSON.stringify(messages));
-    }
-  }, [messages]);
-
-  useEffect(() => {
-    localStorage.setItem("emailAgentResults", JSON.stringify(resultsHistory));
-  }, [resultsHistory]);
 
   const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
   const [emailTotals, setEmailTotals] = useState({ totalSent: 0, autoCount: 0, manualCount: 0 });
   const [emailsLoading, setEmailsLoading] = useState(true);
-  const [showSettings, setShowSettings] = useState(false);
-  const [emailSettings, setEmailSettings] = useState({ smtp_host: '', smtp_port: 587, smtp_user: '', smtp_pass: '', from_name: '', from_email: '' });
-  const [savingSettings, setSavingSettings] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (showSettings) {
-      fetch(`${API_BASE_URL}/settings/email`)
-        .then(r => r.json())
-        .then(data => {
-          if (data.smtp_host) setEmailSettings(data);
-        });
-    }
-  }, [showSettings]);
-
-  const saveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingSettings(true);
-    try {
-      await fetch(`${API_BASE_URL}/settings/email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(emailSettings)
-      });
-      setShowSettings(false);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setSavingSettings(false);
-    }
-  };
+  const [expandedCompanies, setExpandedCompanies] = useState<string[]>([]);
+  const [selectedEmails, setSelectedEmails] = useState<number[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Added for Gmail Agent Migration: Allows user to dismiss a specific research result and refocuses on the input field seamlessly
-  const handleRemoveResult = (id: string) => {
+  const handleRemoveResult = async (id: string) => {
     setResultsHistory(prev => prev.filter(r => r.id !== id));
+    if (!id.startsWith("res-")) {
+      try {
+        await fetch(`${API_BASE_URL}/email-agent/results/${id}`, { method: 'DELETE' });
+      } catch (e) {
+        console.error("Failed to delete result from DB", e);
+      }
+    }
     setTimeout(() => {
       inputRef.current?.focus();
     }, 100);
@@ -837,9 +873,11 @@ export default function EmailAgentPage() {
     scrollToBottom();
   }, [messages, chatStep]);
 
+
+
   useEffect(() => {
     const fetchEmailsData = () => {
-      fetch(`${API_BASE_URL}/sent-emails?limit=30`)
+      fetch(`${API_BASE_URL}/sent-emails?limit=30`, { cache: 'no-store' })
         .then((r) => r.json())
         .then((data) => {
           if (data && typeof data === 'object' && !Array.isArray(data) && 'totalSent' in data) {
@@ -877,6 +915,45 @@ export default function EmailAgentPage() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleDeleteEmail = async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    // Optimistic delete
+    setSentEmails(prev => prev.filter(email => email.id !== id));
+    setEmailTotals(prev => ({
+      ...prev,
+      totalSent: Math.max(0, prev.totalSent - 1)
+    }));
+    try {
+      await fetch(`${API_BASE_URL}/sent-emails/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error("Failed to delete email", err);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedEmails.length === 0) return;
+    const idsToDelete = [...selectedEmails];
+    
+    // Optimistic UI update
+    setSentEmails(prev => prev.filter(email => !idsToDelete.includes(email.id)));
+    setEmailTotals(prev => ({
+      ...prev,
+      totalSent: Math.max(0, prev.totalSent - idsToDelete.length)
+    }));
+    setSelectedEmails([]);
+
+    // Background delete using bulk endpoint
+    try {
+      await fetch(`${API_BASE_URL}/sent-emails/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: idsToDelete })
+      });
+    } catch (err) {
+      console.error("Failed to bulk delete emails", err);
+    }
+  };
+
   const handleSendInput = async () => {
     if (chatStep === "website_url") {
       const url = inputValue.trim();
@@ -904,12 +981,13 @@ export default function EmailAgentPage() {
 
   const performResearch = async (name: string, url: string) => {
     try {
+      const cleanUrl = url.replace(/^https?:\/\//i, "");
       const res = await fetch(`${API_BASE_URL}/smart-research`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           company_name: name,
-          company_url: url || null,
+          company_url: cleanUrl || null,
         }),
       });
       
@@ -927,9 +1005,8 @@ export default function EmailAgentPage() {
         ];
       });
       
-      setResultsHistory(prev => [
-        { id: `res-${Date.now()}`, resultData: data, companyName: name, companyUrl: url },
-        ...prev
+      setResultsHistory([
+        { id: data.db_id ? String(data.db_id) : `res-${Date.now()}`, resultData: data, companyName: name, companyUrl: url }
       ]);
       
       // Updated for Gmail Agent Migration: Moved step to 'website_url' (previously 'company_name') to enable multi-company sequential searches
@@ -1006,7 +1083,7 @@ export default function EmailAgentPage() {
       }
 
       const data = await res.json();
-      fetch(`${API_BASE_URL}/sent-emails?limit=30`)
+      fetch(`${API_BASE_URL}/sent-emails?limit=30`, { cache: 'no-store' })
         .then((r) => r.json())
         .then((d) => {
           if (d && typeof d === 'object' && !Array.isArray(d) && 'totalSent' in d) {
@@ -1091,11 +1168,22 @@ export default function EmailAgentPage() {
               <h1 className="text-xl font-black text-slate-800 dark:text-zinc-100">Email Agent</h1>
               <p className="text-slate-500 dark:text-zinc-400 text-xs font-medium">Research • Match • Draft</p>
             </div>
+            <div className="flex bg-slate-200 dark:bg-zinc-800 p-1 rounded-lg ml-4">
+              <button
+                onClick={() => setMode("single")}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${mode === "single" ? "bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700"}`}
+              >
+                Single
+              </button>
+              <button
+                onClick={() => setMode("bulk")}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${mode === "bulk" ? "bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700"}`}
+              >
+                Bulk
+              </button>
+            </div>
           </div>
-          <div className="flex gap-4 hidden sm:flex items-center">
-            <button onClick={() => setShowSettings(true)} className="flex items-center gap-2 px-3 py-2 bg-slate-200 dark:bg-zinc-800 rounded-xl hover:bg-slate-300 dark:hover:bg-zinc-700 transition-colors text-sm font-bold text-slate-700 dark:text-zinc-300">
-              <Settings size={16} /> <span className="hidden md:inline">Settings</span>
-            </button>
+          <div className="flex gap-4 hidden sm:flex">
             {[
               { label: "Total Sent", value: totalSent },
               { label: "Auto", value: autoCount },
@@ -1114,7 +1202,9 @@ export default function EmailAgentPage() {
         </div>
 
         {/* Chatbot Interface Top Box - HAS BLUR and WHITE TEXT */}
-        <div className="relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl w-full max-w-4xl mx-auto flex flex-col h-[400px] shadow-sm">
+        {mode === "single" ? (
+          <>
+            <div className="relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl w-full max-w-4xl mx-auto flex flex-col h-[400px] shadow-sm">
           <PageGuide
             pageKey="email-agent"
             title="How the Email Agent works"
@@ -1187,10 +1277,6 @@ export default function EmailAgentPage() {
           </div>
         </div>
 
-        <div className="mb-4 mt-2">
-          <DemoLimits type="emails" />
-        </div>
-
         {/* Results Section Down Below */}
         {resultsHistory.length > 0 && (
           <div className="w-full mt-8 space-y-8">
@@ -1198,6 +1284,12 @@ export default function EmailAgentPage() {
             {resultsHistory.map(res => (
               <ResultCard key={res.id} historyId={res.id} result={res.resultData} companyName={res.companyName} companyUrl={res.companyUrl} onSendManually={handleSendManually} onSendAutomatically={handleSendAutomatically} onSaveFollowUp={handleSaveFollowUp} onRemove={handleRemoveResult} />
             ))}
+          </div>
+        )}
+          </>
+        ) : (
+          <div className="w-full max-w-4xl mx-auto">
+            <GmailAgentLoop />
           </div>
         )}
 
@@ -1209,6 +1301,32 @@ export default function EmailAgentPage() {
                 <Mail className="w-4 h-4" />
               </div>
               <h3 className="font-black text-[15px] text-slate-800 dark:text-zinc-100">Recent Email Outreach</h3>
+              {sentEmails.length > 0 && (
+                <div className="flex items-center gap-2 ml-4 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 rounded-lg shadow-sm">
+                  <input 
+                    type="checkbox"
+                    checked={selectedEmails.length === sentEmails.length && sentEmails.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedEmails(sentEmails.map(email => email.id));
+                      } else {
+                        setSelectedEmails([]);
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Select All</span>
+                </div>
+              )}
+              {selectedEmails.length > 0 && (
+                <button 
+                  onClick={handleDeleteSelected}
+                  className="ml-2 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-600 dark:bg-red-500/20 dark:hover:bg-red-500/30 dark:text-red-400 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete ({selectedEmails.length})
+                </button>
+              )}
             </div>
             <span className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
               {totalSent} total
@@ -1223,155 +1341,128 @@ export default function EmailAgentPage() {
               <p className="font-bold text-sm text-slate-400">No emails sent yet</p>
             </div>
           ) : (
-            <div className="overflow-x-auto relative z-10 w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl mt-4">
-              <table className="w-full text-left border-collapse font-sans">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-zinc-700 text-[11px] text-slate-500 dark:text-zinc-400 uppercase tracking-widest bg-slate-50 dark:bg-zinc-900/50">
-                    <th className="py-4 px-5 font-black">Type</th>
-                    <th className="py-4 px-5 font-black">Recipient</th>
-                    <th className="py-4 px-5 font-black">Subject</th>
-                    <th className="py-4 px-5 font-black">Status</th>
-                    <th className="py-4 px-5 font-black">Date</th>
-                    <th className="py-4 px-5 font-black text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sentEmails.map((email) => {
-                    const isExpanded = expandedId === email.id;
-                    return (
-                      <Fragment key={email.id}>
-                        <tr className={`border-b border-slate-100 dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-900/50 transition-colors cursor-pointer ${isExpanded ? 'bg-slate-50 dark:bg-zinc-900/50' : ''}`} onClick={() => setExpandedId(isExpanded ? null : email.id)}>
-                          <td className="py-4 px-5 align-middle">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                              email.manual ? "bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700" : "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20"
-                            }`}>
-                              {email.manual ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3" />}
-                              {email.manual ? "Manual" : "Auto"}
-                            </span>
-                          </td>
-                          <td className="py-4 px-5 align-middle">
-                            <div className="flex items-center gap-2">
-                              <Send className="w-3.5 h-3.5 text-slate-400" />
-                              <span className="text-sm font-semibold text-slate-700 dark:text-zinc-200">{email.to_email}</span>
+                 <div className="w-full mt-4 space-y-4">
+              {Object.entries(
+                sentEmails.reduce((acc, email) => {
+                  const key = email.company_name && email.company_name !== "Unknown Company" ? email.company_name : "Prospect";
+                  if (!acc[key]) acc[key] = [];
+                  acc[key].push(email);
+                  return acc;
+                }, {} as Record<string, SentEmail[]>)
+              ).map(([company, emails]) => {
+                const isCompanyExpanded = expandedCompanies.includes(company);
+                return (
+                  <div key={company} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl overflow-hidden shadow-sm">
+                    <div 
+                      className="flex items-center justify-between px-6 py-4 bg-slate-50 dark:bg-zinc-950 border-b border-slate-100 dark:border-zinc-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-zinc-900 transition-colors"
+                      onClick={() => setExpandedCompanies(prev => prev.includes(company) ? prev.filter(c => c !== company) : [...prev, company])}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20">
+                          <Building2 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="font-black text-lg text-slate-800 dark:text-zinc-100">{company}</h4>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{emails.length} Emails Extracted & Sent</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                         <div className="flex items-center">
+                           <input 
+                              type="checkbox" 
+                              checked={emails.every(e => selectedEmails.includes(e.id))}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                if (e.target.checked) setSelectedEmails(prev => [...new Set([...prev, ...emails.map(em => em.id)])]);
+                                else setSelectedEmails(prev => prev.filter(id => !emails.map(em => em.id).includes(id)));
+                              }}
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4 mr-4"
+                              title="Select all in company"
+                           />
+                         </div>
+                         {isCompanyExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                      </div>
+                    </div>
+
+                    {isCompanyExpanded && (
+                      <div className="p-6 bg-slate-50/30 dark:bg-zinc-950/30 space-y-4">
+                        {emails.map(email => (
+                          <div key={email.id} className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl p-5 shadow-sm relative group hover:border-indigo-200 transition-colors">
+                            <div className="absolute top-5 right-5 flex items-center gap-2">
+                              <input 
+                                type="checkbox" 
+                                checked={selectedEmails.includes(email.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) setSelectedEmails(prev => [...prev, email.id]);
+                                  else setSelectedEmails(prev => prev.filter(id => id !== email.id));
+                                }}
+                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
+                              />
+                              <button onClick={(e) => handleDeleteEmail(e, email.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors" title="Delete">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
-                          </td>
-                          <td className="py-4 px-5 align-middle">
-                            <span className="text-sm font-bold text-slate-800 dark:text-zinc-100 line-clamp-1">{email.subject || "(No subject)"}</span>
-                          </td>
-                          <td className="py-4 px-5 align-middle">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                              email.status === "Opened" ? "bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30" :
-                              email.status === "Replied" ? "bg-green-100 text-green-600 dark:bg-green-500/20 dark:text-green-400 border border-green-200 dark:border-green-500/30" :
-                              "bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400 border border-purple-200 dark:border-purple-500/30"
-                            }`}>
-                              {email.status || "Sent"}
-                            </span>
-                          </td>
-                          <td className="py-4 px-5 align-middle">
-                            <div className="flex items-center gap-2">
-                              <Clock className="w-3.5 h-3.5 text-slate-400" />
-                              <span className="text-sm font-medium text-slate-600 dark:text-zinc-400">
-                                {email.sent_at ? new Date(email.sent_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Unknown'}
-                              </span>
+                            
+                            <div className="flex flex-wrap items-center gap-6 mb-4 pr-20">
+                              <div className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-950 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-zinc-800">
+                                <Mail className="w-4 h-4 text-slate-400" />
+                                <span className="text-sm font-black text-slate-700 dark:text-zinc-200">{email.to_email}</span>
+                              </div>
+                              <div className="flex flex-col justify-center">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Status</p>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${
+                                  email.status === "Opened" ? "bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400" :
+                                  email.status === "Replied" ? "bg-green-100 text-green-600 dark:bg-green-500/20 dark:text-green-400" :
+                                  "bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400"
+                                }`}>
+                                  {email.status || "Sent"}
+                                </span>
+                              </div>
+                              <div className="flex flex-col justify-center">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Subject</p>
+                                <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">{email.subject || "(No subject)"}</span>
+                              </div>
                             </div>
-                          </td>
-                          <td className="py-4 px-5 align-middle text-right">
-                            {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-800 dark:text-zinc-100 inline-block" /> : <ChevronDown className="w-4 h-4 text-slate-400 inline-block" />}
-                          </td>
-                        </tr>
-                        {isExpanded && (
-                          <tr>
-                            <td colSpan={5} className="p-0 border-b border-slate-100 dark:border-zinc-800">
-                              <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: "auto", opacity: 1 }}
-                                className="bg-slate-50/50 dark:bg-zinc-950/50 p-6 overflow-hidden"
-                              >
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                  {email.english_body && (
-                                    <div>
-                                      <div className="flex items-center justify-between mb-3">
-                                        <p className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">English Body</p>
-                                        <CopyButton text={email.english_body} />
-                                      </div>
-                                      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-5 text-sm text-slate-700 dark:text-zinc-200 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed font-mono custom-scrollbar shadow-sm">
-                                        {email.english_body}
-                                      </div>
+
+                            {(email.english_body || email.spanish_body) && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {email.english_body && (
+                                  <div>
+                                    <div className="flex justify-between items-center mb-1">
+                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">English Draft</p>
+                                      <CopyButton text={email.english_body} />
                                     </div>
-                                  )}
-                                  {email.spanish_body && (
-                                    <div>
-                                      <div className="flex items-center justify-between mb-3">
-                                        <p className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">Spanish Body</p>
-                                        <CopyButton text={email.spanish_body} />
-                                      </div>
-                                      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-5 text-sm text-slate-700 dark:text-zinc-200 whitespace-pre-wrap max-h-64 overflow-auto leading-relaxed font-mono custom-scrollbar shadow-sm">
-                                        {email.spanish_body}
-                                      </div>
+                                    <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl p-4 text-[13px] text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar font-sans leading-relaxed">
+                                      {email.english_body}
                                     </div>
-                                  )}
-                                </div>
-                              </motion.div>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
+                                  </div>
+                                )}
+                                {email.spanish_body && (
+                                  <div>
+                                    <div className="flex justify-between items-center mb-1">
+                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Spanish Draft</p>
+                                      <CopyButton text={email.spanish_body} />
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl p-4 text-[13px] text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar font-sans leading-relaxed">
+                                      {email.spanish_body}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       </div>
-
-      <AnimatePresence>
-        {showSettings && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-zinc-900 rounded-2xl p-6 w-full max-w-md shadow-2xl border border-slate-200 dark:border-zinc-800"
-            >
-              <h2 className="text-xl font-bold mb-4 text-slate-800 dark:text-white">Email Configuration</h2>
-              <form onSubmit={saveSettings} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-slate-600 dark:text-slate-400 mb-1">SMTP Host</label>
-                  <input required value={emailSettings.smtp_host} onChange={e => setEmailSettings({...emailSettings, smtp_host: e.target.value})} className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-2 outline-none focus:border-indigo-500" placeholder="smtp.gmail.com" />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-600 dark:text-slate-400 mb-1">SMTP Port</label>
-                  <input required type="number" value={emailSettings.smtp_port} onChange={e => setEmailSettings({...emailSettings, smtp_port: parseInt(e.target.value)})} className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-2 outline-none focus:border-indigo-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-600 dark:text-slate-400 mb-1">Username / Email</label>
-                  <input required value={emailSettings.smtp_user} onChange={e => setEmailSettings({...emailSettings, smtp_user: e.target.value})} className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-2 outline-none focus:border-indigo-500" placeholder="you@domain.com" />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-600 dark:text-slate-400 mb-1">App Password</label>
-                  <input required type="password" value={emailSettings.smtp_pass} onChange={e => setEmailSettings({...emailSettings, smtp_pass: e.target.value})} className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-2 outline-none focus:border-indigo-500" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-slate-600 dark:text-slate-400 mb-1">From Name</label>
-                    <input required value={emailSettings.from_name} onChange={e => setEmailSettings({...emailSettings, from_name: e.target.value})} className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-2 outline-none focus:border-indigo-500" placeholder="John Doe" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-600 dark:text-slate-400 mb-1">From Email</label>
-                    <input required type="email" value={emailSettings.from_email} onChange={e => setEmailSettings({...emailSettings, from_email: e.target.value})} className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-2 outline-none focus:border-indigo-500" placeholder="john@domain.com" />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-3 mt-6">
-                  <button type="button" onClick={() => setShowSettings(false)} className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors">Cancel</button>
-                  <button type="submit" disabled={savingSettings} className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-colors">{savingSettings ? 'Saving...' : 'Save Settings'}</button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
     </div>
   );
 }

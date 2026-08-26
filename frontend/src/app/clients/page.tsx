@@ -30,8 +30,7 @@ import {
   Building2,
   Trash2,
   Zap,
-  X,
-  FileText
+  X
 } from 'lucide-react';
 import Link from 'next/link';
 import { API_BASE_URL } from '@/config';
@@ -42,7 +41,6 @@ import PageGuide from '@/components/PageGuide';
 import dynamic from 'next/dynamic';
 import { ContextMenu } from '@/components/ContextMenu';
 import { ViewSwitcher, ViewType } from '@/components/ViewSwitcher';
-import DemoLimits from '@/components/DemoLimits';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const ClientMapView = dynamic(() => import('./ClientMapView'), {
@@ -95,7 +93,8 @@ interface Client {
   lastActivity?: string;
   lastActivityDate?: string;
   assignedEmployeeName?: string;
-  phone?: string;
+  lead_source?: string;
+  industry?: string;
 }
 
 interface ClientStatusOption {
@@ -129,7 +128,7 @@ export default function ClientsPage() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    if (searchParams?.get('action') === 'add') {
+    if (searchParams && searchParams.get('action') === 'add') {
       setIsModalOpen(true);
     }
   }, [searchParams]);
@@ -140,18 +139,6 @@ export default function ClientsPage() {
   // Quick Actions State
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
   const [actionLoading, setActionLoading] = useState<Record<number, string>>({});
-  
-  // Export Modal State
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [exportCols, setExportCols] = useState({
-    name: true,
-    email: true,
-    phone: true,
-    description: true,
-    website: false,
-    status: false,
-    assigned: false
-  });
   
   // Pitch Modal State
   const [pitchModal, setPitchModal] = useState<{isOpen: boolean, pitch: string, clientName: string}>({ isOpen: false, pitch: "", clientName: "" });
@@ -323,7 +310,7 @@ export default function ClientsPage() {
       if (search.trim()) url.searchParams.append('query', search.trim());
       url.searchParams.append('page', String(page));
       url.searchParams.append('per_page', String(perPage));
-      if ((role === 'SalesManager' || role === 'Employee') && user?.id) {
+      if (role === 'SalesManager' && user?.id) {
         url.searchParams.append('assigned_employee_id', String(user.id));
       }
 
@@ -486,23 +473,17 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#f8fafc] dark:bg-black overflow-hidden relative">
+    <div className="flex flex-col h-full bg-[#f8fafc] dark:bg-[#0f172a]">
       {/* Header */}
-      <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-black">
+      <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b]">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t("clients.title")}</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("clients.description")}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => {
-              const tid = localStorage.getItem('tenant_id');
-              window.open(`${API_BASE_URL}/clients/export-csv${tid ? `?tenant_id=${tid}` : ''}`, '_blank');
-            }} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
+            <button onClick={() => window.open(`${API_BASE_URL}/clients/export-csv`, '_blank')} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
               <Download className="w-4 h-4" /> Export CSV
-            </button>
-            <button onClick={() => setIsExportModalOpen(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
-              <FileText className="w-4 h-4" /> Export Options
             </button>
             <button onClick={() => { setIsSheetImportOpen(true); setSheetImportState('idle'); setSheetPreview([]); setSheetUrl(''); setSheetImportResult(null); }} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
               <FileSpreadsheet className="w-4 h-4" /> Import Sheet
@@ -514,11 +495,6 @@ export default function ClientsPage() {
               <Plus className="w-4 h-4" /> {t("clients.add_client")}
             </button>
           </div>
-        </div>
-
-        {/* Demo Limits */}
-        <div className="mt-4">
-          <DemoLimits type="clients" />
         </div>
 
         {/* Stats Row */}
@@ -541,7 +517,7 @@ export default function ClientsPage() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-black border-b border-slate-200 dark:border-slate-800 flex-wrap gap-3">
+      <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-[#1e293b] border-b border-slate-200 dark:border-slate-800 flex-wrap gap-3">
         <div className="relative w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -563,7 +539,7 @@ export default function ClientsPage() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Main Content Area */}
-        <div className="flex-1 overflow-auto bg-white dark:bg-black">
+        <div className="flex-1 overflow-auto bg-white dark:bg-[#1e293b]">
           {loading && clients.length === 0 ? (
             <div className="flex items-center justify-center h-64">
               <Loader2 className="animate-spin w-8 h-8 text-blue-600" />
@@ -712,11 +688,6 @@ export default function ClientsPage() {
                                 <Mail className="w-3 h-3" /> {client.email}
                               </span>
                             )}
-                            {client.phone && (
-                              <span className="text-[12px] text-slate-500 flex items-center gap-1 mt-0.5">
-                                <Phone className="w-3 h-3" /> {client.phone}
-                              </span>
-                            )}
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -740,7 +711,7 @@ export default function ClientsPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-1 opacity-100 transition-opacity">
+                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button onClick={(e) => { e.stopPropagation(); setExpandedRowId(p => p === client.id ? null : client.id); }} title="Quick Actions" className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors">
                               <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", expandedRowId === client.id && "rotate-90")} />
                             </button>
@@ -762,14 +733,14 @@ export default function ClientsPage() {
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
                             exit={{ opacity: 0, height: 0 }}
-                            className="bg-slate-50 dark:bg-black border-y border-slate-200 dark:border-slate-700 overflow-hidden"
+                            className="bg-slate-50 dark:bg-[#1e293b] border-y border-slate-200 dark:border-slate-700 overflow-hidden"
                           >
                             <td colSpan={6} className="p-0">
                               <div className="px-6 py-4 flex items-center gap-3">
                                 <button
                                   onClick={() => handleQuickAction(client.id, 'analyse')}
                                   disabled={!!actionLoading[client.id]}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-black border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm"
+                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm"
                                 >
                                   {actionLoading[client.id] === 'analyse' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4 text-slate-500" />}
                                   Analyse Client
@@ -777,7 +748,7 @@ export default function ClientsPage() {
                                 <button
                                   onClick={() => handleQuickAction(client.id, 'extract')}
                                   disabled={!!actionLoading[client.id]}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-black border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm"
+                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm"
                                 >
                                   {actionLoading[client.id] === 'extract' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4 text-slate-500" />}
                                   Extract Services
@@ -793,7 +764,7 @@ export default function ClientsPage() {
                                 <button
                                   onClick={() => handleQuickAction(client.id, 'opportunity')}
                                   disabled={!!actionLoading[client.id]}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-black border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ml-auto shadow-sm"
+                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ml-auto shadow-sm"
                                 >
                                   <Briefcase className="w-4 h-4 text-slate-500" />
                                   View Opportunity
@@ -819,14 +790,14 @@ export default function ClientsPage() {
                 <button 
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="px-4 py-2 text-sm font-semibold bg-white dark:bg-black border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-2"
+                  className="px-4 py-2 text-sm font-semibold bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-2"
                 >
                   <ChevronLeft className="w-4 h-4" /> Previous
                 </button>
                 <button 
                   onClick={() => setPage(p => p + 1)}
                   disabled={page * perPage >= totalCount}
-                  className="px-4 py-2 text-sm font-semibold bg-white dark:bg-black border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-2"
+                  className="px-4 py-2 text-sm font-semibold bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-2"
                 >
                   Next <ChevronRight className="w-4 h-4" />
                 </button>
@@ -998,23 +969,6 @@ export default function ClientsPage() {
                           placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv"
                           className="flex-1 px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white placeholder-slate-500 text-sm outline-none focus:border-slate-500 transition-all"
                         />
-                        <div className="relative flex items-center justify-center">
-                          <input 
-                            type="file" 
-                            accept=".csv,.xlsx,.xls,.pdf,.doc,.docx"
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            onChange={(e) => {
-                               const file = e.target.files?.[0];
-                               if (file) {
-                                  // Just a placeholder to show it accepted the file
-                                  setSheetUrl(`File selected: ${file.name}`);
-                               }
-                            }}
-                          />
-                          <button className="px-4 py-3 bg-slate-800 border border-white/10 rounded-xl text-white text-sm font-bold hover:bg-slate-700 transition-colors whitespace-nowrap">
-                            Upload File
-                          </button>
-                        </div>
                         <button
                           onClick={async () => {
                             if (!sheetUrl.trim()) return;
@@ -1023,10 +977,7 @@ export default function ClientsPage() {
                               const r = await fetch(`${API_BASE_URL}/clients/import-sheet`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ 
-                                  csv_url: sheetUrl,
-                                  assigned_employee_id: user?.id 
-                                })
+                                body: JSON.stringify({ csv_url: sheetUrl })
                               });
                               // Actually just preview: fetch raw CSV separately for table display
                               const rawR = await fetch(sheetUrl);
@@ -1127,10 +1078,7 @@ export default function ClientsPage() {
                             const res = await fetch(`${API_BASE_URL}/clients/import-sheet`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ 
-                                csv_text: rawCsv,
-                                assigned_employee_id: user?.id
-                              })
+                              body: JSON.stringify({ csv_text: rawCsv })
                             });
                             const data = await res.json();
                             setSheetImportResult(data);
@@ -1246,50 +1194,6 @@ export default function ClientsPage() {
                 </button>
                 <button onClick={() => setPitchModal({isOpen: false, pitch: "", clientName: ""})} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors">
                   Done
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-        {/* Custom Export Modal */}
-        {isExportModalOpen && (
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm">
-            <motion.div initial={{scale:0.95, y:10}} animate={{scale:1, y:0}} exit={{scale:0.95, y:10}} className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-zinc-800">
-              <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-zinc-800">
-                <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-blue-500" /> Export Options (PDF)
-                </h3>
-                <button onClick={() => setIsExportModalOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 transition-colors">&times;</button>
-              </div>
-              <div className="p-6 space-y-4">
-                <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Select the columns you want to include in the exported PDF.</p>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  {Object.keys(exportCols).map((col) => (
-                    <label key={col} className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/50 cursor-pointer transition-colors">
-                      <input 
-                        type="checkbox" 
-                        checked={exportCols[col as keyof typeof exportCols]} 
-                        onChange={(e) => setExportCols({...exportCols, [col as keyof typeof exportCols]: e.target.checked})}
-                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-zinc-900"
-                      />
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300 capitalize">{col === 'description' ? 'Brief / Desc' : col}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div className="p-5 border-t border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/50 flex justify-end gap-3">
-                <button onClick={() => setIsExportModalOpen(false)} className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-200 dark:text-zinc-300 dark:hover:bg-zinc-800 transition-colors">Cancel</button>
-                <button 
-                  onClick={() => {
-                    const selected = Object.entries(exportCols).filter(([_, isSelected]) => isSelected).map(([col]) => col).join(',');
-                    if (!selected) return alert('Please select at least one column');
-                    window.open(`${API_BASE_URL}/clients/export-custom-pdf?cols=${selected}`, '_blank');
-                    setIsExportModalOpen(false);
-                  }}
-                  className="px-5 py-2.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors"
-                >
-                  Download PDF
                 </button>
               </div>
             </motion.div>
