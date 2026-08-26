@@ -46,19 +46,105 @@ interface ClientStats {
   isClient: true; companyName: string; projectName: string; website: string;
   status: string; seoStrategy: string; recommended_services: string;
   targetKeywords: string[]; nextMilestone: string; nextMilestoneDate: string;
-  active_services_list: any[];
-  pending_quotes_list: any[];
+  active_services_list: ActiveService[];
+  pending_quotes_list: PendingQuote[];
   pending_requests_count: number;
-  milestones: any[];
-  invoices: any[];
+  milestones: Milestone[];
+  invoices: Invoice[];
   invoice_summary: { total_billed: number; total_paid: number; total_pending: number; total_overdue: number };
-  files: any[];
-  activities: any[];
-  notifications: any[];
+  files: ClientFile[];
+  activities: Activity[];
+  notifications: Notification[];
   unread_notifications_count: number;
-  proposals: any[];
-  projects: any[];
+  proposals: Proposal[];
+  projects: Project[];
 }
+
+interface ActiveService {
+  id: number;
+  service_id: number;
+  status: string;
+  service_name: string;
+}
+
+interface PendingQuote {
+  id: number;
+  service_id: number;
+  quoted_amount: number;
+  quote_message: string;
+  service_name: string;
+}
+
+interface Milestone {
+  id: number;
+  title: string;
+  description: string;
+  due_date: string;
+  status: string;
+  order: number;
+  created_at: string;
+}
+
+interface Invoice {
+  id: number;
+  invoice_number: string;
+  amount: number;
+  tax: number;
+  total: number;
+  status: string;
+  due_date: string;
+  notes: string;
+  line_items: any[];
+  paid_at: string | null;
+  created_at: string;
+}
+
+interface ClientFile {
+  id: number;
+  filename: string;
+  file_url: string;
+  file_size: number;
+  mime_type: string;
+  description: string;
+  created_at: string;
+}
+
+interface Activity {
+  id: number;
+  action: string;
+  method: string;
+  content: string;
+  details: string;
+  createdAt: string;
+}
+
+interface Notification {
+  id: number;
+  title: string;
+  message: string;
+  type: string;
+  link: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+interface Proposal {
+  id: number;
+  title: string;
+  status: string;
+  total_value: number;
+  valid_until: string;
+  created_at: string;
+}
+
+interface Project {
+  id: number;
+  name: string;
+  status: string;
+  progress: number;
+  created_at: string;
+}
+
 type StatsData = AdminStats | ClientStats | null;
 
 

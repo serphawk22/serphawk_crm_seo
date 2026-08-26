@@ -3,12 +3,12 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useRole } from "@/context/RoleContext";
+import { API_BASE_URL } from "@/config";
 import { AdminTopbar } from "@/components/AdminTopbar";
 import { Sidebar } from "@/components/Sidebar";
 import { 
   Kanban, Plus, MoreVertical, DollarSign, Calendar, Clock, MapPin, Search
 } from "lucide-react";
-import { API_BASE_URL } from "@/config";
 
 interface Deal {
   id: number;
