@@ -583,6 +583,23 @@ def on_startup():
     except Exception as e:
         print("leadId column already exists or error:", e)
 
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(50);"))
+            conn.commit()
+            print("Successfully added phone to users table.")
+    except Exception as e:
+        print("phone column already exists or error:", e)
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE tenants ADD COLUMN limit_calls INTEGER DEFAULT 5;"))
+            conn.execute(text("ALTER TABLE tenants ADD COLUMN usage_calls INTEGER DEFAULT 0;"))
+            conn.commit()
+            print("Successfully added call limits to tenants table.")
+    except Exception as e:
+        print("tenant call limits already exist or error:", e)
+
 allowed_origins = [
     "https://serphawk-crm-seo.vercel.app",
     "http://localhost:3000",
