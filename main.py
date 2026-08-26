@@ -224,10 +224,17 @@ def _audit_log_changes(session, flush_context):
         pk = mapper.primary_key[0].name
         return getattr(obj, pk, None)
         
+    # Tables that are root/global objects and should never be audited with a tenant_id
+    _skip_audit_tables = {"audit_logs", "tenants"}
+
     for obj in session.new:
-        if hasattr(obj, "__tablename__") and obj.__tablename__ != "audit_logs":
+        if hasattr(obj, "__tablename__") and obj.__tablename__ not in _skip_audit_tables:
+            obj_tid = getattr(obj, "tenant_id", None) or tenant_id
+            # Skip if tenant_id is invalid (e.g. -1 sentinel or None — no FK to point to)
+            if not obj_tid or obj_tid < 1:
+                continue
             audit_entries.append(AuditLog(
-                tenant_id=getattr(obj, "tenant_id", tenant_id),
+                tenant_id=obj_tid,
                 user_id=user_id,
                 table_name=obj.__tablename__,
                 record_id=get_pk(obj),
@@ -236,10 +243,13 @@ def _audit_log_changes(session, flush_context):
             ))
             
     for obj in session.dirty:
-        if hasattr(obj, "__tablename__") and obj.__tablename__ != "audit_logs":
+        if hasattr(obj, "__tablename__") and obj.__tablename__ not in _skip_audit_tables:
             if session.is_modified(obj, include_collections=False):
+                obj_tid = getattr(obj, "tenant_id", None) or tenant_id
+                if not obj_tid or obj_tid < 1:
+                    continue
                 audit_entries.append(AuditLog(
-                    tenant_id=getattr(obj, "tenant_id", tenant_id),
+                    tenant_id=obj_tid,
                     user_id=user_id,
                     table_name=obj.__tablename__,
                     record_id=get_pk(obj),
@@ -248,9 +258,12 @@ def _audit_log_changes(session, flush_context):
                 ))
                 
     for obj in session.deleted:
-        if hasattr(obj, "__tablename__") and obj.__tablename__ != "audit_logs":
+        if hasattr(obj, "__tablename__") and obj.__tablename__ not in _skip_audit_tables:
+            obj_tid = getattr(obj, "tenant_id", None) or tenant_id
+            if not obj_tid or obj_tid < 1:
+                continue
             audit_entries.append(AuditLog(
-                tenant_id=getattr(obj, "tenant_id", tenant_id),
+                tenant_id=obj_tid,
                 user_id=user_id,
                 table_name=obj.__tablename__,
                 record_id=get_pk(obj),
