@@ -447,19 +447,6 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
           )}
         </div>
       </CollapsibleSection>
-
-      {/* Opportunities & AI Analysis */}
-      <CollapsibleSection title={language === 'es' ? 'Oportunidades y Análisis de IA' : 'Opportunities & AI Analysis'} icon={Target} accentColor="#8b5cf6" defaultOpen={false}>
-        <div style={{ paddingTop: 16 }}>
-          <OpportunitiesTab
-            client={client}
-            timeline={timeline}
-            serviceRequests={serviceRequests}
-            research={research}
-            emails={emails}
-          />
-        </div>
-      </CollapsibleSection>
     </div>
   );
 }
@@ -684,7 +671,7 @@ export default function AdminClientDetailPage() {
         onAddConversation={() => switchTab('conversations')}
         onCreateTask={() => switchTab('tasks')}
         onScheduleMeeting={() => switchTab('conversations')}
-        onSendEmail={() => switchTab('conversations')}
+        onSendEmail={() => client?.email ? window.location.href = `mailto:${client.email}` : alert(language === 'es' ? 'No hay correo' : 'No email found for this client')}
         onUploadFile={() => switchTab('files')}
         onCreateOpportunity={() => switchTab('opportunities')}
         darkMode={darkMode}
@@ -860,7 +847,7 @@ export default function AdminClientDetailPage() {
             <div className="rounded-2xl border border-slate-200 dark:border-zinc-700  bg-white dark:bg-zinc-900 p-4 shadow-sm">
               <div className="flex gap-2 mb-4">
                 {client?.website && (
-                  <a href={client.website} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">
+                  <a href={client.website.startsWith('http') ? client.website : `https://${client.website}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">
                     <Globe className="w-3.5 h-3.5" /> Visit Site
                   </a>
                 )}

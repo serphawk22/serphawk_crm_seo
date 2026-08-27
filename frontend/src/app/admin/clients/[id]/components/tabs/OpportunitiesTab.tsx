@@ -3,6 +3,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingUp, ArrowRight, CheckCircle2, Clock, XCircle, Target, Brain, Mail, Calendar, Wand2, Loader2, Store, AlertCircle, MessageCircle, Phone, Radar } from 'lucide-react';
+import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { API_BASE_URL } from '@/config';
 
@@ -149,6 +150,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
 
   // Radar Discovery Graph State
   const [radarData, setRadarData] = React.useState<any>(null);
+  const [competitorAnalyses, setCompetitorAnalyses] = React.useState<any[]>([]);
   const [loadingRadar, setLoadingRadar] = React.useState(false);
 
   React.useEffect(() => {
@@ -159,6 +161,11 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
       .then(data => setRadarData(data))
       .catch(console.error)
       .finally(() => setLoadingRadar(false));
+      
+    fetch(`${API_BASE_URL}/competitors/${client.id}`)
+      .then(res => res.json())
+      .then(data => setCompetitorAnalyses(data.competitors || []))
+      .catch(console.error);
   }, [client?.id]);
 
   const handleGenerateDraft = async () => {
@@ -193,6 +200,11 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         const rRes = await fetch(`${API_BASE_URL}/radar/relationships/${client?.id}`);
         const rData = await rRes.json();
         setRadarData(rData);
+        
+        const cRes = await fetch(`${API_BASE_URL}/competitors/${client?.id}`);
+        const cData = await cRes.json();
+        setCompetitorAnalyses(cData.competitors || []);
+        
         (document.getElementById('compDomain') as HTMLInputElement).value = '';
       } else {
         const errData = await res.json().catch(() => null);
@@ -247,6 +259,26 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
 
   return (
     <div className="space-y-6">
+      {/* ── New Opportunities Header ────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] gap-6">
+        <div className="p-6 bg-white dark:bg-zinc-900 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-zinc-700 dark:border-slate-800 shadow-sm">
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100 dark:text-slate-200 tracking-tight">Sales Pipeline</h3>
+              <p className="text-sm text-slate-500 dark:text-zinc-400 dark:text-slate-400 mt-1">Current deal stage and progression.</p>
+            </div>
+            <div className="text-right">
+              <span className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 dark:text-slate-500 mb-1">Deal Value</span>
+              <span className="text-lg font-black text-emerald-600 dark:text-emerald-500">{dealValue}</span>
+            </div>
+          </div>
+          <StagePipeline current={currentStage} language={language} />
+        </div>
+        <div className="p-6 bg-white dark:bg-zinc-900 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-zinc-700 dark:border-slate-800 shadow-sm flex flex-col justify-center">
+          <ProbabilityBar stage={currentStage} language={language} />
+        </div>
+      </div>
+
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-zinc-700 dark:border-slate-800 pb-4 overflow-x-auto">
         {[
           { id: 'email_agent', label: language === 'es' ? 'Análisis del Agente IA' : 'AI Agent Analysis', icon: Target },
@@ -522,8 +554,8 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
               </button>
               <button
                 onClick={handleExtractServices}
-                disabled={isExtracting || !client?.websiteUrl}
-                title={!client?.websiteUrl ? 'Add a website URL first' : 'Extract services from website'}
+                disabled={isExtracting || !(client?.websiteUrl || client?.website)}
+                title={!(client?.websiteUrl || client?.website) ? 'Add a website URL first' : 'Extract services from website'}
                 className="flex-1 py-2 px-4 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-colors disabled:opacity-50"
               >
                 {isExtracting ? <Loader2 size={16} className="animate-spin" /> : <Store size={16} />}
@@ -727,9 +759,9 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {radarData?.discovered_competitors?.map((comp: any, idx: number) => (
                         <div key={idx} className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl p-4">
-                          <a href={`/admin/clients/${comp.discovered_client_id}`} target="_blank" className="text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
+                          <Link href={`/admin/clients/${comp.discovered_client_id}`} className="text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
                             {comp.discovered_client_name}
-                          </a>
+                          </Link>
                           <div className="grid grid-cols-2 gap-2 mt-3">
                             <div className="text-[10px] uppercase font-bold text-slate-500">Distance</div>
                             <div className="text-xs font-mono font-bold text-slate-700 dark:text-zinc-300 text-right">{comp.competitor_data?.distance_km} km</div>
@@ -758,6 +790,52 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                     </button>
                   </div>
                 </div>
+
+                {/* AI Competitor Analysis Results */}
+                {competitorAnalyses.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-zinc-400 mb-3">AI Competitor Analysis</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {competitorAnalyses.map((ca: any, idx: number) => {
+                        const score = ca.keyword_gap_data?.opportunity_score || 0;
+                        const scoreColor = score > 70 ? 'text-emerald-500' : score > 40 ? 'text-amber-500' : 'text-slate-500';
+                        return (
+                          <div key={idx} className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl p-4">
+                            <div className="flex justify-between items-start mb-3">
+                              <h5 className="font-bold text-slate-800 dark:text-zinc-100">{ca.competitor_domain}</h5>
+                              <span className={`text-[10px] font-black px-2 py-1 bg-white dark:bg-zinc-900 rounded-md border border-slate-200 dark:border-zinc-700 ${scoreColor}`}>Score: {score}</span>
+                            </div>
+                            <div className="space-y-3">
+                              {ca.content_benchmarks?.content_gap_opportunities?.length > 0 && (
+                                <div>
+                                  <div className="text-[10px] uppercase font-bold text-slate-500 mb-1">Content Gaps</div>
+                                  <ul className="list-disc pl-4 text-xs text-slate-600 dark:text-zinc-300">
+                                    {ca.content_benchmarks.content_gap_opportunities.slice(0, 3).map((g: string, i: number) => (
+                                      <li key={i}>{g}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {ca.backlink_comparison?.link_building_opportunities?.length > 0 && (
+                                <div>
+                                  <div className="text-[10px] uppercase font-bold text-slate-500 mb-1">Backlink Ops</div>
+                                  <ul className="list-disc pl-4 text-xs text-slate-600 dark:text-zinc-300">
+                                    {ca.backlink_comparison.link_building_opportunities.slice(0, 3).map((g: string, i: number) => (
+                                      <li key={i}>{g}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              <div className="text-[10px] text-slate-400 font-mono mt-2 pt-2 border-t border-slate-200 dark:border-zinc-700">
+                                Last Updated: {new Date(ca.last_updated).toLocaleDateString()}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

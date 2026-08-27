@@ -3643,10 +3643,16 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
             research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
             session.add(research)
         
-        ea_payload = {
-            "draft": data,
-            "email_hook": data.get("whatsapp_draft", "Custom outreach generated from latest interactions.")
-        }
+        ea_payload = {}
+        if research.email_agent_data:
+            try:
+                ea_payload = _json.loads(research.email_agent_data)
+            except:
+                pass
+                
+        ea_payload["draft"] = data
+        ea_payload["email_hook"] = data.get("whatsapp_draft", "Custom outreach generated from latest interactions.")
+        
         research.email_agent_data = _json.dumps(ea_payload)
         
         session.commit()
@@ -8900,6 +8906,7 @@ class ContactCreateRequest(BaseModel):
     mobile_number: Optional[str] = None
     alternate_number: Optional[str] = None
     linkedin_url: Optional[str] = None
+    twitter_url: Optional[str] = None
     lead_id: Optional[int] = None
     account_id: Optional[int] = None
     client_id: Optional[int] = None
@@ -12168,35 +12175,12 @@ async def import_leads_csv(file: UploadFile = File(...), session: Session = Depe
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Contacts (Multiple / Sub-contacts)
-# ─────────────────────────────────────────────────────────────────────────────
 from pydantic import BaseModel
-
-class ContactCreate(BaseModel):
-    first_name: str
-    last_name: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    job_title: Optional[str] = None
-    department: Optional[str] = None
-    notes: Optional[str] = None
 
 class ContactLinkRequest(BaseModel):
     contact_id: int
     role_at_company: Optional[str] = None
     is_primary: bool = False
-
-@app.get("/contacts")
-def list_contacts(session: Session = Depends(get_session)):
-    return session.exec(select(Contact)).all()
-
-@app.post("/contacts")
-def create_contact(body: ContactCreate, session: Session = Depends(get_session)):
-    c = Contact(**body.dict())
-    session.add(c)
-    session.commit()
-    session.refresh(c)
-    return c
 
 @app.post("/clients/{client_id}/contacts")
 def link_contact_to_client(client_id: int, body: ContactLinkRequest, session: Session = Depends(get_session)):
@@ -12319,6 +12303,20 @@ def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_
     session.add(user)
     session.commit()
     session.refresh(user)
+    
+    # Notify Admin of new signup
+    admin = session.exec(select(User).where(User.role == "Admin")).first()
+    if admin:
+        from database import Notification
+        notification = Notification(
+            user_id=admin.id,
+            title="New Demo Signup",
+            message=f"New demo account created: {user.name} ({user.email})",
+            type="success",
+            link="/users"
+        )
+        session.add(notification)
+        session.commit()
     
     return {"success": True, "user": _user_dict(user)}
 
