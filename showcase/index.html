@@ -46,9 +46,9 @@
  --browser-chrome-bg: #e8e8e8;
  --browser-url-bg: rgba(0,0,0,0.06);
  --float-badge-bg: #ffffff;
- --neon: #39ff80;
- --neon-dim: rgba(57,255,128,0.12);
- --neon-glow: 0 0 8px rgba(57,255,128,0.5), 0 0 24px rgba(57,255,128,0.2);
+ --neon: #16a34a;
+ --neon-dim: rgba(22,163,74,0.12);
+ --neon-glow: 0 0 8px rgba(22,163,74,0.4), 0 0 24px rgba(22,163,74,0.15);
  }
  [data-theme="dark"] {
  --bg: #000000;
@@ -233,7 +233,6 @@
  .ai-agent-row{display:flex;align-items:center;gap:18px;background:var(--card-bg);border:1px solid var(--border);border-radius:14px;padding:18px 24px;transition:all .3s;text-align:left}
  .ai-agent-row:hover{border-color:var(--accent);transform:translateX(4px);box-shadow:0 8px 28px var(--shadow)}
  .ai-agent-num{font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:900;color:var(--muted);flex-shrink:0;width:38px;letter-spacing:-1px}
- .ai-agent-icon{font-size:26px;flex-shrink:0}
  .ai-agent-content{flex:1}
  .ai-agent-title{font-weight:700;font-size:16px;margin-bottom:3px;color:var(--text)}
  .ai-agent-desc{font-size:13px;color:var(--muted);line-height:1.5}
@@ -241,11 +240,10 @@
 
  /* MODULES */
  .modules-section{padding:90px 40px;text-align:center;background:var(--bg2);border-top:1px solid var(--border)}
- .modules-grid{max-width:1200px;margin:52px auto 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
- .module-card{background:var(--bg);border:1px solid var(--border);border-radius:16px;padding:28px;text-align:left;transition:all .3s;position:relative;overflow:hidden}
- .module-card:hover{transform:translateY(-5px);border-color:var(--accent);box-shadow:0 16px 48px var(--shadow)}
- .module-card-icon{width:48px;height:48px;border-radius:12px;background:var(--glass2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px}
- .module-card-title{font-weight:700;font-size:16px;margin-bottom:7px;color:var(--text)}
+ .modules-grid{max-width:1200px;margin:52px auto 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
+ .module-card{padding:32px 28px;border-radius:16px;background:var(--bg);border:1px solid var(--border);text-align:left;transition:all .3s}
+ .module-card:hover{border-color:var(--neon);box-shadow:0 12px 36px var(--shadow), var(--neon-glow);transform:translateY(-4px)}
+ .module-card-title{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;margin-bottom:10px;color:var(--text)}
  .module-card-desc{font-size:13px;color:var(--muted);line-height:1.65}
  .module-card-tags{margin-top:14px;display:flex;flex-wrap:wrap;gap:5px}
  .module-tag{font-size:10px;font-weight:700;padding:2px 9px;border-radius:100px;background:var(--tag-bg);border:1px solid var(--border);color:var(--tag-text);letter-spacing:.3px}
@@ -552,35 +550,35 @@
  <h2 class="section-title reveal" data-i18n="sum_title">5 agents that never sleep,<br/>never take lunch, never miss</h2>
  <div class="ai-agents-list reveal">
  <div class="ai-agent-row">
- <div class="ai-agent-num">01</div><div class="ai-agent-icon"></div>
+ <div class="ai-agent-num">01</div>
  <div class="ai-agent-content">
  <div class="ai-agent-title" data-i18n="sum1_title">AI Email Agent</div>
  <div class="ai-agent-desc" data-i18n="sum1_desc">Scrapes any website → finds contacts → matches services → writes EN + ES personalized cold email. Sends in one click.</div>
  </div>
  </div>
  <div class="ai-agent-row">
- <div class="ai-agent-num">02</div><div class="ai-agent-icon"></div>
+ <div class="ai-agent-num">02</div>
  <div class="ai-agent-content">
  <div class="ai-agent-title" data-i18n="sum2_title">Client X-Ray Agent</div>
  <div class="ai-agent-desc" data-i18n="sum2_desc">Deep scans any client — tech stack, business profile, AI-detected pain points, Opportunity Score 0-100, recommended services.</div>
  </div>
  </div>
  <div class="ai-agent-row">
- <div class="ai-agent-num">03</div><div class="ai-agent-icon"></div>
+ <div class="ai-agent-num">03</div>
  <div class="ai-agent-content">
  <div class="ai-agent-title" data-i18n="sum3_title">Radar Analysis Agent</div>
  <div class="ai-agent-desc" data-i18n="sum3_desc">Scrapes client + competitors simultaneously, plots 6-axis radar chart, identifies keyword/backlink gaps, produces battle report.</div>
  </div>
  </div>
  <div class="ai-agent-row">
- <div class="ai-agent-num">04</div><div class="ai-agent-icon"></div>
+ <div class="ai-agent-num">04</div>
  <div class="ai-agent-content">
  <div class="ai-agent-title" data-i18n="sum4_title">Call Pitch Agent</div>
  <div class="ai-agent-desc" data-i18n="sum4_desc">Generates a full call script — hook, pain probes, value prop, objection handlers, CTA — personalized for each prospect. 94% confidence.</div>
  </div>
  </div>
  <div class="ai-agent-row">
- <div class="ai-agent-num">05</div><div class="ai-agent-icon"></div>
+ <div class="ai-agent-num">05</div>
  <div class="ai-agent-content">
  <div class="ai-agent-title" data-i18n="sum5_title">WhatsApp Bot Agent</div>
  <div class="ai-agent-desc" data-i18n="sum5_desc">Connects to WhatsApp Business API. Clients type /report, /invoice, /rankings to get real-time data 24/7 — no login, no friction.</div>
@@ -595,21 +593,21 @@
  <h2 class="section-title reveal" data-i18n="mod_title">Everything else your<br/>agency needs too</h2>
  <p class="section-sub reveal" data-i18n="mod_sub">Beyond the 5 AI agents — 22 more modules handling every part of your business.</p>
  <div class="modules-grid reveal">
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m1_t">Live Dashboard</div><div class="module-card-desc" data-i18n="m1_d">KPI cards, revenue charts, activity feed, and real-time team overview. Your agency's heartbeat at a glance.</div><div class="module-card-tags"><span class="module-tag">Real-time</span><span class="module-tag">Charts</span><span class="module-tag">KPIs</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m2_t">Client Management</div><div class="module-card-desc" data-i18n="m2_d">360° client profiles — contact info, services, projects, invoices, rankings, files, and full activity history in one view.</div><div class="module-card-tags"><span class="module-tag">360° View</span><span class="module-tag">Timeline</span><span class="module-tag">X-Ray</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m3_t">Projects &amp; Kanban</div><div class="module-card-desc" data-i18n="m3_d">Drag-and-drop Kanban board with 4 priority levels, task comments, due dates, team assignment, and progress bars.</div><div class="module-card-tags"><span class="module-tag">Kanban</span><span class="module-tag">Drag &amp; Drop</span><span class="module-tag">Priorities</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m4_t">Real-Time Messaging</div><div class="module-card-desc" data-i18n="m4_d">WebSocket-powered chat with typing indicators, read receipts (), and unread badges. Clients feel like VIPs.</div><div class="module-card-tags"><span class="module-tag">WebSocket</span><span class="module-tag">Read Receipts</span><span class="module-tag">Threads</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m5_t">Proposals &amp; Contracts</div><div class="module-card-desc" data-i18n="m5_d">Rich content editor. Clients accept or reject online. Accepted proposals auto-generate an invoice instantly.</div><div class="module-card-tags"><span class="module-tag">E-Accept</span><span class="module-tag">PDF</span><span class="module-tag">5 Statuses</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m6_t">Billing &amp; Invoicing</div><div class="module-card-desc" data-i18n="m6_d">Auto-numbered invoices (INV-2026-0001), tax, 6 payment statuses, overdue tracking, and branded PDF exports.</div><div class="module-card-tags"><span class="module-tag">Auto-number</span><span class="module-tag">PDF</span><span class="module-tag">6 Statuses</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m7_t">Keyword Rankings</div><div class="module-card-desc" data-i18n="m7_d">Track keyword positions over time across Google, Bing, and Yahoo. Show clients their rankings climbing month by month.</div><div class="module-card-tags"><span class="module-tag">Google</span><span class="module-tag">Bing</span><span class="module-tag">History</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m8_t">OCR Business Cards</div><div class="module-card-desc" data-i18n="m8_d">Snap a business card photo. Gemini Vision extracts name, email, phone, company instantly. One click to import as client.</div><div class="module-card-tags"><span class="module-tag">Gemini AI</span><span class="module-tag">Photo → Client</span><span class="module-tag">Auto-import</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m9_t">Smart Notifications</div><div class="module-card-desc" data-i18n="m9_d">4 types, clickable action links, per-user feeds, unread badge counts. Every important event surfaces immediately.</div><div class="module-card-tags"><span class="module-tag">Real-time</span><span class="module-tag">Actionable</span><span class="module-tag">Per-user</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m10_t">Zapier Webhooks</div><div class="module-card-desc" data-i18n="m10_d">15 event types with HMAC-signed payloads. Connect to 5,000+ apps — Slack, Notion, HubSpot, Gmail, and more.</div><div class="module-card-tags"><span class="module-tag">15 Events</span><span class="module-tag">HMAC</span><span class="module-tag">5000+ Apps</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m11_t">Call Logging</div><div class="module-card-desc" data-i18n="m11_d">Log calls with duration, AI-generated summaries, follow-up flags, and client linking. Full conversation history, always.</div><div class="module-card-tags"><span class="module-tag">AI Summary</span><span class="module-tag">Follow-ups</span><span class="module-tag">Logged</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m12_t">NPS Surveys</div><div class="module-card-desc" data-i18n="m12_d">One-click satisfaction surveys. 0-10 scores plus written feedback. Know exactly who's happy and who's at risk of leaving.</div><div class="module-card-tags"><span class="module-tag">0-10 Score</span><span class="module-tag">Feedback</span><span class="module-tag">Public Page</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m13_t">Interactive Tours</div><div class="module-card-desc" data-i18n="m13_d">Step-by-step guided tours on all 40 pages. Clients and new employees learn the full platform in minutes.</div><div class="module-card-tags"><span class="module-tag">40 Pages</span><span class="module-tag">Auto-launch</span><span class="module-tag">Keyboard</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m14_t">Service Store</div><div class="module-card-desc" data-i18n="m14_d">Clients browse your service catalog and request quotes. 5-stage pipeline: Quoted → Accepted → In Progress → Delivered.</div><div class="module-card-tags"><span class="module-tag">Client Store</span><span class="module-tag">5 Stages</span><span class="module-tag">Auto-threads</span></div></div>
- <div class="module-card"><div class="module-card-icon"></div><div class="module-card-title" data-i18n="m15_t">Milestones</div><div class="module-card-desc" data-i18n="m15_d">Create deliverables with due dates. Clients see their milestones in the portal — builds trust and shows progress clearly.</div><div class="module-card-tags"><span class="module-tag">Client Visible</span><span class="module-tag">Due Dates</span><span class="module-tag">Status</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m1_t">Live Dashboard</div><div class="module-card-desc" data-i18n="m1_d">KPI cards, revenue charts, activity feed, and real-time team overview. Your agency's heartbeat at a glance.</div><div class="module-card-tags"><span class="module-tag">Real-time</span><span class="module-tag">Charts</span><span class="module-tag">KPIs</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m2_t">Client Management</div><div class="module-card-desc" data-i18n="m2_d">360° client profiles — contact info, services, projects, invoices, rankings, files, and full activity history in one view.</div><div class="module-card-tags"><span class="module-tag">360° View</span><span class="module-tag">Timeline</span><span class="module-tag">X-Ray</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m3_t">Projects &amp; Kanban</div><div class="module-card-desc" data-i18n="m3_d">Drag-and-drop Kanban board with 4 priority levels, task comments, due dates, team assignment, and progress bars.</div><div class="module-card-tags"><span class="module-tag">Kanban</span><span class="module-tag">Drag &amp; Drop</span><span class="module-tag">Priorities</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m4_t">Real-Time Messaging</div><div class="module-card-desc" data-i18n="m4_d">WebSocket-powered chat with typing indicators, read receipts (), and unread badges. Clients feel like VIPs.</div><div class="module-card-tags"><span class="module-tag">WebSocket</span><span class="module-tag">Read Receipts</span><span class="module-tag">Threads</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m5_t">Proposals &amp; Contracts</div><div class="module-card-desc" data-i18n="m5_d">Rich content editor. Clients accept or reject online. Accepted proposals auto-generate an invoice instantly.</div><div class="module-card-tags"><span class="module-tag">E-Accept</span><span class="module-tag">PDF</span><span class="module-tag">5 Statuses</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m6_t">Billing &amp; Invoicing</div><div class="module-card-desc" data-i18n="m6_d">Auto-numbered invoices (INV-2026-0001), tax, 6 payment statuses, overdue tracking, and branded PDF exports.</div><div class="module-card-tags"><span class="module-tag">Auto-number</span><span class="module-tag">PDF</span><span class="module-tag">6 Statuses</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m7_t">Keyword Rankings</div><div class="module-card-desc" data-i18n="m7_d">Track keyword positions over time across Google, Bing, and Yahoo. Show clients their rankings climbing month by month.</div><div class="module-card-tags"><span class="module-tag">Google</span><span class="module-tag">Bing</span><span class="module-tag">History</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m8_t">OCR Business Cards</div><div class="module-card-desc" data-i18n="m8_d">Snap a business card photo. Gemini Vision extracts name, email, phone, company instantly. One click to import as client.</div><div class="module-card-tags"><span class="module-tag">Gemini AI</span><span class="module-tag">Photo → Client</span><span class="module-tag">Auto-import</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m9_t">Smart Notifications</div><div class="module-card-desc" data-i18n="m9_d">4 types, clickable action links, per-user feeds, unread badge counts. Every important event surfaces immediately.</div><div class="module-card-tags"><span class="module-tag">Real-time</span><span class="module-tag">Actionable</span><span class="module-tag">Per-user</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m10_t">Zapier Webhooks</div><div class="module-card-desc" data-i18n="m10_d">15 event types with HMAC-signed payloads. Connect to 5,000+ apps — Slack, Notion, HubSpot, Gmail, and more.</div><div class="module-card-tags"><span class="module-tag">15 Events</span><span class="module-tag">HMAC</span><span class="module-tag">5000+ Apps</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m11_t">Call Logging</div><div class="module-card-desc" data-i18n="m11_d">Log calls with duration, AI-generated summaries, follow-up flags, and client linking. Full conversation history, always.</div><div class="module-card-tags"><span class="module-tag">AI Summary</span><span class="module-tag">Follow-ups</span><span class="module-tag">Logged</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m12_t">NPS Surveys</div><div class="module-card-desc" data-i18n="m12_d">One-click satisfaction surveys. 0-10 scores plus written feedback. Know exactly who's happy and who's at risk of leaving.</div><div class="module-card-tags"><span class="module-tag">0-10 Score</span><span class="module-tag">Feedback</span><span class="module-tag">Public Page</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m13_t">Interactive Tours</div><div class="module-card-desc" data-i18n="m13_d">Step-by-step guided tours on all 40 pages. Clients and new employees learn the full platform in minutes.</div><div class="module-card-tags"><span class="module-tag">40 Pages</span><span class="module-tag">Auto-launch</span><span class="module-tag">Keyboard</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m14_t">Service Store</div><div class="module-card-desc" data-i18n="m14_d">Clients browse your service catalog and request quotes. 5-stage pipeline: Quoted → Accepted → In Progress → Delivered.</div><div class="module-card-tags"><span class="module-tag">Client Store</span><span class="module-tag">5 Stages</span><span class="module-tag">Auto-threads</span></div></div>
+ <div class="module-card"><div class="module-card-title" data-i18n="m15_t">Milestones</div><div class="module-card-desc" data-i18n="m15_d">Create deliverables with due dates. Clients see their milestones in the portal — builds trust and shows progress clearly.</div><div class="module-card-tags"><span class="module-tag">Client Visible</span><span class="module-tag">Due Dates</span><span class="module-tag">Status</span></div></div>
  </div>
 </section>
 
