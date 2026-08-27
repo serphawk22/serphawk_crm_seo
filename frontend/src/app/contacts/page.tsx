@@ -3,7 +3,7 @@ import { API_BASE_URL } from "@/config";
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, Filter, Users as UsersIcon, Mail, Phone, Globe, Linkedin, MoreVertical, Tag, ChevronDown, ChevronRight, CornerDownRight, Trash, Edit, AlertCircle } from "lucide-react";
+import { Search, Plus, Filter, Users as UsersIcon, Mail, Phone, Globe, Linkedin, Twitter, MoreVertical, Tag, ChevronDown, ChevronRight, CornerDownRight, Trash, Edit, AlertCircle } from "lucide-react";
 
 const ContactRow = ({ contact, depth = 0, onAddSubContact, onEdit, onDelete, onAddNote }: any) => {
   const [expanded, setExpanded] = useState(false);
@@ -83,11 +83,18 @@ const ContactRow = ({ contact, depth = 0, onAddSubContact, onEdit, onDelete, onA
           </div>
         </td>
         <td className="px-6 py-4">
-          {contact.linkedin_url && (
-            <a href={contact.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700">
-              <Linkedin className="w-4 h-4" />
-            </a>
-          )}
+          <div className="flex gap-2">
+            {contact.linkedin_url && (
+              <a href={contact.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700">
+                <Linkedin className="w-4 h-4" />
+              </a>
+            )}
+            {contact.twitter_url && (
+              <a href={contact.twitter_url} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-600">
+                <Twitter className="w-4 h-4" />
+              </a>
+            )}
+          </div>
         </td>
         <td className="px-6 py-4 text-right">
           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -138,7 +145,7 @@ export default function ContactsPage() {
   
   const emptyForm = {
     id: null,
-    first_name: "", last_name: "", email: "", mobile_number: "", designation: "", department: "",
+    first_name: "", last_name: "", email: "", mobile_number: "", designation: "", department: "", linkedin_url: "", twitter_url: "",
     assignment_type: "none",
     client_id: "", lead_id: "", parent_contact_id: null
   };
@@ -217,6 +224,8 @@ export default function ContactsPage() {
       mobile_number: contact.mobile_number || "",
       designation: contact.designation || "",
       department: contact.department || "",
+      linkedin_url: contact.linkedin_url || "",
+      twitter_url: contact.twitter_url || "",
       assignment_type: contact.client_id ? "client" : contact.lead_id ? "lead" : "none",
       client_id: contact.client_id || "",
       lead_id: contact.lead_id || "",
@@ -444,6 +453,18 @@ export default function ContactsPage() {
                     </select>
                   )}
                 </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">LinkedIn URL</label>
+                    <input type="text" value={form.linkedin_url || ""} onChange={e => setForm({...form, linkedin_url: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Twitter URL</label>
+                    <input type="text" value={form.twitter_url || ""} onChange={e => setForm({...form, twitter_url: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
+                  </div>
+                </div>
+
               </div>
               <div className="p-6 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-end gap-3 rounded-b-2xl sticky bottom-0">
                 <button onClick={() => setShowModal(false)} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-sm hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>
@@ -455,8 +476,9 @@ export default function ContactsPage() {
                     last_name: form.last_name,
                     email: form.email,
                     mobile_number: form.mobile_number,
-                    designation: form.designation,
                     department: form.department,
+                    linkedin_url: form.linkedin_url,
+                    twitter_url: form.twitter_url,
                     parent_contact_id: form.parent_contact_id
                   };
                   if (form.assignment_type === 'create_lead') payload.create_new_lead = true;

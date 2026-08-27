@@ -1066,6 +1066,7 @@ class Contact(SQLModel, table=True):
     mobile_number: Optional[str] = Field(default=None, max_length=100)
     alternate_number: Optional[str] = Field(default=None, max_length=100)
     linkedin_url: Optional[str] = Field(default=None, max_length=500)
+    twitter_url: Optional[str] = Field(default=None, max_length=500)
     
     lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     account_id: Optional[int] = Field(default=None, foreign_key="accounts.id")

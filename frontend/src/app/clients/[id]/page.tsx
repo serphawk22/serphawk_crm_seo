@@ -504,7 +504,7 @@ export default function ClientDetailPage() {
                   <Navigation className="w-5 h-5" /> Radar Scan
                 </button>
                 {client?.websiteUrl && (
-                  <a href={client.websiteUrl} target="_blank" rel="noreferrer" className="px-6 py-3 bg-blue-600/50 border border-blue-400/30 text-white font-bold rounded-xl shadow-lg hover:bg-blue-600 transition-all flex items-center gap-2">
+                  <a href={client.websiteUrl.startsWith('http') ? client.websiteUrl : `https://${client.websiteUrl}`} target="_blank" rel="noreferrer" className="px-6 py-3 bg-blue-600/50 border border-blue-400/30 text-white font-bold rounded-xl shadow-lg hover:bg-blue-600 transition-all flex items-center gap-2">
                     <Globe className="w-5 h-5" /> Visit Site
                   </a>
                 )}

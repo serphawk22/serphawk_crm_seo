@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Users, Send, Briefcase, Target, Activity, Phone, GraduationCap, ArrowUpRight, CheckCircle2, TrendingUp, DollarSign, Timer, AlertTriangle, Sparkles, Loader2, Download, Plus } from "lucide-react";
+import { Users, Send, Briefcase, Target, Activity, Phone, GraduationCap, ArrowUpRight, CheckCircle2, TrendingUp, DollarSign, Timer, AlertTriangle, Sparkles, Loader2, Printer, Plus } from "lucide-react";
 import Link from "next/link";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from "recharts";
 import { cn } from "@/lib/utils";
@@ -97,7 +97,7 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
         </div>
         <div className="flex gap-3">
           <button onClick={() => window.print()} className="px-4 py-2 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 rounded-xl shadow-sm text-sm font-bold hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all flex items-center gap-2">
-            <Download className="w-4 h-4" /> Generate Report
+            <Printer className="w-4 h-4" /> Print / Save PDF
           </button>
           <Link href="/clients" className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-sm text-sm font-bold hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center gap-2">
             <Plus className="w-4 h-4" /> Add New Client

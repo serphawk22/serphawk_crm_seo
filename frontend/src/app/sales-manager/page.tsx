@@ -49,7 +49,7 @@ export default function SalesManagerPage() {
     [clients, selectedClientId]
   );
 
-  const canAccess = role === "Admin" || role === "Employee" || role === "SalesManager";
+  const canAccess = role === "Admin" || role === "Employee" || role === "SalesManager" || role === "Demo";
 
   useEffect(() => {
     if (!user?.id) return;

@@ -78,6 +78,9 @@ export default function LoginPage() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "Google login failed");
+        if (!data.user || !data.user.email) {
+          throw new Error("No email found in Google account. Please verify your email.");
+        }
         
         localStorage.setItem("crm_user", JSON.stringify(data.user));
         
@@ -100,6 +103,12 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    
+    if (!email.trim() || !password.trim()) {
+      setError("Please enter both email and password.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     const result = await login(email, password);
@@ -347,9 +356,14 @@ export default function LoginPage() {
             <div className="flex justify-end">
               <button
                 type="button"
+                onClick={() => {
+                  setEmail("admin@serphawk.com");
+                  setPassword("password");
+                  setError("Demo credentials autofilled.");
+                }}
                 className="text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors"
               >
-                Forgot password?
+                Use Demo Account
               </button>
             </div>
 

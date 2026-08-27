@@ -40,6 +40,7 @@ const NAV_MENUS_BASE = [
     label_key: "navigation.core",
     items: [
       { name_key: "navigation.home", icon: LayoutDashboard, href: "/", roles: ["Admin", "Employee", "Intern"] },
+      { name_key: "navigation.my_queue", icon: Inbox, href: "/my-queue", roles: ["Admin", "Employee", "Intern", "Demo"] },
       { name_key: "navigation.clients", icon: Users, href: "/clients", roles: ["Admin", "Employee"] },
       { name_key: "navigation.projects", icon: FolderKanban, href: "/projects", roles: ["Admin", "Employee", "Intern"] },
       { name_key: "navigation.tasks", icon: CheckSquare, href: "/tasks", roles: ["Admin", "Employee", "Intern"] },
@@ -53,7 +54,7 @@ const NAV_MENUS_BASE = [
       { name_key: "navigation.sales_manager", icon: UserCheck, href: "/sales-manager", roles: ["Employee", "SalesManager"] },
       { name_key: "navigation.calls", icon: Phone, href: "/calls", roles: ["Admin", "Employee", "SalesManager"] },
       { name_key: "navigation.messages", icon: MessageCircle, href: "/messages", roles: ["Admin", "Employee", "SalesManager"] },
-      { name_key: "navigation.notifications", icon: Bell, href: "/notifications", roles: ["Admin", "Employee", "Intern", "SalesManager"] },
+      { name_key: "navigation.notifications", icon: Bell, href: "/notifications", roles: ["Admin", "Employee", "Intern", "SalesManager", "Demo"] },
     ]
   },
   {
