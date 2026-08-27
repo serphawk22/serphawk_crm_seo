@@ -12304,19 +12304,23 @@ def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_
     session.commit()
     session.refresh(user)
     
-    # Notify Admin of new signup
+    # Notify Admin of new signup (wrapped in try-except so it doesn't block signup if it fails)
     admin = session.exec(select(User).where(User.role == "Admin")).first()
     if admin:
-        from database import Notification
-        notification = Notification(
-            user_id=admin.id,
-            title="New Demo Signup",
-            message=f"New demo account created: {user.name} ({user.email})",
-            type="info",
-            link="/users"
-        )
-        session.add(notification)
-        session.commit()
+        try:
+            from database import Notification
+            notification = Notification(
+                user_id=admin.id,
+                title="New Demo Signup",
+                message=f"New demo account created: {user.name} ({user.email})",
+                type="info",
+                link="/users"
+            )
+            session.add(notification)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            print(f"Failed to create admin notification for demo signup: {e}")
     
     return {"success": True, "user": _user_dict(user)}
 
