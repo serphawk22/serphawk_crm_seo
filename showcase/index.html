@@ -13,8 +13,8 @@
  :root {
  /* Light mode defaults */
  --bg: #ffffff;
- --bg2: #f5f5f5;
- --bg3: #ececec;
+ --bg2: #fafafa;
+ --bg3: #f0f0f0;
  --text: #000000;
  --muted: #555555;
  --border: rgba(0,0,0,0.10);
@@ -255,7 +255,8 @@
  .roles-grid{max-width:1100px;margin:52px auto 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
  .role-card{border-radius:16px;padding:28px;border:1px solid var(--border);background:var(--role-card-bg);transition:all .3s}
  .role-card:hover{transform:translateY(-4px);border-color:var(--accent);box-shadow:0 12px 36px var(--shadow)}
- .role-avatar{width:50px;height:50px;border-radius:12px;background:var(--glass2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:14px}
+ .role-avatar{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;color:var(--neon)}
+ .role-avatar svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
  .role-title{font-weight:800;font-size:18px;margin-bottom:5px;color:var(--text)}
  .role-tagline{font-size:12px;color:var(--muted);margin-bottom:14px;font-weight:500}
  .role-perms{list-style:none;display:flex;flex-direction:column;gap:7px}
@@ -346,7 +347,10 @@
  <button class="lang-btn active" id="btn-en" onclick="setLang('en')">EN</button>
  <button class="lang-btn" id="btn-es" onclick="setLang('es')">ES</button>
  </div>
- <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"></button>
+  <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">
+  <svg id="icon-sun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+  <svg id="icon-moon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  </button>
  <a href="https://crm.serphawk.in" class="nav-cta" data-i18n="nav_cta">Try Demo →</a>
  </div>
 </nav>
@@ -612,43 +616,59 @@
 <!-- ROLES -->
 <section class="roles-section" id="roles">
  <div style="text-align:center">
- <span class="section-eyebrow reveal" data-i18n="role_eyebrow">Access Control</span>
- <h2 class="section-title reveal" data-i18n="role_title">The right view for every person</h2>
- <p class="section-sub reveal" data-i18n="role_sub">4 roles with precise permissions. Everyone sees exactly what they need.</p>
+  <span class="section-eyebrow reveal" data-i18n="role_eyebrow">Access Control</span>
+  <h2 class="section-title reveal" data-i18n="role_title">The right view for every person</h2>
+  <p class="section-sub reveal" data-i18n="role_sub">6 roles with precise permissions. Everyone sees exactly what they need.</p>
  </div>
  <div class="roles-grid reveal">
- <div class="role-card">
- <div class="role-avatar"></div>
- <div class="role-title" data-i18n="r1_title">Admin</div><div class="role-tagline" data-i18n="r1_tag">Full control</div>
- <ul class="role-perms">
- <li data-i18n="r1_1">All 5 AI agents</li><li data-i18n="r1_2">Billing &amp; invoicing</li>
- <li data-i18n="r1_3">Employee management</li><li data-i18n="r1_4">Webhooks &amp; settings</li><li data-i18n="r1_5">Telemetry feed</li>
- </ul>
- </div>
- <div class="role-card">
- <div class="role-avatar"></div>
- <div class="role-title" data-i18n="r2_title">Employee</div><div class="role-tagline" data-i18n="r2_tag">Daily operations</div>
- <ul class="role-perms">
- <li data-i18n="r2_1">AI email + call pitch agents</li><li data-i18n="r2_2">Clients, projects, tasks</li>
- <li data-i18n="r2_3">Messaging & files</li><li data-i18n="r2_4">Radar + X-Ray analysis</li><li data-i18n="r2_5">No billing access</li>
- </ul>
- </div>
- <div class="role-card">
- <div class="role-avatar"></div>
- <div class="role-title" data-i18n="r3_title">Intern</div><div class="role-tagline" data-i18n="r3_tag">Learning mode</div>
- <ul class="role-perms">
- <li data-i18n="r3_1">Dashboard overview</li><li data-i18n="r3_2">Assigned tasks only</li>
- <li data-i18n="r3_3">Their own projects</li><li data-i18n="r3_4">Read-only client data</li><li data-i18n="r3_5">Guided page tours</li>
- </ul>
- </div>
- <div class="role-card">
- <div class="role-avatar"></div>
- <div class="role-title" data-i18n="r4_title">Client</div><div class="role-tagline" data-i18n="r4_tag">Their own portal</div>
- <ul class="role-perms">
- <li data-i18n="r4_1">Own invoices & proposals</li><li data-i18n="r4_2">Keyword rankings view</li>
- <li data-i18n="r4_3">Milestones & files</li><li data-i18n="r4_4">Messaging with agency</li><li data-i18n="r4_5">WhatsApp commands</li>
- </ul>
- </div>
+  <div class="role-card">
+   <div class="role-avatar"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
+   <div class="role-title" data-i18n="r1_title">Admin</div><div class="role-tagline" data-i18n="r1_tag">Full control</div>
+   <ul class="role-perms">
+    <li data-i18n="r1_1">All 5 AI agents</li><li data-i18n="r1_2">Billing &amp; invoicing</li>
+    <li data-i18n="r1_3">Employee management</li><li data-i18n="r1_4">Webhooks &amp; settings</li><li data-i18n="r1_5">Telemetry feed</li>
+   </ul>
+  </div>
+  <div class="role-card">
+   <div class="role-avatar"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+   <div class="role-title" data-i18n="r2_title">Employee</div><div class="role-tagline" data-i18n="r2_tag">Daily operations</div>
+   <ul class="role-perms">
+    <li data-i18n="r2_1">AI email + call pitch agents</li><li data-i18n="r2_2">Clients, projects, tasks</li>
+    <li data-i18n="r2_3">Messaging &amp; files</li><li data-i18n="r2_4">Radar + X-Ray analysis</li><li data-i18n="r2_5">No billing access</li>
+   </ul>
+  </div>
+  <div class="role-card">
+   <div class="role-avatar"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+   <div class="role-title">Sales</div><div class="role-tagline">Revenue focused</div>
+   <ul class="role-perms">
+    <li>AI outreach &amp; email agent</li><li>Lead pipeline &amp; contacts</li>
+    <li>Call pitch generator</li><li>Client X-Ray reports</li><li>No billing settings</li>
+   </ul>
+  </div>
+  <div class="role-card">
+   <div class="role-avatar"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
+   <div class="role-title">Demo</div><div class="role-tagline">Sandboxed preview</div>
+   <ul class="role-perms">
+    <li>Full UI walkthrough</li><li>AI agents (read-only)</li>
+    <li>Sample data only</li><li>No real actions</li><li>Auto-expires 7 days</li>
+   </ul>
+  </div>
+  <div class="role-card">
+   <div class="role-avatar"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></div>
+   <div class="role-title">Supplier</div><div class="role-tagline">Vendor portal</div>
+   <ul class="role-perms">
+    <li>Own orders &amp; invoices</li><li>Delivery status updates</li>
+    <li>Product catalog view</li><li>Messaging with agency</li><li>No client data access</li>
+   </ul>
+  </div>
+  <div class="role-card">
+   <div class="role-avatar"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+   <div class="role-title" data-i18n="r4_title">Client</div><div class="role-tagline" data-i18n="r4_tag">Their own portal</div>
+   <ul class="role-perms">
+    <li data-i18n="r4_1">Own invoices &amp; proposals</li><li data-i18n="r4_2">Keyword rankings view</li>
+    <li data-i18n="r4_3">Milestones &amp; files</li><li data-i18n="r4_4">Messaging with agency</li><li data-i18n="r4_5">WhatsApp commands</li>
+   </ul>
+  </div>
  </div>
 </section>
 
@@ -1072,12 +1092,13 @@ function toggleTheme() {
  const html = document.documentElement;
  const isDark = html.getAttribute('data-theme') === 'dark';
  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
- document.getElementById('themeBtn').textContent = isDark ? '' : '';
- // Update particle opacity
+ document.getElementById('icon-sun').style.display  = isDark ? 'block' : 'none';
+ document.getElementById('icon-moon').style.display = isDark ? 'none'  : 'block';
  document.getElementById('particle-canvas').style.opacity = isDark ? '0.08' : '0.15';
 }
-// Set initial icon
-document.getElementById('themeBtn').textContent = '';
+// Initial: dark mode = show moon icon
+document.getElementById('icon-moon').style.display = 'block';
+document.getElementById('icon-sun').style.display  = 'none';
 
 /* 
  PARTICLES
