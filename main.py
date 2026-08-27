@@ -12312,7 +12312,7 @@ def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_
             user_id=admin.id,
             title="New Demo Signup",
             message=f"New demo account created: {user.name} ({user.email})",
-            type="success",
+            type="info",
             link="/users"
         )
         session.add(notification)
