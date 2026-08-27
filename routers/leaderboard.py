@@ -19,7 +19,7 @@ class LeaderboardEntry(BaseModel):
     meetings_booked: int
     calls_made: int
 
-@router.get("/", response_model=List[LeaderboardEntry])
+@router.get("", response_model=List[LeaderboardEntry])
 def get_leaderboard(session: Session = Depends(get_session)):
     users = session.exec(select(User).where(User.role.in_(["Employee", "SalesManager", "Admin"]))).all()
     
