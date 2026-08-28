@@ -84,8 +84,25 @@ export default function ClientHeader({
 
   // Brief description from research or tagline
   const description = client?.description || client?.tagline || client?.seoStrategy || client?.gmbName || null;
-  const services = client?.services_offered || null;
   const companyName = client?.company_name || client?.companyName || client?.projectName || (client?.customFields?.sheet_data?.['Client Name']) || null;
+
+  let parsedServices: any[] = [];
+  let rawServicesString = null;
+  if (client?.services_offered) {
+    if (typeof client.services_offered === 'string') {
+      try {
+        const parsed = JSON.parse(client.services_offered);
+        if (Array.isArray(parsed)) parsedServices = parsed;
+        else rawServicesString = client.services_offered;
+      } catch {
+        rawServicesString = client.services_offered;
+      }
+    } else if (Array.isArray(client.services_offered)) {
+      parsedServices = client.services_offered;
+    } else {
+      rawServicesString = String(client.services_offered);
+    }
+  }
 
   return (
     <div className="sticky top-0 z-40 bg-white dark:bg-zinc-900 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border-b border-slate-200 dark:border-zinc-700">
@@ -157,10 +174,28 @@ export default function ClientHeader({
             )}
 
             {/* Services Row */}
-            {services && (
-              <div className="flex items-start gap-2 mb-1.5">
+            {(parsedServices.length > 0 || rawServicesString) && (
+              <div className="flex items-start gap-2 mb-2">
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500 mt-0.5 shrink-0">Services:</span>
-                <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold leading-snug">{services}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {parsedServices.length > 0 ? (
+                    parsedServices.map((svc: any, idx: number) => {
+                      const name = svc.name || (typeof svc === 'string' ? svc : 'Service');
+                      const tooltip = svc.brief || svc.category || '';
+                      return (
+                        <div 
+                          key={idx} 
+                          className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-md text-[10.5px] font-bold text-indigo-700 dark:text-indigo-400 cursor-help"
+                          title={tooltip}
+                        >
+                          {name}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold leading-snug">{rawServicesString}</p>
+                  )}
+                </div>
               </div>
             )}
 

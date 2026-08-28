@@ -3580,13 +3580,13 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
 
         # Get Notes and Conversations
         notes = session.exec(select(ClientNote).where(ClientNote.client_id == client_id).order_by(ClientNote.created_at.desc()).limit(10)).all()
-        conversations = session.exec(select(ClientConversation).where(ClientConversation.client_id == client_id).order_by(ClientConversation.date.desc()).limit(5)).all()
+        conversations = session.exec(select(ConversationLog).where(ConversationLog.client_id == client_id).order_by(ConversationLog.created_at.desc()).limit(5)).all()
         
         interaction_context = ""
         if notes:
             interaction_context += "Recent Notes:\n" + "\n".join([f"- {n.content}" for n in notes]) + "\n"
         if conversations:
-            interaction_context += "Recent Conversations:\n" + "\n".join([f"- {c.type} on {c.date}: {c.summary}" for c in conversations]) + "\n"
+            interaction_context += "Recent Conversations:\n" + "\n".join([f"- {c.type} on {c.created_at.strftime('%Y-%m-%d') if c.created_at else 'Unknown'}: {c.title} - {c.description}" for c in conversations]) + "\n"
 
         prompt = f"""
         You are an expert SDR (Sales Development Representative) at an agency. 
