@@ -4986,6 +4986,7 @@ def list_activities(user_id: Optional[int] = None, session: Session = Depends(ge
                 "content": a.content,
                 "details": a.details,
                 "clientId": a.clientId,
+                "lead_id": a.lead_id,
                 "createdAt": a.createdAt.isoformat(),
             }
             for a in logs
