@@ -10,105 +10,11 @@ import {
 import { API_BASE_URL } from '@/config';
 import CompetitorTable from '@/app/admin/radar/components/CompetitorTable';
 
-const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyAJbAEbE5egi9y-adJ5G804u_vL64We_nc";
+import dynamic from 'next/dynamic';
+const LeafletRadarMap = dynamic(() => import('@/app/admin/clients/[id]/competitors/RadarMap'), { ssr: false });
 
-function loadGoogleMapsScript(apiKey: string): Promise<void> {
-  return new Promise((resolve) => {
-    if (typeof window === "undefined") return;
-    
-    // Suppress Google Maps API auth/billing alerts
-    // @ts-ignore
-    window.gm_authFailure = () => {
-      const errorDiv = document.querySelector('.gm-err-container');
-      if (errorDiv) {
-        (errorDiv as HTMLElement).style.display = 'none';
-      }
-    };
-
-    if (window.google?.maps) { resolve(); return; }
-    const existing = document.querySelector(`script[src*="maps.googleapis.com"]`);
-    if (existing) { existing.addEventListener("load", () => resolve()); return; }
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-    script.async = true;
-    script.onload = () => resolve();
-    document.head.appendChild(script);
-  });
-}
-
-// Reusing RadarMap loader for dark UI styling
 function RadarMapLoader({ target, competitors, radiusKm }: { target: any; competitors: any[]; radiusKm: number }) {
-  const mapRef = React.useRef<HTMLDivElement>(null);
-  const mapInstanceRef = React.useRef<any>(null);
-  const markersRef = React.useRef<any[]>([]);
-  const circleRef = React.useRef<any>(null);
-  const iwRef = React.useRef<any>(null);
-
-  React.useEffect(() => {
-    if (!mapRef.current || !window.google || !target) return;
-    const g = window.google.maps;
-    const center = { lat: target.lat, lng: target.lng };
-    const darkStyles = [
-      { featureType: "all", elementType: "geometry", stylers: [{ color: "#09090b" }] },
-      { featureType: "all", elementType: "labels.text.fill", stylers: [{ color: "#71717a" }] },
-      { featureType: "all", elementType: "labels.text.stroke", stylers: [{ color: "#000000" }] },
-      { featureType: "road", elementType: "geometry", stylers: [{ color: "#18181b" }] },
-      { featureType: "water", elementType: "geometry", stylers: [{ color: "#000000" }] },
-    ];
-
-        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    if (!mapInstanceRef.current) {
-      mapInstanceRef.current = new g.Map(mapRef.current, {
-        center, zoom: radiusKm <= 2 ? 15 : radiusKm <= 5 ? 14 : radiusKm <= 10 ? 13 : 12,
-        styles: isDark ? darkStyles : [], mapTypeControl: false, streetViewControl: false,
-      });
-    } else {
-      mapInstanceRef.current.panTo(center);
-    }
-
-    const map = mapInstanceRef.current;
-    markersRef.current.forEach((m: any) => m.setMap(null));
-    markersRef.current = [];
-    if (circleRef.current) circleRef.current.setMap(null);
-    if (!iwRef.current) iwRef.current = new g.InfoWindow();
-
-    circleRef.current = new g.Circle({
-      map, center, radius: radiusKm * 1000,
-      strokeColor: "#6366f1", strokeOpacity: 0.6, strokeWeight: 2,
-      fillColor: "#6366f1", fillOpacity: 0.06,
-    });
-
-    const makePin = (color: string) => ({
-      path: "M 12 0 C 5.37 0 0 5.37 0 12 c 0 9 12 18 12 18 s 12 -9 12 -18 C 24 5.37 18.63 0 12 0 z",
-      fillColor: color, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 1.5,
-      scale: 1.5, anchor: new g.Point(12, 30),
-    });
-
-    const PIN_COLORS: Record<string, string> = { red: "#ef4444", orange: "#f97316", yellow: "#eab308", green: "#22c55e", blue: "#6366f1" };
-
-    const tm = new g.Marker({ position: center, map, icon: makePin(PIN_COLORS.blue), title: target.name, zIndex: 1000 });
-    tm.addListener("click", () => {
-      iwRef.current.setContent(`<div style="background:#18181b;color:#f4f4f5;padding:12px;border-radius:8px;min-width:200px"><div style="font-size:10px;color:#818cf8;font-weight:800;text-transform:uppercase;margin-bottom:6px">TARGET BUSINESS</div><div style="font-size:15px;font-weight:800">${target.name}</div><div style="font-size:11px;color:#a1a1aa;margin-top:4px">${target.address || ""}</div></div>`);
-      iwRef.current.open(map, tm);
-    });
-    markersRef.current.push(tm);
-
-    competitors.forEach((c: any) => {
-      const cm = new g.Marker({
-        position: { lat: c.lat, lng: c.lng }, map,
-        icon: makePin(PIN_COLORS[c.pin_color] || PIN_COLORS.green),
-        title: c.name,
-      });
-      const labelMap: Record<string, string> = { red: "Direct Competitor", orange: "Strong Competitor", yellow: "Moderate", green: "Weak" };
-      cm.addListener("click", () => {
-        iwRef.current.setContent(`<div style="background:#18181b;color:#f4f4f5;padding:12px;border-radius:8px;min-width:220px"><div style="background:${PIN_COLORS[c.pin_color]};color:white;font-size:9px;font-weight:800;text-transform:uppercase;padding:3px 8px;border-radius:4px;display:inline-block;margin-bottom:8px">${labelMap[c.pin_color] || "Competitor"}</div><div style="font-size:14px;font-weight:800;margin-bottom:4px">${c.name}</div><div style="font-size:11px;color:#a1a1aa;margin-bottom:8px">${c.address || ""}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px"><div style="background:#09090b;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#71717a">Distance</div><div style="font-size:13px;font-weight:700">${c.distance_km}km</div></div><div style="background:#09090b;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#71717a">Market Score</div><div style="font-size:13px;font-weight:700">${c.market_size_score}/100</div></div></div></div>`);
-        iwRef.current.open(map, cm);
-      });
-      markersRef.current.push(cm);
-    });
-  }, [target, competitors, radiusKm]);
-
-  return <div ref={mapRef} className="w-full h-full min-h-[500px]" />;
+  return <LeafletRadarMap clientLat={target.lat} clientLng={target.lng} competitors={competitors} clientName={target.name} />;
 }
 
 export default function CompetitorRadarPage({ params }: { params: Promise<{ id: string }> }) {
@@ -127,7 +33,7 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
   const [manualQuery, setManualQuery] = useState("");
 
   useEffect(() => {
-    loadGoogleMapsScript(GOOGLE_MAPS_KEY).then(() => setMapReady(true));
+    setMapReady(true);
   }, []);
 
   useEffect(() => {

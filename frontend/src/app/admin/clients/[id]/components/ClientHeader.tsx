@@ -156,13 +156,7 @@ export default function ClientHeader({
               </p>
             )}
 
-            {/* Services Row */}
-            {services && (
-              <div className="flex items-start gap-2 mb-1.5">
-                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500 mt-0.5 shrink-0">Services:</span>
-                <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold leading-snug">{services}</p>
-              </div>
-            )}
+
 
             {/* Contact Info Chips */}
             <div className="flex flex-wrap gap-x-4 gap-y-1">

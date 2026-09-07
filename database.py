@@ -414,6 +414,8 @@ class ClientProfile(SQLModel, table=True):
     discovery_date: Optional[str] = Field(default=None, max_length=50)
     discovered_from_name: Optional[str] = Field(default=None, max_length=255)  # denormalized label
     
+    swot_analysis: Optional[str] = Field(default=None, sa_column=Column(Text))
+    
     # Relationships
     user: Optional[User] = Relationship(back_populates="profile")
     remarks: List["Remark"] = Relationship(back_populates="client")
@@ -1049,6 +1051,7 @@ class Lead(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_activity: Optional[str] = Field(default=None, max_length=500)
     ai_analysis_results: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    swot_analysis: Optional[str] = Field(default=None, sa_column=Column(Text))
 
     account: Optional[Account] = Relationship(back_populates="leads")
     contacts: List["Contact"] = Relationship(back_populates="lead")

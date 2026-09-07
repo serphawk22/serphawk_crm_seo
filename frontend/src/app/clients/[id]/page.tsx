@@ -29,7 +29,10 @@ import {
   Mail,
   FolderKanban,
   Target,
-  Eye
+  Eye,
+  TrendingDown,
+  Lightbulb,
+  ShieldAlert
 } from 'lucide-react';
 import { API_BASE_URL } from '@/config';
 import { useRole } from '@/context/RoleContext';
@@ -423,6 +426,25 @@ export default function ClientDetailPage() {
       alert('Error connecting to AI');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [isSwotLoading, setIsSwotLoading] = useState(false);
+  const handleGenerateSwot = async () => {
+    setIsSwotLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${id}/swot`, { method: 'POST' });
+      if (res.ok) {
+        fetchClientData();
+      } else {
+        const err = await res.json();
+        alert(`Failed to generate SWOT: ${err.detail || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error connecting to AI');
+    } finally {
+      setIsSwotLoading(false);
     }
   };
 
@@ -987,6 +1009,117 @@ export default function ClientDetailPage() {
               </div>
             </motion.div>
           </div>
+        </motion.div>
+
+        {/* ─── AI SWOT ANALYSIS ─── */}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.85 }} className="mb-16">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="h-1 w-12 bg-gradient-to-r from-orange-400 to-red-500 rounded-full"></div>
+              <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">SWOT Analysis</h2>
+            </div>
+            {client.swot_analysis && (
+              <button
+                onClick={handleGenerateSwot}
+                disabled={isSwotLoading}
+                className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-red-500/30 transition-all disabled:opacity-50"
+              >
+                {isSwotLoading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+                {isSwotLoading ? 'Analyzing...' : 'Refresh SWOT'}
+              </button>
+            )}
+          </div>
+
+          {client.swot_analysis ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {(() => {
+                let swot = null;
+                try {
+                  swot = JSON.parse(client.swot_analysis);
+                } catch (e) {}
+
+                if (!swot) return <div className="col-span-2 text-slate-500 italic p-6 bg-slate-50 rounded-2xl">Invalid SWOT data. Please regenerate.</div>;
+
+                return (
+                  <>
+                    <div className="col-span-1 md:col-span-2 p-6 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl shadow-sm">
+                      <p className="text-sm font-medium text-slate-700 dark:text-zinc-300 leading-relaxed text-center">
+                        {swot.summary}
+                      </p>
+                    </div>
+
+                    <div className="p-6 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-3xl">
+                      <h3 className="text-lg font-black text-emerald-800 dark:text-emerald-400 mb-4 flex items-center gap-2">
+                        <TrendingUp size={20} /> Strengths
+                      </h3>
+                      <ul className="space-y-3">
+                        {swot.strengths?.map((s: string, i: number) => (
+                          <li key={i} className="flex gap-2 text-sm text-emerald-700 dark:text-emerald-300">
+                            <span className="font-bold shrink-0 mt-0.5">•</span> <span>{s}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="p-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-3xl">
+                      <h3 className="text-lg font-black text-red-800 dark:text-red-400 mb-4 flex items-center gap-2">
+                        <TrendingDown size={20} /> Weaknesses
+                      </h3>
+                      <ul className="space-y-3">
+                        {swot.weaknesses?.map((w: string, i: number) => (
+                          <li key={i} className="flex gap-2 text-sm text-red-700 dark:text-red-300">
+                            <span className="font-bold shrink-0 mt-0.5">•</span> <span>{w}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="p-6 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-3xl">
+                      <h3 className="text-lg font-black text-blue-800 dark:text-blue-400 mb-4 flex items-center gap-2">
+                        <Lightbulb size={20} /> Opportunities
+                      </h3>
+                      <ul className="space-y-3">
+                        {swot.opportunities?.map((o: string, i: number) => (
+                          <li key={i} className="flex gap-2 text-sm text-blue-700 dark:text-blue-300">
+                            <span className="font-bold shrink-0 mt-0.5">•</span> <span>{o}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-3xl">
+                      <h3 className="text-lg font-black text-amber-800 dark:text-amber-400 mb-4 flex items-center gap-2">
+                        <ShieldAlert size={20} /> Threats
+                      </h3>
+                      <ul className="space-y-3">
+                        {swot.threats?.map((t: string, i: number) => (
+                          <li key={i} className="flex gap-2 text-sm text-amber-700 dark:text-amber-300">
+                            <span className="font-bold shrink-0 mt-0.5">•</span> <span>{t}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 px-6 bg-slate-50 dark:bg-zinc-900/50 border border-dashed border-slate-300 dark:border-zinc-700 rounded-3xl">
+              <div className="w-16 h-16 bg-white dark:bg-zinc-800 rounded-full flex items-center justify-center shadow-sm mb-4">
+                <Radar size={28} className="text-slate-400" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-700 dark:text-zinc-300 mb-2">No SWOT Analysis yet</h3>
+              <p className="text-sm text-slate-500 text-center max-w-md mb-6">Run a deep AI analysis of this client's website to identify their Strengths, Weaknesses, Opportunities, and Threats.</p>
+              <button
+                onClick={handleGenerateSwot}
+                disabled={isSwotLoading || !client.websiteUrl}
+                className="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 dark:bg-white dark:hover:bg-slate-200 dark:text-slate-900 text-white rounded-xl font-bold text-sm shadow-sm transition-all disabled:opacity-50 flex items-center gap-2"
+              >
+                {isSwotLoading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+                {isSwotLoading ? 'Analyzing...' : (client.websiteUrl ? 'Perform SWOT Analysis' : 'Add Website URL first')}
+              </button>
+            </div>
+          )}
         </motion.div>
 
         {/* ─── UNIFIED ACTIVITY TIMELINE ─── */}
