@@ -9236,15 +9236,64 @@ def get_lead_activities(lead_id: int, session: Session = Depends(get_session)):
 
 @app.get("/leads/{lead_id}/timeline")
 def get_lead_timeline(lead_id: int, session: Session = Depends(get_session)):
-    return {"timeline": []}
+    events: list[dict] = []
+    # Activities
+    for a in session.exec(select(ActivityLog).where(ActivityLog.lead_id == lead_id)).all():
+        events.append({"type": "activity", "id": a.id, "title": a.action or a.method or "Activity", "detail": a.content or "", "date": a.createdAt.isoformat() if a.createdAt else None})
+    # Emails
+    for e in session.exec(select(SentEmail).where(SentEmail.lead_id == lead_id)).all():
+        events.append({"type": "email", "id": e.id, "title": f"Email: {e.subject or 'No subject'}", "detail": e.to_email or "", "date": e.sent_at.isoformat() if e.sent_at else None})
+    # Notes
+    for n in session.exec(select(ClientNote).where(ClientNote.lead_id == lead_id)).all():
+        events.append({"type": "note", "id": n.id, "title": "Note Added", "detail": n.content or "", "date": n.created_at.isoformat() if n.created_at else None})
+    # Conversations
+    for c in session.exec(select(ConversationLog).where(ConversationLog.lead_id == lead_id)).all():
+        events.append({"type": "conversation", "id": c.id, "title": c.title or "Conversation", "detail": c.description or "", "date": c.created_at.isoformat() if c.created_at else None})
+    
+    events.sort(key=lambda x: x["date"] or "", reverse=True)
+    return {"timeline": events}
+
+@app.get("/leads/{lead_id}/activities")
+def get_lead_activities(lead_id: int, session: Session = Depends(get_session)):
+    acts = session.exec(select(ActivityLog).where(ActivityLog.lead_id == lead_id).order_by(ActivityLog.createdAt.desc())).all()
+    return {"activities": [a.dict() for a in acts]}
 
 @app.get("/leads/{lead_id}/notes")
 def get_lead_notes(lead_id: int, session: Session = Depends(get_session)):
-    return {"notes": []}
+    notes = session.exec(select(ClientNote).where(ClientNote.lead_id == lead_id).order_by(ClientNote.created_at.desc())).all()
+    return {"notes": [n.dict() for n in notes]}
+
+class LeadNoteCreate(BaseModel):
+    content: str
+    author_name: str = "Admin"
+    tags: Optional[List[str]] = []
+
+@app.post("/leads/{lead_id}/notes")
+def create_lead_note(lead_id: int, body: LeadNoteCreate, session: Session = Depends(get_session)):
+    note = ClientNote(lead_id=lead_id, content=body.content, author_name=body.author_name, tags=body.tags)
+    session.add(note)
+    session.commit()
+    session.refresh(note)
+    return note.dict()
 
 @app.get("/leads/{lead_id}/conversations")
 def get_lead_conversations(lead_id: int, session: Session = Depends(get_session)):
-    return {"conversations": []}
+    convs = session.exec(select(ConversationLog).where(ConversationLog.lead_id == lead_id).order_by(ConversationLog.created_at.desc())).all()
+    return {"conversations": [c.dict() for c in convs]}
+
+class LeadConversationCreate(BaseModel):
+    title: str
+    type: str = "call"
+    description: Optional[str] = None
+    author_name: str = "Admin"
+
+@app.post("/leads/{lead_id}/conversations")
+def create_lead_conversation(lead_id: int, body: LeadConversationCreate, session: Session = Depends(get_session)):
+    conv = ConversationLog(lead_id=lead_id, title=body.title, type=body.type, description=body.description, author_name=body.author_name)
+    session.add(conv)
+    session.commit()
+    session.refresh(conv)
+    return conv.dict()
 
 @app.get("/leads/{lead_id}/files")
 def get_lead_files(lead_id: int, session: Session = Depends(get_session)):

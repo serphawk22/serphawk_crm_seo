@@ -1,45 +1,330 @@
-INFO:     127.0.0.1:50211 - "GET /docs HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50272 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50272 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50273 - "GET /dashboard-stats?role=Client&email= HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50273 - "GET /dashboard-stats?role=Client&email= HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50277 - "GET /docs HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50279 - "OPTIONS /login HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50279 - "POST /login HTTP/1.1" 401 Unauthorized
-INFO:     127.0.0.1:50279 - "POST /login HTTP/1.1" 401 Unauthorized
-INFO:     127.0.0.1:50290 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50290 - "GET /favicon.ico HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:50415 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50418 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50416 - "GET /dashboard-stats?role=Client&email= HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50418 - "GET /dashboard-stats?role=Client&email= HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50422 - "OPTIONS /login HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50422 - "POST /login HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50422 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50426 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50424 - "GET /dashboard-stats?role=Admin&email=admin@example.com HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50426 - "GET /dashboard-stats?role=Admin&email=admin@example.com HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50426 - "GET /notifications/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50431 - "GET /notifications/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50431 - "GET /invoices HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50426 - "GET /clients HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50434 - "GET /invoices HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50431 - "GET /clients HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50432 - "GET /services/requests HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50426 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50434 - "GET /clients HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50432 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50426 - "GET /clients HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50431 - "GET /services/requests HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50431 - "GET /interns HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50426 - "GET /interns HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50426 - "GET /rankings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50431 - "GET /clients HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50436 - "GET /rankings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50426 - "GET /clients HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50437 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50438 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50440 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50444 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50446 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50447 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
+/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/google/auth/__init__.py:54: FutureWarning: You are using a Python version 3.9 past its end of life. Google will update google-auth with critical bug fixes on a best-effort basis, but not with any other fixes or features. Please upgrade your Python version, and then update google-auth.
+  warnings.warn(eol_message.format("3.9"), FutureWarning)
+/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/google/oauth2/__init__.py:40: FutureWarning: You are using a Python version 3.9 past its end of life. Google will update google-auth with critical bug fixes on a best-effort basis, but not with any other fixes or features. Please upgrade your Python version, and then update google-auth.
+  warnings.warn(eol_message.format("3.9"), FutureWarning)
+/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/google/api_core/_python_version_support.py:242: FutureWarning: You are using a non-supported Python version (3.9.6). Google will not post any further updates to google.api_core supporting this Python version. Please upgrade to the latest Python version, or at least Python 3.10, and then update google.api_core.
+  warnings.warn(message, FutureWarning)
+INFO:     Started server process [9940]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+OpenAI client globally patched for API Intelligence Tracking.
+Finished checking and adding tenant_id columns to 64 tables.
+sidebar_preferences column already exists or error: (psycopg2.errors.DuplicateColumn) column "sidebar_preferences" of relation "users" already exists
+
+[SQL: ALTER TABLE users ADD COLUMN sidebar_preferences JSON;]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+Successfully added phone to users table.
+Successfully added call_pitch columns to client_profiles table.
+Successfully added call limit/usage columns to tenants table.
+ai_analysis_results column already exists or error: (psycopg2.errors.DuplicateColumn) column "ai_analysis_results" of relation "leads" already exists
+
+[SQL: ALTER TABLE leads ADD COLUMN ai_analysis_results JSON;]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+project_type column already exists or error: (psycopg2.errors.DuplicateColumn) column "project_type" of relation "projects" already exists
+
+[SQL: ALTER TABLE projects ADD COLUMN project_type VARCHAR DEFAULT 'Development';]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+clientId column already exists or error: (psycopg2.errors.DuplicateColumn) column "clientId" of relation "projects" already exists
+
+[SQL: ALTER TABLE projects ADD COLUMN "clientId" INTEGER;]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+leadId column already exists or error: (psycopg2.errors.DuplicateColumn) column "leadId" of relation "projects" already exists
+
+[SQL: ALTER TABLE projects ADD COLUMN "leadId" INTEGER;]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+phone column already exists or error: (psycopg2.errors.DuplicateColumn) column "phone" of relation "users" already exists
+
+[SQL: ALTER TABLE users ADD COLUMN phone VARCHAR(50);]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+tenant call limits already exist or error: (psycopg2.errors.DuplicateColumn) column "limit_calls" of relation "tenants" already exists
+
+[SQL: ALTER TABLE tenants ADD COLUMN limit_calls INTEGER DEFAULT 5;]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+INFO:     127.0.0.1:63096 - "OPTIONS /notifications/1?unread_only=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63097 - "OPTIONS /calls?unsummarized=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63096 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63098 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
+  + Exception Group Traceback (most recent call last):
+  |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_utils.py", line 77, in collapse_excgroups
+  |     yield
+  |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 189, in __call__
+  |     response_sent.set()
+  |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 783, in __aexit__
+  |     raise BaseExceptionGroup(
+  | exceptiongroup.ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    |     await self.app(scope, receive, _send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 189, in __call__
+    |     response_sent.set()
+    |   File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/contextlib.py", line 135, in __exit__
+    |     self.gen.throw(type, value, traceback)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_utils.py", line 83, in collapse_excgroups
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 187, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 395, in dispatch
+    |     response = await call_next(request)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 163, in call_next
+    |     raise app_exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 149, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 715, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 735, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 288, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 76, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 73, in app
+    |     response = await f(request)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 301, in app
+    |     raw_response = await run_endpoint_function(
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 214, in run_endpoint_function
+    |     return await run_in_threadpool(dependant.call, **values)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/concurrency.py", line 39, in run_in_threadpool
+    |     return await anyio.to_thread.run_sync(func, *args)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/to_thread.py", line 63, in run_sync
+    |     return await get_async_backend().run_sync_in_worker_thread(
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 2502, in run_sync_in_worker_thread
+    |     return await future
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 986, in run
+    |     result = context.run(func, *args)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 2210, in get_dashboard_call_pitch
+    |     "agent_data": research_entry.research_markdown if research_entry else None,
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/pydantic/main.py", line 1042, in __getattr__
+    |     raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+    | AttributeError: 'ClientResearch' object has no attribute 'research_markdown'
+    +------------------------------------
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 189, in __call__
+    response_sent.set()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/contextlib.py", line 135, in __exit__
+    self.gen.throw(type, value, traceback)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_utils.py", line 83, in collapse_excgroups
+    raise exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 187, in __call__
+    response = await self.dispatch_func(request, call_next)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 395, in dispatch
+    response = await call_next(request)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 163, in call_next
+    raise app_exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 149, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    raise exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 715, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 735, in app
+    await route.handle(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    raise exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 73, in app
+    response = await f(request)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 214, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/concurrency.py", line 39, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 2502, in run_sync_in_worker_thread
+    return await future
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 986, in run
+    result = context.run(func, *args)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 2210, in get_dashboard_call_pitch
+    "agent_data": research_entry.research_markdown if research_entry else None,
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'ClientResearch' object has no attribute 'research_markdown'
+Unhandled Exception: 'ClientResearch' object has no attribute 'research_markdown'
+INFO:     127.0.0.1:63184 - "GET /dashboard-call-pitch HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+  + Exception Group Traceback (most recent call last):
+  |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_utils.py", line 77, in collapse_excgroups
+  |     yield
+  |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 189, in __call__
+  |     response_sent.set()
+  |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 783, in __aexit__
+  |     raise BaseExceptionGroup(
+  | exceptiongroup.ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/uvicorn/protocols/http/httptools_impl.py", line 399, in run_asgi
+    |     result = await app(  # type: ignore[func-returns-value]
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/uvicorn/middleware/proxy_headers.py", line 70, in __call__
+    |     return await self.app(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/applications.py", line 1054, in __call__
+    |     await super().__call__(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/applications.py", line 113, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    |     await self.app(scope, receive, _send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 189, in __call__
+    |     response_sent.set()
+    |   File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/contextlib.py", line 135, in __exit__
+    |     self.gen.throw(type, value, traceback)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_utils.py", line 83, in collapse_excgroups
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 187, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 395, in dispatch
+    |     response = await call_next(request)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 163, in call_next
+    |     raise app_exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 149, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 715, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 735, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 288, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 76, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 73, in app
+    |     response = await f(request)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 301, in app
+    |     raw_response = await run_endpoint_function(
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 214, in run_endpoint_function
+    |     return await run_in_threadpool(dependant.call, **values)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/concurrency.py", line 39, in run_in_threadpool
+    |     return await anyio.to_thread.run_sync(func, *args)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/to_thread.py", line 63, in run_sync
+    |     return await get_async_backend().run_sync_in_worker_thread(
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 2502, in run_sync_in_worker_thread
+    |     return await future
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 986, in run
+    |     result = context.run(func, *args)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 2210, in get_dashboard_call_pitch
+    |     "agent_data": research_entry.research_markdown if research_entry else None,
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/pydantic/main.py", line 1042, in __getattr__
+    |     raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+    | AttributeError: 'ClientResearch' object has no attribute 'research_markdown'
+    +------------------------------------
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/uvicorn/protocols/http/httptools_impl.py", line 399, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/uvicorn/middleware/proxy_headers.py", line 70, in __call__
+    return await self.app(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/applications.py", line 113, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    raise exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 189, in __call__
+    response_sent.set()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/contextlib.py", line 135, in __exit__
+    self.gen.throw(type, value, traceback)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_utils.py", line 83, in collapse_excgroups
+    raise exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 187, in __call__
+    response = await self.dispatch_func(request, call_next)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 395, in dispatch
+    response = await call_next(request)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 163, in call_next
+    raise app_exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 149, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    raise exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 715, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 735, in app
+    await route.handle(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    raise exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 73, in app
+    response = await f(request)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 214, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/concurrency.py", line 39, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 2502, in run_sync_in_worker_thread
+    return await future
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 986, in run
+    result = context.run(func, *args)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 2210, in get_dashboard_call_pitch
+    "agent_data": research_entry.research_markdown if research_entry else None,
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'ClientResearch' object has no attribute 'research_markdown'
+INFO:     127.0.0.1:63342 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63343 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63591 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63592 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63836 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63837 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64083 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64082 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK

@@ -1,18 +1,17 @@
-from database import engine, SQLModel
 from sqlalchemy import text
+from database import engine
 
-def fix_db():
-    print("Creating tables...")
-    SQLModel.metadata.create_all(engine)
-    print("Tables created.")
-    
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE users ADD COLUMN sidebar_preferences JSON;"))
-            conn.commit()
-            print("Added sidebar_preferences to users.")
-        except Exception as e:
-            print("Failed to alter users table (maybe column already exists or syntax differs):", e)
+with engine.connect() as conn:
+    conn.execute(text("ALTER TABLE client_notes ALTER COLUMN client_id DROP NOT NULL;"))
+    try:
+        conn.execute(text("ALTER TABLE client_notes ADD COLUMN lead_id INTEGER REFERENCES leads(id);"))
+    except Exception as e:
+        print(e)
+    conn.execute(text("ALTER TABLE conversation_logs ALTER COLUMN client_id DROP NOT NULL;"))
+    try:
+        conn.execute(text("ALTER TABLE conversation_logs ADD COLUMN lead_id INTEGER REFERENCES leads(id);"))
+    except Exception as e:
+        print(e)
+    conn.commit()
+    print("Database altered successfully")
 
-if __name__ == "__main__":
-    fix_db()

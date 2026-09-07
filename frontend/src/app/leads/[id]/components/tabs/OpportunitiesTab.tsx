@@ -237,7 +237,11 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
     setExtractResult(null);
     setExtractError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/leads/${lead?.id}/extract-services`, { method: 'POST' });
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/leads/${lead?.id}/extract-services`, { 
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
       const text = await res.text().catch(() => "");
       let data: any = {};
       try { data = JSON.parse(text); } catch (e) {}
@@ -258,7 +262,11 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
   const handleGenerateDraft = async () => {
     setIsGeneratingDraft(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/leads/${lead?.id}/generate-outbound-draft`, { method: 'POST' });
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/leads/${lead?.id}/generate-outbound-draft`, { 
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
       if (res.ok) {
         window.dispatchEvent(new CustomEvent('refresh-lead-data'));
       } else {

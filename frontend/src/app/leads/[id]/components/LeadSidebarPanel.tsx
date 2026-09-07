@@ -197,7 +197,11 @@ export default function LeadSidebarPanel({
     setExtractResult(null);
     setExtractError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/clients/${leadId}/extract-services`, { method: 'POST' });
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/extract-services`, { 
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
       const data = await res.json();
       if (!res.ok) {
         setExtractError(data.detail || 'Failed to extract services');
