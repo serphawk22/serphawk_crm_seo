@@ -927,7 +927,8 @@ class ClientNote(SQLModel, table=True):
     __tablename__ = "client_notes"
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
-    client_id: int = Field(foreign_key="client_profiles.id")
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     content: str = Field(sa_column=Column(Text))
     tags: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
     is_pinned: bool = Field(default=False)
@@ -960,7 +961,8 @@ class ConversationLog(SQLModel, table=True):
     __tablename__ = "conversation_logs"
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
-    client_id: int = Field(foreign_key="client_profiles.id")
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     title: str = Field(max_length=500)
     type: str = Field(default="call")  # call, meeting, email, whatsapp, visit, other
     description: Optional[str] = Field(default=None, sa_column=Column(Text))

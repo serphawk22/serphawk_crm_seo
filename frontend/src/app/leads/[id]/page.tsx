@@ -114,9 +114,13 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
     if (!txt) return;
     setSavingNote(true);
     try {
-      await fetch(`${API_BASE_URL}/clients/${leadId}/notes`, {
+      const token = localStorage.getItem('token');
+      await fetch(`${API_BASE_URL}/leads/${leadId}/notes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ content: txt, author_name: 'Admin' }),
       });
       setNoteText('');
@@ -143,9 +147,13 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
     if (!title) return;
     setSavingConv(true);
     try {
-      await fetch(`${API_BASE_URL}/clients/${leadId}/conversations`, {
+      const token = localStorage.getItem('token');
+      await fetch(`${API_BASE_URL}/leads/${leadId}/conversations`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ title, type: convType, description: convBody.trim(), author_name: 'Admin' }),
       });
       setConvTitle(''); setConvBody(''); setConvType('call');
@@ -787,7 +795,8 @@ export default function LeadDetailsPage() {
   const fetchAll = useCallback(async () => {
     if (!id) return;
     try {
-      const fetchJson = (url: string) => fetch(url).then(r => { if (!r.ok) throw new Error(`Fetch failed for ${url}`); return r.json(); });
+      const token = localStorage.getItem('token');
+      const fetchJson = (url: string) => fetch(url, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => { if (!r.ok) throw new Error(`Fetch failed for ${url}`); return r.json(); });
       const [leadRes, empRes, actRes, emailRes, svcRes, tlRes, notesRes, convRes, taskRes, filesRes, researchRes] = await Promise.allSettled([
         fetchJson(`${API_BASE_URL}/leads/${id}`),
         fetchJson(`${API_BASE_URL}/employees`),
