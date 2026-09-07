@@ -14,7 +14,7 @@ import { useLanguage } from '@/context/LanguageContext';
 interface LeadSidebarPanelProps {
   lead: any;
   research: any;
-  onLeadUpdate: (updates: any) => void;
+  onClientUpdate: (updates: any) => void;
   onResearchUpdate: (research: any) => void;
   leadId: string | string[];
 }
@@ -125,29 +125,29 @@ const ResearchField = ({
 
 
 export default function LeadSidebarPanel({
-  lead, research, onLeadUpdate, onResearchUpdate, leadId
+  lead, research, onClientUpdate, onResearchUpdate, leadId
 }: LeadSidebarPanelProps) {
   const { t, language } = useLanguage();
   const [researchOpen, setResearchOpen] = useState(true);
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({
-    contact_person: lead?.contact_person || '',
-    phone: lead?.phone || '',
-    address: lead?.address || '',
-    websiteUrl: lead?.websiteUrl || '',
-    linkedin_url: lead?.linkedin_url || '',
-    industry: lead?.industry || '',
-    employee_count: lead?.employee_count || '',
-    revenue_range: lead?.revenue_range || '',
-    lead_source: lead?.lead_source || '',
-    lead_score: lead?.lead_score ?? '',
-    deal_value: lead?.deal_value ?? '',
-    last_contact_date: lead?.last_contact_date || '',
-    next_followup_date: lead?.next_followup_date || '',
+    contact_person: client?.contact_person || '',
+    phone: client?.phone || '',
+    address: client?.address || '',
+    website: client?.website || '',
+    linkedin_url: client?.linkedin_url || '',
+    industry: client?.industry || '',
+    employee_count: client?.employee_count || '',
+    revenue_range: client?.revenue_range || '',
+    lead_source: client?.lead_source || '',
+    lead_score: client?.lead_score ?? '',
+    deal_value: client?.deal_value ?? '',
+    last_contact_date: client?.last_contact_date || '',
+    next_followup_date: client?.next_followup_date || '',
   });
 
   const handleSaveProfile = async () => {
-    await fetch(`${API_BASE_URL}/leads/${leadId}`, {
+    await fetch(`${API_BASE_URL}/clients/${leadId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -156,12 +156,12 @@ export default function LeadSidebarPanel({
         deal_value: profileForm.deal_value !== '' ? Number(profileForm.deal_value) : null,
       }),
     });
-    onLeadUpdate({ ...profileForm });
+    onClientUpdate({ ...profileForm });
     setEditingProfile(false);
   };
 
   const handleResearchSave = async (field: string, value: string) => {
-    await fetch(`${API_BASE_URL}/leads/${leadId}/research`, {
+    await fetch(`${API_BASE_URL}/clients/${leadId}/research`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ [field]: value }),
@@ -177,7 +177,7 @@ export default function LeadSidebarPanel({
   const handleAutoResearch = async () => {
     try {
       setIsAutoResearching(true);
-      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/auto-research`, {
+      const res = await fetch(`${API_BASE_URL}/clients/${leadId}/auto-research`, {
         method: 'POST'
       });
       if (res.ok) {
@@ -197,15 +197,15 @@ export default function LeadSidebarPanel({
     setExtractResult(null);
     setExtractError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/extract-services`, { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/clients/${leadId}/extract-services`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
         setExtractError(data.detail || 'Failed to extract services');
       } else {
         setExtractResult({ count: data.services?.length || 0, marketplace: data.marketplace_entries_added || 0 });
-        // Refresh lead to show updated services_offered
-        onLeadUpdate({ services_offered: JSON.stringify(data.services) });
-        window.dispatchEvent(new CustomEvent('refresh-lead-data'));
+        // Refresh client to show updated services_offered
+        onClientUpdate({ services_offered: JSON.stringify(data.services) });
+        window.dispatchEvent(new CustomEvent('refresh-client-data'));
       }
     } catch (e: any) {
       setExtractError(e.message || 'Network error');
@@ -218,7 +218,7 @@ export default function LeadSidebarPanel({
     ['contact_person', language === 'es' ? 'Persona de Contacto' : 'Contact Person', 'text'],
     ['phone', language === 'es' ? 'Teléfono' : 'Phone', 'text'],
     ['address', language === 'es' ? 'Dirección' : 'Address', 'text'],
-    ['websiteUrl', language === 'es' ? 'Sitio Web' : 'Website', 'url'],
+    ['website', language === 'es' ? 'Sitio Web' : 'Website', 'url'],
     ['linkedin_url', 'LinkedIn URL', 'url'],
     ['industry', language === 'es' ? 'Industria' : 'Industry', 'text'],
     ['employee_count', language === 'es' ? 'Cantidad de Empleados' : 'Employee Count', 'text'],
@@ -253,7 +253,7 @@ export default function LeadSidebarPanel({
             <div className="p-2 rounded-xl bg-indigo-600 text-white">
               <Wand2 size={14} />
             </div>
-            <span className="font-black text-sm text-slate-800 dark:text-zinc-100 ">{t("lead_profile.research")}</span>
+            <span className="font-black text-sm text-slate-800 dark:text-zinc-100 ">{t("client_profile.research")}</span>
           </div>
           {researchOpen ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
         </button>
@@ -281,8 +281,8 @@ export default function LeadSidebarPanel({
                   {/* ── Extract Services Button ── */}
                   <button
                     onClick={handleExtractServices}
-                    disabled={isExtracting || !lead?.websiteUrl}
-                    title={!lead?.websiteUrl ? 'Add a website URL first' : 'Extract services from website'}
+                    disabled={isExtracting || !client?.website}
+                    title={!client?.website ? 'Add a website URL first' : 'Extract services from website'}
                     className="w-full mb-3 py-2 px-3 flex items-center justify-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-xs rounded-xl transition-colors disabled:opacity-40"
                   >
                     {isExtracting ? <Loader2 size={14} className="animate-spin" /> : <Store size={14} />}

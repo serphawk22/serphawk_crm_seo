@@ -10,6 +10,126 @@ def get_openai_client():
         raise ValueError("OPENAI_API_KEY not found in environment variables")
     return OpenAI(api_key=api_key)
 
+
+def deep_investigate_company(company_name: str, website: str, scraped_text: str = "") -> dict:
+    """
+    Runs a deep GPT-4o investigation of a company — full business intelligence,
+    GTM analysis, ICPs, competitive landscape, proof points, and contact intelligence.
+    This is designed to produce the kind of rich analysis you'd get asking
+    'do a proper investigation on {company_name}' in ChatGPT.
+    """
+    try:
+        client = get_openai_client()
+
+        context_block = ""
+        if scraped_text:
+            context_block = f"\n\nRAW SCRAPED WEBSITE CONTENT (use this as primary source, supplement with your own knowledge):\n{scraped_text[:40000]}"
+
+        prompt = f"""You are a world-class business analyst, GTM strategist, and OSINT researcher. 
+Do a PROPER, EXHAUSTIVELY DEEP investigation of the company below. Think like a top-tier McKinsey consultant and a seasoned GTM Director who needs to completely deconstruct this business before writing a highly tailored growth plan.
+
+Company Name: {company_name}
+Website: {website}{context_block}
+
+Perform a comprehensive investigation and return a rich JSON object. 
+Instead of strict fields, write a massive, incredibly detailed 2000-15000 word markdown report in the "full_markdown_report" field. This report should contain the ENTIRE analysis, exactly as you would output it directly in ChatGPT (using headings, bold text, bullet points, and tables if necessary).
+
+Cover absolutely everything in extreme detail:
+1. Executive Summary & Core Value Proposition
+2. Comprehensive Product/Service Portfolio Breakdown: Analyze ALL services offered on their website in detail.
+3. Marketing & Lead Generation: Take a deep look at their marketing strategies, how they are generating leads, and their digital footprint.
+4. Business & Financials: Provide estimates or insights on their revenue, business size, and scale based on available data.
+5. Detailed Ideal Customer Profiles (ICPs) with specific pains, deep desires, and perfectly crafted hooks
+6. Complete Competitive Landscape (who are their top 3-5 competitors, what are they doing better, where is this company weak)
+7. Sales & GTM Strategy: What channels should they use? What are the quick wins?
+8. Common Objections & Rebuttals (What will prospects say to say no, and how to counter it)
+9. Cold Email Angles (Provide 3 distinct cold email angles/hooks for outreach)
+10. SEO & Digital Presence analysis (What is missing? SERP Hawk opportunities)
+
+Return ONLY valid JSON with this exact structure:
+{{
+    "executive_verdict": "A powerful 2-3 sentence executive summary of whether this company is a good target and why.",
+    "company_overview": "A detailed paragraph summarizing the company, what they do, and their market position.",
+    "industry": "Specific industry",
+    "business_model": "e.g. B2B SaaS, B2C E-commerce, Agency, Manufacturing",
+    "years_in_business": "e.g. 5+ years",
+    "geographic_presence": "e.g. North America, Global, Local (City)",
+    "biggest_opportunities": ["Opportunity 1", "Opportunity 2"],
+    "key_weaknesses": ["Weakness 1", "Weakness 2"],
+    "strongest_proof_points": [
+        {{"type": "Metric/Client/Award", "value": "e.g. 10k+ Users", "why_it_matters": "Shows scale"}}
+    ],
+    "product_portfolio": [
+        {{"name": "Product A", "description": "What it is", "pricing_tier": "High/Med/Low", "target_customer": "Who buys this"}}
+    ],
+    "competitive_landscape": {{
+        "competitive_positioning": "How they position themselves vs others",
+        "main_competitors": [
+            {{"name": "Competitor 1", "how_they_compete": "Their angle", "overlap": "High/Medium/Low"}}
+        ]
+    }},
+    "ideal_customer_profiles": [
+        {{"name": "ICP Name", "pain": "Their core problem", "desire": "What they want", "best_message": "A 1-sentence hook to grab their attention"}}
+    ],
+    "gtm_recommendations": {{
+        "positioning_statement": "How we should position our pitch to them",
+        "quick_wins": ["Action 1", "Action 2"]
+    }},
+    "serphawk_opportunity": {{
+        "fit_score": 8,
+        "pitch_angle": "How to sell to them",
+        "estimated_deal_value": "$5k - $10k",
+        "recommended_services": ["SEO", "Web Dev"]
+    }},
+    "contacts": [
+        {{
+            "name": "Decision maker name if known, else null",
+            "role": "Their title/role",
+            "email": "Email if found, else null",
+            "phone_number": "Phone if found, else null",
+            "personal_social_media": {{"linkedin": "url", "twitter": "url"}}
+        }}
+    ],
+    "company_info": {{
+        "company_name": "{company_name}",
+        "summary": "2-3 sentence summary for the CRM card",
+        "extracted_emails": "Comma-separated email addresses found",
+        "extracted_phone_numbers": "Comma-separated phone numbers found",
+        "linkedin": "Company LinkedIn URL if found",
+        "company_social_media": {{
+            "linkedin": "LinkedIn URL or null",
+            "twitter": "Twitter/X URL or null"
+        }}
+    }},
+    "full_markdown_report": "Your 1000-15000 word detailed markdown report covering the entire deep investigation."
+}}
+
+Be specific, data-driven, and insightful. Reference real details about this company wherever possible.
+Do NOT use generic placeholder text anywhere."""
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.4
+        )
+
+        result = json.loads(response.choices[0].message.content)
+        return result
+
+    except Exception as e:
+        print(f"[deep_investigate_company] Error: {e}")
+        return {
+            "company_name": company_name,
+            "executive_verdict": f"Investigation failed: {e}",
+            "company_overview": "",
+            "contacts": [],
+            "company_info": {"company_name": company_name, "summary": "", "extracted_emails": "", "extracted_phone_numbers": "", "company_social_media": {}},
+            "draft": {"subject": "", "english_body": "", "spanish_body": "", "whatsapp_draft": ""},
+            "error": str(e)
+        }
+
+
 def analyze_content(text):
     """
     Analyzes website text using OpenAI.
@@ -21,11 +141,24 @@ def analyze_content(text):
         {{
             "company_name": "The real name of the company (never a placeholder)",
             "what_they_do": "A real, concise summary of what this company does (2-3 sentences, never a template)",
+            "summary": "A 2-3 sentence description",
+            "likely_industry": "Industry guess",
+            "business_model": "B2B or B2C",
+            "estimated_size": "E.g. 1-10 employees",
+            "target_market": "E.g. Local, National",
+            "geographic_presence": "Where they operate",
+            "best_conversion_opportunity": "How we can help them",
+            "sales_follow_up_focus": "Next steps for sales",
+            "extracted_emails": ["List of ALL email addresses exactly as found in Extracted Emails"],
+            "extracted_phone_numbers": "Comma separated string of ALL phone numbers exactly as found in Extracted Phone Numbers",
+            "extracted_linkedin": "The primary company LinkedIn URL found in Extracted LinkedIn Profiles",
+            "extracted_twitter": "The primary company Twitter/X URL found in Extracted Twitter Profiles",
             "company_social_media": {{
                 "linkedin": "Company LinkedIn URL or null",
                 "twitter": "Company Twitter/X URL or null",
                 "instagram": "Company Instagram URL or null",
-                "facebook": "Company Facebook URL or null"
+                "facebook": "Company Facebook URL or null",
+                "youtube": "Company Youtube URL or null"
             }},
             "contacts": [
                 {{
@@ -40,11 +173,10 @@ def analyze_content(text):
                     "context": "How you found or inferred this contact, or null"
                 }}
             ],
-            "key_value_props": ["List of my services that best match this company (real, never prop1/prop2)"]
+            "key_value_props": ["List of actual services or products that the scraped company provides to its customers (e.g. SEO, Web Design, Plumbing, Consulting, etc)"]
         }}
 
-        My services are: Organic SEO, Local SEO, Google Ads, Meta Ads, Social Media, Content Marketing, Web Development, App Development, Automation & Consulting.
-        Map the most relevant of these to the company based on their business.
+        For `key_value_props`, extract the ACTUAL services the company offers based on their website, do NOT output Dapros/Serphawk services.
 
         Look closely at the 'Extracted Emails', 'Extracted Phone Numbers', and any 'Social Links' in the company info below. Always prefer using the actual scraped links and emails instead of placeholders or guesses. Extract as many people/decision makers as possible.
 
@@ -68,6 +200,7 @@ def analyze_content(text):
             "contacts": [],
             "error": str(e)
         }
+
 
 def generate_email(analysis, contact=None, recommended_services=None, owner_name="Varshith"):
     """
@@ -865,3 +998,54 @@ Rules:
         }
 
 
+async def generate_swot_analysis(url: str, company_name: str = "the company") -> dict:
+    """
+    Scrapes the given URL and uses OpenAI to generate a SWOT analysis.
+    """
+    from modules.scraper import scrape_website
+    
+    try:
+        # Scrape website for context
+        scraped_text = await scrape_website(url)
+        if scraped_text.startswith("ERROR"):
+            scraped_text = ""
+        
+        client = get_openai_client()
+        
+        context_block = ""
+        if scraped_text:
+            context_block = f"\n\nWEBSITE CONTENT:\n{scraped_text[:20000]}"
+            
+        prompt = f"""You are a top-tier business analyst. Perform a SWOT (Strengths, Weaknesses, Opportunities, Threats) analysis for {company_name} based on their website.
+
+Website: {url}{context_block}
+
+Return a JSON object with this exact structure:
+{{
+    "strengths": ["point 1", "point 2", "point 3"],
+    "weaknesses": ["point 1", "point 2", "point 3"],
+    "opportunities": ["point 1", "point 2", "point 3"],
+    "threats": ["point 1", "point 2", "point 3"],
+    "summary": "A 2-3 sentence overall strategic summary of the company."
+}}
+
+Be specific and insightful based on the scraped content. If the scraped content is missing, make reasonable inferences based on their industry or domain, but clearly state what is assumed.
+"""
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.3
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        return result
+    except Exception as e:
+        print(f"Error generating SWOT analysis: {e}")
+        return {
+            "strengths": [],
+            "weaknesses": [],
+            "opportunities": [],
+            "threats": [],
+            "summary": f"Could not generate SWOT analysis. Error: {str(e)}"
+        }

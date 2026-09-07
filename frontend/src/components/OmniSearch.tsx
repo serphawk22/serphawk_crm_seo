@@ -45,7 +45,7 @@ export default function OmniSearch() {
     const delayDebounceFn = setTimeout(() => {
       setLoading(true);
       fetch(`${API_BASE_URL}/omnisearch?q=${encodeURIComponent(query)}`)
-        .then(res => res.json())
+        .then(async res => { if (!res.ok) throw new Error("Search failed"); return res.json(); })
         .then(data => {
           setResults(data.results || []);
         })

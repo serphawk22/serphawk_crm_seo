@@ -31,7 +31,15 @@ self.addEventListener("fetch", (event) => {
   
   event.respondWith(
     fetch(event.request).catch(() => {
-      return caches.match(event.request);
+      return caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        return new Response("Network error", {
+          status: 503,
+          headers: { "Content-Type": "text/plain" },
+        });
+      });
     })
   );
 });

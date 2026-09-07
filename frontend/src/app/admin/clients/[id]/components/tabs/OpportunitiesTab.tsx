@@ -2,10 +2,11 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, ArrowRight, CheckCircle2, Clock, XCircle, Target, Brain, Mail, Calendar, Wand2, Loader2, Store, AlertCircle, MessageCircle, Phone, Radar } from 'lucide-react';
+import { TrendingUp, ArrowRight, CheckCircle2, Clock, XCircle, Target, Brain, Mail, Calendar, Wand2, Loader2, Store, AlertCircle, MessageCircle, Phone, Radar, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { API_BASE_URL } from '@/config';
+import { ResultCard } from '@/components/email-agent/ResultCard';
 
 interface OpportunitiesTabProps {
   client: any;
@@ -132,12 +133,43 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
   // Milestones from timeline
   const milestoneEvents = timeline.filter(e => e.type === 'milestone').slice(0, 5);
 
-  const [activeSubTab, setActiveSubTab] = React.useState('email_agent');
+  const [activeSubTab, setActiveSubTab] = React.useState('presales');
+
+  // Parse research data
+  const [researchData, setResearchData] = React.useState<any>(null);
+  React.useEffect(() => {
+    if (research?.email_agent_data) {
+      try {
+        setResearchData(typeof research.email_agent_data === 'string' ? JSON.parse(research.email_agent_data) : research.email_agent_data);
+      } catch (e) {
+        console.error("Failed to parse research data", e);
+      }
+    }
+  }, [research]);
+
   const [expandedEmailId, setExpandedEmailId] = React.useState<number | null>(null);
 
   let eaData: any = null;
   if (research?.email_agent_data) {
     try { eaData = JSON.parse(research.email_agent_data); } catch (e) {}
+  }
+  
+  if (client?.services_offered) {
+    try {
+      const extractedServices = typeof client.services_offered === 'string' ? JSON.parse(client.services_offered) : client.services_offered;
+      if (Array.isArray(extractedServices) && extractedServices.length > 0) {
+        if (!eaData) eaData = {};
+        // Use extracted services for the portfolio
+        eaData.product_portfolio = extractedServices.map(s => ({
+          name: s.name || s.title,
+          description: s.brief || s.description,
+          pricing_tier: s.approx_cost ? `$${s.approx_cost}` : undefined,
+          target_customer: s.category || "General"
+        }));
+      }
+    } catch (e) {
+      console.error("Failed to parse client.services_offered", e);
+    }
   }
 
   const [isAutoResearching, setIsAutoResearching] = React.useState(false);
@@ -157,15 +189,21 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
     if (!client?.id) return;
     setLoadingRadar(true);
     fetch(`${API_BASE_URL}/radar/relationships/${client.id}`)
-      .then(res => res.json())
+      .then(async res => {
+        if (!res.ok) throw new Error("Failed to fetch radar");
+        return res.json();
+      })
       .then(data => setRadarData(data))
-      .catch(console.error)
+      .catch(e => console.error("Radar fetch error:", e))
       .finally(() => setLoadingRadar(false));
       
     fetch(`${API_BASE_URL}/competitors/${client.id}`)
-      .then(res => res.json())
+      .then(async res => {
+        if (!res.ok) throw new Error("Failed to fetch competitors");
+        return res.json();
+      })
       .then(data => setCompetitorAnalyses(data.competitors || []))
-      .catch(console.error);
+      .catch(e => console.error("Competitor fetch error:", e));
   }, [client?.id]);
 
   const handleGenerateDraft = async () => {
@@ -176,8 +214,10 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         window.dispatchEvent(new CustomEvent('refresh-client-data'));
         // Trigger emails refetch if needed
       } else {
-        const errData = await res.json().catch(() => null);
-        const msg = errData?.detail?.message || errData?.detail || "Failed to generate draft.";
+        const text = await res.text().catch(() => "");
+        let errData = null;
+        try { errData = JSON.parse(text); } catch (e) {}
+        const msg = errData?.detail?.message || errData?.detail || text || "Failed to generate draft.";
         throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
       }
     } catch (e: any) {
@@ -207,8 +247,10 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         
         (document.getElementById('compDomain') as HTMLInputElement).value = '';
       } else {
-        const errData = await res.json().catch(() => null);
-        const msg = errData?.detail?.message || errData?.detail || "Failed to run competitor analysis.";
+        const text = await res.text().catch(() => "");
+        let errData = null;
+        try { errData = JSON.parse(text); } catch (e) {}
+        const msg = errData?.detail?.message || errData?.detail || text || "Failed to run competitor analysis.";
         throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
       }
     } catch (e: any) {
@@ -225,15 +267,33 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
       const res = await fetch(`${API_BASE_URL}/clients/${client?.id}/auto-research`, {
         method: 'POST'
       });
-      if (res.ok) {
-        window.dispatchEvent(new CustomEvent('refresh-client-data'));
-      }
+      if (!res.ok) setIsAutoResearching(false);
     } catch (e) {
       console.error(e);
-    } finally {
       setIsAutoResearching(false);
     }
   };
+
+  // Poll for background research completion if it's missing or manually triggered
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if ((!research && client?.id) || isAutoResearching) {
+      interval = setInterval(async () => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/clients/${client.id}/research`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.research?.company_overview) {
+               // Research completed in the background!
+               setIsAutoResearching(false);
+               window.dispatchEvent(new CustomEvent('refresh-client-data'));
+            }
+          }
+        } catch (e) {}
+      }, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [research, client?.id, isAutoResearching]);
 
   const handleExtractServices = async () => {
     setIsExtracting(true);
@@ -241,9 +301,12 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
     setExtractError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/clients/${client?.id}/extract-services`, { method: 'POST' });
-      const data = await res.json();
+      const text = await res.text().catch(() => "");
+      let data: any = {};
+      try { data = JSON.parse(text); } catch(e) {}
+      
       if (!res.ok) {
-        setExtractError(data.detail || 'Failed to extract services');
+        setExtractError(data.detail || text || 'Failed to extract services');
       } else if (data.ok === false) {
         setExtractError(data.message || 'Failed to extract services');
       } else {
@@ -281,10 +344,9 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
 
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-zinc-700 dark:border-slate-800 pb-4 overflow-x-auto">
         {[
-          { id: 'email_agent', label: language === 'es' ? 'Análisis del Agente IA' : 'AI Agent Analysis', icon: Target },
-          { id: 'presales', label: language === 'es' ? 'Investigación Pre-Ventas' : 'Pre-Sales Research', icon: Brain },
+          { id: 'presales', label: language === 'es' ? 'Análisis del Agente IA' : 'AI Agent Analysis', icon: Brain },
           { id: 'emails', label: language === 'es' ? 'Correos Salientes' : 'Outbound Emails', icon: Mail },
-          { id: 'radar', label: language === 'es' ? 'Gráfico de Descubrimiento' : 'Discovery Graph', icon: Radar },
+
         ].map(t => (
           <button
             key={t.id}
@@ -298,235 +360,6 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         ))}
       </div>
 
-      {activeSubTab === 'email_agent' && (
-        <div className="space-y-6">
-          {/* AI Agent Analysis Card */}
-          <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-zinc-900 dark:bg-slate-900 p-6 md:p-8 shadow-sm">
-            <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8 border-b border-slate-100 dark:border-zinc-800 dark:border-slate-800 pb-6">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-[10px] font-bold uppercase tracking-widest">
-                    {language === 'es' ? 'Inteligencia de Negocios' : 'Business Intelligence'}
-                  </span>
-                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${eaData ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-slate-100 dark:bg-zinc-800 dark:bg-slate-800 text-slate-500 dark:text-zinc-400'}`}>
-                    {eaData ? 'Agent Data Extracted' : 'No Agent Data'}
-                  </span>
-                </div>
-                <h3 className="text-2xl font-black tracking-tight text-slate-800 dark:text-zinc-100 dark:text-white mb-1">{eaData?.company_info?.company_name || client?.companyName || 'Unknown Client'}</h3>
-                <p className="text-slate-500 dark:text-zinc-400 dark:text-slate-400 text-sm font-medium flex items-center gap-1.5">
-                  <Target size={14} className="text-slate-400" />
-                  {eaData?.company_info?.likely_industry || eaData?.company_info?.industry || client?.industry || 'General Industry'}
-                </p>
-              </div>
-            </div>
-
-            {eaData ? (
-              <div className="space-y-6">
-                {eaData.company_info?.summary && (
-                  <div className="p-5 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50">
-                    <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-2">Company Summary</p>
-                    <p className="text-sm font-medium text-slate-700 dark:text-zinc-200 dark:text-slate-300 leading-relaxed">{eaData.company_info.summary}</p>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {eaData.company_info?.best_conversion_opportunity && (
-                    <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-500 mb-1">Conversion Priority</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200">{eaData.company_info.best_conversion_opportunity}</p>
-                    </div>
-                  )}
-                  {eaData.company_info?.sales_follow_up_focus && (
-                    <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-500 mb-1">Follow Up Focus</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200">{eaData.company_info.sales_follow_up_focus}</p>
-                    </div>
-                  )}
-                  {eaData.company_info?.business_model && (
-                    <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-sky-600 dark:text-sky-500 mb-1">Business Model</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200">{eaData.company_info.business_model}</p>
-                    </div>
-                  )}
-                  {eaData.company_info?.target_market && (
-                    <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-500 mb-1">Target Market</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200">{eaData.company_info.target_market}</p>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="p-5 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 mt-4">
-                   <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-3">Extracted Company Info</p>
-                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                      <div className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
-                        <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Emails</p>
-                        <div className="flex flex-col gap-1">
-                          {eaData.company_info?.extracted_emails ? eaData.company_info.extracted_emails.split(',').map((e: string, i: number) => (
-                            <a key={i} href={`mailto:${e.trim()}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-mono break-all">{e.trim()}</a>
-                          )) : <p className="text-sm text-slate-500 dark:text-zinc-500 font-mono">None</p>}
-                        </div>
-                      </div>
-                      <div className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
-                        <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Phones</p>
-                        <div className="flex flex-col gap-1">
-                          {eaData.company_info?.extracted_phone_numbers ? eaData.company_info.extracted_phone_numbers.split(',').map((p: string, i: number) => (
-                            <a key={i} href={`tel:${p.trim()}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-mono break-all">{p.trim()}</a>
-                          )) : <p className="text-sm text-slate-500 dark:text-zinc-500 font-mono">None</p>}
-                        </div>
-                      </div>
-                      <div className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm lg:col-span-2">
-                        <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-2">Company Socials</p>
-                        <div className="flex flex-wrap gap-2">
-                          {eaData.company_info?.company_social_media?.linkedin ? <a href={eaData.company_info.company_social_media.linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn</a> : null}
-                          {eaData.company_info?.company_social_media?.twitter ? <a href={eaData.company_info.company_social_media.twitter} target="_blank" rel="noreferrer" className="px-3 py-1 bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300 rounded-md text-xs font-bold hover:bg-slate-200 transition-colors">X / Twitter</a> : null}
-                          {eaData.company_info?.company_social_media?.instagram ? <a href={eaData.company_info.company_social_media.instagram} target="_blank" rel="noreferrer" className="px-3 py-1 bg-pink-500/10 text-pink-600 dark:bg-pink-500/20 dark:text-pink-400 rounded-md text-xs font-bold hover:bg-pink-500/20 transition-colors">Instagram</a> : null}
-                          {eaData.company_info?.company_social_media?.facebook ? <a href={eaData.company_info.company_social_media.facebook} target="_blank" rel="noreferrer" className="px-3 py-1 bg-blue-600/10 text-blue-700 dark:bg-blue-600/20 dark:text-blue-400 rounded-md text-xs font-bold hover:bg-blue-600/20 transition-colors">Facebook</a> : null}
-                          {eaData.company_info?.extracted_linkedin && !eaData.company_info?.company_social_media?.linkedin ? <a href={eaData.company_info.extracted_linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn (Fallback)</a> : null}
-                          {(!eaData.company_info?.company_social_media || Object.values(eaData.company_info.company_social_media).every(v => !v)) && !eaData.company_info?.extracted_linkedin && <span className="text-sm text-slate-500 dark:text-zinc-500">No social profiles detected.</span>}
-                        </div>
-                      </div>
-                   </div>
-                </div>
-
-                {/* Key Decision Makers */}
-                {eaData.company_info?.contacts && Array.isArray(eaData.company_info.contacts) && eaData.company_info.contacts.length > 0 && (
-                  <div className="p-5 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 mt-4">
-                    <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-3">Key Decision Makers</p>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="border-b border-slate-200 dark:border-zinc-700 text-[10px] text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
-                            <th className="py-3 px-4 font-bold">Name & Role</th>
-                            <th className="py-3 px-4 font-bold">Contact</th>
-                            <th className="py-3 px-4 font-bold">Socials</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {eaData.company_info.contacts.map((p: any, i: number) => (
-                            <tr key={i} className="border-b border-slate-100 dark:border-zinc-800 last:border-0">
-                              <td className="py-4 px-4 align-top">
-                                <div className="font-bold text-sm text-slate-800 dark:text-zinc-100">{p.name || 'Unknown Name'}</div>
-                                {p.role && <div className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{p.role}</div>}
-                              </td>
-                              <td className="py-4 px-4 align-top">
-                                {p.email && (
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <Mail size={12} className="text-slate-400" />
-                                    <a href={`mailto:${p.email}`} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline break-all">{p.email}</a>
-                                  </div>
-                                )}
-                                {p.phone_number && (
-                                  <div className="flex items-center gap-2">
-                                    <Phone size={12} className="text-slate-400" />
-                                    <a href={`tel:${p.phone_number}`} className="text-xs text-slate-600 dark:text-zinc-300 hover:underline">{p.phone_number}</a>
-                                  </div>
-                                )}
-                                {!p.email && !p.phone_number && <span className="text-xs text-slate-400">Not found</span>}
-                              </td>
-                              <td className="py-4 px-4 align-top">
-                                <div className="flex flex-wrap gap-2">
-                                  {p.personal_social_media?.linkedin ? (
-                                    <a href={p.personal_social_media.linkedin} target="_blank" rel="noreferrer" className="px-2 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded text-[10px] font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn</a>
-                                  ) : null}
-                                  {p.personal_social_media?.twitter ? (
-                                    <a href={p.personal_social_media.twitter} target="_blank" rel="noreferrer" className="px-2 py-1 bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300 rounded text-[10px] font-bold hover:bg-slate-200 transition-colors">X/Twitter</a>
-                                  ) : null}
-                                  {!p.personal_social_media?.linkedin && !p.personal_social_media?.twitter && <span className="text-xs text-slate-400">-</span>}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                
-                {/* Additional Intelligence: Recommended Services, Extracted Services, and Drafts */}
-                {eaData.recommended_services && eaData.recommended_services.length > 0 && (
-                  <div className="p-5 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 mt-4">
-                    <p className="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-500 mb-3 flex items-center gap-2"><Target size={14} /> Recommended Services</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {eaData.recommended_services.map((rs: any, i: number) => {
-                         const sName = typeof rs === 'string' ? rs : rs.service_name;
-                         const sReason = typeof rs === 'string' ? null : rs.reasoning;
-                         return (
-                           <div key={i} className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
-                             <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200 mb-1">{sName}</p>
-                             {sReason && <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">{sReason}</p>}
-                           </div>
-                         );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {eaData.extracted_services && eaData.extracted_services.length > 0 && (
-                  <div className="p-5 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 mt-4">
-                    <p className="text-xs font-black uppercase tracking-widest text-sky-600 dark:text-sky-500 mb-3 flex items-center gap-2"><Store size={14} /> Services Offered By This Company</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {eaData.extracted_services.map((es: any, i: number) => (
-                        <div key={i} className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="px-2 py-0.5 bg-slate-100 dark:bg-zinc-800 dark:bg-slate-800 text-[9px] font-bold uppercase tracking-widest rounded-md text-sky-600 dark:text-sky-400">{es.category || 'Service'}</span>
-                            {es.approx_cost > 0 && (
-                              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500">${es.approx_cost.toLocaleString()} {es.cost_is_estimated && 'est.'}</span>
-                            )}
-                          </div>
-                          <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200 mb-1">{es.name}</p>
-                          <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">{es.brief}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {eaData.draft && (
-                  <div className="p-5 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 mt-4">
-                    <p className="text-xs font-black uppercase tracking-widest text-violet-600 dark:text-violet-400 mb-3 flex items-center gap-2"><Mail size={14} /> Generated Email Draft</p>
-                    <div className="bg-white dark:bg-zinc-900 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 dark:border-slate-700/50 shadow-sm">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1">Subject</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-slate-200 mb-4">{eaData.draft.subject}</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {eaData.draft.english_body && (
-                          <div>
-                            <p className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-2">English</p>
-                            <p className="text-xs text-slate-600 dark:text-zinc-300 dark:text-slate-400 whitespace-pre-wrap font-mono leading-relaxed bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/80 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 dark:border-slate-800">{eaData.draft.english_body}</p>
-                          </div>
-                        )}
-                        {(eaData.draft.spanish_body || (!eaData.draft.english_body && eaData.draft.body)) && (
-                          <div>
-                            <p className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-2">{eaData.draft.spanish_body ? 'Spanish' : 'Body'}</p>
-                            <p className="text-xs text-slate-600 dark:text-zinc-300 dark:text-slate-400 whitespace-pre-wrap font-mono leading-relaxed bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/80 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 dark:border-slate-800">{eaData.draft.spanish_body || eaData.draft.body}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {eaData.email_hook && (
-                   <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 mt-4">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-500 mb-1 flex items-center gap-1.5"><ArrowRight size={12} /> Email Hook</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 dark:text-amber-100">{eaData.email_hook}</p>
-                   </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-12 bg-slate-50 dark:bg-zinc-950 dark:bg-slate-800/30 rounded-2xl border border-slate-200 dark:border-zinc-700 dark:border-slate-800 border-dashed">
-                 <p className="text-slate-600 dark:text-zinc-300 dark:text-slate-400 text-sm font-medium mb-3">No AI Agent data found for this client.</p>
-                 <p className="text-xs text-slate-500 dark:text-zinc-400 mb-4">Run the AI Email Agent and save a draft to capture deep intelligence.</p>
-                 <button onClick={handleGenerateDraft} disabled={isGeneratingDraft} className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50">
-                   {isGeneratingDraft ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
-                   Generate AI Pitch Strategy & Draft
-                 </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {activeSubTab === 'presales' && (
         <div className="space-y-6">
@@ -578,34 +411,202 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
               </div>
             )}
             {research ? (
-            <div className="space-y-4">
-              {research.company_overview && (
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-wider text-indigo-500 mb-1">Company Overview</p>
-                  <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300 leading-relaxed">{research.company_overview}</p>
+            <div className="space-y-5">
+              {/* Executive Verdict / Overview */}
+              {(eaData?.executive_verdict || research.company_overview) && (
+                <div className="p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-100 dark:border-indigo-800/40">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-2 flex items-center gap-1.5">⚡ Executive Verdict</p>
+                  <p className="text-sm text-slate-700 dark:text-zinc-200 leading-relaxed font-medium">{eaData?.executive_verdict || research.company_overview}</p>
                 </div>
               )}
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {research.pain_points && (
-                  <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-amber-500 mb-1">Pain Points</p>
-                    <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300">{research.pain_points}</p>
+
+              {eaData?.company_overview && eaData?.executive_verdict && (
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Company Overview</p>
+                  <p className="text-sm text-slate-600 dark:text-zinc-300 leading-relaxed">{eaData.company_overview}</p>
+                </div>
+              )}
+
+              {/* Key Stats Row */}
+              {eaData && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {eaData.industry && <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 text-center"><p className="text-[9px] font-black uppercase text-slate-400 mb-1">Industry</p><p className="text-xs font-bold text-slate-700 dark:text-zinc-200">{eaData.industry}</p></div>}
+                  {eaData.business_model && <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 text-center"><p className="text-[9px] font-black uppercase text-slate-400 mb-1">Model</p><p className="text-xs font-bold text-slate-700 dark:text-zinc-200">{eaData.business_model}</p></div>}
+                  {eaData.years_in_business && <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 text-center"><p className="text-[9px] font-black uppercase text-slate-400 mb-1">Years Active</p><p className="text-xs font-bold text-slate-700 dark:text-zinc-200">{eaData.years_in_business}</p></div>}
+                  {eaData.geographic_presence && <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 text-center"><p className="text-[9px] font-black uppercase text-slate-400 mb-1">Geography</p><p className="text-xs font-bold text-slate-700 dark:text-zinc-200">{eaData.geographic_presence}</p></div>}
+                </div>
+              )}
+
+              {/* Opportunities & Weaknesses */}
+              {(eaData?.biggest_opportunities?.length > 0 || eaData?.key_weaknesses?.length > 0) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {eaData?.biggest_opportunities?.length > 0 && (
+                    <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600 mb-2 flex items-center gap-1">🚀 Growth Opportunities</p>
+                      <ul className="space-y-1.5">
+                        {eaData.biggest_opportunities.map((op: string, i: number) => (
+                          <li key={i} className="text-xs text-emerald-800 dark:text-emerald-300 flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5 shrink-0">•</span>{op}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {eaData?.key_weaknesses?.length > 0 && (
+                    <div className="p-4 bg-amber-50 dark:bg-amber-950/20 rounded-xl border border-amber-100 dark:border-amber-900/30">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-amber-600 mb-2 flex items-center gap-1">⚠️ Key Weaknesses</p>
+                      <ul className="space-y-1.5">
+                        {eaData.key_weaknesses.map((w: string, i: number) => (
+                          <li key={i} className="text-xs text-amber-800 dark:text-amber-300 flex items-start gap-1.5"><span className="text-amber-500 mt-0.5 shrink-0">•</span>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Proof Points */}
+              {eaData?.strongest_proof_points?.length > 0 && (
+                <div className="p-4 bg-violet-50 dark:bg-violet-950/20 rounded-xl border border-violet-100 dark:border-violet-900/30">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-violet-600 mb-3 flex items-center gap-1">⭐ Proof Points</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {eaData.strongest_proof_points.map((p: any, i: number) => (
+                      <div key={i} className="p-3 bg-white dark:bg-zinc-900 rounded-lg border border-violet-100 dark:border-violet-900/30">
+                        <p className="text-[9px] font-black uppercase text-violet-500 mb-1">{p.type}</p>
+                        <p className="text-sm font-black text-slate-800 dark:text-zinc-100">{p.value}</p>
+                        <p className="text-[10px] text-slate-500 dark:text-zinc-400 mt-1">{p.why_it_matters}</p>
+                      </div>
+                    ))}
                   </div>
-                )}
-                {research.competitors && (
-                  <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-rose-500 mb-1">Competitors</p>
-                    <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300">{research.competitors}</p>
+                </div>
+              )}
+
+              {/* Product Portfolio */}
+              {eaData?.product_portfolio?.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">📦 Product / Service Portfolio</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {eaData.product_portfolio.map((p: any, i: number) => (
+                      <div key={i} className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800">
+                        <p className="text-xs font-black text-slate-800 dark:text-zinc-100">{p.name}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">{p.description}</p>
+                        <div className="flex gap-2 mt-1.5">
+                          {p.pricing_tier && <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-[9px] font-bold text-slate-500">{p.pricing_tier}</span>}
+                          {p.target_customer && <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/30 text-[9px] font-bold text-blue-600 dark:text-blue-400">{p.target_customer}</span>}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                )}
-                {research.business_goals && (
-                  <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30 md:col-span-2">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-500 mb-1">Business Goals</p>
-                    <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300">{research.business_goals}</p>
+                </div>
+              )}
+
+              {/* Competitive Landscape */}
+              {eaData?.competitive_landscape && (
+                <div className="p-4 bg-rose-50 dark:bg-rose-950/20 rounded-xl border border-rose-100 dark:border-rose-900/30">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-rose-600 mb-2 flex items-center gap-1">🥊 Competitive Landscape</p>
+                  {eaData.competitive_landscape.competitive_positioning && (
+                    <p className="text-xs text-rose-800 dark:text-rose-300 mb-3">{eaData.competitive_landscape.competitive_positioning}</p>
+                  )}
+                  {eaData.competitive_landscape.main_competitors?.length > 0 && (
+                    <div className="space-y-2">
+                      {eaData.competitive_landscape.main_competitors.map((c: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between p-2 bg-white dark:bg-zinc-900 rounded-lg">
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 dark:text-zinc-100">{c.name}</span>
+                            {c.how_they_compete && <p className="text-[10px] text-slate-500 dark:text-zinc-400">{c.how_they_compete}</p>}
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${c.overlap === 'High' ? 'bg-red-100 text-red-700' : c.overlap === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{c.overlap}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ICPs */}
+              {eaData?.ideal_customer_profiles?.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">🎯 Ideal Customer Profiles</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {eaData.ideal_customer_profiles.map((icp: any, i: number) => (
+                      <div key={i} className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800">
+                        <p className="text-xs font-black text-slate-800 dark:text-zinc-100 mb-1">{icp.name}</p>
+                        {icp.pain && <p className="text-[10px] text-rose-600 dark:text-rose-400"><span className="font-bold">Pain:</span> {icp.pain}</p>}
+                        {icp.desire && <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5"><span className="font-bold">Wants:</span> {icp.desire}</p>}
+                        {icp.best_message && <p className="text-[10px] text-violet-600 dark:text-violet-400 mt-0.5 italic">"{icp.best_message}"</p>}
+                      </div>
+                    ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+
+              {/* GTM Recommendations */}
+              {eaData?.gtm_recommendations && (
+                <div className="p-4 bg-sky-50 dark:bg-sky-950/20 rounded-xl border border-sky-100 dark:border-sky-900/30">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-sky-600 mb-2 flex items-center gap-1">📈 GTM Recommendations</p>
+                  {eaData.gtm_recommendations.positioning_statement && (
+                    <p className="text-sm font-bold text-sky-800 dark:text-sky-300 mb-3 italic">"{eaData.gtm_recommendations.positioning_statement}"</p>
+                  )}
+                  {eaData.gtm_recommendations.quick_wins?.length > 0 && (
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-sky-500 mb-1.5">Quick Wins</p>
+                      <ul className="space-y-1">
+                        {eaData.gtm_recommendations.quick_wins.map((w: string, i: number) => (
+                          <li key={i} className="text-xs text-sky-800 dark:text-sky-300 flex items-start gap-1.5"><span className="text-sky-500 shrink-0">→</span>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SERP Hawk Opportunity */}
+              {eaData?.serphawk_opportunity && (
+                <div className="p-4 bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-950/20 dark:to-indigo-950/20 rounded-xl border border-violet-100 dark:border-violet-900/30">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-violet-600 mb-2 flex items-center gap-1">💡 SERP Hawk Opportunity</p>
+                  <div className="flex items-center gap-4 mb-3">
+                    <div className="text-center">
+                      <p className="text-3xl font-black text-violet-600">{eaData.serphawk_opportunity.fit_score}<span className="text-sm text-violet-400">/10</span></p>
+                      <p className="text-[9px] text-violet-500 font-bold uppercase">Fit Score</p>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs text-violet-800 dark:text-violet-300">{eaData.serphawk_opportunity.pitch_angle}</p>
+                      {eaData.serphawk_opportunity.estimated_deal_value && (
+                        <p className="text-xs font-black text-emerald-600 dark:text-emerald-400 mt-1">Est. Value: {eaData.serphawk_opportunity.estimated_deal_value}</p>
+                      )}
+                    </div>
+                  </div>
+                  {eaData.serphawk_opportunity.recommended_services?.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {eaData.serphawk_opportunity.recommended_services.map((s: string, i: number) => (
+                        <span key={i} className="px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/40 text-[10px] font-bold text-violet-700 dark:text-violet-300">{s}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Fallback plain text fields if no rich eaData */}
+              {!eaData && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {research.pain_points && (
+                    <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-amber-500 mb-1">Pain Points</p>
+                      <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300">{research.pain_points}</p>
+                    </div>
+                  )}
+                  {research.competitors && (
+                    <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-rose-500 mb-1">Competitors</p>
+                      <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300">{research.competitors}</p>
+                    </div>
+                  )}
+                  {research.business_goals && (
+                    <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30 md:col-span-2">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-emerald-500 mb-1">Business Goals</p>
+                      <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300">{research.business_goals}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             ) : (
               <div className="text-center py-8 bg-white dark:bg-zinc-900/50 dark:bg-slate-900/50 rounded-xl border border-dashed border-indigo-200 mt-4">
@@ -619,6 +620,103 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
 
       {activeSubTab === 'emails' && (
         <div className="space-y-6">
+          
+          {/* Research Data (ResultCard & PDF Download) */}
+          {(researchData || eaData) && (
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-lg font-black text-slate-800 dark:text-zinc-100 dark:text-white">AI Agent Output</h4>
+                <button
+                  onClick={() => {
+                    const printWindow = window.open('', '_blank');
+                    if (!printWindow) return;
+                    printWindow.document.write(`
+                      <html>
+                        <head>
+                          <title>AI Investigation Report - ${client?.company_name || 'Client'}</title>
+                          <style>
+                            body { font-family: system-ui, -apple-system, sans-serif; padding: 40px; color: #1e293b; max-width: 800px; margin: 0 auto; line-height: 1.6; }
+                            h1 { color: #4f46e5; margin-bottom: 8px; font-size: 28px; }
+                            .meta { color: #64748b; font-size: 14px; margin-bottom: 40px; }
+                            h2 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-top: 40px; font-size: 20px; }
+                            h3 { color: #334155; font-size: 16px; margin-top: 24px; }
+                            p { color: #334155; font-size: 14px; }
+                            ul { font-size: 14px; color: #334155; padding-left: 20px; }
+                            li { margin-bottom: 8px; }
+                            .badge { display: inline-block; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; font-size: 12px; font-weight: bold; margin-right: 8px; }
+                            .box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 8px; margin-top: 16px; }
+                          </style>
+                        </head>
+                        <body>
+                          <h1>AI Deep Investigation Report</h1>
+                          <div class="meta">Generated for ${client?.company_name || 'Client'} • ${new Date().toLocaleDateString()}</div>
+                          
+                          <h2>⚡ Executive Verdict</h2>
+                          <p>${eaData?.executive_verdict || research?.company_overview || 'N/A'}</p>
+                          
+                          <h2>📦 Product & Service Portfolio</h2>
+                          ${(eaData?.product_portfolio || []).map((p: any) => `
+                            <div class="box">
+                              <h3>${p.name}</h3>
+                              <p>${p.description}</p>
+                              ${p.pricing_tier ? `<span class="badge">${p.pricing_tier}</span>` : ''}
+                              ${p.target_customer ? `<span class="badge">${p.target_customer}</span>` : ''}
+                            </div>
+                          `).join('')}
+
+                          <h2>🎯 Ideal Customer Profiles (ICPs)</h2>
+                          ${(eaData?.ideal_customer_profiles || []).map((icp: any) => `
+                            <div class="box">
+                              <h3>${icp.name}</h3>
+                              <p><strong>Pain:</strong> ${icp.pain}</p>
+                              <p><strong>Desires:</strong> ${icp.desire}</p>
+                              <p><strong>Hook:</strong> <em>"${icp.best_message}"</em></p>
+                            </div>
+                          `).join('')}
+
+                          <h2>🥊 Competitive Landscape</h2>
+                          <p>${eaData?.competitive_landscape?.competitive_positioning || ''}</p>
+                          <ul>
+                            ${(eaData?.competitive_landscape?.main_competitors || []).map((c: any) => `
+                              <li><strong>${c.name}</strong> (${c.overlap} Overlap) - ${c.how_they_compete || ''}</li>
+                            `).join('')}
+                          </ul>
+
+                          <h2>📈 GTM Recommendations</h2>
+                          <p><strong>Positioning:</strong> ${eaData?.gtm_recommendations?.positioning_statement || 'N/A'}</p>
+                          <ul>
+                            ${(eaData?.gtm_recommendations?.quick_wins || []).map((w: string) => `<li>${w}</li>`).join('')}
+                          </ul>
+
+                          <script>
+                            setTimeout(() => {
+                              window.print();
+                            }, 500);
+                          </script>
+                        </body>
+                      </html>
+                    `);
+                    printWindow.document.close();
+                  }}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2"
+                >
+                  <FileText size={16} />
+                  Download PDF Report
+                </button>
+              </div>
+              <ResultCard
+                historyId="research"
+                result={researchData || eaData}
+                companyName={client?.company_name || ""}
+                companyUrl={client?.website || ""}
+                onSendManually={async () => { throw new Error("Not implemented here"); }}
+                onSendAutomatically={async () => { throw new Error("Not implemented here"); }}
+                onSaveFollowUp={async () => { return true; }}
+                onRemove={() => setResearchData(null)}
+              />
+            </div>
+          )}
+
           {/* Outbound Emails / Round 1 */}
           {emails && emails.length > 0 ? (
         <div className="rounded-2xl border border-blue-100 dark:border-blue-900/40 bg-white dark:bg-zinc-900 dark:bg-slate-900 p-6 shadow-sm mt-6">
@@ -704,143 +802,29 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
           </div>
         </div>
       ) : (
-        <div className="text-center py-12 bg-white dark:bg-zinc-900 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-zinc-700 shadow-sm mt-6">
-          <p className="text-slate-500 dark:text-zinc-400 font-medium">No outbound communications found.</p>
+        <div className="text-center py-12 bg-white dark:bg-zinc-900 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-zinc-700 shadow-sm mt-6 flex flex-col items-center justify-center">
+          <div className="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-4 border border-blue-100 dark:border-blue-800">
+            <Mail className="text-blue-500 dark:text-blue-400" size={24} />
+          </div>
+          <p className="text-slate-800 dark:text-zinc-100 font-bold mb-2">No outbound communications found</p>
+          <p className="text-slate-500 dark:text-zinc-400 text-sm max-w-md mb-6">Trigger the AI Email Agent to automatically write highly personalized outreach sequences based on the CRM context.</p>
+          <button
+            onClick={handleGenerateDraft}
+            disabled={isGeneratingDraft}
+            className={`px-6 py-2.5 rounded-xl text-white font-bold text-sm shadow-sm transition-all flex items-center gap-2 ${isGeneratingDraft ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+          >
+            {isGeneratingDraft ? (
+              <><Loader2 size={16} className="animate-spin" /> Generating...</>
+            ) : (
+              <><Wand2 size={16} /> Trigger Email Agent</>
+            )}
+          </button>
         </div>
       )}
       </div>
       )}
 
-      {activeSubTab === 'radar' && (
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-zinc-900 dark:bg-slate-900 p-6 md:p-8 shadow-sm">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
-                <Radar size={20} className="text-indigo-600 dark:text-indigo-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-slate-800 dark:text-zinc-100 dark:text-slate-200">Radar Analysis Discovery</h3>
-                <p className="text-xs text-slate-500 dark:text-zinc-400 dark:text-slate-400">Attribution and graph relationships for this client</p>
-              </div>
-            </div>
 
-            {loadingRadar ? (
-              <div className="flex justify-center items-center py-10 text-indigo-500">
-                <Loader2 className="animate-spin" size={24} />
-              </div>
-            ) : (
-              <div className="space-y-8">
-                {/* How they were found */}
-                <div>
-                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-zinc-400 mb-3">Origin (Found From)</h4>
-                  {radarData?.discovered_from?.length > 0 || client?.discovered_from_name ? (
-                    <div className="inline-flex flex-col bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl p-4 min-w-[300px]">
-                      <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Discovered Via</div>
-                      <div className="text-sm font-bold text-slate-800 dark:text-zinc-100">
-                        {radarData?.discovered_from?.[0]?.discovery_method || client?.discovered_via || "Radar Analysis"}
-                      </div>
-                      <div className="mt-3 text-[10px] uppercase font-bold text-slate-400 mb-1">Source Client</div>
-                      <div className="text-sm font-black text-indigo-600 dark:text-indigo-400">
-                        {radarData?.discovered_from?.[0]?.source_client_name || client?.discovered_from_name || "Unknown"}
-                      </div>
-                      <div className="mt-2 text-[10px] text-slate-500 font-mono">
-                        Date: {radarData?.discovered_from?.[0]?.discovered_date?.split('T')[0] || client?.discovery_date || "N/A"}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-slate-500 italic">Not discovered via Radar Analysis.</div>
-                  )}
-                </div>
-
-                {/* Who they found */}
-                <div>
-                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-zinc-400 mb-3">Discovered Competitors</h4>
-                  {radarData?.discovered_competitors?.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {radarData?.discovered_competitors?.map((comp: any, idx: number) => (
-                        <div key={idx} className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl p-4">
-                          <Link href={`/admin/clients/${comp.discovered_client_id}`} className="text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
-                            {comp.discovered_client_name}
-                          </Link>
-                          <div className="grid grid-cols-2 gap-2 mt-3">
-                            <div className="text-[10px] uppercase font-bold text-slate-500">Distance</div>
-                            <div className="text-xs font-mono font-bold text-slate-700 dark:text-zinc-300 text-right">{comp.competitor_data?.distance_km} km</div>
-                            <div className="text-[10px] uppercase font-bold text-slate-500">Overlap</div>
-                            <div className="text-xs font-mono font-bold text-slate-700 dark:text-zinc-300 text-right">{comp.competitor_data?.overlap_pct}%</div>
-                            <div className="text-[10px] uppercase font-bold text-slate-500">Date</div>
-                            <div className="text-xs font-mono font-bold text-slate-700 dark:text-zinc-300 text-right">{comp.discovered_date?.split('T')[0]}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-slate-500 italic mb-4">No competitors discovered from this client yet.</div>
-                  )}
-                  <div className="flex items-center gap-2 mt-4 max-w-sm">
-                    <input type="text" id="compDomain" placeholder="Competitor Domain (e.g. competitor.com)" className="flex-1 px-3 py-2 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm outline-none focus:border-indigo-500" />
-                    <button onClick={() => {
-                        const input = document.getElementById('compDomain') as HTMLInputElement;
-                        if (input && input.value) handleRunCompetitorAnalysis(input.value);
-                      }}
-                      disabled={isAnalyzingCompetitor}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {isAnalyzingCompetitor ? <Loader2 size={16} className="animate-spin" /> : <Radar size={16} />}
-                      Analyze
-                    </button>
-                  </div>
-                </div>
-
-                {/* AI Competitor Analysis Results */}
-                {competitorAnalyses.length > 0 && (
-                  <div>
-                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-zinc-400 mb-3">AI Competitor Analysis</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {competitorAnalyses.map((ca: any, idx: number) => {
-                        const score = ca.keyword_gap_data?.opportunity_score || 0;
-                        const scoreColor = score > 70 ? 'text-emerald-500' : score > 40 ? 'text-amber-500' : 'text-slate-500';
-                        return (
-                          <div key={idx} className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl p-4">
-                            <div className="flex justify-between items-start mb-3">
-                              <h5 className="font-bold text-slate-800 dark:text-zinc-100">{ca.competitor_domain}</h5>
-                              <span className={`text-[10px] font-black px-2 py-1 bg-white dark:bg-zinc-900 rounded-md border border-slate-200 dark:border-zinc-700 ${scoreColor}`}>Score: {score}</span>
-                            </div>
-                            <div className="space-y-3">
-                              {ca.content_benchmarks?.content_gap_opportunities?.length > 0 && (
-                                <div>
-                                  <div className="text-[10px] uppercase font-bold text-slate-500 mb-1">Content Gaps</div>
-                                  <ul className="list-disc pl-4 text-xs text-slate-600 dark:text-zinc-300">
-                                    {ca.content_benchmarks.content_gap_opportunities.slice(0, 3).map((g: string, i: number) => (
-                                      <li key={i}>{g}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                              {ca.backlink_comparison?.link_building_opportunities?.length > 0 && (
-                                <div>
-                                  <div className="text-[10px] uppercase font-bold text-slate-500 mb-1">Backlink Ops</div>
-                                  <ul className="list-disc pl-4 text-xs text-slate-600 dark:text-zinc-300">
-                                    {ca.backlink_comparison.link_building_opportunities.slice(0, 3).map((g: string, i: number) => (
-                                      <li key={i}>{g}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                              <div className="text-[10px] text-slate-400 font-mono mt-2 pt-2 border-t border-slate-200 dark:border-zinc-700">
-                                Last Updated: {new Date(ca.last_updated).toLocaleDateString()}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
     </div>
   );

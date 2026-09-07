@@ -18,8 +18,8 @@ def map_services_to_dapros(company_services, dapros_services=DAPROS_SERVICES):
     """
     # Compose a prompt for mapping
     prompt = f"""
-    You are an expert B2B analyst. Given the following list of company services and Dapros's services, map each company service to the most relevant Dapros service (or 'None' if no match). Return a JSON list of mappings like:
-    [{{"company_service": "...", "dapros_service": "..."}}]
+    You are an expert B2B analyst. Given the following list of company services and Dapros's services, map each company service to the most relevant Dapros service (or 'None' if no match). Return a JSON object with a "mappings" key containing a list of objects like:
+    {{"mappings": [{{"company_service": "...", "dapros_service": "..."}}]}}
 
     Company Services: {json.dumps(company_services)}
     Dapros Services: {json.dumps(dapros_services)}
@@ -31,7 +31,8 @@ def map_services_to_dapros(company_services, dapros_services=DAPROS_SERVICES):
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"}
     )
-    return json.loads(response.choices[0].message.content)
+    result = json.loads(response.choices[0].message.content)
+    return result.get("mappings", [])
 
 async def research_and_map_company(url, dapros_services=DAPROS_SERVICES):
     """
@@ -62,6 +63,7 @@ async def research_and_map_company(url, dapros_services=DAPROS_SERVICES):
     Mapping: {json.dumps(mapping)}
     Dapros Services: {json.dumps(dapros_services)}
     """
+    from modules.llm_engine import get_openai_client
     client = get_openai_client()
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -72,7 +74,8 @@ async def research_and_map_company(url, dapros_services=DAPROS_SERVICES):
     return {
         "company_analysis": analysis,
         "service_mapping": mapping,
-        "suggested_requests": suggestions
+        "suggested_requests": suggestions,
+        "raw_text": website_text
     }
 import re
 import requests
@@ -111,6 +114,9 @@ async def scrape_website(url):
     found_phones = set()
     found_linkedin = set()
     found_twitter = set()
+    found_instagram = set()
+    found_facebook = set()
+    found_youtube = set()
     scraped_texts = []
 
     def clean_phone(phone_str):
@@ -168,6 +174,18 @@ async def scrape_website(url):
                     twitter_url = href.split('?')[0].split(';')[0].strip()
                     if twitter_url and '/intent' not in lower_href:  # Skip intent links
                         found_twitter.add(twitter_url)
+                # Instagram extraction
+                if 'instagram.com/' in lower_href:
+                    ig_url = href.split('?')[0].split(';')[0].strip()
+                    if ig_url: found_instagram.add(ig_url)
+                # Facebook extraction
+                if 'facebook.com/' in lower_href:
+                    fb_url = href.split('?')[0].split(';')[0].strip()
+                    if fb_url: found_facebook.add(fb_url)
+                # Youtube extraction
+                if 'youtube.com/' in lower_href or 'youtu.be/' in lower_href:
+                    yt_url = href.split('?')[0].split(';')[0].strip()
+                    if yt_url: found_youtube.add(yt_url)
 
         # 2. Extract plain text phone numbers
         # Clean soup script and style elements to avoid extracting numbers from Javascript/CSS
@@ -205,20 +223,39 @@ async def scrape_website(url):
         return clean_text
 
     response_text = ""
+    markdown_text = ""
+    import os
+    firecrawl_key = os.getenv("FIRECRAWL_API_KEY")
+    
+    def fetch_page(target_url, timeout=12):
+        if firecrawl_key:
+            try:
+                logger.info(f"Using Firecrawl for {target_url}")
+                resp = requests.post(
+                    "https://api.firecrawl.dev/v1/scrape",
+                    headers={"Authorization": f"Bearer {firecrawl_key}", "Content-Type": "application/json"},
+                    json={"url": target_url, "formats": ["markdown", "html"]},
+                    timeout=30
+                )
+                if resp.status_code == 200:
+                    data = resp.json().get("data", {})
+                    return data.get("html", ""), data.get("markdown", "")
+            except Exception as e:
+                logger.error(f"Firecrawl failed for {target_url}: {e}, falling back to requests")
+        
+        # Fallback
+        resp = requests.get(target_url, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        return resp.text, ""
+
     try:
-        # Fetch the main URL
-        response = requests.get(url, headers=headers, timeout=12)
-        response.raise_for_status()
-        response_text = response.text
+        response_text, markdown_text = fetch_page(url)
     except Exception as e:
-        # If https fails, try http as a fallback
         if url.startswith('https://'):
             http_url = 'http://' + url[8:]
             logger.info(f"Https failed, retrying http: {http_url}")
             try:
-                response = requests.get(http_url, headers=headers, timeout=10)
-                response.raise_for_status()
-                response_text = response.text
+                response_text, markdown_text = fetch_page(http_url)
                 url = http_url
             except Exception as e_inner:
                 logger.error(f"Failed to scrape {url}: {e_inner}")
@@ -229,7 +266,7 @@ async def scrape_website(url):
 
     # Check if the page is a WAF challenge or empty response
     is_blocked = False
-    status_code = response.status_code if 'response' in locals() else 200
+    status_code = 200
     if status_code in [202, 403, 503, 429]:
         is_blocked = True
     elif not response_text or len(response_text.strip()) < 200:
@@ -252,7 +289,10 @@ async def scrape_website(url):
 
     # Extract from homepage
     homepage_text = extract_from_html(response_text, url)
-    scraped_texts.append(homepage_text)
+    if markdown_text:
+        scraped_texts.append(markdown_text)
+    else:
+        scraped_texts.append(homepage_text)
 
     # 3. Contact Page Discovery
     contact_links = []
@@ -281,11 +321,14 @@ async def scrape_website(url):
     for link in contact_links[:5]:  # Increased from 3 to 5 pages
         logger.info(f"Scraping contact/about subpage: {link}")
         try:
-            sub_resp = requests.get(link, headers=headers, timeout=6)
-            if sub_resp.status_code == 200:
-                sub_text = extract_from_html(sub_resp.text, link)
+            sub_resp_text, sub_markdown = fetch_page(link, timeout=6)
+            if sub_resp_text:
+                sub_text = extract_from_html(sub_resp_text, link)
                 # Keep more text for better extraction (15000 chars instead of 5000)
-                scraped_texts.append(sub_text[:15000])
+                if sub_markdown:
+                    scraped_texts.append(sub_markdown[:15000])
+                else:
+                    scraped_texts.append(sub_text[:15000])
         except Exception as e:
             logger.error(f"Failed to scrape subpage {link}: {e}")
 
@@ -294,6 +337,9 @@ async def scrape_website(url):
     all_phones = sorted(list(found_phones))
     all_linkedin = sorted(list(found_linkedin))
     all_twitter = sorted(list(found_twitter))
+    all_instagram = sorted(list(found_instagram))
+    all_facebook = sorted(list(found_facebook))
+    all_youtube = sorted(list(found_youtube))
 
     # Keep unique paragraphs
     combined_website_text = "\n\n".join(scraped_texts)
@@ -303,7 +349,10 @@ async def scrape_website(url):
         f"Extracted Emails: {', '.join(all_emails)}\n"
         f"Extracted Phone Numbers: {', '.join(all_phones)}\n"
         f"Extracted LinkedIn Profiles: {', '.join(all_linkedin)}\n"
-        f"Extracted Twitter Profiles: {', '.join(all_twitter)}\n\n"
+        f"Extracted Twitter Profiles: {', '.join(all_twitter)}\n"
+        f"Extracted Instagram Profiles: {', '.join(all_instagram)}\n"
+        f"Extracted Facebook Profiles: {', '.join(all_facebook)}\n"
+        f"Extracted Youtube Profiles: {', '.join(all_youtube)}\n\n"
         f"Website Content:\n{combined_website_text[:15000]}"
     )
     return final_content

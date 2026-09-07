@@ -57,7 +57,7 @@ export default function LeadHeader({
 }: LeadHeaderProps) {
   const { language } = useLanguage();
   const statusCfg = STATUS_CONFIG[lead?.status] || STATUS_CONFIG.Inactive;
-  const assignedEmp = employees.find((e: any) => e.id === lead?.assignedEmployeeId);
+  const assignedEmp = employees.find((e: any) => e.id === lead?.owner_id);
   const leadScore = lead?.lead_score ?? 0;
   const dealValue = lead?.deal_value ? `$${Number(lead.deal_value).toLocaleString()}` : '—';
 
@@ -73,10 +73,10 @@ export default function LeadHeader({
 
   // Contact info pills for display in header
   const contactChips = [
-    lead?.contact_person && { icon: User,     value: lead.contact_person },
+    null && { icon: User,     value: lead.contact_person },
     lead?.email          && { icon: Mail,     value: lead.email,     href: `mailto:${lead.email}` },
     lead?.phone          && { icon: Phone,    value: lead.phone,     href: `tel:${lead.phone}` },
-    lead?.websiteUrl     && { icon: Globe,    value: lead.websiteUrl, href: lead.websiteUrl },
+    lead?.website     && { icon: Globe,    value: lead.websiteUrl, href: lead.websiteUrl },
     lead?.linkedin_url   && { icon: Linkedin, value: 'LinkedIn',       href: lead.linkedin_url },
     lead?.address        && { icon: MapPin,   value: lead.address },
     assignedEmp            && { icon: Star,     value: `${language === 'es' ? 'Asignado:' : 'Assigned:'} ${assignedEmp.name}`, accent: true },
@@ -85,7 +85,7 @@ export default function LeadHeader({
   // Brief description from research or tagline
   const description = lead?.description || lead?.tagline || lead?.seoStrategy || lead?.gmbName || null;
   const services = lead?.services_offered || null;
-  const companyName = lead?.company_name || lead?.companyName || lead?.projectName || (lead?.customFields?.sheet_data?.['Lead Name']) || null;
+  const companyName = lead?.company_name || lead?.company_name || lead?.projectName || (lead?.customFields?.sheet_data?.['Client Name']) || null;
 
   return (
     <div className="sticky top-0 z-40 bg-white dark:bg-zinc-900 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border-b border-slate-200 dark:border-zinc-700">
@@ -97,7 +97,7 @@ export default function LeadHeader({
             onClick={onBack}
             className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-zinc-400 hover:text-indigo-600 transition-colors font-bold tracking-tight"
           >
-            <ArrowLeft size={16} className="text-slate-400" /> {language === 'es' ? 'Volver a Leades' : 'Back to Leads'}
+            <ArrowLeft size={16} className="text-slate-400" /> {language === 'es' ? 'Volver a Clientes' : 'Back to Leads'}
           </button>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 overflow-x-auto mr-2">
@@ -156,13 +156,7 @@ export default function LeadHeader({
               </p>
             )}
 
-            {/* Services Row */}
-            {services && (
-              <div className="flex items-start gap-2 mb-1.5">
-                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500 mt-0.5 shrink-0">Services:</span>
-                <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold leading-snug">{services}</p>
-              </div>
-            )}
+
 
             {/* Contact Info Chips */}
             <div className="flex flex-wrap gap-x-4 gap-y-1">

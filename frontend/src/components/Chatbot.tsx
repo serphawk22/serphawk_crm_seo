@@ -55,7 +55,7 @@ export function Chatbot() {
     
     // Fetch History
     fetch(`${API_BASE_URL}/chatbot/history/${storedSession}`)
-      .then(res => res.json())
+      .then(async res => { if (!res.ok) throw new Error("Failed to fetch history"); return res.json(); })
       .then(data => {
         if (data.ok && data.history && data.history.length > 0) {
           setMessages(data.history);

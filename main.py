@@ -574,6 +574,15 @@ def on_startup():
         
     try:
         with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
+            conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
+            conn.commit()
+            print("Successfully added swot_analysis to client_profiles and leads tables.")
+    except Exception as e:
+        print("swot_analysis column already exists or error:", e)
+        
+    try:
+        with engine.connect() as conn:
             conn.execute(text("ALTER TABLE projects ADD COLUMN project_type VARCHAR DEFAULT 'Development';"))
             conn.commit()
             print("Successfully added project_type to projects table.")
@@ -612,6 +621,15 @@ def on_startup():
             print("Successfully added call limits to tenants table.")
     except Exception as e:
         print("tenant call limits already exist or error:", e)
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS url VARCHAR(1000);"))
+            conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS case_type VARCHAR(100) DEFAULT 'Bug';"))
+            conn.commit()
+            print("Successfully added url and case_type columns to cases table.")
+    except Exception as e:
+        print("cases url/case_type columns already exist or error:", e)
 
 allowed_origins = [
     "https://serphawk-crm-seo.vercel.app",
@@ -705,111 +723,292 @@ class SmartResearchRequest(BaseModel):
     client_id: Optional[int] = None  # If set, link extracted services to this CRM client
     owner_name: Optional[str] = "Varshith"
 
+
+# ─── Background Auto-Research Helper ────────────────────────────────────────
+def _trigger_background_research(entity_id: int, entity_type: str, company_name: str, website: str, session_factory=None):
+    """
+    Fire-and-forget background task: runs the full scraper+LLM pipeline for a
+    lead or client and stores results in ClientResearch.
+    entity_type: 'lead' or 'client'
+    """
+    import threading
+    import asyncio
+
+    def _run():
+        try:
+            from modules.llm_engine import deep_investigate_company
+            from modules.scraper import research_and_map_company
+            import json, re, asyncio as _asyncio
+
+            url = website or ""
+            if not url and company_name:
+                slug = company_name.lower().replace(" ", "").replace(",","").replace(".","")
+                url = f"https://www.{slug}.com"
+            if not url:
+                return
+
+            # Step 1: Scrape the website for raw text context
+            raw_text = ""
+            try:
+                loop = _asyncio.new_event_loop()
+                scrape_result = loop.run_until_complete(research_and_map_company(url))
+                loop.close()
+                raw_text = scrape_result.get("raw_text", "") or ""
+            except Exception as scrape_err:
+                print(f"[AutoResearch] Scrape failed (using GPT knowledge only): {scrape_err}")
+
+            # Step 2: Run the deep investigation with GPT-4o
+            print(f"[AutoResearch] Running deep investigation for {company_name} ({url})")
+            data = deep_investigate_company(
+                company_name=company_name,
+                website=url,
+                scraped_text=raw_text
+            )
+
+            # Step 3: Extract key contact info to also update the lead/client record
+            contacts = data.get("contacts", []) or []
+            contact = contacts[0] if contacts else {}
+            email_addr = contact.get("email") or ""
+            phone_num = contact.get("phone_number") or ""
+            company_info = data.get("company_info", {}) or {}
+            if not email_addr:
+                extracted = company_info.get("extracted_emails", "") or ""
+                email_addr = extracted.split(",")[0].strip() if extracted else ""
+            if not phone_num:
+                extracted_ph = company_info.get("extracted_phone_numbers", "") or ""
+                phone_num = extracted_ph.split(",")[0].strip() if extracted_ph else ""
+
+            from sqlmodel import Session as _Session, select as _select
+            from database import ClientResearch, Lead, ClientProfile, engine as _engine
+            with _Session(_engine) as sess:
+                if entity_type == "lead":
+                    cr = sess.exec(_select(ClientResearch).where(ClientResearch.lead_id == entity_id)).first()
+                    if not cr:
+                        cr = ClientResearch(lead_id=entity_id)
+                    # Also update lead email/phone if discovered
+                    lead_obj = sess.get(Lead, entity_id)
+                    if lead_obj:
+                        if not lead_obj.email and email_addr: lead_obj.email = email_addr
+                        if not lead_obj.phone and phone_num: lead_obj.phone = phone_num
+                        sess.add(lead_obj)
+                else:
+                    cr = sess.exec(_select(ClientResearch).where(ClientResearch.client_id == entity_id)).first()
+                    if not cr:
+                        cr = ClientResearch(client_id=entity_id)
+                cr.email_agent_data = json.dumps(data)
+                cr.company_overview = data.get("company_overview", "") or data.get("executive_verdict", "")
+                cr.key_decision_makers = json.dumps(contacts)
+                # Store additional rich fields
+                icps = data.get("ideal_customer_profiles", [])
+                cr.pain_points = json.dumps(icps) if icps else None
+                cr.business_goals = json.dumps(data.get("gtm_recommendations", {})) if data.get("gtm_recommendations") else None
+                cr.competitors = json.dumps(data.get("competitive_landscape", {})) if data.get("competitive_landscape") else None
+                sess.add(cr)
+                sess.commit()
+            print(f"[AutoResearch] Done for {entity_type} id={entity_id}")
+        except Exception as ex:
+            import traceback
+            print(f"[AutoResearch] Error for {entity_type} id={entity_id}: {ex}")
+            traceback.print_exc()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest, session: Session = Depends(get_session)):
     """
-    Takes a company name (and optional URL) and forwards the request to the N8N webhook.
-    Returns the exact JSON response from N8N.
+    Takes a company name (and optional URL) and uses local scraper and LLM to return
+    analysis, extracted contacts, and generated emails.
     """
     check_tenant_limit(session, "emails")
-    import os
-    import httpx
-
-    webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "http://localhost:5678/webhook-test/your-webhook-id")
-
-    payload = {
-        "event": "research",
-        "company_name": body.company_name,
-        "company_url": body.company_url,
-        "client_id": body.client_id,
-        "owner_name": body.owner_name
-    }
-
+    from modules.scraper import research_and_map_company
+    from modules.llm_engine import generate_email
+    import json
+    
+    # Determine the URL
+    url = body.company_url
+    if not url:
+        # Simple fallback if no URL provided
+        formatted_name = body.company_name.replace(" ", "").replace(",", "").replace(".", "").lower()
+        url = f"https://www.{formatted_name}.com"
+        
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(webhook_url, json=payload, timeout=60.0)
+        # Run local research (which uses Firecrawl and OpenAI)
+        result = await research_and_map_company(url)
+        analysis = result.get("company_analysis", {})
+        mapping = result.get("service_mapping", [])
+        
+        # Extract Contact Info
+        contacts = analysis.get("contacts", [])
+        contact = contacts[0] if contacts else {}
+        email = contact.get("email", "")
+        if email is None:
+            email = ""
+        phone = contact.get("phone_number", "")
+        if phone is None:
+            phone = ""
+        name = contact.get("name", "")
+        if name is None:
+            name = ""
             
-            if response.status_code != 200:
-                print(f"N8N Webhook Error: {response.status_code} - {response.text}")
-                return {
-                    "company_info": {"company_name": body.company_name, "summary": f"N8N Webhook Error {response.status_code}. Please make sure you are listening for test events in n8n."},
-                    "contact": {"email": "test@example.com"},
-                    "draft": {"subject": "Test Draft", "english_body": "N8N Webhook Error occurred. Workflow not started."},
-                    "recommended_services": [],
-                    "extracted_services": []
-                }
+        # Contact social
+        personal_social = contact.get("personal_social_media", {})
+        if personal_social is None:
+            personal_social = {}
+        contact_linkedin = personal_social.get("linkedin", "") if isinstance(personal_social, dict) else ""
+        contact_twitter = personal_social.get("twitter", "") if isinstance(personal_social, dict) else ""
+        
+        # Company Socials
+        socials = analysis.get("company_social_media", {})
+        if socials is None:
+            socials = {}
+        comp_linkedin = socials.get("linkedin", "") if isinstance(socials, dict) else ""
+        comp_twitter = socials.get("twitter", "") if isinstance(socials, dict) else ""
+        comp_instagram = socials.get("instagram", "") if isinstance(socials, dict) else ""
+        comp_facebook = socials.get("facebook", "") if isinstance(socials, dict) else ""
+        
+        # Get recommended services from the mapping
+        recommended_services = [m.get("dapros_service") for m in mapping if m.get("dapros_service") and m.get("dapros_service") != "None"]
+        # Fallback to key value props if empty
+        if not recommended_services:
+            recommended_services = analysis.get("key_value_props", [])
             
-            # If successful, handle JSON decoding properly
-            try:
-                data = response.json()
-            except Exception as e:
-                print(f"Failed to parse JSON from N8N: {e}")
-                data = {}
-                
-            # If N8N returns custom fields (like emails, phone, cold_email_english), map them to expected schema
-            if "emails" in data or "cold_email_english" in data or "company_services" in data:
-                raw_english = data.get("cold_email_english", "")
-                raw_spanish = data.get("cold_email_spanish", "")
-                
-                subject = "Growth Partnership"
-                if raw_english.startswith("Subject:"):
-                    parts = raw_english.split("\n\n", 1)
-                    if len(parts) == 2:
-                        subject = parts[0].replace("Subject:", "").strip()
-                        raw_english = parts[1].strip()
-                        
-                if raw_spanish.startswith("Asunto:"):
-                    parts = raw_spanish.split("\n\n", 1)
-                    if len(parts) == 2:
-                        raw_spanish = parts[1].strip()
+        # Generate the email draft
+        draft_result = generate_email(analysis, contact, recommended_services, body.owner_name)
+        
+        # Extract Emails, Phones, and Socials from scraper raw text
+        raw_text = result.get("raw_text", "")
+        import re
+        scraped_emails = []
+        scraped_phones = []
+        scraped_linkedin = ""
+        scraped_twitter = ""
+        
+        email_match = re.search(r"Extracted Emails:\s*(.+)", raw_text)
+        if email_match:
+            scraped_emails = [e.strip() for e in email_match.group(1).split(",") if e.strip()]
+            
+        phone_match = re.search(r"Extracted Phone Numbers:\s*(.+)", raw_text)
+        if phone_match:
+            scraped_phones = [p.strip() for p in phone_match.group(1).split(",") if p.strip()]
+            
+        li_match = re.search(r"Extracted LinkedIn Profiles:\s*(.+)", raw_text)
+        if li_match:
+            scraped_linkedin = li_match.group(1).split(",")[0].strip() if li_match.group(1).strip() else ""
+            
+        tw_match = re.search(r"Extracted Twitter Profiles:\s*(.+)", raw_text)
+        if tw_match:
+            scraped_twitter = tw_match.group(1).split(",")[0].strip() if tw_match.group(1).strip() else ""
+            
+        ig_match = re.search(r"Extracted Instagram Profiles:\s*(.+)", raw_text)
+        scraped_ig = ig_match.group(1).split(",")[0].strip() if (ig_match and ig_match.group(1).strip()) else ""
+        
+        fb_match = re.search(r"Extracted Facebook Profiles:\s*(.+)", raw_text)
+        scraped_fb = fb_match.group(1).split(",")[0].strip() if (fb_match and fb_match.group(1).strip()) else ""
+        
+        yt_match = re.search(r"Extracted Youtube Profiles:\s*(.+)", raw_text)
+        scraped_yt = yt_match.group(1).split(",")[0].strip() if (yt_match and yt_match.group(1).strip()) else ""
 
-                socials = data.get("social_links", {})
-                linkedin = socials.get("linkedin", "") if isinstance(socials, dict) else ""
-                twitter = socials.get("twitter", "") if isinstance(socials, dict) else ""
-                
-                company_info = data.get("company_info", {})
-                company_info["company_name"] = body.company_name
-                company_info["extracted_emails"] = data.get("emails", "")
-                company_info["extracted_phone_numbers"] = data.get("phone", "")
-                company_info["linkedin"] = linkedin
-                company_info["company_social_media"] = {
-                    "linkedin": linkedin,
-                    "twitter": twitter,
-                    "instagram": socials.get("instagram", "") if isinstance(socials, dict) else "",
-                    "facebook": socials.get("facebook", "") if isinstance(socials, dict) else ""
-                }
-                
-                return {
-                    "company_info": company_info,
-                    "contact": {
-                        "email": data.get("emails", ""),
-                        "phone_number": data.get("phone", ""),
-                        "linkedin": linkedin,
-                        "twitter": twitter,
-                        "name": ""
-                    },
-                    "draft": {
-                        "subject": subject,
-                        "english_body": raw_english,
-                        "spanish_body": raw_spanish
-                    },
-                    "recommended_services": data.get("company_services", []),
-                    "extracted_services": data.get("extracted_services", [])
-                }
+        # Merge with LLM findings
+        if email and email not in scraped_emails:
+            scraped_emails.append(email)
+        if phone and phone not in scraped_phones:
+            scraped_phones.append(phone)
+            
+        extracted_emails = ", ".join(scraped_emails) if scraped_emails else ""
+        extracted_phones = ", ".join(scraped_phones) if scraped_phones else ""
+        
+        if scraped_linkedin and not comp_linkedin:
+            comp_linkedin = scraped_linkedin
+        if scraped_twitter and not comp_twitter:
+            comp_twitter = scraped_twitter
+        if scraped_ig and not comp_instagram:
+            comp_instagram = scraped_ig
+        if scraped_fb and not comp_facebook:
+            comp_facebook = scraped_fb
 
-            # Fill in defaults if N8N returns an empty or old format response
-            if "company_info" not in data:
-                data["company_info"] = {"company_name": body.company_name, "summary": "N8N didn't return the expected JSON format."}
-            if "contact" not in data:
-                data["contact"] = {"email": "test@example.com", "name": "Test Prospect"}
-            if "draft" not in data:
-                data["draft"] = {"subject": "Automated Draft", "english_body": "Your N8N workflow executed successfully."}
+        
+        data = {
+            "company_info": {
+                "company_name": analysis.get("company_name", body.company_name),
+                "summary": analysis.get("what_they_do", ""),
+                "extracted_emails": extracted_emails,
+                "extracted_phone_numbers": extracted_phones,
+                "linkedin": comp_linkedin,
+                "company_social_media": {
+                    "linkedin": comp_linkedin,
+                    "twitter": comp_twitter,
+                    "instagram": comp_instagram,
+                    "facebook": comp_facebook,
+                    "youtube": scraped_yt
+                }
+            },
+            "contact": {
+                "email": email,
+                "phone_number": phone,
+                "linkedin": contact_linkedin,
+                "twitter": contact_twitter,
+                "name": name
+            },
+            "draft": {
+                "subject": draft_result.get("subject", "Partnership Request"),
+                "english_body": draft_result.get("english_body", ""),
+                "spanish_body": draft_result.get("spanish_body", "")
+            },
+            "recommended_services": recommended_services,
+            "extracted_services": [{"name": m.get("company_service"), "category": "Service", "approx_cost": 0, "cost_is_estimated": False} for m in mapping if m.get("company_service")]
+        }
+        
+
+        # --- AUTO-CREATE LEAD AND SAVE RESEARCH ---
+        import json
+        from database import Lead, ClientResearch
+        from sqlmodel import select
+        
+        # See if a lead already exists for this domain
+        existing_lead = None
+        if url:
+            domain = url.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
+            if domain:
+                existing_lead = session.exec(select(Lead).where(Lead.website.like(f"%{domain}%"))).first()
                 
-            return data
+        if not existing_lead and email:
+            existing_lead = session.exec(select(Lead).where(Lead.email == email)).first()
+
+        lead_id = None
+        if not existing_lead:
+            # Create a new lead
+            new_lead = Lead(
+                company_name=data["company_info"].get("company_name", body.company_name) or "Unknown Company",
+                website=url,
+                email=email if email else None,
+                phone=phone if phone else None,
+                source="Email Agent",
+                status="Generated",
+                ai_analysis_results=json.dumps(data)
+            )
+            session.add(new_lead)
+            session.commit()
+            session.refresh(new_lead)
+            lead_id = new_lead.id
+        else:
+            existing_lead.ai_analysis_results = json.dumps(data)
+            session.add(existing_lead)
+            session.commit()
+            lead_id = existing_lead.id
+            
+        # We no longer save Email Agent JSON to ClientResearch.email_agent_data
+        # because that field is reserved for the massive Deep Research Markdown report.
+        # ------------------------------------------
+
+        return data
+        
     except Exception as e:
-        print(f"Webhook Exception: {e}")
+        import traceback
+        traceback.print_exc()
+        print(f"Smart Research Local Exception: {e}")
         return {
-            "company_info": {"company_name": body.company_name, "summary": f"Webhook Exception: {e}"},
+            "company_info": {"company_name": body.company_name, "summary": f"Smart Research Exception: {e}"},
             "contact": {"email": ""},
             "draft": {"subject": "", "english_body": ""},
             "recommended_services": [],
@@ -823,6 +1022,7 @@ class SendManualRequest(BaseModel):
     subject: str
     english_body: str
     spanish_body: Optional[str] = None
+    whatsapp_body: Optional[str] = None
     recommended_services: Optional[str] = None
     contact_name: Optional[str] = None
     contact_role: Optional[str] = None
@@ -896,23 +1096,30 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
             session.add(contact)
             session.commit()
 
-    # Step 2.5: Find or create ClientResearch to save email_agent_data
+    # Step 2.5: Save email_agent_data to lead.ai_analysis_results for Opportunities tab
     if body.email_agent_data:
-        client_research = session.exec(
-            select(ClientResearch).where(ClientResearch.lead_id == lead.id)
-        ).first()
-        if not client_research:
-            client_research = ClientResearch(
-                lead_id=lead.id,
-                email_agent_data=body.email_agent_data
-            )
-            session.add(client_research)
-        else:
-            client_research.email_agent_data = body.email_agent_data
-            session.add(client_research)
+        try:
+            import json as _j
+            parsed = _j.loads(body.email_agent_data) if isinstance(body.email_agent_data, str) else body.email_agent_data
+            lead.ai_analysis_results = parsed
+        except:
+            lead.ai_analysis_results = body.email_agent_data
+        session.add(lead)
         session.commit()
 
     # Step 3: Save SentEmail record
+    import json as _json_se
+    _draft_json_payload = _json_se.dumps({
+        "subject": body.subject,
+        "english_body": body.english_body,
+        "spanish_body": body.spanish_body or "",
+        "whatsapp_draft": getattr(body, "whatsapp_body", "") or "",
+        "contact_name": body.contact_name or "",
+        "contact_email": to_email,
+        "company_name": body.company_name or "",
+        "website_url": getattr(body, "website_url", "") or "",
+        "recommended_services": body.recommended_services or "",
+    })
     sent_email = SentEmail(
         lead_id=lead.id,
         to_email=to_email,
@@ -920,6 +1127,7 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
         english_body=body.english_body,
         spanish_body=body.spanish_body or "",
         recommended_services=body.recommended_services or "",
+        draft_json=_draft_json_payload,
         manual=body.manual if body.manual is not None else True,
         sent_at=datetime.utcnow(),
     )
@@ -1573,7 +1781,7 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
 
     services        = _get(cp.services_offered, "Services", "Services providing", "Services Offered")
     description     = _get(cp.tagline, "Description", "description", "Notes")
-    phone           = _get(cp.phone, "Contact", "Phone")
+    phone           = _get(cp.phone, "Contact", "Phone", "Phone Number", "phone_number", "phone")
     country         = _get(cp.address, "Country", "country", "Region")
 
     last_act_log = session.exec(select(ActivityLog).where(ActivityLog.clientId == cp.id).order_by(ActivityLog.createdAt.desc())).first()
@@ -1617,6 +1825,7 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
         "next_followup_date": cp.next_followup_date,
         "description": cf.get("ai_description") or cf.get("description") or description,
         "country": cf.get("country") or sd.get("Country") or sd.get("country"),
+        "swot_analysis": cp.swot_analysis,
         "customFields": cf,
     }
 
@@ -2013,15 +2222,34 @@ def get_dashboard_call_pitch(session: Session = Depends(get_session)):
             session.add(client)
             session.commit()
             
-    return {"client": _client_dict(client, session), "pitch_text": client.call_pitch_text}
+    research_entry = session.exec(select(ClientResearch).where(ClientResearch.client_id == client.id)).first()
+    return {
+        "client": _client_dict(client, session), 
+        "pitch_text": client.call_pitch_text,
+        "agent_data": research_entry.email_agent_data if research_entry else None,
+        "deep_research": research_entry.company_overview if research_entry else None
+    }
+
+class CallPitchDoneRequest(BaseModel):
+    feedback: str = ""
 
 @app.post("/dashboard-call-pitch/{client_id}/done")
-def mark_call_pitch_done(client_id: int, session: Session = Depends(get_session)):
+def mark_call_pitch_done(client_id: int, body: Optional[CallPitchDoneRequest] = None, session: Session = Depends(get_session)):
     client = session.exec(select(ClientProfile).where(ClientProfile.id == client_id)).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     client.call_pitch_done = True
     session.add(client)
+    
+    if body and body.feedback:
+        act = ActivityLog(
+            clientId=client.id,
+            action="Sales Call Outcome",
+            method="Phone",
+            content=f"AI Call Pitch Outcome: {body.feedback}"
+        )
+        session.add(act)
+        
     session.commit()
     return {"status": "ok"}
 
@@ -2415,6 +2643,17 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
         send_ai_polished_whatsapp_message("New Client Onboarded", cp.dict(), f"{base_url}/clients/{cp.id}")
     except Exception as e:
         print("WhatsApp Error:", e)
+
+    # ── AUTO-RESEARCH ──
+    try:
+        _trigger_background_research(
+            entity_id=cp.id,
+            entity_type="client",
+            company_name=cp.companyName or "",
+            website=cp.websiteUrl or ""
+        )
+    except Exception as e:
+        print(f"AutoResearch trigger error for client {cp.id}: {e}")
         
     return {"client": _client_dict(cp, session)}
 
@@ -2672,23 +2911,34 @@ async def _auto_research_client_bg(client_id: int, website: str):
 
 # ─── CSV Export ────────────────────────────────────────────────────────────────
 @app.get("/clients/export-csv")
-def export_clients_csv(tenant_id: Optional[int] = None, session: Session = Depends(get_session)):
+def export_clients_csv(session: Session = Depends(get_session)):
     from fastapi.responses import StreamingResponse
 
+    tenant_id = current_tenant_id.get()
     q = select(ClientProfile)
-    if tenant_id and tenant_id != 1:
+    if tenant_id and tenant_id > 0:
         q = q.where(ClientProfile.tenant_id == tenant_id)
     clients_list = session.exec(q.order_by(ClientProfile.id.asc())).all()
     output = _io.StringIO()
     writer = _csv.writer(output)
-    writer.writerow(["Client Name", "Email", "Phone"])
-    for i, c in enumerate(clients_list, 1):
+    writer.writerow(["ID", "Company Name", "Email", "Phone", "Website", "Status", "Industry", "Address", "Services Offered", "Target Keywords", "Deal Value", "Payment Status"])
+    for c in clients_list:
         user = session.get(User, c.userId) if c.userId else None
         client_email = c.email if hasattr(c, 'email') and c.email else (user.email if user else "")
+        keywords = ", ".join(c.targetKeywords) if isinstance(c.targetKeywords, list) else (c.targetKeywords or "")
         writer.writerow([
-            c.companyName or "", 
+            c.id,
+            c.companyName or "",
             client_email,
-            c.phone or ""
+            c.phone or "",
+            c.websiteUrl or "",
+            c.status or "",
+            c.industry or "",
+            c.address or "",
+            c.services_offered or "",
+            keywords,
+            c.deal_value or "",
+            c.payment_status or ""
         ])
     output.seek(0)
     return StreamingResponse(
@@ -3045,6 +3295,25 @@ def update_client(
     session.commit()
     session.refresh(cp)
     return {"client": _client_dict(cp, session)}
+
+
+@app.post("/clients/{client_id}/swot")
+async def generate_client_swot(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if not cp.websiteUrl:
+        raise HTTPException(status_code=400, detail="Client has no website URL configured")
+        
+    from modules.llm_engine import generate_swot_analysis
+    import json
+    
+    swot_data = await generate_swot_analysis(cp.websiteUrl, cp.companyName or "Client")
+    cp.swot_analysis = json.dumps(swot_data)
+    session.add(cp)
+    session.commit()
+    session.refresh(cp)
+    return {"ok": True, "swot_analysis": swot_data}
 
 
 @app.post("/clients/{client_id}/assign-employee")
@@ -3492,60 +3761,14 @@ def auto_research_client(client_id: int, session: Session = Depends(get_session)
         raise HTTPException(status_code=404, detail="Client not found")
         
     try:
-        from modules.llm_engine import get_openai_client
-        import json as _json
-        client_ai = get_openai_client()
-        
-        prompt = f"""
-        You are an expert pre-sales researcher for an SEO/Marketing agency.
-        Research the following company and provide a detailed summary.
-        Company Name: {cp.companyName}
-        Website: {cp.websiteUrl or 'Unknown'}
-        Industry: {cp.industry or 'Unknown'}
-        
-        Return ONLY valid JSON matching this schema exactly (no markdown formatting, no code blocks):
-        {{
-            "company_overview": "Detailed overview...",
-            "competitors": "List 3-5 main competitors...",
-            "tech_stack": "Likely technologies used...",
-            "recent_news": "Any recent news or general industry trends...",
-            "pain_points": "Likely pain points they face...",
-            "business_goals": "Likely business goals...",
-            "key_decision_makers": "Titles of key decision makers..."
-        }}
-        """
-        
-        resp = client_ai.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=1000,
+        # Trigger the same deep background research we use on creation
+        _trigger_background_research(
+            entity_id=client_id,
+            entity_type="client",
+            company_name=cp.companyName or "",
+            website=cp.websiteUrl or ""
         )
-        content = resp.choices[0].message.content.strip()
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-        elif content.startswith("```"):
-            content = content[3:-3].strip()
-            
-        data = _json.loads(content)
-        
-        research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
-        if not research:
-            research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
-            
-        research.company_overview = data.get("company_overview", "")
-        research.competitors = data.get("competitors", "")
-        research.tech_stack = data.get("tech_stack", "")
-        research.recent_news = data.get("recent_news", "")
-        research.pain_points = data.get("pain_points", "")
-        research.business_goals = data.get("business_goals", "")
-        research.key_decision_makers = data.get("key_decision_makers", "")
-        research.updated_at = datetime.utcnow()
-        
-        session.add(research)
-        session.commit()
-        return {"ok": True, "research": data}
-        
+        return {"ok": True, "message": "Research started in background"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
 
@@ -3562,8 +3785,39 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
         import json as _json
         client_ai = get_openai_client()
         
-        # Get existing research
+        # ── Safe upsert: always fetch (or create) research in ONE place ──────
         research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+        
+        # If no OSINT data yet, run deep investigation synchronously
+        if not research or not research.email_agent_data:
+            from modules.llm_engine import deep_investigate_company
+            url = cp.websiteUrl or cp.website or ""
+            if not url and cp.companyName:
+                slug = cp.companyName.lower().replace(" ", "").replace(",","").replace(".","")
+                url = f"https://www.{slug}.com"
+            
+            if url:
+                print(f"[DraftGen] No existing research for client {client_id}. Running deep investigation first...")
+                try:
+                    osint_data = deep_investigate_company(
+                        company_name=cp.companyName or "Unknown",
+                        website=url,
+                        scraped_text=""
+                    )
+                    if not research:
+                        research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
+                        session.add(research)
+                        session.flush()  # get the id without committing
+                    research.company_overview = osint_data.get("company_overview", "")
+                    research.email_agent_data = _json.dumps(osint_data)
+                    session.commit()
+                    print(f"[DraftGen] Deep investigation complete for client {client_id}")
+                except Exception as osint_err:
+                    session.rollback()
+                    print(f"[DraftGen] OSINT failed (continuing with draft anyway): {osint_err}")
+                    # Re-fetch research after rollback
+                    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+
         research_context = ""
         if research:
             research_context = f"""
@@ -3580,13 +3834,13 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
 
         # Get Notes and Conversations
         notes = session.exec(select(ClientNote).where(ClientNote.client_id == client_id).order_by(ClientNote.created_at.desc()).limit(10)).all()
-        conversations = session.exec(select(ClientConversation).where(ClientConversation.client_id == client_id).order_by(ClientConversation.date.desc()).limit(5)).all()
+        conversations = session.exec(select(ConversationLog).where(ConversationLog.client_id == client_id).order_by(ConversationLog.created_at.desc()).limit(5)).all()
         
         interaction_context = ""
         if notes:
             interaction_context += "Recent Notes:\n" + "\n".join([f"- {n.content}" for n in notes]) + "\n"
         if conversations:
-            interaction_context += "Recent Conversations:\n" + "\n".join([f"- {c.type} on {c.date}: {c.summary}" for c in conversations]) + "\n"
+            interaction_context += "Recent Conversations:\n" + "\n".join([f"- {c.type} on {c.created_at}: {c.description or c.title}" for c in conversations]) + "\n"
 
         prompt = f"""
         You are an expert SDR (Sales Development Representative) at an agency. 
@@ -3638,7 +3892,9 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
         )
         session.add(draft)
         
-        # Save to research so the UI can display it in OpportunitiesTab
+        # ── Safe upsert research (use existing row, never re-insert) ─────────
+        if not research:
+            research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
         if not research:
             research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
             session.add(research)
@@ -3659,7 +3915,10 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
         return {"ok": True, "draft": data, "email_id": draft.id}
         
     except Exception as e:
+        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to generate draft: {str(e)}")
+
+
 
 
 # ─── Extract Client Services from Website ─────────────────────────────────────
@@ -8950,6 +9209,17 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
         send_ai_polished_whatsapp_message("New Lead Added", lead.dict(), f"{base_url}/leads/{lead.id}")
     except Exception as e:
         print("WhatsApp Error:", e)
+
+    # ── AUTO-RESEARCH ──
+    try:
+        _trigger_background_research(
+            entity_id=lead.id,
+            entity_type="lead",
+            company_name=lead.company_name or "",
+            website=lead.website or ""
+        )
+    except Exception as e:
+        print(f"AutoResearch trigger error for lead {lead.id}: {e}")
         
     return lead
 
@@ -8959,6 +9229,184 @@ def get_lead(lead_id: int, session: Session = Depends(get_session)):
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     return lead
+
+@app.get("/leads/{lead_id}/activities")
+def get_lead_activities(lead_id: int, session: Session = Depends(get_session)):
+    return {"activities": []}
+
+@app.get("/leads/{lead_id}/timeline")
+def get_lead_timeline(lead_id: int, session: Session = Depends(get_session)):
+    return {"timeline": []}
+
+@app.get("/leads/{lead_id}/notes")
+def get_lead_notes(lead_id: int, session: Session = Depends(get_session)):
+    return {"notes": []}
+
+@app.get("/leads/{lead_id}/conversations")
+def get_lead_conversations(lead_id: int, session: Session = Depends(get_session)):
+    return {"conversations": []}
+
+@app.get("/leads/{lead_id}/files")
+def get_lead_files(lead_id: int, session: Session = Depends(get_session)):
+    return {"files": []}
+
+@app.post("/leads/{lead_id}/auto-research")
+def auto_research_lead(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+        
+    try:
+        # Trigger the same deep background research we use on creation
+        _trigger_background_research(
+            entity_id=lead_id,
+            entity_type="lead",
+            company_name=lead.company_name or "",
+            website=lead.website or ""
+        )
+        return {"ok": True, "message": "Research started in background"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
+
+@app.post("/leads/{lead_id}/extract-services")
+async def extract_lead_services_endpoint(lead_id: int, session: Session = Depends(get_session)):
+    """
+    Scrapes the lead's website and uses AI to extract services they offer.
+    Falls back to LLM world-knowledge when website is unreachable.
+    Stores results in MarketplaceService table.
+    """
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    website_url = lead.website
+    company_name = lead.company_name or "Unknown Company"
+
+    if not website_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Lead has no website URL. Add one in the lead profile first."
+        )
+
+    # ── Step 1: Try scraping (fail gracefully on any network error) ────────────
+    website_text = ""
+    scrape_method = "website_scrape"
+    try:
+        from modules.scraper import scrape_website
+        website_text = await scrape_website(website_url)
+        if website_text.startswith("ERROR"):
+            print(f"[extract-services] Scrape failed for {website_url}: {website_text[:100]}. Falling back to LLM.")
+            website_text = ""
+            scrape_method = "llm_fallback"
+    except Exception as scrape_err:
+        print(f"[extract-services] Scraper exception ({website_url}): {scrape_err}. Falling back to LLM.")
+        scrape_method = "llm_fallback"
+
+    # ── Step 2: Extract services (from scraped text, or via LLM knowledge) ─────
+    import json as _json
+    from modules.llm_engine import extract_client_services as _extract_services, get_openai_client
+
+    services = []
+
+    if website_text:
+        services = _extract_services(website_text, company_name)
+
+    # If scraping failed or extracted nothing → use LLM world-knowledge fallback
+    if not services:
+        scrape_method = "llm_fallback"
+        try:
+            oai = get_openai_client()
+            fallback_prompt = f"""You are a B2B business intelligence expert.
+
+The company "{company_name}" has website: {website_url}
+Industry: {lead.industry or "unknown"}
+
+We could not access their website. Based on the company name, domain, and industry,
+list the most likely services they offer.
+
+Return ONLY valid JSON:
+{{
+  "services": [
+    {{
+      "name": "Service name",
+      "brief": "1-2 sentence description of this service",
+      "category": "One of: SEO, Web Design, Marketing, Plumbing, Legal, Accounting, Consulting, Construction, Healthcare, Real Estate, IT Services, Landscaping, Cleaning, Electrical, HVAC, Retail, Education, Finance, Transportation, Other",
+      "approx_cost": 1200,
+      "cost_is_estimated": true
+    }}
+  ]
+}}
+
+Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for fallback."""
+            resp = oai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": fallback_prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.3,
+            )
+            services = _json.loads(resp.choices[0].message.content).get("services", [])
+        except Exception as llm_err:
+            print(f"[extract-services] LLM fallback also failed: {llm_err}")
+
+    if not services:
+        return {
+            "ok": False,
+            "extracted_count": 0,
+            "marketplace_count": 0,
+            "scrape_method": scrape_method,
+            "message": "Could not extract services. Try adding the Industry field to improve AI fallback accuracy.",
+        }
+
+    # ── Step 3: Save to Lead ai_analysis_results (simulate services_offered) ────────
+    if lead.ai_analysis_results:
+        analysis_data = dict(lead.ai_analysis_results)
+    else:
+        analysis_data = {}
+    analysis_data["product_portfolio"] = services
+    lead.ai_analysis_results = analysis_data
+    session.add(lead)
+
+    # ── Step 4: Upsert into MarketplaceService (skip exact name duplicates) ───
+    existing = session.exec(
+        select(MarketplaceService).where(
+            MarketplaceService.provider_name == company_name,
+            MarketplaceService.is_active == True,
+        )
+    ).all()
+    existing_names = {s.service_name.lower() for s in existing}
+
+    added = 0
+    for svc in services:
+        svc_name = svc.get("name", "").strip()
+        if not svc_name or svc_name.lower() in existing_names:
+            continue
+        ms = MarketplaceService(
+            service_name=svc_name,
+            normalized_name=svc_name,
+            category=svc.get("category"),
+            description=svc.get("brief"),
+            estimated_cost=float(svc.get("approx_cost", 0)),
+            cost_is_estimated=svc.get("cost_is_estimated", True),
+            provider_name=company_name,
+            provider_client_id=None,
+            provider_industry=lead.industry,
+            provider_address=lead.address,
+            source=scrape_method,
+        )
+        session.add(ms)
+        existing_names.add(svc_name.lower())
+        added += 1
+
+    session.commit()
+
+    method_label = "live website" if scrape_method == "website_scrape" else "AI knowledge (site unreachable)"
+    return {
+        "ok": True,
+        "extracted_count": len(services),
+        "marketplace_count": added,
+        "scrape_method": scrape_method,
+        "message": f"Extracted {len(services)} services via {method_label}. Added {added} to Marketplace.",
+    }
 
 @app.put("/leads/{lead_id}")
 def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depends(get_session)):
@@ -8971,6 +9419,192 @@ def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depend
     session.commit()
     session.refresh(lead)
     return lead
+
+
+@app.post("/leads/{lead_id}/generate-outbound-draft")
+def generate_lead_outbound_draft(lead_id: int, session: Session = Depends(get_session)):
+    check_tenant_limit(session, "emails")
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+        
+    try:
+        from modules.llm_engine import get_openai_client
+        import json as _json
+        client_ai = get_openai_client()
+        
+        # Get existing research
+        research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+        
+        # If no OSINT data yet, run deep investigation synchronously (blocking) so we have rich context
+        if not research or not research.email_agent_data:
+            from modules.llm_engine import deep_investigate_company
+            url = lead.website or ""
+            if not url and lead.company_name:
+                slug = lead.company_name.lower().replace(" ", "").replace(",","").replace(".","")
+                url = f"https://www.{slug}.com"
+            
+            if url:
+                print(f"[DraftGen] No existing research for lead {lead_id}. Running deep investigation first...")
+                try:
+                    osint_data = deep_investigate_company(
+                        company_name=lead.company_name or "Unknown",
+                        website=url,
+                        scraped_text=""
+                    )
+                    # Save research so it's available and also for context
+                    if not research:
+                        research = ClientResearch(lead_id=lead_id, tenant_id=current_tenant_id.get())
+                        session.add(research)
+                    research.company_overview = osint_data.get("company_overview", "")
+                    research.email_agent_data = _json.dumps(osint_data)
+                    # Update lead phone/email if found
+                    contacts = osint_data.get("contacts", []) or []
+                    contact = contacts[0] if contacts else {}
+                    company_info = osint_data.get("company_info", {}) or {}
+                    if not lead.email:
+                        email_found = contact.get("email") or company_info.get("extracted_emails","").split(",")[0].strip()
+                        if email_found: lead.email = email_found
+                    if not lead.phone:
+                        phone_found = contact.get("phone_number") or company_info.get("extracted_phone_numbers","").split(",")[0].strip()
+                        if phone_found: lead.phone = phone_found
+                    session.add(lead)
+                    session.commit()
+                    print(f"[DraftGen] Deep investigation complete for lead {lead_id}")
+                except Exception as osint_err:
+                    session.rollback()
+                    print(f"[DraftGen] OSINT failed (continuing with draft anyway): {osint_err}")
+                    # Re-fetch after rollback to avoid stale session state
+                    research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+
+        research_context = ""
+        if research:
+            research_context = f"""
+            Company Overview: {research.company_overview or 'N/A'}
+            Pain Points: {research.pain_points or 'N/A'}
+            Business Goals: {research.business_goals or 'N/A'}
+            """
+            if research.email_agent_data:
+                try:
+                    ea_data = _json.loads(research.email_agent_data)
+                    research_context += f"\nEmail Agent Intel: {_json.dumps(ea_data.get('company_info', {}), indent=2)}"
+                except:
+                    pass
+
+        # Get Notes (Leads don't have notes implemented yet, skipping)
+        notes = []
+        
+        interaction_context = ""
+        if notes:
+            interaction_context += "Recent Notes:\n" + "\n".join([f"- {n.content}" for n in notes]) + "\n"
+
+
+        prompt = f"""
+        You are an expert SDR (Sales Development Representative) at an agency. 
+        Write a highly personalized, cold outreach email draft for the following prospect.
+        Company: {lead.company_name or 'Unknown'}
+        Website: {lead.website or 'Unknown'}
+        {research_context}
+
+        {interaction_context}
+        If there are recent notes or conversations above, make sure the email acknowledges them appropriately as a follow-up. If none exist, write a standard cold outreach email based on the research.
+
+        
+        Return ONLY valid JSON matching this schema exactly (no markdown formatting):
+        {{
+            "subject": "Email subject",
+            "english_body": "Email body in English",
+            "spanish_body": "Email body translated to Spanish",
+            "whatsapp_draft": "Short, punchy WhatsApp message (plain text, emojis allowed)"
+        }}
+        """
+        
+        resp = client_ai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=800,
+        )
+        content = resp.choices[0].message.content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+            
+        data = _json.loads(content)
+        
+        # Save as a draft in SentEmail
+        from database import SentEmail
+        to_email = lead.email or "unknown@example.com"
+        
+        draft = SentEmail(
+            tenant_id=current_tenant_id.get(),
+            lead_id=lead_id,
+            to_email=to_email,
+            subject=data.get("subject", "Proposal"),
+            english_body=data.get("english_body", ""),
+            spanish_body=data.get("spanish_body", ""),
+            draft_json=_json.dumps(data),
+            manual=True,
+            sent_at=datetime.utcnow()
+        )
+        session.add(draft)
+        
+        # ── Safe upsert research (use existing row, never re-insert) ──────────
+        if not research:
+            research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+        if not research:
+            research = ClientResearch(lead_id=lead_id, tenant_id=current_tenant_id.get())
+            session.add(research)
+        
+        ea_payload = {}
+        if research.email_agent_data:
+            try:
+                ea_payload = _json.loads(research.email_agent_data)
+            except:
+                pass
+                
+        # Ensure company_info exists so the UI doesn't show empty fields if auto-research wasn't run
+        if "company_info" not in ea_payload:
+            ea_payload["company_info"] = {
+                "company_name": lead.company_name or "Unknown Company",
+                "extracted_emails": lead.email or "",
+                "extracted_phone_numbers": lead.phone or "",
+                "company_social_media": {},
+                "summary": "AI Draft generated. Run 'AI Agent Analysis' in Pre-Sales tab for deep OSINT data."
+            }
+            
+        ea_payload["draft"] = data
+        ea_payload["email_hook"] = data.get("whatsapp_draft", "Custom outreach generated from latest interactions.")
+        
+        research.email_agent_data = _json.dumps(ea_payload)
+        
+        session.commit()
+        
+        return {"ok": True, "draft": data}
+    except Exception as e:
+        session.rollback()
+        print(f"Error generating lead draft: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to generate draft: {str(e)}")
+
+
+@app.post("/leads/{lead_id}/swot")
+async def generate_lead_swot(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if not lead.website:
+        raise HTTPException(status_code=400, detail="Lead has no website URL configured")
+        
+    from modules.llm_engine import generate_swot_analysis
+    import json
+    
+    swot_data = await generate_swot_analysis(lead.website, lead.company_name or "Lead")
+    lead.swot_analysis = json.dumps(swot_data)
+    session.add(lead)
+    session.commit()
+    session.refresh(lead)
+    return {"ok": True, "swot_analysis": swot_data}
 
 from sqlmodel import text
 
@@ -9209,6 +9843,17 @@ def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)
         contact.account_id = account.id
         contact.client_id = client.id
         session.add(contact)
+        
+    # 3.5 Re-link Research Data and Sent Emails
+    research_entries = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead.id)).all()
+    for r in research_entries:
+        r.client_id = client.id
+        session.add(r)
+        
+    sent_emails = session.exec(select(SentEmail).where(SentEmail.lead_id == lead.id)).all()
+    for e in sent_emails:
+        e.client_id = client.id
+        session.add(e)
     
     # 4. Mark Lead as converted
     lead.is_converted = True
@@ -10339,6 +10984,8 @@ class CaseCreateRequest(BaseModel):
     status: str = "Open"
     priority: str = "Medium"
     category: Optional[str] = None
+    case_type: Optional[str] = "Bug"
+    url: Optional[str] = None
     lead_id: Optional[int] = None
     client_id: Optional[int] = None
     contact_id: Optional[int] = None
@@ -10350,6 +10997,8 @@ class CaseUpdateRequest(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
     category: Optional[str] = None
+    case_type: Optional[str] = None
+    url: Optional[str] = None
     assigned_to: Optional[int] = None
     resolution: Optional[str] = None
 
@@ -12686,3 +13335,28 @@ def save_email_settings(body: EmailSettingsRequest, session: Session = Depends(g
     
     session.commit()
     return {"success": True}
+
+@app.get("/leads/{lead_id}/research")
+def get_lead_research(lead_id: int, session: Session = Depends(get_session)):
+    research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+    if not research:
+        return {"research": None}
+    return {"research": research}
+
+@app.get("/leads/{lead_id}/sent-emails")
+def get_lead_sent_emails(lead_id: int, session: Session = Depends(get_session)):
+    """Return all sent emails associated with a lead, for the Opportunities tab."""
+    emails = session.exec(
+        select(SentEmail)
+        .where(SentEmail.lead_id == lead_id)
+        .order_by(SentEmail.sent_at.desc())
+    ).all()
+    return {"emails": [e.dict() for e in emails]}
+
+@app.get("/clients/{client_id}/research")
+def get_client_research(client_id: int, session: Session = Depends(get_session)):
+    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+    if not research:
+        return {"research": None}
+    return {"research": research}
+
