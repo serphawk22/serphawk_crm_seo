@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { useRole } from "@/context/RoleContext";
 import Link from "next/link";
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from "@/context/LanguageContext";
 
 interface Notification {
   id: number;
@@ -28,6 +29,7 @@ const TYPE_CONFIG: Record<string, { icon: any; color: string; bg: string; border
 };
 
 export default function NotificationsPage() {
+  const { t } = useLanguage();
   const { user } = useRole();
   const userId = user?.id;
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -65,31 +67,31 @@ export default function NotificationsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight flex items-center gap-3">
-            <Bell className="w-7 h-7" /> Notifications
+            <Bell className="w-7 h-7" /> {t("notifications.title")}
             {unread > 0 && (
               <span className="bg-red-500 text-white text-xs font-black px-2 py-0.5 rounded-full">{unread}</span>
             )}
           </h1>
-          <p className="text-gray-500 dark:text-zinc-400 font-medium">All your alerts, updates, and reminders.</p>
+          <p className="text-gray-500 dark:text-zinc-400 font-medium">{t("notifications.subtitle")}</p>
         </div>
         {unread > 0 && (
           <button onClick={markAllRead} disabled={markingAll}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-200 rounded-xl font-semibold text-sm hover:bg-gray-200 transition-all">
             {markingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCheck className="w-4 h-4" />}
-            Mark all read
+            {t("notifications.mark_all_read")}
           </button>
         )}
       </div>
 
       <PageGuide
         pageKey="notifications"
-        title="How Notifications work"
-        description="Stay informed with real-time alerts about proposals, invoices, tasks, and team activity."
+        title={t("notifications.guide_title")}
+        description={t("notifications.guide_desc")}
         steps={[
-          { icon: '🔔', text: 'Notifications appear here whenever something important happens — new proposals, invoice updates, etc.' },
-          { icon: '🟢', text: 'Color-coded badges indicate type: info (blue), success (green), warning (amber), error (red).' },
-          { icon: '✅', text: 'Click \"Mark all read\" to clear the unread count, or click individual items to read them.' },
-          { icon: '🔗', text: 'Some notifications have links — click them to jump directly to the relevant page.' },
+          { icon: '🔔', text: t("notifications.guide_s1") },
+          { icon: '🟢', text: t("notifications.guide_s2") },
+          { icon: '✅', text: t("notifications.guide_s3") },
+          { icon: '🔗', text: t("notifications.guide_s4") },
         ]}
       />
 
@@ -98,7 +100,7 @@ export default function NotificationsPage() {
       ) : notifications.length === 0 ? (
         <div className="text-center py-24">
           <Bell className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-400 font-semibold">You're all caught up!</p>
+          <p className="text-gray-400 font-semibold">{t("notifications.caught_up")}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -127,7 +129,7 @@ export default function NotificationsPage() {
                       <span className="text-xs text-gray-400">{new Date(n.created_at).toLocaleString()}</span>
                       {n.link && (
                         <Link href={n.link} className={cn("flex items-center gap-1 text-xs font-semibold", cfg.color)}>
-                          View <ExternalLink className="w-3 h-3" />
+                          {t("notifications.view")} <ExternalLink className="w-3 h-3" />
                         </Link>
                       )}
                     </div>

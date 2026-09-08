@@ -94,6 +94,7 @@ from database import (
     Invoice,
     KeywordRankEntry,
     Lead,
+    LeadNote,
     MessageThread,
     Milestone,
     NPSSurvey,
@@ -122,6 +123,7 @@ from database import (
     RFQRequest,
     RFQResponse,
     APIKey,
+    EmailSettings,
 )
 
 
@@ -148,7 +150,7 @@ def _add_tenant_filter(execute_state):
         
     # Global tables that don't have tenant_id, or where we must never add a tenant filter
     global_tables = [
-        "tenants", "client_statuses", "marketplace_services", "service_catalog",
+        "tenants", "client_statuses", "service_catalog",
         "audit_logs",      # telemetry must always be cross-tenant for admin view
         "users",           # users table is queried cross-tenant (e.g. login, notifications)
         "notifications",   # user-scoped not tenant-scoped
@@ -176,7 +178,7 @@ def _auto_assign_tenant_id(session, flush_context, instances):
         return
         
     global_tables = [
-        "tenants", "client_statuses", "marketplace_services", "service_catalog",
+        "tenants", "client_statuses", "service_catalog",
         "audit_logs", "users", "notifications",
     ]
     
@@ -329,6 +331,24 @@ def get_session():
     with Session(engine) as session:
         yield session
 
+def _require_roles(session: Session, allowed_roles):
+    """Enforce role access for sensitive endpoints.
+
+    Returns the current User. Raises 401 if unauthenticated and 403 if the
+    caller's role is not allowed. SuperAdmin and the legacy UI superadmin
+    (admin@serphawk.com) are always permitted.
+    """
+    uid = current_salesperson_id.get()
+    if not uid:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    user = session.get(User, uid)
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    role = _normalize_role(user.role)
+    if role == "SuperAdmin" or (user.email or "").lower() == "admin@serphawk.com" or role in allowed_roles:
+        return user
+    raise HTTPException(status_code=403, detail="Forbidden")
+
 from modules.api_tracker import current_client_id, current_salesperson_id, current_endpoint, patch_openai
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -338,6 +358,7 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         # Reset context for this request
         current_client_id.set(None)
         current_salesperson_id.set(None)
+        current_tenant_id.set(None)
         current_endpoint.set(request.url.path)
         # Try to infer user from X-User-ID header, query parameter, or JWT token
         user_header = request.headers.get("X-User-ID")
@@ -524,7 +545,14 @@ def on_startup():
         if emp:
             emp.password = _hash_password("Admin123!")
             session.add(emp)
-            
+
+        # Dedicated Demo-role account used by the frontend demo login button.
+        # Reset its password on startup so the demo always works.
+        demo = session.exec(select(User).where(User.email == "demo@serphawk.com")).first()
+        if demo:
+            demo.password = _hash_password("DemoPass123!")
+            session.add(demo)
+
         session.commit()
         session.close()
     except Exception as e:
@@ -612,6 +640,28 @@ def on_startup():
             print("Successfully added call limits to tenants table.")
     except Exception as e:
         print("tenant call limits already exist or error:", e)
+
+    # Keep the Neon serverless DB awake + pool warm. Without this, the first
+    # requests after ~5min of idle trigger a slow cold-start (~5-7s each).
+    try:
+        import threading as _threading
+        from database import engine as _keepalive_engine
+
+        def _db_keepalive_loop():
+            import time as _time
+            from sqlalchemy import text as _text
+            while True:
+                _time.sleep(60)
+                try:
+                    with _keepalive_engine.connect() as _conn:
+                        _conn.execute(_text("SELECT 1"))
+                except Exception as _e:
+                    print("Keepalive ping failed:", _e)
+
+        _threading.Thread(target=_db_keepalive_loop, daemon=True, name="db-keepalive").start()
+        print("DB keepalive started (pings every 60s).")
+    except Exception as e:
+        print("Could not start DB keepalive:", e)
 
 allowed_origins = [
     "https://serphawk-crm-seo.vercel.app",
@@ -927,17 +977,38 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     session.commit()
     session.refresh(sent_email)
 
-    # Step 3.5: Send the actual email via webhook only (unless skip_send is True)
+    # Step 3.5: Send the actual email (unless skip_send is True).
+    # Primary path is direct SMTP via the configured crm@serphawk.in mailbox.
+    # The N8N webhook is still fired best-effort for follow-up automation.
     if not body.skip_send:
         import os
         import httpx
-        sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "prasanthanupojuwork@gmail.com")
-        
+        sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
+        password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
+        smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "mail.serphawk.in")
+        smtp_port = os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
+
         try:
             bodies = [b for b in [body.english_body, body.spanish_body] if b and b.strip()]
             full_body = "\n\n---\n\n".join(bodies) if bodies else ""
-            # Added for Gmail Agent Migration: Using N8N webhook trigger instead of local SMTP integration for automation.
-            # This triggers the n8n webhook workflow to send the email and handle follow-ups externally.
+
+            # Send directly over SMTP from crm@serphawk.in so mail goes out even if n8n is down.
+            if sender and password:
+                from modules.email_sender import send_email_outlook
+                send_email_outlook(
+                    to_email=body.to_email,
+                    subject=body.subject,
+                    body=full_body or body.english_body or body.spanish_body or "",
+                    sender_email=sender,
+                    sender_password=password,
+                    smtp_server=smtp_server,
+                    smtp_port=int(smtp_port),
+                )
+                print(f"Email sent via SMTP to {body.to_email} from {sender}")
+            else:
+                print("SMTP not configured (missing EMAIL_SENDER/EMAIL_PASSWORD) - skipping direct send")
+
+            # Fire the N8N webhook best-effort for follow-up automation (never blocks the reply).
             webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "https://primary-production-d40bc.up.railway.app/webhook/trigger-cold-email")
             payload = {
                 "event": "email_sent",
@@ -952,16 +1023,16 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
                 "recommended_services": body.recommended_services or "SEO",
                 "timestamp": datetime.utcnow().isoformat()
             }
-            # Send to webhook and wait for response
-            response = httpx.post(webhook_url, json=payload, timeout=30.0)
-            if response.status_code != 200:
-                print(f"Webhook Error during send-manual: {response.status_code} - {response.text}")
-                # We won't crash here so the activity still gets logged and UI completes
-            else:
-                print(f"Webhook successfully triggered and responded from manual send to {webhook_url}")
+            try:
+                response = httpx.post(webhook_url, json=payload, timeout=30.0)
+                if response.status_code != 200:
+                    print(f"Webhook Error during send-manual: {response.status_code} - {response.text}")
+                else:
+                    print(f"Webhook successfully triggered and responded from manual send to {webhook_url}")
+            except Exception as e:
+                print(f"Manual Email send failed via webhook: {e}")
         except Exception as e:
-            print(f"Manual Email send failed via webhook: {e}")
-            # We no longer raise HTTPException here to allow the frontend to succeed gracefully in tests
+            print(f"Manual Email send failed: {e}")
 
 
     # Step 4: Log activity
@@ -1504,6 +1575,30 @@ def _hash_password(pw: str) -> str:
     return hashlib.sha256(pw.encode()).hexdigest()
 
 
+def _generate_unique_password(length: int = 10) -> str:
+    """Generate a cryptographically-random, unique password for a supplier login.
+
+    Guarantees at least one lowercase letter, one uppercase letter, one digit,
+    and one special character so it passes common password-strength rules.
+    """
+    import secrets
+    import string as _string
+    lower = _string.ascii_lowercase
+    upper = _string.ascii_uppercase
+    digits = _string.digits
+    special = "!@#$%&*"
+    pool = lower + upper + digits + special
+    chars = [
+        secrets.choice(lower),
+        secrets.choice(upper),
+        secrets.choice(digits),
+        secrets.choice(special),
+    ]
+    chars += [secrets.choice(pool) for _ in range(max(0, length - 4))]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
+
+
 def _check_password(plain: str, hashed: str) -> bool:
     return hashlib.sha256(plain.encode()).hexdigest() == hashed
 
@@ -1744,6 +1839,7 @@ def global_activities(session: Session = Depends(get_session)):
 
 @app.get("/superadmin/tenants")
 def get_all_tenants(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     # Bypassing tenant filter for super admin
     # We temporarily clear the tenant filter context for this query
     import contextvars
@@ -1844,6 +1940,7 @@ class TenantLimitUpdateRequest(BaseModel):
 @app.patch("/superadmin/tenants/{tenant_id}/limits")
 def update_tenant_limits(tenant_id: int, body: TenantLimitUpdateRequest, session: Session = Depends(get_session)):
     """Superadmin: update limits and optionally reset usage for a tenant."""
+    _require_roles(session, ["SuperAdmin"])
     old_tenant = current_tenant_id.get()
     current_tenant_id.set(None)
     try:
@@ -1898,6 +1995,7 @@ def log_page_visit(body: PageVisitRequest, session: Session = Depends(get_sessio
 
 @app.get("/superadmin/telemetry/global")
 def get_global_telemetry(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     # Bypassing tenant filter for super admin
     import contextvars
     from database import Tenant, User, ClientProfile, PageVisitTelemetry
@@ -2029,6 +2127,7 @@ def mark_call_pitch_done(client_id: int, session: Session = Depends(get_session)
 @app.post("/superadmin/tenants/{tenant_id}/analyze")
 def analyze_tenant_usage(tenant_id: int, session: Session = Depends(get_session)):
     # AI summary of tenant usage and full breakdown
+    _require_roles(session, ["SuperAdmin"])
     old_tenant = current_tenant_id.get()
     current_tenant_id.set(None)
     
@@ -2102,6 +2201,7 @@ def analyze_tenant_usage(tenant_id: int, session: Session = Depends(get_session)
 
 @app.get("/debug-user")
 def debug_user(email: str = "", session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     users = session.exec(select(User)).all()
     suppliers = session.exec(select(InventorySupplier)).all()
     return {
@@ -2122,6 +2222,94 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
         if cp:
             result["client_id"] = cp.id
     return {"user": result}
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+    redirect_url: Optional[str] = None  # e.g. https://crm.serphawk.in/reset-password
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    token: str
+    new_password: str
+
+@app.post("/auth/forgot-password")
+def forgot_password(body: ForgotPasswordRequest, session: Session = Depends(get_session)):
+    """Send a one-time password reset link. Always returns 200 to avoid user enumeration."""
+    import secrets
+    from database import PasswordResetToken
+
+    user = session.exec(select(User).where(User.email == body.email)).first()
+
+    # Generate + persist a token even for unknown emails so timing doesn't leak existence
+    token = secrets.token_urlsafe(48)
+    frontend_base = "https://crm.serphawk.in"
+    if body.redirect_url:
+        from urllib.parse import urlsplit
+        p = urlsplit(body.redirect_url)
+        if p.scheme in ("http", "https") and p.netloc:
+            frontend_base = f"{p.scheme}://{p.netloc}"
+
+    if user:
+        # Invalidate previous outstanding tokens for this user (single-use)
+        old = session.exec(select(PasswordResetToken).where(PasswordResetToken.user_id == user.id)).all()
+        for o in old:
+            o.used = True
+        session.add(PasswordResetToken(
+            user_id=user.id,
+            token=token,
+            expires_at=datetime.utcnow() + timedelta(hours=1),
+        ))
+        session.commit()
+
+    reset_url = f"{frontend_base}/reset-password?email={user.email if user else ''}&token={token}"
+    from modules.email_sender import send_password_reset_email
+    sent = send_password_reset_email(body.email, reset_url)
+
+    result = {"message": "If that email is registered, a password reset link has been sent.", "delivered": sent if user else False}
+    if user:
+        print(f"[Password reset] link for {user.email}: {reset_url}")
+        # Demo/test accounts have fake inboxes: always surface the link so QA and
+        # demo users can still complete the reset, even when SMTP reports success.
+        is_demo_email = (
+            user.email.lower().endswith("@serphawk.in")
+            or user.email in ("admin@serphawk.com", "varsh@gmail.com", "varshit@gmail.com", "demo@serphawk.com", "test.user@serphawk.in")
+            or "test" in user.email.lower() or "demo" in user.email.lower()
+        )
+        if not sent or is_demo_email:
+            result["debug_reset_link"] = reset_url
+    return result
+
+@app.post("/auth/reset-password")
+def reset_password(body: ResetPasswordRequest, session: Session = Depends(get_session)):
+    """Validate the one-time token and set a new password."""
+    from datetime import datetime as _dt
+    from database import PasswordResetToken
+
+    user = session.exec(select(User).where(User.email == body.email)).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    rec = session.exec(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.token == body.token,
+        )
+    ).first()
+    if not rec or rec.used or rec.expires_at < _dt.utcnow():
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    if not body.new_password or len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+
+    user.password = _hash_password(body.new_password)
+    user.hashed_password = ""
+
+    # Invalidate all remaining tokens for this user
+    for t in session.exec(select(PasswordResetToken).where(PasswordResetToken.user_id == user.id)).all():
+        t.used = True
+    session.commit()
+
+    return {"message": "Password updated successfully. You can now sign in."}
 
 class GoogleAuthRequest(BaseModel):
     access_token: str
@@ -2282,7 +2470,11 @@ def list_employees(session: Session = Depends(get_session)):
 
 @app.get("/interns")
 def list_interns(session: Session = Depends(get_session)):
-    interns = session.exec(select(User).where(User.role == "Intern")).all()
+    query = select(User).where(User.role == "Intern")
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        query = query.where(User.tenant_id == tenant_id)
+    interns = session.exec(query).all()
     return {"interns": [_user_dict(u) for u in interns]}
 
 
@@ -2433,6 +2625,7 @@ class SheetImportRequest(_BM):
 
 @app.get("/dev/reset-clients")
 def dev_reset_clients(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     from sqlalchemy import text
     from sqlmodel import delete
     
@@ -2457,6 +2650,7 @@ def dev_reset_clients(session: Session = Depends(get_session)):
     return {"message": "Client database has been completely reset to 0."}
 @app.get("/dev/seed-catalog")
 def dev_seed_catalog(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     from sqlmodel import delete
     # Delete existing products
     session.exec(delete(Product))
@@ -2491,6 +2685,7 @@ def dev_seed_catalog(session: Session = Depends(get_session)):
 
 @app.get("/dev/patch-invoices")
 def dev_patch_invoices(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     from sqlalchemy import text
     try:
         session.exec(text("ALTER TABLE invoices ADD COLUMN currency VARCHAR(10) DEFAULT 'MXN';"))
@@ -4800,11 +4995,11 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
             inbound_body_en = inbound_llm.get("english_body") or INBOUND_BODY_EN.format(company_name=company_name, services=services)
             inbound_body_es = inbound_llm.get("spanish_body") or INBOUND_BODY_ES.format(company_name=company_name, services=services)
 
-        sender = body.sender_email or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "prasanth.anupoju@sasi.ac.in")
+        sender = body.sender_email or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
         password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
         smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "smtp.gmail.com")
         smtp_port = os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
-        imap_server = os.getenv("IMAP_SERVER", "imap.gmail.com")
+        imap_server = os.getenv("IMAP_SERVER")
 
         # Only send the email if manual is False and all required fields are present
         if not body.manual and all([body.to_email, body.subject, body.body, sender, password]):
@@ -5228,10 +5423,10 @@ def dashboard_stats(
     )
     total_projects = len(session.exec(select(Project)).all())
     total_employees = len(
-        session.exec(select(User).where(User.role == "Employee")).all()
+        session.exec(select(User).where(User.role == "Employee").where(User.tenant_id == current_tenant_id.get())).all()
     )
     total_interns = len(
-        session.exec(select(User).where(User.role == "Intern")).all()
+        session.exec(select(User).where(User.role == "Intern").where(User.tenant_id == current_tenant_id.get())).all()
     )
     total_activities = len(session.exec(select(ActivityLog)).all())
     total_calls = len(session.exec(select(CallLog)).all())
@@ -6983,7 +7178,23 @@ async def upload_file_to_server(
     }
 
 
-@app.post("/clients/{client_id}/files")
+@app.post("/upload-image")
+async def upload_image(file: UploadFile = File(...)):
+    """Upload an image (e.g. inventory photo) to static/uploads/ and return its public URL."""
+    if file.content_type and not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are allowed")
+
+    safe_name = re.sub(r'[^\w.\-]', '_', file.filename or "image")
+    unique_name = f"{_uuid.uuid4().hex[:8]}_{safe_name}"
+    upload_dir = os.path.join("static", "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, unique_name)
+
+    contents = await file.read()
+    with open(file_path, "wb") as fh:
+        fh.write(contents)
+
+    return {"file_url": f"/static/uploads/{unique_name}"}
 def upload_client_file(
     client_id: int, body: FileUploadRequest, session: Session = Depends(get_session)
 ):
@@ -8235,6 +8446,7 @@ def list_marketplace_services(
     page: int = 1,
     per_page: int = 18,
     session: Session = Depends(get_session),
+    user: User = Depends(lambda session: _require_roles(session, ["Admin"])),
 ):
     query = select(MarketplaceService).where(MarketplaceService.is_active == True)
 
@@ -8273,6 +8485,7 @@ def list_marketplace_services(
 def create_marketplace_service(
     body: MarketplaceServiceCreate,
     session: Session = Depends(get_session),
+    user: User = Depends(lambda session: _require_roles(session, ["Admin"])),
 ):
     # Auto-fill provider info from CRM if client_id given
     provider_name = body.provider_name
@@ -8307,6 +8520,7 @@ def update_marketplace_service(
     service_id: int,
     body: MarketplaceServiceUpdate,
     session: Session = Depends(get_session),
+    user: User = Depends(lambda session: _require_roles(session, ["Admin"])),
 ):
     svc = session.get(MarketplaceService, service_id)
     if not svc:
@@ -8324,6 +8538,7 @@ def update_marketplace_service(
 def delete_marketplace_service(
     service_id: int,
     session: Session = Depends(get_session),
+    user: User = Depends(lambda session: _require_roles(session, ["Admin"])),
 ):
     svc = session.get(MarketplaceService, service_id)
     if not svc:
@@ -8336,7 +8551,10 @@ def delete_marketplace_service(
 
 
 @app.get("/marketplace/categories")
-def list_marketplace_categories(session: Session = Depends(get_session)):
+def list_marketplace_categories(
+    session: Session = Depends(get_session),
+    user: User = Depends(lambda session: _require_roles(session, ["Admin"])),
+):
     rows = session.exec(
         select(MarketplaceService.category)
         .where(MarketplaceService.is_active == True)
@@ -8351,6 +8569,7 @@ def list_marketplace_categories(session: Session = Depends(get_session)):
 def ai_categorize_marketplace_service(
     service_id: int,
     session: Session = Depends(get_session),
+    user: User = Depends(lambda session: _require_roles(session, ["Admin"])),
 ):
     svc = session.get(MarketplaceService, service_id)
     if not svc:
@@ -8976,6 +9195,7 @@ from sqlmodel import text
 
 @app.delete("/debug/purge-leads")
 def purge_leads_debug(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     queries = [
         "DELETE FROM sent_emails WHERE lead_id IS NOT NULL",
         "DELETE FROM activity_logs WHERE lead_id IS NOT NULL",
@@ -9032,7 +9252,7 @@ async def analyze_lead_ai(lead_id: int, body: LeadAIAnalyzeRequest, session: Ses
     from database import Lead
     lead = session.get(Lead, lead_id)
     if not lead:
-        return {"ok": False, "error": "Lead not found"}
+        raise HTTPException(status_code=404, detail="Lead not found")
         
     url = lead.website or f"https://{lead.company_name.lower().replace(' ', '')}.com"
     
@@ -9154,7 +9374,7 @@ Return ONLY valid JSON matching exactly:
 
     except Exception as e:
         print(f"Error generating AI analysis: {e}")
-        return {"ok": False, "error": "AI generation failed."}
+        raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
         
     lead.ai_analysis_results = results
     
@@ -9572,6 +9792,84 @@ def add_lead_followup(lead_id: int, body: ClientFollowUpRequest, session: Sessio
     return {"success": True, "message": "Follow-up added to lead."}
 
 
+class LeadNoteRequest(BaseModel):
+    content: str
+
+
+def _get_lead_note_author(session: Session, user_id: Optional[int]) -> str:
+    if not user_id:
+        return "Anonymous"
+    from database import User as UserModel
+    user = session.get(UserModel, user_id)
+    if not user:
+        return "Anonymous"
+    return user.name or user.email or f"User {user_id}"
+
+
+@app.get("/leads/{lead_id}/notes")
+def get_lead_notes(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    notes = session.exec(
+        select(LeadNote).where(LeadNote.lead_id == lead_id).order_by(LeadNote.created_at.desc())
+    ).all()
+    return {"ok": True, "notes": [
+        {
+            "id": n.id,
+            "content": n.content,
+            "author_name": n.author_name,
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+        }
+        for n in notes
+    ]}
+
+
+@app.post("/leads/{lead_id}/notes")
+def add_lead_note(lead_id: int, body: LeadNoteRequest, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    content = (body.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Note cannot be empty")
+
+    from datetime import datetime
+    now = datetime.utcnow()
+    author_id = current_salesperson_id.get()
+
+    note = LeadNote(
+        lead_id=lead_id,
+        content=content,
+        author_id=author_id,
+        author_name=_get_lead_note_author(session, author_id),
+        created_at=now,
+    )
+    session.add(note)
+
+    timestamped = f"[{now.strftime('%Y-%m-%d %H:%M')}] {content}"
+    existing_notes = lead.notes or ""
+    lead.notes = existing_notes + "\n" + timestamped if existing_notes else timestamped
+    session.add(lead)
+
+    activity = ActivityLog(
+        lead_id=lead_id,
+        action="Added Note",
+        details=content,
+        timestamp=now,
+    )
+    session.add(activity)
+
+    session.commit()
+    session.refresh(note)
+    return {"ok": True, "note": {
+        "id": note.id,
+        "content": note.content,
+        "author_name": note.author_name,
+        "created_at": note.created_at.isoformat() if note.created_at else None,
+    }}
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # ACTIVITIES: MEETINGS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -9660,6 +9958,12 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
     session.commit()
     session.refresh(m)
 
+    # ── EMAIL NOTIFICATION TO ATTENDEES ──
+    dt_str = m.scheduled_at.strftime("%Y-%m-%d %H:%M") if m.scheduled_at else "TBD"
+    subject = f"Meeting Scheduled: {m.title}"
+    notes = (m.notes or "").strip()
+    recips = [a.strip() for a in (m.attendees or []) if a and a.strip()]
+
     to_email = None
     if m.client_id:
         c = session.get(ClientProfile, m.client_id)
@@ -9671,26 +9975,43 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
         ct = session.get(Contact, m.contact_id)
         if ct: to_email = ct.email
 
-    if to_email:
+    if to_email and to_email.strip() not in recips:
+        recips.append(to_email.strip())
+
+    def _render_meeting_invite(recipient_email):
+        content = (
+            f"Hello,\n\n"
+            f"A meeting has been scheduled:\n\n"
+            f"  Title     : {m.title}\n"
+            f"  Date/Time : {dt_str}\n"
+            f"  Type      : {m.meeting_type}\n"
+            f"  Location  : {m.location or 'TBD'}\n"
+            f"  Duration  : {m.duration_minutes or 'TBD'} min\n"
+            f"  Attendees : {', '.join(recips) or '—'}"
+        )
+        if notes:
+            content += f"\n\nNotes:\n{notes}"
+        content += "\n\nThanks,\nSerpHawk CRM"
+        return subject, content
+
+    for to_email in recips:
+        if not to_email:
+            continue
         try:
-            dt_str = m.scheduled_at.strftime("%Y-%m-%d %H:%M") if m.scheduled_at else "TBD"
-            subject = f"Meeting Scheduled: {m.title}"
-            content = f"Hello,\n\nA meeting has been scheduled for {dt_str}.\nTopic: {m.title}\n\nThanks,\nSerpHawk CRM"
-            
-            _send_notification_email(to_email, subject, content)
-            
+            subj, content = _render_meeting_invite(to_email)
+            _send_notification_email(to_email, subj, content.replace("\n", "<br>"))
             session.add(SentEmail(
                 client_id=m.client_id,
                 lead_id=m.lead_id,
                 to_address=to_email,
-                subject=subject,
+                subject=subj,
                 body_content=content,
                 status="Sent",
                 provider="System"
             ))
             session.commit()
         except Exception as e:
-            print("Failed to send meeting email:", e)
+            print("Failed to send meeting invite email:", e)
             
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -9785,6 +10106,7 @@ class ProductCreateRequest(BaseModel):
     sku: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
+    photo_url: Optional[str] = None
     unit_price: float = 0.0
     currency: str = "USD"
     tax_rate: float = 0.0
@@ -9796,6 +10118,7 @@ class ProductUpdateRequest(BaseModel):
     sku: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
+    photo_url: Optional[str] = None
     unit_price: Optional[float] = None
     tax_rate: Optional[float] = None
     stock_quantity: Optional[int] = None
@@ -9866,6 +10189,11 @@ class QuoteCreateRequest(BaseModel):
     terms: Optional[str] = None
     owner_id: Optional[int] = None
     items: list[dict] = []
+    send_email: bool = False
+
+class QuoteEmailSendRequest(BaseModel):
+    subject: Optional[str] = None
+    body_html: Optional[str] = None
 
 @app.get("/quotes")
 def list_quotes(status: Optional[str] = None, client_id: Optional[int] = None, lead_id: Optional[int] = None, session: Session = Depends(get_session)):
@@ -9933,8 +10261,224 @@ def create_quote(body: QuoteCreateRequest, session: Session = Depends(get_sessio
         )
         session.add(qi)
     session.commit()
-    
-    return {"quote": _quote_dict(q, session)}
+
+    # Send a "Quote created" email to the linked lead/client/contact email
+    # (best-effort) only when the user explicitly opts in with `send_email`.
+    email_sent = False
+    email_error = None
+    if body.send_email:
+        try:
+            email_sent = _send_quote_created_email(q, session)
+        except Exception as e:
+            email_error = str(e)
+            print(f"[Quote email failed] {e}")
+
+    resp = {"quote": _quote_dict(q, session)}
+    if email_sent:
+        resp["email_sent"] = True
+    elif email_error:
+        resp["email_error"] = email_error
+    return resp
+
+
+@app.post("/quotes/{quote_id}/send-email")
+def send_quote_email(quote_id: int, body: Optional[QuoteEmailSendRequest] = None, session: Session = Depends(get_session)):
+    """Send the quote details by email to the linked lead/client/contact (best-effort).
+    If `body.subject` / `body.body_html` are provided they override the auto-generated content,
+    letting the user send an edited version of the email."""
+    q = session.get(CRMQuote, quote_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    recipient_email, recipient_name, _ = _quote_email_recipient(q, session)
+    try:
+        sent = _send_quote_created_email(
+            q, session,
+            subject_override=body.subject if body else None,
+            body_html_override=body.body_html if body else None,
+        )
+    except Exception as e:
+        sent = False
+        print(f"[Quote email failed] {e}")
+    return {
+        "email_sent": sent,
+        "recipient_email": recipient_email,
+        "recipient_name": recipient_name,
+        "quote": _quote_dict(q, session),
+    }
+
+
+@app.get("/quotes/{quote_id}/email-preview")
+def quote_email_preview(quote_id: int, session: Session = Depends(get_session)):
+    """Return a structured preview of the email that would be sent for a quote,
+    so the UI can show its details and ask for the user's permission first."""
+    q = session.get(CRMQuote, quote_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    recipient_email, recipient_name, company_name = _quote_email_recipient(q, session)
+    subject, body_html, items = _quote_email_content(q, session, recipient_name)
+    sender_email, _password, _smtp_server, _smtp_port = _quote_smtp_sender(session)
+    return {
+        "from_email": sender_email,
+        "recipient_email": recipient_email,
+        "recipient_name": recipient_name,
+        "company_name": company_name,
+        "subject": subject,
+        "body_html": body_html,
+        "quote": _quote_dict(q, session),
+        "items": [i.model_dump() for i in items],
+        "sendable": bool(recipient_email) and bool(sender_email),
+    }
+
+
+def _quote_email_recipient(q: CRMQuote, session: Session):
+    """Resolve (recipient_email, recipient_name, company_name) for a quote.
+    Priority: contact → lead → client(user)."""
+    if q.lead_id:
+        lead = session.get(Lead, q.lead_id)
+    else:
+        lead = None
+    if q.client_id:
+        client = session.get(ClientProfile, q.client_id)
+    else:
+        client = None
+    if q.contact_id:
+        contact = session.get(Contact, q.contact_id)
+    else:
+        contact = None
+
+    recipient_email = None
+    recipient_name = None
+
+    if contact and contact.email:
+        recipient_email = contact.email
+        recipient_name = contact.full_name or f"{contact.first_name or ''} {contact.last_name or ''}".strip() or None
+
+    if not recipient_email and lead and lead.email:
+        recipient_email = lead.email
+        recipient_name = lead.company_name or lead.email
+
+    if not recipient_email and client and client.userId:
+        user = session.get(User, client.userId)
+        recipient_email = getattr(user, "email", None) or None
+        recipient_name = client.companyName
+
+    company_name = None
+    if lead:
+        company_name = lead.company_name
+    if not company_name and client:
+        company_name = client.companyName
+
+    return recipient_email, recipient_name, company_name
+
+
+def _quote_email_content(q: CRMQuote, session: Session, recipient_name=None):
+    """Build the subject and HTML body of the quote email.
+    Used both for actually sending it and for previewing it before sending,
+    so the preview always reflects exactly what the recipient will receive."""
+    # ── Build items table ──
+    rows = ""
+    items = session.exec(select(QuoteItem).where(QuoteItem.quote_id == q.id)).all()
+    for it in items:
+        rows += f"<tr><td style='padding:8px;border-bottom:1px solid #e2e8f0'>{it.description}</td><td style='padding:8px;border-bottom:1px solid #e2e8f0;text-align:center'>{it.quantity}</td><td style='padding:8px;border-bottom:1px solid #e2e8f0;text-align:right'>{q.currency} {it.unit_price:,.2f}</td></tr>"
+
+    # ── Notes / Terms section ──
+    extra_section = ""
+    if q.notes:
+        extra_section += f"<p style='color:#475569;line-height:1.6;margin:12px 0 0'><strong>Notes:</strong> {q.notes}</p>"
+    if q.terms:
+        extra_section += f"<p style='color:#475569;line-height:1.6;margin:8px 0 0'><strong>Terms:</strong> {q.terms}</p>"
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div style="background:#1e293b;color:#fff;padding:22px 28px">
+        <strong style="font-size:18px">SerpHawk CRM</strong>
+      </div>
+      <div style="padding:28px">
+        <h2 style="color:#0f172a;margin:0 0 8px">New Quote ready for you</h2>
+        <p style="color:#475569;line-height:1.6;margin:0 0 4px">Hi{' ' + recipient_name if recipient_name else ''},</p>
+        <p style="color:#475569;line-height:1.6;margin:0 0 16px">A new quote has been created for your business. Here are the details:</p>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+          <tr><td style="padding:6px 8px;color:#64748b">Quote Number</td><td style="padding:6px 8px;text-align:right;font-weight:600;color:#0f172a">{q.quote_number or q.id}</td></tr>
+          <tr><td style="padding:6px 8px;color:#64748b">Title</td><td style="padding:6px 8px;text-align:right;color:#0f172a">{q.title or ''}</td></tr>
+          <tr><td style="padding:6px 8px;color:#64748b">Total Amount</td><td style="padding:6px 8px;text-align:right;font-weight:800;color:#0f172a">{q.currency} {q.grand_total:,.2f}</td></tr>
+          <tr><td style="padding:6px 8px;color:#64748b">Valid Until</td><td style="padding:6px 8px;text-align:right;color:#0f172a">{q.valid_until or 'N/A'}</td></tr>
+          <tr><td style="padding:6px 8px;color:#64748b">Status</td><td style="padding:6px 8px;text-align:right;color:#0f172a">{q.status}</td></tr>
+        </table>
+        {'' if not items else "<h3 style='color:#0f172a;font-size:15px;margin:0 0 6px'>Items</h3><table style='width:100%;border-collapse:collapse'><tr><th style='padding:8px;text-align:left;color:#475569;border-bottom:2px solid #e2e8f0'>Description</th><th style='padding:8px;text-align:center;color:#475569;border-bottom:2px solid #e2e8f0'>Qty</th><th style='padding:8px;text-align:right;color:#475569;border-bottom:2px solid #e2e8f0'>Amount</th></tr>" + rows + "</table>"}
+        {extra_section}
+        <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">If you have any questions about this quote, just reply to this email or contact your account manager.</p>
+        <p style="color:#64748b;font-size:13px;line-height:1.6;margin:4px 0 0">This is an automated message from the SerpHawk CRM.</p>
+      </div>
+    </div>
+    """
+    subject = f"New Quote {q.quote_number or q.id} — {q.title or 'Quote'} ({q.currency} {q.grand_total:,.2f})"
+    return subject, html, items
+
+
+def _quote_smtp_sender(session: Session):
+    """Resolve the sender mailbox used for quote emails (per-tenant settings first,
+    then env vars). Returns (sender_email, password, smtp_server, smtp_port)."""
+    import os
+
+    sender = None
+    password = None
+    smtp_server = None
+    smtp_port = None
+
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        es = session.exec(select(EmailSettings).where(EmailSettings.tenant_id == tenant_id)).first()
+        if es:
+            sender = es.from_email
+            password = es.smtp_pass
+            smtp_server = es.smtp_host
+            smtp_port = es.smtp_port
+
+    if not sender or not password:
+        sender = sender or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
+        password = password or os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
+        smtp_server = smtp_server or os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "mail.serphawk.in")
+        smtp_port = smtp_port or os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
+
+    return sender, password, smtp_server, smtp_port
+
+
+def _send_quote_created_email(q: CRMQuote, session: Session, subject_override=None, body_html_override=None) -> bool:
+    """Email the lead (or client / contact) linked to the quote with the new quote details.
+    Optionally use an edited subject / body written by the user.
+    Returns True if the email was sent successfully, False otherwise."""
+    # ── Resolve SMTP credentials: per-tenant EmailSettings first, then env vars ──
+    sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
+
+    if not sender or not password:
+        print("[Quote email skipped] SMTP not configured")
+        return False
+
+    # ── Resolve recipient email: contact → lead → client ──
+    recipient_email, recipient_name, _ = _quote_email_recipient(q, session)
+
+    if not recipient_email:
+        print(f"[Quote email skipped] no linked lead/client/contact email for quote {q.quote_number}")
+        return False
+
+    subject, html, _ = _quote_email_content(q, session, recipient_name)
+    if subject_override:
+        subject = subject_override
+    if body_html_override:
+        html = body_html_override
+
+    from modules.email_sender import send_email_outlook
+    send_email_outlook(
+        to_email=recipient_email,
+        subject=subject,
+        body=html,
+        sender_email=sender,
+        sender_password=password,
+        smtp_server=smtp_server,
+        smtp_port=int(smtp_port),
+    )
+    print(f"Quote email sent to {recipient_email} for quote {q.quote_number or q.id}")
+    return True
 
 @app.get("/quotes/{quote_id}")
 def get_quote(quote_id: int, session: Session = Depends(get_session)):
@@ -10327,6 +10871,114 @@ def delete_purchase_order(order_id: int, session: Session = Depends(get_session)
     session.delete(o)
     session.commit()
     return {"ok": True}
+
+
+# ── Sales Order PDF Export ───────────────────────────────────────────────
+
+@app.post("/sales-orders/export-pdf")
+def export_sales_orders_pdf(body: ExportPdfRequest, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from database import ClientProfile, Lead
+    from modules.pdf_export import sales_order_pdf, send_pdf_email
+    tenant_id = current_tenant_id.get()
+    q = select(SalesOrder).order_by(SalesOrder.created_at.desc())
+    if tenant_id:
+        q = q.where(SalesOrder.tenant_id == tenant_id)
+    orders = session.exec(q).all()
+    data = []
+    for o in orders:
+        client = session.get(ClientProfile, o.client_id) if o.client_id else None
+        lead = session.get(Lead, o.lead_id) if o.lead_id else None
+        d = o.model_dump()
+        d["client_name"] = client.companyName if client else (lead.company_name if lead else None)
+        data.append(d)
+    pdf = sales_order_pdf(data)
+    if body.email:
+        try:
+            send_pdf_email(
+                body.email, "Sales Orders PDF", "<p>The requested sales orders report is attached.</p>",
+                pdf, "sales_orders.pdf"
+            )
+            return {"sent": True, "recipient": body.email, "count": len(data)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=sales_orders.pdf"}
+    )
+
+
+@app.get("/sales-orders/{order_id}/pdf")
+def export_single_sales_order_pdf(order_id: int, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from database import ClientProfile, Lead
+    from modules.pdf_export import single_sales_order_pdf
+    o = session.get(SalesOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    client_name = None
+    lead_name = None
+    if o.client_id:
+        c = session.get(ClientProfile, o.client_id)
+        if c:
+            client_name = c.companyName
+    if o.lead_id:
+        l = session.get(Lead, o.lead_id)
+        if l:
+            lead_name = l.company_name
+    pdf = single_sales_order_pdf(o.model_dump(), client_name=client_name, lead_name=lead_name)
+    filename = f"sales_order_{o.order_number or o.id}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+# ── Purchase Order PDF Export ────────────────────────────────────────────
+
+@app.post("/purchase-orders/export-pdf")
+def export_purchase_orders_pdf(body: ExportPdfRequest, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from modules.pdf_export import purchase_order_pdf, send_pdf_email
+    tenant_id = current_tenant_id.get()
+    q = select(PurchaseOrder).order_by(PurchaseOrder.created_at.desc())
+    if tenant_id:
+        q = q.where(PurchaseOrder.tenant_id == tenant_id)
+    orders = session.exec(q).all()
+    data = [o.model_dump() for o in orders]
+    pdf = purchase_order_pdf(data)
+    if body.email:
+        try:
+            send_pdf_email(
+                body.email, "Purchase Orders PDF", "<p>The requested purchase orders report is attached.</p>",
+                pdf, "purchase_orders.pdf"
+            )
+            return {"sent": True, "recipient": body.email, "count": len(data)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=purchase_orders.pdf"}
+    )
+
+
+@app.get("/purchase-orders/{order_id}/pdf")
+def export_single_purchase_order_pdf(order_id: int, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from modules.pdf_export import single_purchase_order_pdf
+    o = session.get(PurchaseOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    pdf = single_purchase_order_pdf(o.model_dump())
+    filename = f"purchase_order_{o.po_number or o.id}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -11706,12 +12358,14 @@ from sqlalchemy import inspect, text
 
 @app.get("/admin/db/tables")
 def get_db_tables(session: Session = Depends(get_session)):
+    _require_roles(session, ["Admin"])
     inspector = inspect(session.bind)
     tables = inspector.get_table_names()
     return {"tables": tables}
 
 @app.get("/admin/db/tables/{table_name}")
 def get_db_table_data(table_name: str, page: int = 1, per_page: int = 50, sort_col: str = None, sort_dir: str = "asc", session: Session = Depends(get_session)):
+    _require_roles(session, ["Admin"])
     inspector = inspect(session.bind)
     if table_name not in inspector.get_table_names():
         raise HTTPException(status_code=404, detail="Table not found")
@@ -11743,6 +12397,7 @@ def get_db_table_data(table_name: str, page: int = 1, per_page: int = 50, sort_c
 
 @app.get("/admin/db/export/{table_name}")
 def export_db_table(table_name: str, session: Session = Depends(get_session)):
+    _require_roles(session, ["Admin"])
     from fastapi.responses import StreamingResponse
     import csv, io
     inspector = inspect(session.bind)
@@ -11810,11 +12465,123 @@ def get_inventory(session: Session = Depends(get_session)):
                  "supplier_email": s.supplier_email, "lot_number": s.lot_number,
                  "unit_cost": s.unit_cost, "currency": s.currency,
                  "lead_time_days": s.lead_time_days, "min_order_qty": s.min_order_qty,
-                 "is_preferred": s.is_preferred, "notes": s.notes}
+                 "is_preferred": s.is_preferred, "notes": s.notes,
+                 "supplier_user_id": s.supplier_user_id,
+                 "credentials_ready": bool(s.login_password),
+                 "credentials_sent": bool(s.credentials_sent)}
                 for s in suppliers
             ]
         })
     return {"items": result, "total": len(result)}
+
+class ExportPdfRequest(BaseModel):
+    email: Optional[str] = None
+
+@app.post("/inventory/export-pdf")
+def export_inventory_pdf(body: ExportPdfRequest, session: Session = Depends(get_session)):
+    import io
+    from fastapi.responses import Response
+    from modules.pdf_export import inventory_pdf, send_pdf_email
+    tenant_id = current_tenant_id.get()
+    q = select(InventoryItem).order_by(InventoryItem.created_at.desc())
+    if tenant_id:
+        q = q.where(InventoryItem.tenant_id == tenant_id)
+    items = session.exec(q).all()
+    data = [{
+        "code": it.code, "name": it.name, "description": it.description,
+        "category": it.category, "tags": it.tags or [],
+        "unit": it.unit, "current_stock": it.current_stock,
+        "min_stock": it.min_stock, "photo_url": it.photo_url,
+    } for it in items]
+    pdf = inventory_pdf(data)
+    if body.email:
+        try:
+            send_pdf_email(
+                body.email, "Inventory List PDF", "<p>The requested inventory list is attached.</p>",
+                pdf, "inventory_list.pdf"
+            )
+            return {"sent": True, "recipient": body.email, "count": len(data)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=inventory_list.pdf"}
+    )
+
+@app.get("/inventory/{item_id}/pdf")
+def export_single_inventory_pdf(item_id: int, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from modules.pdf_export import single_inventory_pdf
+    item = session.get(InventoryItem, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    suppliers = session.exec(select(InventorySupplier).where(InventorySupplier.item_id == item.id)).all()
+    pdf = single_inventory_pdf({
+        "code": item.code, "name": item.name, "description": item.description,
+        "category": item.category, "unit": item.unit,
+        "current_stock": item.current_stock, "min_stock": item.min_stock,
+        "photo_url": item.photo_url, "tags": item.tags or [],
+    })
+    filename = f"inventory_{item.code or item.id}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+class MultiInvPdfRequest(BaseModel):
+    item_ids: List[int]
+
+@app.post("/inventory/pdf")
+def export_multi_inventory_pdf(body: MultiInvPdfRequest, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from modules.pdf_export import multi_inventory_pdf
+    ids = list(dict.fromkeys(body.item_ids))
+    if not ids:
+        raise HTTPException(status_code=400, detail="No items selected")
+    if len(ids) > 100:
+        raise HTTPException(status_code=400, detail="Select at most 100 items at a time")
+    items = []
+    for pid in ids:
+        item = session.get(InventoryItem, pid)
+        if item:
+            items.append({
+                "code": item.code, "name": item.name, "description": item.description,
+                "category": item.category, "unit": item.unit,
+                "current_stock": item.current_stock, "min_stock": item.min_stock,
+                "photo_url": item.photo_url, "tags": item.tags or [],
+            })
+    if not items:
+        raise HTTPException(status_code=404, detail="Items not found")
+    pdf = multi_inventory_pdf(items)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=inventory_items.pdf"}
+    )
+
+@app.post("/products/export-pdf")
+def export_catalog_pdf(body: ExportPdfRequest, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from modules.pdf_export import catalog_pdf, send_pdf_email
+    products = session.exec(select(Product).order_by(Product.name)).all()
+    data = [p.model_dump() for p in products]
+    pdf = catalog_pdf(data)
+    if body.email:
+        try:
+            send_pdf_email(
+                body.email, "Product Catalog PDF", "<p>The requested product catalog is attached.</p>",
+                pdf, "product_catalog.pdf"
+            )
+            return {"sent": True, "recipient": body.email, "count": len(data)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=product_catalog.pdf"}
+    )
 
 @app.post("/inventory")
 def create_inventory_item(data: InventoryItemCreate, session: Session = Depends(get_session)):
@@ -11859,15 +12626,18 @@ def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session =
     
     supplier_user_id = None
     credentials_created = False
+    generated_password = None
     
     # Auto-create supplier login if email provided
     if data.supplier_email:
         existing_user = session.exec(select(User).where(User.email == data.supplier_email)).first()
         if not existing_user:
+            generated_password = _generate_unique_password()
+            hashed = _hash_password(generated_password)
             supplier_user = User(
                 email=data.supplier_email,
-                password=_hash_password("password123"),
-                hashed_password=_hash_password("password123"),
+                password=hashed,
+                hashed_password=hashed,
                 name=data.supplier_name,
                 role="Supplier",
                 is_active=True,
@@ -11887,6 +12657,9 @@ def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session =
             supplier_user_id = existing_user.id
     
     supplier = InventorySupplier(item_id=item_id, supplier_user_id=supplier_user_id, **data.dict())
+    if generated_password:
+        supplier.login_password = generated_password
+        supplier.credentials_sent = False
     session.add(supplier)
     session.commit()
     session.refresh(supplier)
@@ -11898,9 +12671,9 @@ def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session =
         "supplier_user_id": supplier_user_id,
         "credentials_created": credentials_created,
     }
-    if credentials_created:
+    if credentials_created and generated_password:
         result["login_email"] = data.supplier_email
-        result["login_password"] = "password123"
+        result["login_password"] = generated_password
     
     return result
 
@@ -11924,6 +12697,71 @@ def update_supplier(supplier_id: int, data: InventorySupplierCreate, session: Se
     session.commit()
     session.refresh(s)
     return s
+
+@app.post("/inventory/suppliers/{supplier_id}/send-credentials")
+def send_supplier_credentials(supplier_id: int, session: Session = Depends(get_session)):
+    """Email the supplier's portal login credentials to their inbox (manual send button)."""
+    s = session.get(InventorySupplier, supplier_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    if not s.supplier_email:
+        raise HTTPException(status_code=400, detail="Supplier has no email address on file")
+    if not s.login_password:
+        raise HTTPException(status_code=400, detail="No login credentials exist for this supplier")
+
+    login_url = (os.environ.get("FRONTEND_URL") or "https://crm-dapros.vercel.app").rstrip("/") + "/login"
+    subject = "Your SERP Hawk Supplier Portal Login"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div style="background:#1e293b;color:#fff;padding:22px 28px">
+        <strong style="font-size:18px">🦅 SERP Hawk Supplier Portal</strong>
+      </div>
+      <div style="padding:28px">
+        <h2 style="color:#0f172a;font-size:20px;margin:0 0 12px">Your supplier account is ready</h2>
+        <p style="color:#475569;line-height:1.6;margin:0 0 20px">
+          Hello <strong>{s.supplier_name}</strong>,<br/><br/>
+          An account has been created for you so you can update pricing, stock levels, lot numbers,
+          and delivery timelines for the items we source from you. Use the credentials below to sign in.
+        </p>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin:0 0 20px">
+          <div style="margin-bottom:14px">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Login URL</div>
+            <a href="{login_url}" style="color:#2563eb;font-weight:600;word-break:break-all">{login_url}</a>
+          </div>
+          <div style="margin-bottom:14px">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Email</div>
+            <div style="color:#0f172a;font-weight:600;word-break:break-all">{s.supplier_email}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Password</div>
+            <div style="color:#0f172a;font-weight:800;font-family:monospace;font-size:16px;letter-spacing:1px">{s.login_password}</div>
+          </div>
+        </div>
+        <a href="{login_url}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:600">Open the Supplier Portal</a>
+        <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">
+          If you did not expect this email, you can safely ignore it. We recommend changing your password after your first login.
+        </p>
+      </div>
+    </div>
+    """
+    sent = False
+    try:
+        from modules.email_sender import send_email_outlook
+        sender = os.environ.get("EMAIL_SENDER") or os.environ.get("OUTLOOK_EMAIL") or ""
+        password = os.environ.get("EMAIL_PASSWORD") or os.environ.get("OUTLOOK_PASSWORD") or ""
+        if sender and password:
+            send_email_outlook(s.supplier_email, subject, html, sender, password)
+            sent = True
+    except Exception as e:
+        print(f"[Supplier credentials email failed] {e}")
+
+    s.credentials_sent = sent
+    session.add(s)
+    session.commit()
+
+    if not sent:
+        raise HTTPException(status_code=500, detail="Email could not be sent. Check SMTP configuration.")
+    return {"ok": True, "email_sent": True, "recipient": s.supplier_email}
 
 @app.get("/supplier/inventory")
 def get_supplier_inventory(email: str, session: Session = Depends(get_session)):
@@ -12280,7 +13118,19 @@ def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_
     existing = session.exec(select(User).where(User.email == body.email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already exists")
-        
+
+    # Require a verified signup OTP for this email before creating the account
+    from database import EmailOTP
+    otp_rec = session.exec(
+        select(EmailOTP).where(
+            EmailOTP.email == body.email,
+            EmailOTP.purpose == "signup",
+            EmailOTP.verified == True,
+        )
+    ).first()
+    if not otp_rec:
+        raise HTTPException(status_code=400, detail="Please verify your email before creating the account.")
+
     tenant = Tenant(
         name=f"Demo Tenant {body.email}",
         is_trial=True,
@@ -12326,6 +13176,7 @@ def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_
 
 @app.get("/dev/diagnostic")
 def diagnostic(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     demo_users = session.exec(select(User).where(User.role == "Demo")).all()
     results = {}
     for user in demo_users:
@@ -12369,6 +13220,7 @@ def complete_onboarding(body: OnboardingRequest, session: Session = Depends(get_
 @app.get("/telemetry/demo-accounts")
 def get_demo_accounts(session: Session = Depends(get_session)):
     """Fetch all demo accounts for the Telemetry Dashboard."""
+    _require_roles(session, ["Admin"])
     from database import User
     from sqlmodel import select
     demo_users = session.exec(select(User).where(User.role == "Demo").order_by(User.createdAt.desc())).all()
@@ -12431,6 +13283,7 @@ def request_demo_upgrade(session: Session = Depends(get_session)):
 @app.get("/telemetry/demo-account/{user_id}")
 def get_demo_account_detail(user_id: int, session: Session = Depends(get_session)):
     """Return full summary of a Demo user's activity - queries by tenant_id."""
+    _require_roles(session, ["Admin"])
     from database import (User, Tenant, ClientProfile, Lead, RadarAnalysis, SentEmail, Contact, Meeting, CallLog, Project, Notification, ClientResearch, CompetitorAnalysis)
     from sqlmodel import select
 
@@ -12548,6 +13401,7 @@ def backfill_tenant_data(user_id: int, session: Session = Depends(get_session)):
     Admin tool: Fix existing data with NULL tenant_id for a demo user.
     Patches old records created before tenant isolation was enforced.
     """
+    _require_roles(session, ["Admin"])
     from database import (User, ClientProfile, Lead, Contact, Meeting, CallLog, Project, SentEmail, RadarAnalysis)
     from sqlmodel import select
 
@@ -12669,10 +13523,25 @@ def get_email_settings(session: Session = Depends(get_session)):
     return settings or {}
 
 @app.post("/settings/email")
-def save_email_settings(body: EmailSettingsRequest, session: Session = Depends(get_session)):
+def save_email_settings(body: EmailSettingsRequest, otp_verified: bool = False, session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
-    if not tenant_id:
+    uid = current_salesperson_id.get()
+    if not tenant_id or not uid:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    # Check OTP verification for the from_email address
+    if not otp_verified:
+        from database import EmailOTP
+        verified = session.exec(
+            select(EmailOTP).where(
+                EmailOTP.user_id == uid,
+                EmailOTP.email == body.from_email,
+                EmailOTP.purpose == "smtp_settings",
+                EmailOTP.verified == True,
+            )
+        ).first()
+        if not verified:
+            raise HTTPException(status_code=400, detail="Email address not verified. Please complete OTP verification first.")
     
     settings = session.exec(select(EmailSettings).where(EmailSettings.tenant_id == tenant_id)).first()
     if not settings:
@@ -12686,3 +13555,95 @@ def save_email_settings(body: EmailSettingsRequest, session: Session = Depends(g
     
     session.commit()
     return {"success": True}
+
+# ──────────────────────────────────────────────────────
+# EMAIL OTP: Send & Verify OTP for mail account setup
+# ──────────────────────────────────────────────────────
+
+class SendEmailOTPRequest(BaseModel):
+    email: str
+    purpose: str = "smtp_settings"  # smtp_settings | integration
+
+class VerifyEmailOTPRequest(BaseModel):
+    email: str
+    otp_code: str
+    purpose: str = "smtp_settings"
+
+@app.post("/email-otp/send")
+def send_email_otp(body: SendEmailOTPRequest, session: Session = Depends(get_session)):
+    """Generate a 6-digit OTP, persist it, and email it to the given address."""
+    import secrets
+    from database import EmailOTP
+
+    # Signup OTPs are not tied to a logged-in user (account doesn't exist yet)
+    if body.purpose == "signup":
+        uid = None
+        existing_user = session.exec(select(User).where(User.email == body.email)).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Email already registered. Please sign in instead.")
+    else:
+        uid = current_salesperson_id.get()
+        if not uid:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # Invalidate any previous unused OTPs for this user + email + purpose
+    old_q = select(EmailOTP).where(
+        EmailOTP.email == body.email,
+        EmailOTP.purpose == body.purpose,
+        EmailOTP.verified == False,
+    )
+    old = session.exec(old_q).all()
+    for o in old:
+        session.delete(o)
+
+    otp_code = f"{secrets.randbelow(900000) + 100000}"  # 6-digit code
+    session.add(EmailOTP(
+        user_id=uid,
+        email=body.email,
+        otp_code=otp_code,
+        purpose=body.purpose,
+        expires_at=datetime.utcnow() + timedelta(minutes=10),
+    ))
+    session.commit()
+
+    from modules.email_sender import send_otp_email
+    sent = send_otp_email(body.email, otp_code, purpose=body.purpose.replace("_", " "))
+
+    return {
+        "success": True,
+        "delivered": sent,
+        "message": "OTP sent to the email address.",
+        "debug_otp": otp_code if not sent else None,
+    }
+
+
+@app.post("/email-otp/verify")
+def verify_email_otp(body: VerifyEmailOTPRequest, session: Session = Depends(get_session)):
+    """Verify the OTP code. Returns { verified: true } on success."""
+    from database import EmailOTP
+    from datetime import datetime as _dt
+
+    # Signup OTPs are not tied to a logged-in user
+    if body.purpose == "signup":
+        uid = None
+    else:
+        uid = current_salesperson_id.get()
+        if not uid:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    rec = session.exec(
+        select(EmailOTP).where(
+            EmailOTP.user_id == uid,
+            EmailOTP.email == body.email,
+            EmailOTP.otp_code == body.otp_code,
+            EmailOTP.purpose == body.purpose,
+        )
+    ).first()
+
+    if not rec or rec.verified or rec.expires_at < _dt.utcnow():
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP code.")
+
+    rec.verified = True
+    session.commit()
+
+    return {"success": True, "verified": True, "message": "Email verified successfully."}

@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ShoppingCart, Plus, X, Search, Loader2, Trash2, Building2 } from "lucide-react";
+import { ShoppingCart, Plus, X, Search, Loader2, Trash2, Building2, Download, Mail } from "lucide-react";
+import { ExportActions } from "@/components/ExportActions";
 import { API_BASE_URL } from "@/config";
 
 interface SalesOrder { id: number; order_number?: string; status: string; grand_total: number; currency: string; client_name?: string; delivery_date?: string; created_at: string; }
@@ -19,6 +20,12 @@ export default function SalesOrdersPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ linked_to: "lead" as "lead" | "client", lead_id: "" as string | number, client_id: "" as string | number, status: "Pending", grand_total: "", currency: "USD", delivery_date: "", notes: "" });
   const [clients, setClients] = useState<any[]>([]);
+  const [emailModal, setEmailModal] = useState<{ orderId: number; orderNumber: string } | null>(null);
+  const [emailAddr, setEmailAddr] = useState("");
+  const [sending, setSending] = useState(false);
+  const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  const notify = (type: "ok" | "err", text: string) => { setToast({ type, text }); setTimeout(() => setToast(null), 3000); };
 
   const load = () => { 
     setLoading(true); 
@@ -56,6 +63,39 @@ export default function SalesOrdersPage() {
     load();
   };
 
+  const handleDownloadPdf = async (id: number, orderNumber: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/sales-orders/${id}/pdf`);
+      if (!res.ok) { notify("err", "Download failed"); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${orderNumber || "sales_order"}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      notify("ok", "PDF downloaded");
+    } catch { notify("err", "Network error"); }
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailModal || !emailAddr.trim()) return;
+    setSending(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/sales-orders/export-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailAddr.trim() }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { notify("err", d.detail || "Send failed"); return; }
+      notify("ok", `PDF sent to ${emailAddr.trim()}`);
+      setEmailAddr("");
+      setEmailModal(null);
+    } catch { notify("err", "Network error"); }
+    finally { setSending(false); }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 p-4 md:p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -63,9 +103,17 @@ export default function SalesOrdersPage() {
           <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-lg shadow-blue-500/20"><ShoppingCart className="w-6 h-6 text-white" /></div>
           <div><h1 className="text-2xl font-black text-slate-800 dark:text-zinc-100">Sales Orders</h1><p className="text-sm text-slate-500 dark:text-zinc-400">Track confirmed orders and fulfillment</p></div>
         </div>
-        <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-bold hover:opacity-90 shadow-md transition-all">
-          <Plus className="w-4 h-4" /> New Order
-        </button>
+        <div className="flex items-center gap-3">
+          <ExportActions
+            downloadUrl={`${API_BASE_URL}/sales-orders/export-pdf`}
+            emailUrl={`${API_BASE_URL}/sales-orders/export-pdf`}
+            filename="sales_orders.pdf"
+            label="Sales Orders"
+          />
+          <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-bold hover:opacity-90 shadow-md transition-all">
+            <Plus className="w-4 h-4" /> New Order
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -90,14 +138,14 @@ export default function SalesOrdersPage() {
       </div>
 
       <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl shadow-sm overflow-hidden">
-        <div className="hidden md:grid grid-cols-[auto_2fr_1fr_1fr_1fr_auto] gap-4 px-6 py-3 border-b border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50">
-          {["Order #", "Client", "Amount", "Delivery", "Status", ""].map(h => <p key={h} className="text-[10px] font-black uppercase tracking-widest text-slate-400">{h}</p>)}
+        <div className="hidden md:grid grid-cols-[auto_2fr_1fr_1fr_1fr_auto_auto] gap-4 px-6 py-3 border-b border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50">
+          {["Order #", "Client", "Amount", "Delivery", "Status", "Actions", "Delete"].map(h => <p key={h} className="text-[10px] font-black uppercase tracking-widest text-slate-400">{h}</p>)}
         </div>
         {loading ? <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-500 w-8 h-8" /></div>
           : filtered.length === 0 ? <div className="flex flex-col items-center justify-center py-20"><ShoppingCart className="w-10 h-10 text-slate-300 mb-3" /><p className="text-slate-500 font-bold">No sales orders yet</p></div>
           : filtered.map((o, i) => (
           <motion.div key={o.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
-            className="grid grid-cols-1 md:grid-cols-[auto_2fr_1fr_1fr_1fr_auto] gap-3 md:gap-4 items-center px-6 py-4 border-b border-slate-100 dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-800/40 group transition-colors">
+            className="grid grid-cols-1 md:grid-cols-[auto_2fr_1fr_1fr_1fr_auto_auto] gap-3 md:gap-4 items-center px-6 py-4 border-b border-slate-100 dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-800/40 group transition-colors">
             <span className="text-xs font-mono text-slate-400">{o.order_number}</span>
             <span className="text-sm font-bold text-slate-800 dark:text-zinc-100">{o.client_name || "—"}</span>
             <span className="text-sm font-black text-slate-800 dark:text-zinc-100">{o.currency} {o.grand_total.toFixed(2)}</span>
@@ -105,6 +153,10 @@ export default function SalesOrdersPage() {
             <select value={o.status} onChange={e => handleStatus(o, e.target.value)} className={`text-xs font-bold px-2 py-1 rounded-lg border-0 outline-none cursor-pointer ${STATUS_COLORS[o.status]}`}>
               {STATUSES.map(s => <option key={s}>{s}</option>)}
             </select>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+              <button onClick={() => handleDownloadPdf(o.id, o.order_number || `SO-${o.id}`)} title="Download PDF" className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 transition-all"><Download className="w-3.5 h-3.5" /></button>
+              <button onClick={() => setEmailModal({ orderId: o.id, orderNumber: o.order_number || `SO-${o.id}` })} title="Email PDF" className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all"><Mail className="w-3.5 h-3.5" /></button>
+            </div>
             <button onClick={() => handleDelete(o.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
           </motion.div>
         ))}
@@ -165,6 +217,43 @@ export default function SalesOrdersPage() {
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Email Modal */}
+      <AnimatePresence>
+        {emailModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2"><Mail className="w-4 h-4 text-blue-600" /> Email PDF</h2>
+                <button onClick={() => setEmailModal(null)}><X className="w-4 h-4" /></button>
+              </div>
+              <p className="text-xs text-slate-500 mb-3">Send <span className="font-bold">{emailModal.orderNumber}</span> as PDF attachment</p>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Recipient Email</label>
+              <input type="email" autoFocus value={emailAddr} onChange={e => setEmailAddr(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleSendEmail()}
+                placeholder="recipient@example.com"
+                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <div className="flex gap-3 mt-5">
+                <button onClick={() => setEmailModal(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-bold text-sm hover:bg-slate-200 transition-all">Cancel</button>
+                <button onClick={handleSendEmail} disabled={!emailAddr.trim() || sending}
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} Send
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            className={`fixed top-4 right-4 z-[200] flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-sm font-semibold ${toast.type === "ok" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}>
+            {toast.text}
           </motion.div>
         )}
       </AnimatePresence>

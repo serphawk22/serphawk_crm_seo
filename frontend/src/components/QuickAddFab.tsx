@@ -17,17 +17,21 @@ export default function QuickAddFab() {
 
   const actions = [];
 
-  if (['Admin', 'SalesManager', 'Sales'].includes(role)) {
+  if (['Admin', 'SalesManager', 'Sales', 'Demo'].includes(role)) {
     actions.push({ icon: <UserPlus className="w-4 h-4" />, label: 'New Lead', route: '/leads?action=add', color: 'bg-emerald-500' });
     actions.push({ icon: <Users className="w-4 h-4" />, label: 'New Client', route: '/clients?action=add', color: 'bg-blue-500' });
   }
 
-  if (['Admin', 'Employee', 'ProjectMember', 'Developer', 'SalesManager', 'Sales'].includes(role)) {
+  if (['Admin', 'Employee', 'ProjectMember', 'Developer', 'SalesManager', 'Sales', 'Demo'].includes(role)) {
     actions.push({ icon: <CheckSquare className="w-4 h-4" />, label: 'New Task', route: '/tasks?action=add', color: 'bg-violet-500' });
   }
 
-  if (['Admin', 'SalesManager', 'Sales', 'Employee'].includes(role)) {
+  if (['Admin', 'SalesManager', 'Sales', 'Employee', 'Demo'].includes(role)) {
     actions.push({ icon: <Calendar className="w-4 h-4" />, label: 'New Meeting', route: '/meetings?action=add', color: 'bg-orange-500' });
+  }
+
+  if (actions.length === 0) {
+    return null;
   }
 
   const handleAction = (route: string) => {

@@ -354,10 +354,16 @@ export default function NotesTab({ clientId, notes, onRefresh }: NotesTabProps) 
 
       {/* All Notes */}
       {unpinned.length === 0 && pinned.length === 0 ? (
-        <div className="text-center py-16 rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-700 dark:border-slate-700">
-          <StickyNote size={32} className="mx-auto text-slate-300 dark:text-slate-600 dark:text-zinc-300 mb-3" />
-          <p className="text-sm font-semibold text-slate-400 dark:text-slate-500 dark:text-zinc-400">{language === 'es' ? 'Aún no hay notas' : 'No notes yet'}</p>
-          <p className="text-xs text-slate-300 dark:text-slate-600 dark:text-zinc-300 mt-1">{language === 'es' ? 'Añade tu primera nota interna' : 'Add your first internal note'}</p>
+        <div className="flex flex-col items-center text-center py-16 px-6 rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-700 dark:border-slate-700">
+          <StickyNote size={32} className="text-slate-300 dark:text-slate-600 dark:text-zinc-300 mb-3" />
+          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 dark:text-zinc-400">{language === 'es' ? 'No hay notas aún' : 'No notes yet'}</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-zinc-300 mt-1">{language === 'es' ? 'Añade tu primera nota para registrar información importante del cliente.' : 'Add your first note to keep track of important client information.'}</p>
+          <button
+            onClick={() => setShowForm(true)}
+            className="mt-5 flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-500/20"
+          >
+            <Plus size={14} /> {language === 'es' ? 'Añadir Nota' : 'Add Note'}
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

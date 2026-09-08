@@ -4,10 +4,11 @@ import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Plus, Filter, MoreVertical, Building2, Globe, Mail, Phone, Upload, X, Loader2, ChevronDown, ArrowUpRight, CheckCircle2, Clock, Zap, Edit2, Trash2, Tag } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ViewSwitcher, ViewType } from "@/components/ViewSwitcher";
 import DemoLimits from "@/components/DemoLimits";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useLanguage } from "@/context/LanguageContext";
 
 interface Lead {
   id: number;
@@ -60,10 +61,10 @@ const emptyForm = {
 import { useRole } from "@/context/RoleContext";
 
 export default function LeadsPage() {
+  const { t } = useLanguage();
   const { role, user } = useRole();
   const router = useRouter();
 
-  // Protect route
   useEffect(() => {
     if (role && role !== 'Admin' && role !== 'Employee' && role !== 'Intern' && role !== 'SalesManager' && role !== 'Demo') {
       router.replace('/');
@@ -82,8 +83,19 @@ export default function LeadsPage() {
   const [currentView, setCurrentView] = useState<ViewType>('list');
   const [activities, setActivities] = useState<ActivityLogEntry[]>([]);
   const [sortOption, setSortOption] = useState<"recent" | "name">("recent");
+  const [noteLead, setNoteLead] = useState<Lead | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
 
   useEffect(() => { fetchLeads(); fetchActivities(); }, []);
+
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams?.get("action") === "add") {
+      openCreate();
+      window.history.replaceState({}, "", "/leads");
+    }
+  }, []);
 
   const fetchActivities = async () => {
     try {
@@ -177,14 +189,14 @@ export default function LeadsPage() {
 
   const handleDelete = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Delete this lead?")) return;
+    if (!confirm(t("leads.confirm_delete"))) return;
     await fetch(`${API_BASE_URL}/leads/${id}`, { method: "DELETE" });
     fetchLeads();
   };
 
   const handleConvert = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Convert this lead to a client?")) return;
+    if (!confirm(t("leads.confirm_convert"))) return;
     try {
       await fetch(`${API_BASE_URL}/leads/${id}/convert`, { method: "POST" });
       fetchLeads();
@@ -195,21 +207,41 @@ export default function LeadsPage() {
 
   const handleAddNote = (lead: Lead, e: React.MouseEvent) => {
     e.stopPropagation();
-    const note = prompt("Enter note for this lead:");
-    if (note) {
-      fetch(`${API_BASE_URL}/leads/${lead.id}/followup`, {
+    setNoteText("");
+    setNoteLead(lead);
+  };
+
+  const handleSaveNote = async () => {
+    const content = noteText.trim();
+    if (!content || !noteLead) return;
+    try {
+      setNoteSaving(true);
+      const res = await fetch(`${API_BASE_URL}/leads/${noteLead.id}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: note })
-      }).then(() => fetchLeads());
+        body: JSON.stringify({ content })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        alert(data?.error || t("leads.failed_add_note"));
+        return;
+      }
+      setNoteLead(null);
+      setNoteText("");
+      fetchLeads();
+      fetchActivities();
+    } catch {
+      alert(t("leads.network_error_note"));
+    } finally {
+      setNoteSaving(false);
     }
   };
 
   const stats = [
-    { label: "Total Leads", value: leads.length, color: "text-blue-600", bg: "bg-blue-500/10" },
-    { label: "New", value: leads.filter(l => l.status === "New").length, color: "text-violet-600", bg: "bg-violet-500/10" },
-    { label: "Qualified", value: leads.filter(l => l.status === "Qualified").length, color: "text-amber-600", bg: "bg-amber-500/10" },
-    { label: "Converted", value: leads.filter(l => l.is_converted).length, color: "text-emerald-600", bg: "bg-emerald-500/10" },
+    { label: t("leads.total_leads"), value: leads.length, color: "text-blue-600", bg: "bg-blue-500/10" },
+    { label: t("leads.new"), value: leads.filter(l => l.status === "New").length, color: "text-violet-600", bg: "bg-violet-500/10" },
+    { label: t("leads.qualified"), value: leads.filter(l => l.status === "Qualified").length, color: "text-amber-600", bg: "bg-amber-500/10" },
+    { label: t("leads.converted"), value: leads.filter(l => l.is_converted).length, color: "text-emerald-600", bg: "bg-emerald-500/10" },
   ];
 
   return (
@@ -218,19 +250,19 @@ export default function LeadsPage() {
       <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-black">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Leads</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Manage your prospects and opportunities</p>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t("leads.title")}</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("leads.subtitle")}</p>
           </div>
           <div className="flex items-center gap-2">
             <Link href="/import" className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
-              <Upload className="w-4 h-4" /> Import
+              <Upload className="w-4 h-4" /> {t("leads.import")}
             </Link>
             <button
               id="add-lead-btn"
               onClick={openCreate}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all hover:shadow-md active:scale-95"
             >
-              <Plus className="w-4 h-4" /> Add Lead
+              <Plus className="w-4 h-4" /> {t("leads.add_lead")}
             </button>
           </div>
         </div>
@@ -256,7 +288,7 @@ export default function LeadsPage() {
         <div className="relative w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
-            type="text" placeholder="Search leads..."
+            type="text" placeholder={t("leads.search_placeholder")}
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-900 dark:text-white placeholder:text-slate-400"
           />
@@ -264,14 +296,13 @@ export default function LeadsPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <ViewSwitcher currentView={currentView} onViewChange={setCurrentView} />
           
-          {/* Sort Dropdown */}
           <select 
             value={sortOption} 
             onChange={e => setSortOption(e.target.value as "recent" | "name")}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 focus:outline-none border-r-8 border-transparent"
           >
-            <option value="recent">Recent</option>
-            <option value="name">Name</option>
+            <option value="recent">{t("leads.sort_recent")}</option>
+            <option value="name">{t("leads.sort_name")}</option>
           </select>
 
           {["All", ...STATUSES, "Converted"].map(s => {
@@ -298,10 +329,10 @@ export default function LeadsPage() {
             <div className="w-16 h-16 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center mb-4">
               <Building2 className="w-8 h-8 text-slate-400" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">No leads found</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm">Try adjusting filters or click "Add Lead" to get started.</p>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{t("leads.no_leads_found")}</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm">{t("leads.try_adjusting")}</p>
             <button onClick={openCreate} className="mt-4 flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all">
-              <Plus className="w-4 h-4" /> Add your first lead
+              <Plus className="w-4 h-4" /> {t("leads.add_first_lead")}
             </button>
           </div>
         ) : currentView === 'kanban' ? (
@@ -323,7 +354,7 @@ export default function LeadsPage() {
                         {lead.email && <div className="text-[11px] text-slate-400 mt-2 flex items-center gap-1"><Mail className="w-3 h-3"/>{lead.email}</div>}
                       </motion.div>
                     ))}
-                    {colLeads.length === 0 && <div className="p-4 text-center text-sm text-slate-400 border-2 border-dashed border-slate-200 dark:border-[#222222] rounded-xl">No leads</div>}
+                    {colLeads.length === 0 && <div className="p-4 text-center text-sm text-slate-400 border-2 border-dashed border-slate-200 dark:border-[#222222] rounded-xl">{t("leads.no_leads")}</div>}
                   </div>
                 </div>
               )
@@ -332,7 +363,7 @@ export default function LeadsPage() {
         ) : currentView === 'graph' ? (
           <div className="p-8 h-full">
             <div className="bg-white dark:bg-[#111111] p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-[#222222] h-[500px]">
-              <h3 className="text-lg font-bold mb-6 text-slate-900 dark:text-white">Leads by Status</h3>
+              <h3 className="text-lg font-bold mb-6 text-slate-900 dark:text-white">{t("leads.leads_by_status")}</h3>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={STATUSES.map(s => ({ name: s, count: filtered.filter(l => l.status === s).length }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
@@ -349,9 +380,9 @@ export default function LeadsPage() {
             <table className="w-full text-left border-collapse bg-white dark:bg-[#111111] border border-slate-200 dark:border-[#222222] rounded-2xl overflow-hidden shadow-sm">
               <thead>
                 <tr className="bg-slate-50 dark:bg-[#000000] border-b border-slate-200 dark:border-[#222222] text-xs uppercase tracking-wider text-slate-500 dark:text-[#a3a3a3]">
-                  <th className="p-4 font-semibold">Industry \ Status</th>
+                  <th className="p-4 font-semibold">{t("leads.industry_status2")}</th>
                   {STATUSES.map(s => <th key={s} className="p-4 font-semibold text-center">{s}</th>)}
-                  <th className="p-4 font-bold text-center border-l border-slate-200 dark:border-[#222222]">Total</th>
+                  <th className="p-4 font-bold text-center border-l border-slate-200 dark:border-[#222222]">{t("leads.total_leads")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-[#222222]">
@@ -431,17 +462,17 @@ export default function LeadsPage() {
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         {!lead.is_converted && (
-                          <button onClick={e => handleConvert(lead.id, e)} title="Convert to Client" className="p-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600 transition-colors">
+                          <button onClick={e => handleConvert(lead.id, e)} title={t("leads.convert_to_client")} className="p-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600 transition-colors">
                             <CheckCircle2 className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <button onClick={e => handleAddNote(lead, e)} title="Add Note" className="p-1.5 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/30 text-slate-400 hover:text-yellow-600 transition-colors">
+                        <button onClick={e => handleAddNote(lead, e)} title={t("leads.add_note")} className="p-1.5 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/30 text-slate-400 hover:text-yellow-600 transition-colors">
                           <Tag className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={e => openEdit(lead, e)} title="Edit Lead" className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors">
+                        <button onClick={e => openEdit(lead, e)} title={t("leads.edit_lead")} className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors">
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={e => handleDelete(lead.id, e)} title="Delete Lead" className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors">
+                        <button onClick={e => handleDelete(lead.id, e)} title={t("leads.delete_lead")} className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -461,11 +492,11 @@ export default function LeadsPage() {
       >
         <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3 shrink-0">
           <div className="p-2 bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded-xl"><Zap className="w-5 h-5" /></div>
-          <h3 className="text-lg font-bold text-slate-800 dark:text-white">Recent Activity</h3>
+          <h3 className="text-lg font-bold text-slate-800 dark:text-white">{t("leads.recent_activity")}</h3>
         </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {activities.length === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-8">No activity yet.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-8">{t("leads.no_activity_yet")}</p>
           ) : (
             activities.map(act => (
               <Link href={act.leadId ? `/leads/${act.leadId}` : '#'} key={act.id} className="block p-4 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 transition-colors group">
@@ -506,8 +537,8 @@ export default function LeadsPage() {
                     <Building2 className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">{editLead ? "Edit Lead" : "Add New Lead"}</h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">All incoming records are stored as leads</p>
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">{editLead ? t("leads.edit_lead") : t("leads.add_new_lead")}</h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{t("leads.all_incoming_stored")}</p>
                   </div>
                 </div>
                 <button onClick={() => setShowModal(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 transition-colors">
@@ -520,7 +551,7 @@ export default function LeadsPage() {
                 {/* Company Name — required */}
                 <div>
                   <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5 block">
-                    Company Name <span className="text-red-500">*</span>
+                    {t("leads.company_name")} <span className="text-red-500">*</span>
                   </label>
                   <input
                     autoFocus
@@ -533,12 +564,12 @@ export default function LeadsPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Email</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.email")}</label>
                     <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="contact@company.com"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Phone</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.phone")}</label>
                     <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+1 555 000 0000"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
                   </div>
@@ -546,15 +577,15 @@ export default function LeadsPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Industry</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.industry")}</label>
                     <select value={form.industry} onChange={e => setForm(f => ({ ...f, industry: e.target.value }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
-                      <option value="">Select industry...</option>
+                      <option value="">{t("leads.select_industry")}</option>
                       {INDUSTRIES.map(i => <option key={i}>{i}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Source</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.source")}</label>
                     <select value={form.source} onChange={e => setForm(f => ({ ...f, source: e.target.value }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
                       {SOURCES.map(s => <option key={s}>{s}</option>)}
@@ -564,12 +595,12 @@ export default function LeadsPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Website</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.website")}</label>
                     <input value={form.website} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} placeholder="https://example.com"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Status</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.status")}</label>
                     <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
                       {STATUSES.map(s => <option key={s}>{s}</option>)}
@@ -578,15 +609,15 @@ export default function LeadsPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Address</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.address")}</label>
                   <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="City, Country"
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Notes</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.notes")}</label>
                   <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3}
-                    placeholder="Any additional context about this lead..."
+                    placeholder={t("leads.notes_placeholder")}
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none" />
                 </div>
               </div>
@@ -595,12 +626,64 @@ export default function LeadsPage() {
               <div className="flex gap-3 px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 rounded-b-2xl">
                 <button onClick={() => setShowModal(false)}
                   className="flex-1 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-sm hover:bg-slate-100 dark:hover:bg-slate-700 transition-all">
-                  Cancel
+                  {t("leads.cancel")}
                 </button>
                 <button onClick={handleSave} disabled={saving || !form.company_name.trim()}
                   className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/20">
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {editLead ? "Save Changes" : "Add Lead"}
+                  {editLead ? t("leads.save_changes") : t("leads.add_lead")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Note Modal */}
+      <AnimatePresence>
+        {noteLead && (
+          <motion.div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div
+              initial={{ scale: 0.96, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 10 }}
+              className="w-full max-w-lg bg-white dark:bg-[#1e293b] rounded-2xl shadow-2xl overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">{t("leads.add_note")}</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">{noteLead.company_name}</p>
+                </div>
+                <button onClick={() => setNoteLead(null)} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <textarea
+                  value={noteText}
+                  onChange={e => setNoteText(e.target.value)}
+                  rows={4}
+                  autoFocus
+                  placeholder={t("leads.write_note_placeholder")}
+                  className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none"
+                />
+                <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Timestamp {new Date().toLocaleString()} {t("leads.timestamp_recorded")}</span>
+                </div>
+              </div>
+
+              <div className="flex gap-3 px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 rounded-b-2xl">
+                <button onClick={() => setNoteLead(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-sm hover:bg-slate-100 dark:hover:bg-slate-700 transition-all">
+                  {t("leads.cancel")}
+                </button>
+                <button onClick={handleSaveNote} disabled={noteSaving || !noteText.trim()}
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/20">
+                  {noteSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {t("leads.add_note")}
                 </button>
               </div>
             </motion.div>

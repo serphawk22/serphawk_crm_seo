@@ -145,6 +145,14 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
   const [extractResult, setExtractResult] = React.useState<{ count: number; marketplace: number } | null>(null);
   const [extractError, setExtractError] = React.useState<string | null>(null);
 
+  const toErrorMessage = (data: any, fallback: string): string => {
+    const d = data?.detail ?? data?.message ?? data?.error ?? data;
+    if (typeof d === "string") return d || fallback;
+    if (Array.isArray(d)) return d.map((x: any) => x?.msg || x || "").filter(Boolean).join(" · ") || fallback;
+    if (d && typeof d === "object") return d.message || d.msg || fallback;
+    return fallback;
+  };
+
   const [isGeneratingDraft, setIsGeneratingDraft] = React.useState(false);
   const [isAnalyzingCompetitor, setIsAnalyzingCompetitor] = React.useState(false);
 
@@ -177,8 +185,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         // Trigger emails refetch if needed
       } else {
         const errData = await res.json().catch(() => null);
-        const msg = errData?.detail?.message || errData?.detail || "Failed to generate draft.";
-        throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        throw new Error(toErrorMessage(errData, "Failed to generate draft."));
       }
     } catch (e: any) {
       console.error(e);
@@ -208,8 +215,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         (document.getElementById('compDomain') as HTMLInputElement).value = '';
       } else {
         const errData = await res.json().catch(() => null);
-        const msg = errData?.detail?.message || errData?.detail || "Failed to run competitor analysis.";
-        throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        throw new Error(toErrorMessage(errData, "Failed to run competitor analysis."));
       }
     } catch (e: any) {
       console.error(e);
@@ -243,9 +249,9 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
       const res = await fetch(`${API_BASE_URL}/clients/${client?.id}/extract-services`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
-        setExtractError(data.detail || 'Failed to extract services');
+        setExtractError(toErrorMessage(data, 'Failed to extract services'));
       } else if (data.ok === false) {
-        setExtractError(data.message || 'Failed to extract services');
+        setExtractError(toErrorMessage(data, 'Failed to extract services'));
       } else {
         setExtractResult({ count: data.services?.length || 0, marketplace: data.marketplace_entries_added || 0 });
         window.dispatchEvent(new CustomEvent('refresh-client-data'));
@@ -704,8 +710,14 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
           </div>
         </div>
       ) : (
-        <div className="text-center py-12 bg-white dark:bg-zinc-900 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-zinc-700 shadow-sm mt-6">
-          <p className="text-slate-500 dark:text-zinc-400 font-medium">No outbound communications found.</p>
+        <div className="flex flex-col items-center text-center py-14 px-6 bg-white dark:bg-zinc-900 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-zinc-700 shadow-sm mt-6">
+          <Mail size={32} className="text-slate-300 dark:text-slate-600 dark:text-zinc-300 mb-3" />
+          <p className="text-sm font-semibold text-slate-600 dark:text-zinc-200">{language === 'es' ? 'No hay correos salientes aún' : 'No emails yet'}</p>
+          <p className="text-xs text-slate-400 dark:text-zinc-400 mt-1">{language === 'es' ? 'Genera una propuesta y borrador de alcance para crear el primer correo.' : 'Generate an AI pitch strategy and draft to create the first outreach email.'}</p>
+          <button onClick={handleGenerateDraft} disabled={isGeneratingDraft} className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50">
+            {isGeneratingDraft ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+            {language === 'es' ? 'Generar Borrador de Alcance' : 'Generate AI Pitch & Draft'}
+          </button>
         </div>
       )}
       </div>

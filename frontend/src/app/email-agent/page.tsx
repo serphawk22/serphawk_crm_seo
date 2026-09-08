@@ -8,6 +8,7 @@ import {
   TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign, MessageCircle, Trash2, Youtube
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
+import { useLanguage } from "@/context/LanguageContext";
 import PageGuide from "@/components/PageGuide";
 import GmailAgentLoop from "./GmailAgentLoop";
 
@@ -125,68 +126,69 @@ type SendEmailResult = {
 } | null;
 
 function CopyButton({ text }: { text: string }) {
+  const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
   return (
     <button
       onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
       className="p-1.5 rounded-lg hover:bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:text-zinc-100 transition-all"
-      title="Copy"
+      title={t('email_agent.copy_title')}
     >
       {copied ? <Check className="w-3.5 h-3.5 text-slate-800 dark:text-zinc-100" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
   );
 }
 
-function buildProspectingPoints(result: ResearchResultData) {
+function buildProspectingPoints(result: ResearchResultData, t: (key: string) => string) {
   const hasServices = (result.recommended_services || []).map((s) => typeof s === 'string' ? s : s.service_name).filter(Boolean) as string[];
   
   const toArray = (val: any) => Array.isArray(val) ? val : (typeof val === 'string' ? val.split(",") : []);
   
   // Extract contact information with fallbacks
   const emails = toArray(result.company_info?.extracted_emails);
-  const primaryEmail = result.contact?.email || emails[0]?.trim() || "No email found.";
+  const primaryEmail = result.contact?.email || emails[0]?.trim() || t("email_agent.no_email_found");
   const allEmails = emails.length > 0 ? emails.map((e: string) => e.trim()).slice(0, 2).join(", ") : primaryEmail;
   
   const phones = toArray(result.company_info?.extracted_phone_numbers);
-  const primaryPhone = result.contact?.phone_number || result.contact?.whatsapp || phones[0]?.trim() || "No phone available.";
+  const primaryPhone = result.contact?.phone_number || result.contact?.whatsapp || phones[0]?.trim() || t("email_agent.no_phone");
   const allPhones = phones.length > 0 ? phones.map((p: string) => p.trim()).slice(0, 2).join(", ") : primaryPhone;
   
   const linkedins = toArray(result.company_info?.extracted_linkedin);
-  const linkedinProfile = result.contact?.linkedin || result.company_info?.linkedin || linkedins[0]?.trim() || "No LinkedIn profile found.";
+  const linkedinProfile = result.contact?.linkedin || result.company_info?.linkedin || linkedins[0]?.trim() || t("email_agent.no_linkedin");
   const allLinkedIn = linkedins.length > 0 ? linkedins.map((l: string) => l.trim()).slice(0, 2).join(", ") : linkedinProfile;
   
   const twitters = toArray(result.company_info?.extracted_twitter);
-  const twitterProfile = result.contact?.twitter || twitters[0]?.trim() || "No Twitter/X profile found.";
+  const twitterProfile = result.contact?.twitter || twitters[0]?.trim() || t("email_agent.no_twitter");
   const allTwitter = twitters.length > 0 ? twitters.map((t: string) => t.trim()).slice(0, 2).join(", ") : twitterProfile;
   
   return [
     {
-      title: "Company Summary",
-      body: result.company_info?.what_they_do || result.company_info?.summary || "Company description not available.",
+      title: t("email_agent.point_company_summary"),
+      body: result.company_info?.what_they_do || result.company_info?.summary || t("email_agent.point_company_summary_fb"),
       icon: Briefcase,
     },
     {
-      title: "Services Offered",
-      body: hasServices.length > 0 ? hasServices.join(", ") : "No service matches available yet.",
+      title: t("email_agent.point_services_offered"),
+      body: hasServices.length > 0 ? hasServices.join(", ") : t("email_agent.point_services_fb"),
       icon: Package,
     },
     {
-      title: "Conversion Priority",
-      body: result.company_info?.best_conversion_opportunity || "Highest value opportunity not yet identified.",
+      title: t("email_agent.point_conversion_priority"),
+      body: result.company_info?.best_conversion_opportunity || t("email_agent.point_conversion_fb"),
       icon: Target,
     },
     {
-      title: "Primary Contact",
-      body: result.contact?.name || "No contact name found.",
+      title: t("email_agent.point_primary_contact"),
+      body: result.contact?.name || t("email_agent.point_contact_fb"),
       icon: AtSign,
     },
     {
-      title: "Email ID",
+      title: t("email_agent.point_email_id"),
       body: allEmails,
       icon: Mail,
     },
     {
-      title: "Mobile / WhatsApp",
+      title: t("email_agent.point_mobile"),
       body: allPhones,
       icon: Phone,
     },
@@ -196,24 +198,25 @@ function buildProspectingPoints(result: ResearchResultData) {
       icon: Globe,
     },
     {
-      title: "Twitter / X",
+      title: t("email_agent.point_twitter"),
       body: allTwitter,
       icon: Zap,
     },
     {
-      title: "Sales Manager",
-      body: result.assigned_sales_manager || "Assign a salesperson to this lead.",
+      title: t("email_agent.point_sales_manager"),
+      body: result.assigned_sales_manager || t("email_agent.point_sales_fb"),
       icon: UserPlus,
     },
     {
-      title: "Follow-up Focus",
-      body: result.company_info?.sales_follow_up_focus || "Capture next steps as notes and turn them into tasks.",
+      title: t("email_agent.point_followup_focus"),
+      body: result.company_info?.sales_follow_up_focus || t("email_agent.point_followup_fb"),
       icon: TrendingUp,
     },
   ];
 }
 
 function BottomUpFillMail() {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-col items-center gap-4 py-6">
       <div className="relative w-12 h-12">
@@ -229,12 +232,13 @@ function BottomUpFillMail() {
           </div>
         </motion.div>
       </div>
-      <p className="text-xs font-bold text-slate-500 dark:text-zinc-400 animate-pulse">Researching & drafting...</p>
+      <p className="text-xs font-bold text-slate-500 dark:text-zinc-400 animate-pulse">{t('email_agent.researching')}</p>
     </div>
   );
 }
 
 function CopyableEmailItem({ email }: { email: string }) {
+  const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -248,7 +252,7 @@ function CopyableEmailItem({ email }: { email: string }) {
       <button
         onClick={handleCopy}
         className="p-1 rounded hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 transition-colors shadow-sm bg-slate-50 dark:bg-zinc-950 flex-shrink-0"
-        title="Copy email"
+        title={t('email_agent.copy_email')}
       >
         {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
       </button>
@@ -257,6 +261,7 @@ function CopyableEmailItem({ email }: { email: string }) {
 }
 
 function ResultCard({ historyId, result, companyName, companyUrl, onSendManually, onSendAutomatically, onSaveFollowUp, onRemove }: { historyId: string; result: ResearchResultData; companyName: string; companyUrl: string; onSendManually: (r: ResearchResultData, name: string, url: string, skip_send?: boolean, action_type?: string) => Promise<SendEmailResult>; onSendAutomatically: (r: ResearchResultData, name: string, url: string) => Promise<SendEmailResult>; onSaveFollowUp: (r: ResearchResultData, note: string, title: string) => Promise<boolean>; onRemove: (id: string) => void; }) {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<"english" | "spanish" | "whatsapp">("english");
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
@@ -272,14 +277,24 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
     return body.replace(/<br\s*\/?>/gi, '\n');
   };
 
-  const [editableSubject, setEditableSubject] = useState(result.draft?.subject || "");
-  const [editableEnglishBody, setEditableEnglishBody] = useState(formatBody(result.draft?.english_body || result.draft?.body));
-  const [editableSpanishBody, setEditableSpanishBody] = useState(formatBody(result.draft?.spanish_body));
-  const [editableWhatsappBody, setEditableWhatsappBody] = useState(formatBody(result.draft?.whatsapp_draft));
-  const [fromEmail, setFromEmail] = useState("support.crm@serphawk.in");
+  const historyKey = `email_draft_${historyId}`;
+  const loadSavedDraft = () => {
+    try {
+      const raw = localStorage.getItem(historyKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const [editableSubject, setEditableSubject] = useState(() => (loadSavedDraft()?.subject ?? result.draft?.subject) || "");
+  const [editableEnglishBody, setEditableEnglishBody] = useState(() => loadSavedDraft()?.english_body ?? formatBody(result.draft?.english_body || result.draft?.body));
+  const [editableSpanishBody, setEditableSpanishBody] = useState(() => loadSavedDraft()?.spanish_body ?? formatBody(result.draft?.spanish_body));
+  const [editableWhatsappBody, setEditableWhatsappBody] = useState(() => loadSavedDraft()?.whatsapp_draft ?? formatBody(result.draft?.whatsapp_draft));
+  const [fromEmail, setFromEmail] = useState(() => loadSavedDraft()?.from_email ?? "crm@serphawk.in");
 
   const extractedEmailsArray = (Array.isArray(result.company_info?.extracted_emails) ? result.company_info.extracted_emails : (result.company_info?.extracted_emails?.split(",") || []))
-    .filter((e: string) => e.trim().toLowerCase() !== "test@example.com" && e.trim().toLowerCase() !== "support.crm@serphawk.in");
+    .filter((e: string) => e.trim().toLowerCase() !== "test@example.com" && e.trim().toLowerCase() !== "crm@serphawk.in");
   const extractedEmail = extractedEmailsArray[0]?.trim();
   const directContactEmail = Array.isArray((result.company_info as any)?.contacts) ? (result.company_info as any).contacts[0]?.email : (result.company_info as any)?.email;
   
@@ -287,11 +302,28 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
   if (Array.isArray(rawInitialEmail)) rawInitialEmail = rawInitialEmail[0];
   let initialContactEmail = typeof rawInitialEmail === 'string' ? rawInitialEmail : String(rawInitialEmail || "");
   
-  if (initialContactEmail.trim().toLowerCase() === "test@example.com" || initialContactEmail.trim().toLowerCase() === "support.crm@serphawk.in") {
+  if (initialContactEmail.trim().toLowerCase() === "test@example.com" || initialContactEmail.trim().toLowerCase() === "crm@serphawk.in") {
     initialContactEmail = "";
   }
 
-  const [toEmail, setToEmail] = useState(initialContactEmail);
+  const [toEmail, setToEmail] = useState(() => loadSavedDraft()?.to_email ?? initialContactEmail);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(historyKey, JSON.stringify({
+          subject: editableSubject,
+          english_body: editableEnglishBody,
+          spanish_body: editableSpanishBody,
+          whatsapp_draft: editableWhatsappBody,
+          from_email: fromEmail,
+          to_email: toEmail,
+          saved_at: Date.now(),
+        }));
+      } catch { /* storage unavailable */ }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [editableSubject, editableEnglishBody, editableSpanishBody, editableWhatsappBody, fromEmail, toEmail, historyKey]);
 
   useEffect(() => {
     if (sendSuccess) {
@@ -313,8 +345,8 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
         <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mb-4">
           <CheckCircle className="w-10 h-10 text-emerald-500" />
         </div>
-        <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 mb-2">Mail Sent Successfully!</h2>
-        <p className="text-slate-500 dark:text-zinc-400 text-sm mb-6">Moving this to your recent outreach log...</p>
+        <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 mb-2">{t('email_agent.mail_sent_success')}</h2>
+        <p className="text-slate-500 dark:text-zinc-400 text-sm mb-6">{t('email_agent.moving_to_log')}</p>
       </motion.div>
     );
   }
@@ -327,8 +359,8 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
         className="w-full bg-white dark:bg-zinc-900 border border-indigo-500/30 rounded-2xl p-12 flex flex-col items-center justify-center shadow-sm h-64"
       >
         <Clock className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
-        <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">Sending Email...</h2>
-        <p className="text-slate-500 dark:text-zinc-400 text-sm">Please wait while the system processes your request.</p>
+        <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">{t('email_agent.sending_email')}</h2>
+        <p className="text-slate-500 dark:text-zinc-400 text-sm">{t('email_agent.please_wait')}</p>
       </motion.div>
     );
   }
@@ -359,16 +391,16 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
 
   const handleSend = async () => {
     if (!toEmail || !toEmail.trim()) {
-      setSendError("Please provide a recipient email address in the 'To:' field.");
+      setSendError(t("email_agent.no_recipient"));
       return;
     }
     setSending(true);
     setSendError(null);
     try {
       await onSendManually(getUpdatedResult(), companyName, companyUrl, false, "System");
-      setSendSuccess("Mail sent");
+      setSendSuccess(t("email_agent.mail_sent"));
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to send email";
+      const message = err instanceof Error ? err.message : t("email_agent.failed_send");
       setSendError(message);
     }
     setSending(false);
@@ -376,7 +408,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
 
   const handleSendViaSystem = () => {
     if (!toEmail || !toEmail.trim()) {
-      setSendError("Please provide a recipient email address in the 'To:' field.");
+      setSendError(t("email_agent.no_recipient"));
       return;
     }
     
@@ -389,21 +421,21 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
     onSendManually(getUpdatedResult(), companyName, companyUrl, true, "System").catch(console.error);
     
     // Show success immediately
-    setSendSuccess("Mail sent");
+    setSendSuccess(t("email_agent.mail_sent"));
   };
 
   const handleSendAutomatically = async () => {
     if (!toEmail || !toEmail.trim()) {
-      setSendError("Please provide a recipient email address in the 'To:' field.");
+      setSendError(t("email_agent.no_recipient"));
       return;
     }
     setSending(true);
     setSendError(null);
     try {
       await onSendAutomatically(getUpdatedResult(), companyName, companyUrl);
-      setSendSuccess("Sent Automatically");
+      setSendSuccess(t("email_agent.sent_auto"));
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to send email";
+      const message = err instanceof Error ? err.message : t("email_agent.failed_send");
       setSendError(message);
     }
     setSending(false);
@@ -411,7 +443,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
 
   const handleSaveFollowUp = async () => {
     if (!followUpNote.trim()) {
-      setFollowUpStatus("Add a follow-up note first.");
+      setFollowUpStatus(t("email_agent.followup_add_note"));
       return;
     }
     setSavingFollowUp(true);
@@ -419,10 +451,10 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
     const saved = await onSaveFollowUp(result, followUpNote.trim(), followUpTitle);
     setSavingFollowUp(false);
     if (saved) {
-      setFollowUpStatus("Follow-up note saved successfully.");
+      setFollowUpStatus(t("email_agent.followup_saved"));
       setFollowUpNote("");
     } else {
-      setFollowUpStatus("Unable to save follow-up. Please try again.");
+      setFollowUpStatus(t("email_agent.followup_failed"));
     }
   };
 
@@ -453,7 +485,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
                     <Package className="w-3 h-3" /> {result.package_suggestion}
                   </span>
                 )}
-                <button onClick={() => onRemove(historyId)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all" title="Delete Result">
+                <button onClick={() => onRemove(historyId)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all" title={t('email_agent.delete_result')}>
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -465,10 +497,10 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { label: "Model", value: result.company_info?.business_model, icon: Briefcase },
-              { label: "Size", value: result.company_info?.estimated_size, icon: Building2 },
-              { label: "Market", value: result.company_info?.target_market, icon: Target },
-              { label: "Reach", value: result.company_info?.geographic_presence, icon: Globe },
+              { label: t('email_agent.label_model'), value: result.company_info?.business_model, icon: Briefcase },
+              { label: t('email_agent.label_size'), value: result.company_info?.estimated_size, icon: Building2 },
+              { label: t('email_agent.label_market'), value: result.company_info?.target_market, icon: Target },
+              { label: t('email_agent.label_reach'), value: result.company_info?.geographic_presence, icon: Globe },
             ].filter(f => f.value).map(({ label, value, icon: Icon }) => (
               <div key={label} className="p-3 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl">
                 <div className="flex items-center gap-1.5 mb-1">
@@ -487,19 +519,19 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
             <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
               <AtSign className="w-4 h-4" />
             </div>
-            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Extracted Company Info</p>
+            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">{t('email_agent.extracted_info')}</p>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
             <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
-              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1.5">Emails</p>
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1.5">{t('email_agent.emails')}</p>
               <div className="flex flex-col gap-1.5">
                 {result.company_info?.extracted_emails ? (
                   (Array.isArray(result.company_info.extracted_emails) 
                     ? result.company_info.extracted_emails 
                     : result.company_info.extracted_emails.split(',')
                   )
-                  .filter((e: string) => e.trim().toLowerCase() !== "test@example.com" && e.trim().toLowerCase() !== "support.crm@serphawk.in")
+                  .filter((e: string) => e.trim().toLowerCase() !== "test@example.com" && e.trim().toLowerCase() !== "crm@serphawk.in")
                   .map((e: string, i: number) => (
                     <CopyableEmailItem key={i} email={e.trim()} />
                   ))
@@ -509,7 +541,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
               </div>
             </div>
             <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
-              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Phones</p>
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">{t('email_agent.phones')}</p>
               <div className="flex flex-col gap-1">
                 {result.company_info?.extracted_phone_numbers ? result.company_info.extracted_phone_numbers.split(',').map((p: string, i: number) => (
                   <a key={i} href={`tel:${p.trim()}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-mono break-all">{p.trim()}</a>
@@ -517,15 +549,15 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
               </div>
             </div>
             <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm lg:col-span-2">
-              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-2">Company Socials</p>
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-2">{t('email_agent.company_socials')}</p>
               <div className="flex flex-wrap gap-2">
                 {result.company_info?.company_social_media?.linkedin ? <a href={result.company_info.company_social_media.linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn</a> : null}
                 {result.company_info?.company_social_media?.twitter ? <a href={result.company_info.company_social_media.twitter} target="_blank" rel="noreferrer" className="px-3 py-1 bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300 rounded-md text-xs font-bold hover:bg-slate-200 transition-colors">X / Twitter</a> : null}
                 {result.company_info?.company_social_media?.instagram ? <a href={result.company_info.company_social_media.instagram} target="_blank" rel="noreferrer" className="px-3 py-1 bg-pink-500/10 text-pink-600 dark:bg-pink-500/20 dark:text-pink-400 rounded-md text-xs font-bold hover:bg-pink-500/20 transition-colors">Instagram</a> : null}
                 {result.company_info?.company_social_media?.facebook ? <a href={result.company_info.company_social_media.facebook} target="_blank" rel="noreferrer" className="px-3 py-1 bg-blue-600/10 text-blue-700 dark:bg-blue-600/20 dark:text-blue-400 rounded-md text-xs font-bold hover:bg-blue-600/20 transition-colors">Facebook</a> : null}
                 {result.company_info?.company_social_media?.youtube ? <a href={result.company_info.company_social_media.youtube} target="_blank" rel="noreferrer" className="px-3 py-1 bg-red-600/10 text-red-700 dark:bg-red-600/20 dark:text-red-400 rounded-md text-xs font-bold hover:bg-red-600/20 transition-colors flex items-center gap-1"><Youtube className="w-3 h-3" /> YouTube</a> : null}
-                {result.company_info?.extracted_linkedin && !result.company_info?.company_social_media?.linkedin ? <a href={result.company_info.extracted_linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn (Fallback)</a> : null}
-                {(!result.company_info?.company_social_media || Object.values(result.company_info.company_social_media).every(v => !v)) && !result.company_info?.extracted_linkedin && <span className="text-sm text-slate-500 dark:text-zinc-500">No social profiles detected.</span>}
+                {result.company_info?.extracted_linkedin && !result.company_info?.company_social_media?.linkedin ? <a href={result.company_info.extracted_linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn ({t('email_agent.fallback')})</a> : null}
+                {(!result.company_info?.company_social_media || Object.values(result.company_info.company_social_media).every(v => !v)) && !result.company_info?.extracted_linkedin && <span className="text-sm text-slate-500 dark:text-zinc-500">{t('email_agent.no_socials')}</span>}
               </div>
             </div>
           </div>
@@ -536,16 +568,16 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-zinc-700 text-[10px] text-slate-500 dark:text-zinc-400 uppercase tracking-widest bg-slate-100 dark:bg-zinc-900/50">
-                    <th className="py-3 px-4 font-bold">Name & Role</th>
-                    <th className="py-3 px-4 font-bold">Contact</th>
-                    <th className="py-3 px-4 font-bold">Socials</th>
+                    <th className="py-3 px-4 font-bold">{t('email_agent.col_name_role')}</th>
+                    <th className="py-3 px-4 font-bold">{t('email_agent.col_contact')}</th>
+                    <th className="py-3 px-4 font-bold">{t('email_agent.col_socials')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {result.company_info.contacts.map((p: any, i: number) => (
                     <tr key={i} className="border-b border-slate-100 dark:border-zinc-800 last:border-0 hover:bg-white dark:hover:bg-zinc-900 transition-colors">
                       <td className="py-4 px-4 align-top">
-                        <div className="font-bold text-sm text-slate-800 dark:text-zinc-100">{p.name || 'Unknown Name'}</div>
+                        <div className="font-bold text-sm text-slate-800 dark:text-zinc-100">{p.name || t('email_agent.unknown_name')}</div>
                         {p.role && <div className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{p.role}</div>}
                       </td>
                       <td className="py-4 px-4 align-top">
@@ -561,7 +593,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
                             <a href={`tel:${p.phone_number}`} className="text-xs text-slate-600 dark:text-zinc-300 hover:underline">{p.phone_number}</a>
                           </div>
                         )}
-                        {!p.email && !p.phone_number && <span className="text-xs text-slate-400">Not found</span>}
+                        {!p.email && !p.phone_number && <span className="text-xs text-slate-400">{t('email_agent.not_found')}</span>}
                       </td>
                       <td className="py-4 px-4 align-top">
                         <div className="flex flex-wrap gap-2">
@@ -582,7 +614,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
           ) : (
             <div className="flex flex-col items-center justify-center h-24 text-slate-400">
               <AtSign className="w-8 h-8 opacity-30" />
-              <p className="text-xs mt-2">No key decision makers found</p>
+              <p className="text-xs mt-2">{t('email_agent.no_decision_makers')}</p>
             </div>
           )}
         </div>
@@ -594,7 +626,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
               <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
                 <Globe className="w-4 h-4" />
               </div>
-              <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Source Pages / Reference URLs</p>
+              <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">{t('email_agent.source_pages')}</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {result.company_info.source_pages.map((url: string, i: number) => (
@@ -614,9 +646,9 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
             <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
               <Store className="w-4 h-4" />
             </div>
-            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Services Offered by This Company</p>
+            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">{t('email_agent.services_offered')}</p>
             <span className="ml-auto text-[9px] font-black text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2 py-0.5 rounded-full">
-              {result.extracted_services.length} detected
+              {result.extracted_services.length} {t('email_agent.detected')}
             </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -630,7 +662,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
                     <span className="ml-auto text-[9px] font-black text-amber-500 flex items-center gap-0.5">
                       <DollarSign className="w-2.5 h-2.5" />
                       {svc.approx_cost.toLocaleString()}
-                      {svc.cost_is_estimated ? ' est.' : ''}
+                      {svc.cost_is_estimated ? t('email_agent.est_suffix') : ''}
                     </span>
                   )}
                 </div>
@@ -640,7 +672,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
             ))}
           </div>
           <p className="mt-3 text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
-            ✦ These services have been saved to the client profile and Marketplace catalog.
+            ✦ {t('email_agent.services_saved')}
           </p>
         </div>
       )}
@@ -653,14 +685,14 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
               <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-100">
                 <FileText className="w-4 h-4" />
               </div>
-              <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Generated Email Draft</p>
+              <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">{t('email_agent.generated_draft')}</p>
             </div>
             <CopyButton text={activeTab === "english" ? editableEnglishBody : activeTab === "spanish" ? editableSpanishBody : editableWhatsappBody} />
           </div>
 
           {result.email_hook && (
             <div className="mb-6 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-xl p-4 shadow-sm">
-              <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Suggested Hook</p>
+              <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> {t('email_agent.suggested_hook')}</p>
               <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{result.email_hook}</p>
             </div>
           )}
@@ -670,7 +702,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100 group relative">
-                  <span className="text-slate-500 w-12">From:</span>
+                  <span className="text-slate-500 w-12">{t('email_agent.from_label')}</span>
                   <input 
                     type="text" 
                     value="vkanjali@serphawk.com"
@@ -679,17 +711,17 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
                     className="flex-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 px-3 py-1.5 text-sm text-slate-500 cursor-not-allowed focus:outline-none transition-all"
                   />
                   <div className="absolute bottom-full left-14 mb-2 hidden group-hover:block bg-slate-800 text-white text-xs rounded-lg px-3 py-1.5 shadow-lg whitespace-nowrap z-50 font-medium">
-                    Automated sending email address
+                    {t('email_agent.automated_email_tooltip')}
                     <div className="absolute -bottom-1 left-4 w-2 h-2 bg-slate-800 rotate-45"></div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100">
-                  <span className="text-slate-500 w-12">To:</span>
+                  <span className="text-slate-500 w-12">{t('email_agent.to_label')}</span>
                   <input 
                     type="text" 
                     value={toEmail}
                     onChange={(e) => setToEmail(e.target.value)}
-                    placeholder="recipient@example.com"
+                    placeholder={t('email_agent.recipient_placeholder')}
                     className="flex-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 transition-all"
                   />
                 </div>
@@ -704,7 +736,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
                     >
                       <CheckCircle className="w-4 h-4" />
                     </motion.div>
-                    Mail Sent Automatically via AI
+                    {t('email_agent.mail_sent_auto')}
                   </div>
                   <button
                     onClick={handleSendViaSystem}
@@ -712,7 +744,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
                     className="w-full px-4 py-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-50 dark:bg-zinc-950 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <UserPlus className="w-3.5 h-3.5" />
-                    Send via System
+                    {t('email_agent.send_via_system')}
                   </button>
                 </div>
               </div>
@@ -723,7 +755,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
               )}
             </div>
           <div className="mb-4">
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Subject</p>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">{t('email_agent.subject')}</p>
             <input 
               type="text"
               value={editableSubject}
@@ -734,9 +766,9 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
 
           <div className="flex gap-2 mb-4">
             {[
-              { key: "english" as const, label: "English" },
-              { key: "spanish" as const, label: "Español" },
-              ...(result.draft?.whatsapp_draft ? [{ key: "whatsapp" as const, label: "WhatsApp" }] : []),
+              { key: "english" as const, label: t('email_agent.tab_english') },
+              { key: "spanish" as const, label: t('email_agent.tab_spanish') },
+              ...(result.draft?.whatsapp_draft ? [{ key: "whatsapp" as const, label: t('email_agent.tab_whatsapp') }] : []),
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -765,7 +797,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
 
           <div className="space-y-6">
             <div className="grid gap-3 md:grid-cols-3">
-              {buildProspectingPoints(result).map((point, idx) => {
+              {buildProspectingPoints(result, t).map((point, idx) => {
                 const Icon = point.icon;
                 return (
                   <div key={idx} className="rounded-3xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 p-4 text-sm text-slate-700 dark:text-zinc-200 shadow-sm">
@@ -781,23 +813,23 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
 
             <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 space-y-3">
               <div>
-                <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Next Follow-up Note</label>
+                <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">{t('email_agent.followup_title_label')}</label>
                 <input
                   type="text"
                   value={followUpTitle}
                   onChange={(e) => setFollowUpTitle(e.target.value)}
                   className="mt-2 w-full rounded-xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 px-3 py-2 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-white"
-                  placeholder="Follow-up title"
+                  placeholder={t('email_agent.followup_placeholder')}
                 />
               </div>
               <div>
-                <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Note for the sales team</label>
+                <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">{t('email_agent.note_for_sales')}</label>
                 <textarea
                   value={followUpNote}
                   onChange={(e) => setFollowUpNote(e.target.value)}
                   rows={4}
                   className="mt-2 w-full rounded-2xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 px-3 py-3 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:border-white resize-none"
-                  placeholder="Capture the follow-up summary, next steps, or internal action items."
+                  placeholder={t('email_agent.followup_note_placeholder')}
                 />
               </div>
               <div className="flex items-center justify-between gap-3">
@@ -806,7 +838,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
                   disabled={savingFollowUp || !followUpNote.trim()}
                   className="px-4 py-2 rounded-xl bg-sky-500 text-slate-800 dark:text-zinc-100 font-bold text-xs hover:bg-sky-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {savingFollowUp ? "Saving..." : "Save Follow-Up"}
+                  {savingFollowUp ? t('email_agent.saving') : t('email_agent.save_followup')}
                 </button>
                 {followUpStatus && (
                   <p className="text-xs text-slate-500 dark:text-zinc-400">{followUpStatus}</p>
@@ -821,6 +853,7 @@ function ResultCard({ historyId, result, companyName, companyUrl, onSendManually
 }
 
 export default function EmailAgentPage() {
+  const { t } = useLanguage();
   const [mode, setMode] = useState<"single" | "bulk">("single");
   const [companyName, setCompanyName] = useState("");
   const [inputValue, setInputValue] = useState("");
@@ -828,7 +861,7 @@ export default function EmailAgentPage() {
   const [chatStep, setChatStep] = useState<"website_url" | "loading" | "idle">("website_url");
   
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: "msg-1", role: "ai", type: "text", content: "Hello! Enter a company website URL to generate an outreach strategy and email draft." }
+    { id: "msg-1", role: "ai", type: "text", content: t("email_agent.chat_greeting") }
   ]);
   
   const [resultsHistory, setResultsHistory] = useState<ResearchResult[]>([]);
@@ -1001,7 +1034,7 @@ export default function EmailAgentPage() {
         const filtered = prev.filter(m => m.type !== "loading");
         return [
           ...filtered,
-          { id: `msg-${Date.now()}`, role: "ai", type: "text", content: `Research for ${name} complete! I've placed the results in the section below.` }
+          { id: `msg-${Date.now()}`, role: "ai", type: "text", content: `${t('email_agent.research_complete_prefix')} ${name} ${t('email_agent.research_complete_suffix')}` }
         ];
       });
       
@@ -1015,7 +1048,7 @@ export default function EmailAgentPage() {
       setTimeout(() => {
         setMessages(prev => [
           ...prev,
-          { id: `msg-${Date.now()+2}`, role: "ai", type: "text", content: "What other company would you like to research next?" }
+          { id: `msg-${Date.now()+2}`, role: "ai", type: "text", content: t("email_agent.research_next") }
         ]);
       }, 1000);
 
@@ -1024,7 +1057,7 @@ export default function EmailAgentPage() {
         const filtered = prev.filter(m => m.type !== "loading");
         return [
           ...filtered,
-          { id: `msg-${Date.now()}`, role: "ai", type: "text", content: `Error: Something went wrong. Please try again.` }
+          { id: `msg-${Date.now()}`, role: "ai", type: "text", content: t("email_agent.research_error") }
         ];
       });
       setChatStep("website_url");
@@ -1165,29 +1198,29 @@ export default function EmailAgentPage() {
               <Bot className="w-5 h-5 text-slate-800 dark:text-zinc-100" />
             </div>
             <div>
-              <h1 className="text-xl font-black text-slate-800 dark:text-zinc-100">Email Agent</h1>
-              <p className="text-slate-500 dark:text-zinc-400 text-xs font-medium">Research • Match • Draft</p>
+              <h1 className="text-xl font-black text-slate-800 dark:text-zinc-100">{t('email_agent.title')}</h1>
+              <p className="text-slate-500 dark:text-zinc-400 text-xs font-medium">{t('email_agent.subtitle')}</p>
             </div>
             <div className="flex bg-slate-200 dark:bg-zinc-800 p-1 rounded-lg ml-4">
               <button
                 onClick={() => setMode("single")}
                 className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${mode === "single" ? "bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700"}`}
               >
-                Single
+                {t('email_agent.mode_single')}
               </button>
               <button
                 onClick={() => setMode("bulk")}
                 className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${mode === "bulk" ? "bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700"}`}
               >
-                Bulk
+                {t('email_agent.mode_bulk')}
               </button>
             </div>
           </div>
           <div className="flex gap-4 hidden sm:flex">
             {[
-              { label: "Total Sent", value: totalSent },
-              { label: "Auto", value: autoCount },
-              { label: "Manual", value: manualCount },
+              { label: t('email_agent.stat_total_sent'), value: totalSent },
+              { label: t('email_agent.stat_auto'), value: autoCount },
+              { label: t('email_agent.stat_manual'), value: manualCount },
             ].map((s) => (
               <div key={s.label} className="px-4 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 text-slate-800 dark:text-zinc-100 text-center">
                 <p className="text-[9px] font-black uppercase tracking-widest opacity-80">{s.label}</p>
@@ -1207,19 +1240,19 @@ export default function EmailAgentPage() {
             <div className="relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl w-full max-w-4xl mx-auto flex flex-col h-[400px] shadow-sm">
           <PageGuide
             pageKey="email-agent"
-            title="How the Email Agent works"
-            description="Our AI researches companies, matches them to your services, and drafts personalized outreach emails."
+            title={t('email_agent.guide_title')}
+            description={t('email_agent.guide_desc')}
             buttonClassName="absolute top-3 right-3 z-50 group"
             iconClassName="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-slate-800 dark:text-zinc-100 shadow-lg transition-transform group-hover:scale-110"
             steps={[
-              { icon: <Building2 />, text: 'Enter a company name and URL — the AI will analyze their website and identify opportunities.' },
-              { icon: <Bot />, text: 'The agent matches the company\'s needs to your service catalog and crafts a tailored pitch.' },
-              { icon: <Mail />, text: 'Review the generated email in English and Spanish, then send it directly or copy the text.' },
-              { icon: <TrendingUp />, text: 'Track all sent emails above — see counts for auto-sent vs. manually-sent outreach.' },
+              { icon: <Building2 />, text: t('email_agent.guide_s1') },
+              { icon: <Bot />, text: t('email_agent.guide_s2') },
+              { icon: <Mail />, text: t('email_agent.guide_s3') },
+              { icon: <TrendingUp />, text: t('email_agent.guide_s4') },
             ]}
           />
           <div className="p-4 border-b border-slate-100 dark:border-zinc-800 font-black text-sm text-slate-800 dark:text-zinc-100 flex items-center gap-2">
-            <Bot className="w-4 h-4 text-slate-800 dark:text-zinc-100" /> AI Research Assistant
+            <Bot className="w-4 h-4 text-slate-800 dark:text-zinc-100" /> {t('email_agent.ai_assistant')}
           </div>
           
           <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar" ref={chatContainerRef}>
@@ -1271,7 +1304,7 @@ export default function EmailAgentPage() {
                 disabled={!inputValue.trim() || chatStep === "loading"}
                 className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm flex items-center gap-2 shadow-lg shadow-indigo-500/30 disabled:opacity-50 transition-all hover:-translate-y-0.5"
               >
-                <Sparkles className="w-4 h-4" /> Start AI Agent
+                <Sparkles className="w-4 h-4" /> {t('email_agent.start_agent')}
               </button>
             </div>
           </div>
@@ -1280,7 +1313,7 @@ export default function EmailAgentPage() {
         {/* Results Section Down Below */}
         {resultsHistory.length > 0 && (
           <div className="w-full mt-8 space-y-8">
-            <h3 className="font-black text-xl text-slate-800 dark:text-zinc-100 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 backdrop-blur-md px-4 py-2 rounded-xl inline-block shadow-lg border border-slate-100 dark:border-zinc-800">Research Results</h3>
+            <h3 className="font-black text-xl text-slate-800 dark:text-zinc-100 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 backdrop-blur-md px-4 py-2 rounded-xl inline-block shadow-lg border border-slate-100 dark:border-zinc-800">{t('email_agent.research_results')}</h3>
             {resultsHistory.map(res => (
               <ResultCard key={res.id} historyId={res.id} result={res.resultData} companyName={res.companyName} companyUrl={res.companyUrl} onSendManually={handleSendManually} onSendAutomatically={handleSendAutomatically} onSaveFollowUp={handleSaveFollowUp} onRemove={handleRemoveResult} />
             ))}
@@ -1300,7 +1333,7 @@ export default function EmailAgentPage() {
               <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-inner">
                 <Mail className="w-4 h-4" />
               </div>
-              <h3 className="font-black text-[15px] text-slate-800 dark:text-zinc-100">Recent Email Outreach</h3>
+              <h3 className="font-black text-[15px] text-slate-800 dark:text-zinc-100">{t('email_agent.recent_outreach')}</h3>
               {sentEmails.length > 0 && (
                 <div className="flex items-center gap-2 ml-4 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 rounded-lg shadow-sm">
                   <input 
@@ -1315,7 +1348,7 @@ export default function EmailAgentPage() {
                     }}
                     className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                   />
-                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Select All</span>
+                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">{t('email_agent.select_all')}</span>
                 </div>
               )}
               {selectedEmails.length > 0 && (
@@ -1324,12 +1357,12 @@ export default function EmailAgentPage() {
                   className="ml-2 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-600 dark:bg-red-500/20 dark:hover:bg-red-500/30 dark:text-red-400 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  Delete ({selectedEmails.length})
+                  {t('email_agent.delete_label')} ({selectedEmails.length})
                 </button>
               )}
             </div>
             <span className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
-              {totalSent} total
+              {totalSent} {t('email_agent.total_suffix')}
             </span>
           </div>
 
@@ -1338,13 +1371,13 @@ export default function EmailAgentPage() {
           ) : sentEmails.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-slate-400 gap-3">
               <Mail className="w-10 h-10 opacity-30 text-gray-500" />
-              <p className="font-bold text-sm text-slate-400">No emails sent yet</p>
+              <p className="font-bold text-sm text-slate-400">{t('email_agent.no_emails')}</p>
             </div>
           ) : (
                  <div className="w-full mt-4 space-y-4">
               {Object.entries(
                 sentEmails.reduce((acc, email) => {
-                  const key = email.company_name && email.company_name !== "Unknown Company" ? email.company_name : "Prospect";
+                  const key = email.company_name && email.company_name !== "Unknown Company" ? email.company_name : t('email_agent.fallback_prospect');
                   if (!acc[key]) acc[key] = [];
                   acc[key].push(email);
                   return acc;
@@ -1364,7 +1397,7 @@ export default function EmailAgentPage() {
                         <div>
                           <h4 className="font-black text-lg text-slate-800 dark:text-zinc-100">{company}</h4>
                           <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{emails.length} Emails Extracted & Sent</span>
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{emails.length} {t('email_agent.emails_extracted')}</span>
                           </div>
                         </div>
                       </div>
@@ -1379,7 +1412,7 @@ export default function EmailAgentPage() {
                                 else setSelectedEmails(prev => prev.filter(id => !emails.map(em => em.id).includes(id)));
                               }}
                               className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4 mr-4"
-                              title="Select all in company"
+                              title={t('email_agent.select_company')}
                            />
                          </div>
                          {isCompanyExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
@@ -1400,7 +1433,7 @@ export default function EmailAgentPage() {
                                 }}
                                 className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
                               />
-                              <button onClick={(e) => handleDeleteEmail(e, email.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors" title="Delete">
+                              <button onClick={(e) => handleDeleteEmail(e, email.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors" title={t('email_agent.delete')}>
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
@@ -1411,7 +1444,7 @@ export default function EmailAgentPage() {
                                 <span className="text-sm font-black text-slate-700 dark:text-zinc-200">{email.to_email}</span>
                               </div>
                               <div className="flex flex-col justify-center">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Status</p>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('email_agent.status')}</p>
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${
                                   email.status === "Opened" ? "bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400" :
                                   email.status === "Replied" ? "bg-green-100 text-green-600 dark:bg-green-500/20 dark:text-green-400" :
@@ -1421,8 +1454,8 @@ export default function EmailAgentPage() {
                                 </span>
                               </div>
                               <div className="flex flex-col justify-center">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Subject</p>
-                                <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">{email.subject || "(No subject)"}</span>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('email_agent.subject')}</p>
+                                <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">{email.subject || t('email_agent.no_subject')}</span>
                               </div>
                             </div>
 
@@ -1431,7 +1464,7 @@ export default function EmailAgentPage() {
                                 {email.english_body && (
                                   <div>
                                     <div className="flex justify-between items-center mb-1">
-                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">English Draft</p>
+                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('email_agent.english_draft')}</p>
                                       <CopyButton text={email.english_body} />
                                     </div>
                                     <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl p-4 text-[13px] text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar font-sans leading-relaxed">
@@ -1442,7 +1475,7 @@ export default function EmailAgentPage() {
                                 {email.spanish_body && (
                                   <div>
                                     <div className="flex justify-between items-center mb-1">
-                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Spanish Draft</p>
+                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('email_agent.spanish_draft')}</p>
                                       <CopyButton text={email.spanish_body} />
                                     </div>
                                     <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl p-4 text-[13px] text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar font-sans leading-relaxed">

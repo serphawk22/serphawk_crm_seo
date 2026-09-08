@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/context/LanguageContext";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -113,12 +114,13 @@ function formatDuration(s: number | null) {
 }
 
 function AiCallStatusBadge({ status }: { status: string | null }) {
+  const { t } = useLanguage();
   if (!status) return null;
   const map: Record<string, { label: string; cls: string }> = {
-    pending:     { label: "Calling...",   cls: "bg-violet-100 text-violet-700 animate-pulse" },
-    completed:   { label: "AI Call Done", cls: "bg-emerald-100 text-emerald-700" },
-    failed:      { label: "Call Failed",  cls: "bg-red-100 text-red-700" },
-    "no-answer": { label: "No Answer",    cls: "bg-amber-100 text-amber-700" },
+    pending:     { label: t("calls.status_calling"),   cls: "bg-violet-100 text-violet-700 animate-pulse" },
+    completed:   { label: t("calls.status_done"),      cls: "bg-emerald-100 text-emerald-700" },
+    failed:      { label: t("calls.status_failed"),    cls: "bg-red-100 text-red-700" },
+    "no-answer": { label: t("calls.status_no_answer"), cls: "bg-amber-100 text-amber-700" },
   };
   const cfg = map[status] || { label: status, cls: "bg-slate-100 text-slate-600" };
   return <span className={cn("text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider", cfg.cls)}>{cfg.label}</span>;
@@ -133,6 +135,7 @@ function AiCallResultsPanel({
   selectedIds: Set<number>;
   onToggleSelect: (id: number) => void;
 }) {
+  const { t } = useLanguage();
   if (!logs.length) return null;
   return (
     <div className="space-y-4">
@@ -146,7 +149,7 @@ function AiCallResultsPanel({
                 className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 cursor-pointer" />
               <Bot className="w-4 h-4 text-violet-600" />
               <span className="text-sm font-black text-violet-700 dark:text-violet-300">
-                AI Call — {log.entity_name || `${log.entity_type} #${log.entity_id}`}
+                {t("calls.ai_call")} — {log.entity_name || `${log.entity_type} #${log.entity_id}`}
               </span>
               <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
                 log.call_status === "completed" ? "bg-emerald-100 text-emerald-700" :
@@ -162,19 +165,19 @@ function AiCallResultsPanel({
           {log.recording_url && (
             <div className="px-5 py-3 border-b border-violet-100 dark:border-violet-900/30">
               <p className="text-[10px] font-black text-violet-600 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                <Volume2 className="w-3 h-3" /> Call Recording
+                <Volume2 className="w-3 h-3" /> {t("calls.call_recording")}
               </p>
               <audio controls src={log.recording_url} className="w-full h-10 rounded-xl" />
               <a href={log.recording_url} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-xs text-violet-600 hover:underline mt-1.5 font-bold">
-                <ExternalLink className="w-3 h-3" /> Open in new tab
+                <ExternalLink className="w-3 h-3" /> {t("calls.open_new_tab")}
               </a>
             </div>
           )}
           {log.call_url && (
             <div className="px-5 py-3 border-b border-violet-100 dark:border-violet-900/30">
               <p className="text-[10px] font-black text-violet-600 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                <ExternalLink className="w-3 h-3" /> Call URL
+                <ExternalLink className="w-3 h-3" /> {t("calls.call_url")}
               </p>
               <a href={log.call_url} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-xs text-violet-600 hover:underline mt-1.5 font-bold break-all">
@@ -185,7 +188,7 @@ function AiCallResultsPanel({
           {log.transcript ? (
             <div className="px-5 py-4">
               <p className="text-[10px] font-black text-violet-600 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                <Mic className="w-3 h-3" /> Conversation Transcript
+                <Mic className="w-3 h-3" /> {t("calls.conversation_transcript")}
               </p>
               <div className="bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 border border-violet-100 dark:border-violet-900/30 max-h-64 overflow-y-auto">
                 <pre className="text-xs text-slate-700 dark:text-zinc-200 font-medium leading-relaxed whitespace-pre-wrap font-sans">{log.transcript}</pre>
@@ -196,13 +199,13 @@ function AiCallResultsPanel({
               <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
                  <Phone className="w-5 h-5 text-slate-400" />
               </div>
-              <h3 className="text-base font-bold text-slate-700 dark:text-zinc-200 mb-1">Dialing {log.entity_name || log.phone_number}...</h3>
+              <h3 className="text-base font-bold text-slate-700 dark:text-zinc-200 mb-1">{t("calls.dialing_name").replace("{name}", log.entity_name || log.phone_number || "")}</h3>
               <p className="text-sm text-slate-500 font-medium max-w-sm">
-                Waiting for the AI agent to finish the conversation.
+                {t("calls.dialing_waiting")}
               </p>
             </div>
           ) : (
-            <div className="px-5 py-4 text-sm text-slate-400 font-medium">No transcript or recording available yet.</div>
+            <div className="px-5 py-4 text-sm text-slate-400 font-medium">{t("calls.no_transcript")}</div>
           )}
         </motion.div>
       ))}
@@ -211,6 +214,7 @@ function AiCallResultsPanel({
 }
 
 function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void }) {
+  const { t } = useLanguage();
   const [form, setForm] = useState({
     summary: call.summary || "",
     description: call.description || "",
@@ -240,25 +244,25 @@ function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void
     <div className="mt-4 pt-4 border-t border-slate-100 dark:border-zinc-800 space-y-4">
       {call.description && (
         <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 rounded-2xl p-5 border border-indigo-100 dark:border-indigo-900/50">
-          <p className="text-xs font-black text-indigo-500 uppercase tracking-widest mb-2">Full Pitch / Description</p>
+          <p className="text-xs font-black text-indigo-500 uppercase tracking-widest mb-2">{t("calls.full_pitch_description")}</p>
           <p className="text-sm text-slate-700 dark:text-zinc-200 font-medium leading-relaxed whitespace-pre-wrap">{call.description}</p>
         </div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Summary</label>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.summary")}</label>
           <textarea rows={2} value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })}
-            placeholder="Brief call summary..." className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 text-slate-700 dark:text-zinc-200 resize-none" />
+            placeholder={t("calls.summary_placeholder")} className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 text-slate-700 dark:text-zinc-200 resize-none" />
         </div>
         <div>
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Work Done</label>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.work_done")}</label>
           <textarea rows={2} value={form.work_done} onChange={(e) => setForm({ ...form, work_done: e.target.value })}
-            placeholder="Actions completed..." className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-400/30 focus:border-emerald-400 text-slate-700 dark:text-zinc-200 resize-none" />
+            placeholder={t("calls.work_done_placeholder")} className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-400/30 focus:border-emerald-400 text-slate-700 dark:text-zinc-200 resize-none" />
         </div>
         <div>
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Assigned To</label>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.assigned_to")}</label>
           <input type="text" value={form.assigned_to} onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}
-            placeholder="Team member name..." className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 text-slate-700 dark:text-zinc-200" />
+            placeholder={t("calls.assign_placeholder")} className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 text-slate-700 dark:text-zinc-200" />
         </div>
         <div className="flex flex-col justify-end">
           <label className="flex items-center gap-2.5 cursor-pointer">
@@ -266,7 +270,7 @@ function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void
               className={cn("w-11 h-6 rounded-full transition-all relative cursor-pointer", form.followup_needed ? "bg-red-500" : "bg-slate-200 dark:bg-zinc-700")}>
               <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all", form.followup_needed ? "right-1" : "left-1")} />
             </div>
-            <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">Follow-up Needed</span>
+            <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">{t("calls.followup_needed")}</span>
           </label>
           {form.followup_needed && (
             <input type="date" value={form.followup_date} onChange={(e) => setForm({ ...form, followup_date: e.target.value })}
@@ -277,13 +281,14 @@ function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void
       <button onClick={handleSave} disabled={saving}
         className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-bold text-sm transition-all disabled:opacity-40">
         {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-        {saved ? "Saved!" : "Save Changes"}
+        {saved ? t("calls.saved") : t("calls.save_changes")}
       </button>
     </div>
   );
 }
 
 export default function CallsPage() {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<"logged" | "scheduled" | "ai-calls">("logged");
   const [calls, setCalls] = useState<CallEntry[]>([]);
   const [scheduledCalls, setScheduledCalls] = useState<ScheduledCall[]>([]);
@@ -392,11 +397,11 @@ export default function CallsPage() {
   const getEntityName = (type: string, id: string) => {
     if (type === "client") {
       const c = clients.find((c) => c.id.toString() === id);
-      return c?.companyName || c?.projectName || "Unknown";
+      return c?.companyName || c?.projectName || t("calls.unknown");
     }
-    if (type === "lead") return leads.find((l) => l.id.toString() === id)?.company_name || "Unknown";
+    if (type === "lead") return leads.find((l) => l.id.toString() === id)?.company_name || t("calls.unknown");
     const c = contacts.find((c) => c.id.toString() === id);
-    return c ? `${c.first_name} ${c.last_name || ""}`.trim() : "Unknown";
+    return c ? `${c.first_name} ${c.last_name || ""}`.trim() : t("calls.unknown");
   };
   const getEntityEmail = (type: string, id: string) => {
     if (type === "client") return clients.find((c) => c.id.toString() === id)?.email || null;
@@ -440,14 +445,14 @@ export default function CallsPage() {
       if (res.ok) { 
         const data = await res.json(); 
         setGeneratedPitch(data.pitch || ""); 
-        addToast("Pitch generated successfully!", "success");
+        addToast(t("calls.pitch_generated_toast"), "success");
       } else {
         const err = await res.json().catch(() => ({}));
-        addToast(err.detail || "Failed to generate pitch", "error");
+        addToast(err.detail || t("calls.failed_generate_pitch"), "error");
       }
     } catch (e) { 
       console.error(e); 
-      addToast("Network error generating pitch", "error");
+      addToast(t("calls.network_error_pitch"), "error");
     }
     finally { setGenerating(false); }
   };
@@ -483,7 +488,7 @@ export default function CallsPage() {
   };
 
   const handleDeleteScheduled = async (id: number) => {
-    if (!confirm("Delete this scheduled call?")) return;
+    if (!confirm(t("calls.delete_scheduled_confirm"))) return;
     await fetch(`${API_BASE_URL}/scheduled-calls/${id}`, { method: "DELETE" });
     fetchAll();
   };
@@ -507,7 +512,7 @@ export default function CallsPage() {
   };
   const deleteSelectedCalls = async () => {
     if (selectedCallIds.size === 0) return;
-    if (!confirm("Delete selected calls?")) return;
+    if (!confirm(t("calls.delete_selected_confirm"))) return;
     await fetch(`${API_BASE_URL}/calls/bulk?ids=${Array.from(selectedCallIds).join(',')}`, { method: 'DELETE' });
     setSelectedCallIds(new Set());
     fetchAll();
@@ -524,7 +529,7 @@ export default function CallsPage() {
   };
   const deleteSelectedAiCalls = async () => {
     if (selectedAiCallIds.size === 0) return;
-    if (!confirm("Delete selected AI calls?")) return;
+    if (!confirm(t("calls.delete_selected_ai_confirm"))) return;
     await fetch(`${API_BASE_URL}/calling-agent-logs?ids=${Array.from(selectedAiCallIds).join(',')}`, { method: 'DELETE' });
     setSelectedAiCallIds(new Set());
     fetchAll();
@@ -533,16 +538,16 @@ export default function CallsPage() {
   const handleStartAiCall = async () => {
     if (!genEntityId || !generatedPitch) return;
     if (genType === "contact") {
-      addToast("AI calling supports Clients and Leads only", "warning");
+      addToast(t("calls.ai_calling_only_clients"), "warning");
       return;
     }
     const phone = getEntityPhone(genType, genEntityId);
     if (!phone) {
-      addToast(`No phone number for this ${genType}. Add one in the ${genType} profile first.`, "error", 7000);
+      addToast(t("calls.no_phone_number").replace("{type}", genType).replace("{type}", genType), "error", 7000);
       return;
     }
     setAiCalling(true);
-    addToast(`AI Call Initiated to ${getEntityName(genType, genEntityId)} (${phone})...`, "info", 8000);
+    addToast(t("calls.ai_call_initiated").replace("{name}", getEntityName(genType, genEntityId)).replace("{phone}", phone), "info", 8000);
     try {
       const res = await fetch(`${API_BASE_URL}/initiate-ai-call`, {
         method: "POST",
@@ -551,17 +556,17 @@ export default function CallsPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        addToast(data.detail || "Failed to initiate AI call", "error", 8000);
+        addToast(data.detail || t("calls.failed_initiate_ai"), "error", 8000);
       } else if (data.warning) {
-        addToast(`Queued: ${data.warning}`, "warning", 10000);
+        addToast(t("calls.queued_warning").replace("{warning}", data.warning), "warning", 10000);
       } else {
-        addToast(`AI call dispatched to ${data.entity_name}! Results will appear shortly.`, "success", 8000);
+        addToast(t("calls.ai_call_dispatched").replace("{name}", data.entity_name), "success", 8000);
         setShowGenerateModal(false);
         setActiveTab("ai-calls");
         fetchAll();
       }
     } catch {
-      addToast("Network error - could not reach the server", "error", 7000);
+      addToast(t("calls.network_error_server"), "error", 7000);
     } finally { setAiCalling(false); }
   };
 
@@ -573,23 +578,19 @@ export default function CallsPage() {
         {/* Header */}
         <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-900 via-amber-700 to-slate-900 dark:from-white dark:via-amber-400 dark:to-white tracking-tight">Calls</h1>
+            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-900 via-amber-700 to-slate-900 dark:from-white dark:via-amber-400 dark:to-white tracking-tight">{t("calls.title")}</h1>
             <p className="text-slate-500 dark:text-zinc-400 font-medium mt-1">
-              {calls.length} logged &middot; {scheduledCalls.filter((s) => s.status === "Scheduled").length} scheduled &middot; {aiCallLogs.length} AI calls
+              {calls.length} {t("calls.logged_suffix")} &middot; {scheduledCalls.filter((s) => s.status === "Scheduled").length} {t("calls.scheduled_suffix")} &middot; {aiCallLogs.length} {t("calls.ai_calls_suffix")}
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button onClick={() => setShowGenerateModal(true)}
-              className="flex items-center gap-2 px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 rounded-2xl font-bold shadow-sm hover:bg-slate-50 transition-all text-sm">
-              <Zap className="w-4 h-4 text-amber-500" /> Generate Pitch
-            </button>
             <button onClick={() => setShowScheduleModal(true)}
               className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl font-bold shadow-lg hover:-translate-y-0.5 transition-all text-sm">
-              <CalendarClock className="w-4 h-4" /> Schedule Call
+              <CalendarClock className="w-4 h-4" /> {t("calls.schedule_call")}
             </button>
             <button onClick={() => setShowLogModal(true)}
               className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-2xl font-bold shadow-[0_8px_20px_rgba(245,158,11,0.3)] hover:-translate-y-0.5 transition-all text-sm">
-              <Plus className="w-4 h-4" /> Log Call
+              <Plus className="w-4 h-4" /> {t("calls.log_call")}
             </button>
           </div>
         </motion.div>
@@ -599,21 +600,21 @@ export default function CallsPage() {
           <button onClick={() => setActiveTab("logged")}
             className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all",
               activeTab === "logged" ? "bg-white dark:bg-zinc-800 text-amber-600 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700")}>
-            <PhoneCall className="w-4 h-4" /> Calls Logged
+            <PhoneCall className="w-4 h-4" /> {t("calls.tab_logged")}
             <span className={cn("text-xs px-2 py-0.5 rounded-full font-black",
               activeTab === "logged" ? "bg-amber-100 text-amber-700" : "bg-slate-200 dark:bg-zinc-700 text-slate-500")}>{calls.length}</span>
           </button>
           <button onClick={() => setActiveTab("scheduled")}
             className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all",
               activeTab === "scheduled" ? "bg-white dark:bg-zinc-800 text-indigo-600 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700")}>
-            <CalendarClock className="w-4 h-4" /> Calls Scheduled
+            <CalendarClock className="w-4 h-4" /> {t("calls.tab_scheduled")}
             <span className={cn("text-xs px-2 py-0.5 rounded-full font-black",
               activeTab === "scheduled" ? "bg-indigo-100 text-indigo-700" : "bg-slate-200 dark:bg-zinc-700 text-slate-500")}>{scheduledCalls.filter((s) => s.status === "Scheduled").length}</span>
           </button>
           <button onClick={() => setActiveTab("ai-calls")}
             className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all",
               activeTab === "ai-calls" ? "bg-white dark:bg-zinc-800 text-violet-600 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700")}>
-            <Bot className="w-4 h-4" /> AI Calls
+            <Bot className="w-4 h-4" /> {t("calls.tab_ai")}
             {aiCallLogs.length > 0 && (
               <span className={cn("text-xs px-2 py-0.5 rounded-full font-black",
                 activeTab === "ai-calls" ? "bg-violet-100 text-violet-700" : "bg-slate-200 dark:bg-zinc-700 text-slate-500")}>{aiCallLogs.length}</span>
@@ -632,11 +633,11 @@ export default function CallsPage() {
                   <label className="flex items-center gap-3 cursor-pointer pl-2">
                     <input type="checkbox" checked={selectedCallIds.size === calls.length && calls.length > 0} onChange={toggleSelectAllCalls}
                       className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 cursor-pointer" />
-                    <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">Select All</span>
+                    <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">{t("calls.select_all")}</span>
                   </label>
                   {selectedCallIds.size > 0 && (
                     <button onClick={deleteSelectedCalls} className="flex items-center gap-2 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-xl text-sm font-bold transition-colors">
-                      <Trash2 className="w-4 h-4" /> Delete ({selectedCallIds.size})
+                      <Trash2 className="w-4 h-4" /> {t("calls.delete_count").replace("{count}", String(selectedCallIds.size))}
                     </button>
                   )}
                 </div>
@@ -646,8 +647,8 @@ export default function CallsPage() {
               ) : calls.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-28 text-slate-400 gap-4">
                   <PhoneOff className="w-14 h-14 opacity-30" />
-                  <p className="font-bold text-lg">No calls logged yet</p>
-                  <button onClick={() => setShowLogModal(true)} className="text-amber-600 font-bold hover:underline">Log your first call</button>
+                  <p className="font-bold text-lg">{t("calls.no_logged")}</p>
+                  <button onClick={() => setShowLogModal(true)} className="text-amber-600 font-bold hover:underline">{t("calls.log_first")}</button>
                 </div>
               ) : (
                 <>
@@ -662,10 +663,10 @@ export default function CallsPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3 flex-wrap mb-1">
                             <span className="font-black text-slate-800 dark:text-zinc-100 text-lg">{log.entity_name || log.phone_number}</span>
-                            <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">Dialing...</span>
+                            <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">{t("calls.dialing")}</span>
                           </div>
                           <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-zinc-400 font-medium mt-2">
-                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />Ongoing Call</span>
+                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{t("calls.ongoing_call")}</span>
                             <span suppressHydrationWarning>{new Date(log.initiated_at).toLocaleString()}</span>
                           </div>
                         </div>
@@ -687,8 +688,8 @@ export default function CallsPage() {
                         <div className="flex items-center gap-3 flex-wrap mb-1">
                           <span className="font-black text-slate-800 dark:text-zinc-100 text-lg">{call.entity_name || call.phone_number}</span>
                           {call.entity_name && <span className="text-sm font-bold text-slate-400">({call.phone_number})</span>}
-                          {!call.summary && <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">Needs Summary</span>}
-                          {call.followup_needed && <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">Follow-up</span>}
+                          {!call.summary && <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">{t("calls.needs_summary")}</span>}
+                          {call.followup_needed && <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">{t("calls.followup_badge")}</span>}
                           {call.assigned_to && <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2.5 py-1 rounded-full">{call.assigned_to}</span>}
                         </div>
                         <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-zinc-400 font-medium">
@@ -727,8 +728,8 @@ export default function CallsPage() {
               ) : scheduledCalls.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-28 text-slate-400 gap-4">
                   <CalendarClock className="w-14 h-14 opacity-30" />
-                  <p className="font-bold text-lg">No scheduled calls yet</p>
-                  <button onClick={() => setShowScheduleModal(true)} className="text-indigo-600 font-bold hover:underline">Schedule your first call</button>
+                  <p className="font-bold text-lg">{t("calls.no_scheduled")}</p>
+                  <button onClick={() => setShowScheduleModal(true)} className="text-indigo-600 font-bold hover:underline">{t("calls.schedule_first")}</button>
                 </div>
               ) : (
                 scheduledCalls.map((sc) => (
@@ -744,7 +745,7 @@ export default function CallsPage() {
                           <span className="font-black text-slate-800 dark:text-zinc-100 text-lg">{sc.title}</span>
                           <span className={cn("text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider",
                             sc.status === "Completed" ? "bg-emerald-100 text-emerald-700" : "bg-indigo-100 text-indigo-700")}>{sc.status}</span>
-                          {sc.pitch && <span className="text-[10px] bg-purple-100 text-purple-700 font-bold px-2.5 py-1 rounded-full">Pitch Ready</span>}
+                          {sc.pitch && <span className="text-[10px] bg-purple-100 text-purple-700 font-bold px-2.5 py-1 rounded-full">{t("calls.pitch_ready")}</span>}
                           <AiCallStatusBadge status={sc.ai_call_status} />
                         </div>
                         <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-zinc-400 font-medium flex-wrap">
@@ -756,7 +757,7 @@ export default function CallsPage() {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {sc.status !== "Completed" && (
-                          <button onClick={() => handleMarkCompleted(sc.id)} title="Mark Completed"
+                           <button onClick={() => handleMarkCompleted(sc.id)} title={t("calls.mark_completed")}
                             className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-colors text-slate-400 hover:text-emerald-600">
                             <CheckCircle className="w-4 h-4" />
                           </button>
@@ -778,16 +779,16 @@ export default function CallsPage() {
                             {sc.pitch && (
                               <div className="bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-950/40 dark:to-indigo-950/40 rounded-2xl p-5 border border-purple-100 dark:border-purple-900/50">
                                 <div className="flex items-center justify-between mb-3">
-                                  <p className="text-xs font-black text-purple-600 uppercase tracking-widest">AI Call Pitch</p>
-                                  <button onClick={() => navigator.clipboard.writeText(sc.pitch!)}
-                                    className="text-xs font-bold text-purple-600 hover:text-purple-800 bg-purple-100 hover:bg-purple-200 px-3 py-1 rounded-lg transition-colors">Copy</button>
+                                 <p className="text-xs font-black text-purple-600 uppercase tracking-widest">{t("calls.ai_call_pitch")}</p>
+                                 <button onClick={() => navigator.clipboard.writeText(sc.pitch!)}
+                                   className="text-xs font-bold text-purple-600 hover:text-purple-800 bg-purple-100 hover:bg-purple-200 px-3 py-1 rounded-lg transition-colors">{t("calls.copy")}</button>
                                 </div>
                                 <p className="text-sm text-slate-700 dark:text-zinc-200 font-medium leading-relaxed whitespace-pre-wrap">{sc.pitch}</p>
                               </div>
                             )}
                             {sc.notes && (
                               <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-2xl p-4">
-                                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Notes</p>
+                                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t("calls.notes")}</p>
                                 <p className="text-sm text-slate-700 dark:text-zinc-300">{sc.notes}</p>
                               </div>
                             )}
@@ -807,9 +808,9 @@ export default function CallsPage() {
               <div className="flex items-start gap-3 p-4 bg-violet-50 dark:bg-violet-950/20 rounded-2xl border border-violet-100 dark:border-violet-900/30">
                 <Bot className="w-5 h-5 text-violet-600 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-bold text-violet-700 dark:text-violet-300">Vapi AI Calling Agent</p>
+                  <p className="text-sm font-bold text-violet-700 dark:text-violet-300">{t("calls.ai_agent_title")}</p>
                   <p className="text-xs text-violet-600/80 dark:text-violet-400 mt-0.5">
-                    Use <strong>Generate Pitch</strong> then click <strong>Call via AI Agent</strong> to have Vapi call your lead or client automatically. Results appear here. Page auto-refreshes every 20s.
+                    {t("calls.ai_agent_desc")}
                   </p>
                 </div>
               </div>
@@ -818,11 +819,11 @@ export default function CallsPage() {
                   <label className="flex items-center gap-3 cursor-pointer pl-2">
                     <input type="checkbox" checked={selectedAiCallIds.size === aiCallLogs.length && aiCallLogs.length > 0} onChange={toggleSelectAllAiCalls}
                       className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 cursor-pointer" />
-                    <span className="text-sm font-bold text-violet-700 dark:text-violet-300">Select All</span>
+                    <span className="text-sm font-bold text-violet-700 dark:text-violet-300">{t("calls.select_all")}</span>
                   </label>
                   {selectedAiCallIds.size > 0 && (
                     <button onClick={deleteSelectedAiCalls} className="flex items-center gap-2 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-xl text-sm font-bold transition-colors">
-                      <Trash2 className="w-4 h-4" /> Delete ({selectedAiCallIds.size})
+                      <Trash2 className="w-4 h-4" /> {t("calls.delete_count").replace("{count}", String(selectedAiCallIds.size))}
                     </button>
                   )}
                 </div>
@@ -832,10 +833,10 @@ export default function CallsPage() {
               ) : aiCallLogs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-28 text-slate-400 gap-4">
                   <Bot className="w-14 h-14 opacity-30" />
-                  <p className="font-bold text-lg">No AI calls made yet</p>
+                  <p className="font-bold text-lg">{t("calls.no_ai_calls")}</p>
                   <button onClick={() => setShowGenerateModal(true)}
                     className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-2xl font-bold text-sm hover:-translate-y-0.5 transition-all shadow-lg">
-                    <Zap className="w-4 h-4" /> Generate Pitch &amp; Call
+                    <Zap className="w-4 h-4" /> {t("calls.generate_pitch_call")}
                   </button>
                 </div>
               ) : (
@@ -860,38 +861,38 @@ export default function CallsPage() {
                 <button onClick={() => setShowLogModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
                 <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 mb-6 flex items-center gap-3">
                   <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><Phone className="w-5 h-5" /></div>
-                  Log New Call
+                  {t("calls.log_new_call")}
                 </h2>
                 <form onSubmit={handleLogCall} className="space-y-5">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Phone Number *</label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.phone_number")}</label>
                       <input type="text" required placeholder="+91 98765 43210" value={logForm.phone_number}
                         onChange={(e) => setLogForm({ ...logForm, phone_number: e.target.value })}
                         className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400" />
                     </div>
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Duration (seconds)</label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.duration_seconds")}</label>
                       <input type="number" placeholder="e.g. 180" min={0} value={logForm.duration_seconds}
                         onChange={(e) => setLogForm({ ...logForm, duration_seconds: e.target.value })}
                         className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30" />
                     </div>
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Assigned To</label>
-                      <input type="text" placeholder="Team member..." value={logForm.assigned_to}
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.assigned_to")}</label>
+                      <input type="text" placeholder={t("calls.assign_placeholder")} value={logForm.assigned_to}
                         onChange={(e) => setLogForm({ ...logForm, assigned_to: e.target.value })}
                         className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-indigo-400/30" />
                     </div>
                   </div>
                   <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Description</label>
-                    <textarea rows={3} placeholder="Brief overview of the call..." value={logForm.description}
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.description")}</label>
+                    <textarea rows={3} placeholder={t("calls.description_placeholder")} value={logForm.description}
                       onChange={(e) => setLogForm({ ...logForm, description: e.target.value })}
                       className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30 resize-none" />
                   </div>
                   <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Work Done</label>
-                    <textarea rows={2} placeholder="Tasks completed..." value={logForm.work_done}
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.work_done")}</label>
+                    <textarea rows={2} placeholder={t("calls.work_done_placeholder")} value={logForm.work_done}
                       onChange={(e) => setLogForm({ ...logForm, work_done: e.target.value })}
                       className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-emerald-400/30 resize-none" />
                   </div>
@@ -901,7 +902,7 @@ export default function CallsPage() {
                         className={cn("w-11 h-6 rounded-full transition-all relative cursor-pointer", logForm.followup_needed ? "bg-red-500" : "bg-slate-200 dark:bg-zinc-700")}>
                         <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all", logForm.followup_needed ? "right-1" : "left-1")} />
                       </div>
-                      <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">Follow-up Needed</span>
+                      <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">{t("calls.followup_needed")}</span>
                     </label>
                     {logForm.followup_needed && (
                       <input type="date" value={logForm.followup_date}
@@ -912,7 +913,7 @@ export default function CallsPage() {
                   <button type="submit" disabled={submitting}
                     className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-2xl font-bold shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Phone className="w-4 h-4" />}
-                    Save Call Log
+                    {t("calls.save_call_log")}
                   </button>
                 </form>
               </motion.div>
@@ -930,24 +931,24 @@ export default function CallsPage() {
                 <button onClick={() => { setShowScheduleModal(false); setGeneratedPitch(""); }} className="absolute top-6 right-6 text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
                 <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 mb-6 flex items-center gap-3">
                   <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><CalendarClock className="w-5 h-5" /></div>
-                  Schedule a Call
+                  {t("calls.schedule_a_call")}
                 </h2>
                 <form onSubmit={handleScheduleCall} className="space-y-5">
                   <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Call Title *</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.call_title")}</label>
                     <input type="text" required placeholder="e.g. Discovery call with Acme Corp" value={schedForm.title}
                       onChange={(e) => setSchedForm({ ...schedForm, title: e.target.value })}
                       className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-indigo-400/30" />
                   </div>
                   <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Scheduled Date &amp; Time</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.scheduled_datetime")}</label>
                     <input type="datetime-local" value={schedForm.scheduled_at}
                       onChange={(e) => setSchedForm({ ...schedForm, scheduled_at: e.target.value })}
                       className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-indigo-400/30" />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Type</label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.type")}</label>
                       <select value={schedForm.entity_type} onChange={(e) => setSchedForm({ ...schedForm, entity_type: e.target.value, entity_id: "" })}
                         className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-indigo-400/30">
                         <option value="client">Client</option>
@@ -956,10 +957,10 @@ export default function CallsPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Select {schedForm.entity_type}</label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.select_entity").replace("{entity}", schedForm.entity_type)}</label>
                       <select value={schedForm.entity_id} onChange={(e) => { setSchedForm({ ...schedForm, entity_id: e.target.value }); setGeneratedPitch(""); }}
                         className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-indigo-400/30">
-                        <option value="">Select...</option>
+                        <option value="">{t("calls.select_placeholder")}</option>
                         {schedForm.entity_type === "client" && clients.map((c) => <option key={c.id} value={c.id}>{c.companyName || c.projectName || c.email}</option>)}
                         {schedForm.entity_type === "lead" && leads.map((l) => <option key={l.id} value={l.id}>{l.company_name || l.email}</option>)}
                         {schedForm.entity_type === "contact" && contacts.map((c) => <option key={c.id} value={c.id}>{c.first_name} {c.last_name || ""}</option>)}
@@ -969,11 +970,11 @@ export default function CallsPage() {
                   {schedForm.entity_id && (
                     <div className="p-4 bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-950/30 dark:to-indigo-950/30 rounded-2xl border border-purple-100 dark:border-purple-900/40 space-y-3">
                       <div className="flex items-center justify-between">
-                        <p className="text-xs font-black text-purple-600 uppercase tracking-widest">AI Pitch</p>
+                        <p className="text-xs font-black text-purple-600 uppercase tracking-widest">{t("calls.ai_pitch")}</p>
                         <button type="button" onClick={handleGeneratePitchInSched} disabled={generating}
                           className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs transition-all disabled:opacity-50">
                           {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                          {generating ? "Generating..." : generatedPitch ? "Regenerate" : "Generate Pitch"}
+                          {generating ? t("calls.generating") : generatedPitch ? t("calls.regenerate") : t("calls.generate_pitch")}
                         </button>
                       </div>
                       {generatedPitch ? (
@@ -982,32 +983,32 @@ export default function CallsPage() {
                             className="w-full text-sm text-slate-700 dark:text-zinc-200 font-medium leading-relaxed bg-transparent outline-none resize-y" />
                         </div>
                       ) : (
-                        <p className="text-xs text-slate-500 dark:text-zinc-400">Click generate to create an AI pitch for this call.</p>
+                        <p className="text-xs text-slate-500 dark:text-zinc-400">{t("calls.click_generate")}</p>
                       )}
                     </div>
                   )}
                   <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Notes</label>
-                    <textarea rows={2} placeholder="Additional notes..." value={schedForm.notes}
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.notes")}</label>
+                    <textarea rows={2} placeholder={t("calls.notes_placeholder")} value={schedForm.notes}
                       onChange={(e) => setSchedForm({ ...schedForm, notes: e.target.value })}
                       className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-indigo-400/30 resize-none" />
                   </div>
                   <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Assign To</label>
-                    <input type="text" placeholder="Team member name..." value={schedForm.assigned_to}
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.assign_to")}</label>
+                    <input type="text" placeholder={t("calls.assign_placeholder")} value={schedForm.assigned_to}
                       onChange={(e) => setSchedForm({ ...schedForm, assigned_to: e.target.value })}
                       className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-indigo-400/30" />
                   </div>
                   <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-950/20 rounded-2xl border border-amber-100 dark:border-amber-900/30">
                     <Bell className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
-                      An email will be automatically sent to the client notifying them of the scheduled call.
+                      {t("calls.email_notification")}
                     </p>
                   </div>
                   <button type="submit" disabled={submitting || !schedForm.title}
                     className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl font-bold shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarClock className="w-4 h-4" />}
-                    Schedule Call &amp; Send Notification
+                    {t("calls.schedule_and_notify")}
                   </button>
                 </form>
               </motion.div>
@@ -1025,7 +1026,7 @@ export default function CallsPage() {
                 <div className="flex justify-between items-center px-8 py-6 border-b border-slate-100 dark:border-zinc-800">
                   <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 flex items-center gap-3">
                     <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><Zap className="w-5 h-5" /></div>
-                    Generate AI Call Pitch
+                    {t("calls.generate_ai_pitch")}
                   </h2>
                   <button onClick={() => { setShowGenerateModal(false); setGeneratedPitch(""); setGenEntityId(""); }} className="text-slate-400 hover:text-slate-700">
                     <X className="w-5 h-5" />
@@ -1034,7 +1035,7 @@ export default function CallsPage() {
                 <div className="p-8 space-y-6 overflow-y-auto">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Type</label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.type")}</label>
                       <select value={genType} onChange={(e) => { setGenType(e.target.value as "client" | "lead" | "contact"); setGenEntityId(""); setGeneratedPitch(""); }}
                         className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30">
                         <option value="client">Client</option>
@@ -1043,10 +1044,10 @@ export default function CallsPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Select</label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.select_entity").replace("{entity}", "")}</label>
                       <select value={genEntityId} onChange={(e) => { setGenEntityId(e.target.value); setGeneratedPitch(""); }}
                         className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30">
-                        <option value="">Select a {genType}...</option>
+                        <option value="">{t("calls.select_placeholder")}</option>
                         {genType === "client" && clients.map((c) => <option key={c.id} value={c.id}>{c.companyName || c.projectName || c.email}</option>)}
                         {genType === "lead" && leads.map((l) => <option key={l.id} value={l.id}>{l.company_name || l.email}</option>)}
                         {genType === "contact" && contacts.map((c) => <option key={c.id} value={c.id}>{c.first_name} {c.last_name || ""}</option>)}
@@ -1078,29 +1079,29 @@ export default function CallsPage() {
                           const data = await res.json(); 
                           setGeneratedPitch(data.pitch || ""); 
                           fetchAll(); 
-                          addToast("AI Pitch generated successfully!", "success");
+                           addToast(t("calls.pitch_generated_toast"), "success");
                         } else {
                           const err = await res.json().catch(() => ({}));
-                          addToast(err.detail || "Failed to generate pitch", "error");
+        addToast(err.detail || t("calls.failed_generate_pitch"), "error");
                         }
                       } catch (e) { 
                         console.error(e); 
-                        addToast("Network error generating pitch", "error");
+      addToast(t("calls.network_error_pitch"), "error");
                       }
                       finally { setGenerating(false); }
                     }}
                     className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl font-bold shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                     {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                    {generating ? "Generating Pitch..." : "Generate AI Pitch"}
+                    {generating ? t("calls.generating_pitch") : t("calls.generate_ai_pitch_btn")}
                   </button>
 
                   {generatedPitch && (
                     <>
                       <div className="bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-zinc-800 dark:to-indigo-950/30 rounded-2xl p-6 border border-indigo-100 dark:border-indigo-900/40">
                         <div className="flex items-center justify-between mb-4">
-                          <p className="text-xs font-black text-indigo-600 uppercase tracking-widest">Pitch Generated</p>
+                          <p className="text-xs font-black text-indigo-600 uppercase tracking-widest">{t("calls.pitch_generated")}</p>
                           <button onClick={() => navigator.clipboard.writeText(generatedPitch)}
-                            className="text-xs font-bold text-indigo-600 bg-indigo-100 hover:bg-indigo-200 px-3 py-1 rounded-lg transition-colors">Copy</button>
+                            className="text-xs font-bold text-indigo-600 bg-indigo-100 hover:bg-indigo-200 px-3 py-1 rounded-lg transition-colors">{t("calls.copy")}</button>
                         </div>
                         <p className="text-sm text-slate-700 dark:text-zinc-200 font-medium leading-relaxed whitespace-pre-wrap">{generatedPitch}</p>
                       </div>
@@ -1124,15 +1125,15 @@ export default function CallsPage() {
                             "hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(139,92,246,0.4)]",
                             "disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0"
                           )}>
-                          {aiCalling ? (
+                            {aiCalling ? (
                             <>
                               <Radio className="w-5 h-5 animate-pulse" />
-                              Connecting to Vapi...
+                              {t("calls.connecting_vapi")}
                             </>
                           ) : (
                             <>
                               <Bot className="w-5 h-5" />
-                              Call via AI Agent
+                              {t("calls.call_via_ai")}
                               {genEntityId && getEntityPhone(genType, genEntityId) && (
                                 <span className="text-white/70 font-normal text-xs ml-1">
                                   {getEntityPhone(genType, genEntityId)}
@@ -1142,7 +1143,7 @@ export default function CallsPage() {
                           )}
                         </button>
                         {genType === "contact" && (
-                          <p className="text-xs text-slate-400 text-center mt-2 font-medium">AI calling is available for Clients and Leads only</p>
+                          <p className="text-xs text-slate-400 text-center mt-2 font-medium">{t("calls.ai_available_only")}</p>
                         )}
                       </div>
                     </>

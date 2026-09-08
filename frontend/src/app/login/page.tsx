@@ -2,20 +2,14 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useGoogleLogin } from "@react-oauth/google";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import { Lock, Mail, Loader2, Eye, EyeOff, ArrowRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import LanguageSelector from "@/components/LanguageSelector";
-
-const FEATURES = [
-  { icon: "🚀", title: "Growth Engine", desc: "Radar analysis & AI-powered outreach" },
-  { icon: "📊", title: "Smart Pipeline", desc: "Visual sales tracking in real-time" },
-  { icon: "🤖", title: "AI Automations", desc: "Let AI handle repetitive workflows" },
-  { icon: "💼", title: "Client CRM", desc: "360° view of every client relationship" },
-];
+import { useTranslation } from "react-i18next";
+import "@/i18n/config";
 
 function FloatingCard({
   icon,
@@ -63,8 +57,20 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [focusedField, setFocusedField] = useState<"email" | "password" | null>(null);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+  const [forgotMsg, setForgotMsg] = useState<string | null>(null);
+  const [forgotLink, setForgotLink] = useState<string | null>(null);
   const { login } = useRole();
-  const router = useRouter();
+  const { t } = useTranslation();
+
+  const FEATURES = [
+    { icon: "🚀", title: t("loginPage.growthEngine"), desc: t("loginPage.growthEngineDesc") },
+    { icon: "📊", title: t("loginPage.smartPipeline"), desc: t("loginPage.smartPipelineDesc") },
+    { icon: "🤖", title: t("loginPage.aiAutomations"), desc: t("loginPage.aiAutomationsDesc") },
+    { icon: "💼", title: t("loginPage.clientCrm"), desc: t("loginPage.clientCrmDesc") },
+  ];
 
   const googleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
@@ -77,9 +83,9 @@ export default function LoginPage() {
           body: JSON.stringify({ access_token: tokenResponse.access_token }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Google login failed");
+        if (!res.ok) throw new Error(data.detail || t("loginPage.googleLoginFailed"));
         if (!data.user || !data.user.email) {
-          throw new Error("No email found in Google account. Please verify your email.");
+          throw new Error(t("loginPage.googleLoginError"));
         }
         
         localStorage.setItem("crm_user", JSON.stringify(data.user));
@@ -90,13 +96,13 @@ export default function LoginPage() {
           window.location.href = "/dashboard";
         }
       } catch (err: any) {
-        setError(err.message || "An error occurred with Google Login.");
+        setError(err.message || t("loginPage.googleLoginError"));
       } finally {
         setGoogleSubmitting(false);
       }
     },
     onError: () => {
-      setError("Google Login failed. Please try again.");
+      setError(t("loginPage.googleLoginFailed"));
     }
   });
 
@@ -105,7 +111,7 @@ export default function LoginPage() {
     setError("");
     
     if (!email.trim() || !password.trim()) {
-      setError("Please enter both email and password.");
+      setError(t("loginPage.fillBothFields"));
       return;
     }
 
@@ -113,8 +119,35 @@ export default function LoginPage() {
 
     const result = await login(email, password);
     if (!result.success) {
-      setError(result.message || "Invalid credentials. Please try again.");
+      setError(result.message || t("loginPage.invalidCredentials"));
       setIsSubmitting(false);
+    }
+  };
+
+  const handleForgotSubmit = async () => {
+    setForgotMsg(null);
+    setForgotLink(null);
+    setError("");
+    if (!forgotEmail.trim()) return;
+    setForgotSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: forgotEmail.trim(),
+          redirect_url: `${window.location.origin}/reset-password`,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || "Request failed");
+      setForgotMsg(data.message || t("loginPage.resetLinkSent"));
+      setForgotLink(data.debug_reset_link || null);
+      setForgotEmail("");
+    } catch {
+      setForgotMsg(t("loginPage.resetLinkSent"));
+    } finally {
+      setForgotSubmitting(false);
     }
   };
 
@@ -213,11 +246,11 @@ export default function LoginPage() {
                   WebkitTextFillColor: "transparent",
                 }}
               >
-                Growth Platform
+                {t("loginPage.growthPlatform")}
               </span>
             </h1>
             <p className="text-blue-200/70 text-lg font-medium max-w-xs mx-auto leading-relaxed">
-              The all-in-one CRM for SEO agencies that want to dominate their market.
+              {t("loginPage.tagline")}
             </p>
           </div>
 
@@ -229,9 +262,9 @@ export default function LoginPage() {
             transition={{ delay: 0.6 }}
           >
             {[
-              { value: "500+", label: "Clients Managed" },
-              { value: "98%", label: "Retention Rate" },
-              { value: "3x", label: "Revenue Growth" },
+              { value: "500+", label: t("loginPage.clientsManaged") },
+              { value: "98%", label: t("loginPage.retentionRate") },
+              { value: "3x", label: t("loginPage.revenueGrowth") },
             ].map((stat) => (
               <div key={stat.label} className="text-center">
                 <p className="text-2xl font-extrabold text-white">{stat.value}</p>
@@ -264,7 +297,7 @@ export default function LoginPage() {
               <circle cx="12" cy="12" r="2" fill="white" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold text-gray-900">SERP Hawk CRM</h2>
+          <h2 className="text-xl font-bold text-gray-900">{t("loginPage.mobileBrand")}</h2>
         </div>
 
         <motion.div
@@ -276,10 +309,10 @@ export default function LoginPage() {
           {/* Header */}
           <div className="mb-8">
             <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">
-              Welcome back
+              {t("loginPage.welcomeBack")}
             </h2>
             <p className="text-gray-500 text-[15px] font-medium">
-              Sign in to your workspace to continue
+              {t("loginPage.subtitle")}
             </p>
           </div>
 
@@ -288,7 +321,7 @@ export default function LoginPage() {
             {/* Email */}
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
-                Email Address
+                {t("auth.emailAddress")}
               </label>
               <div
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
@@ -318,7 +351,7 @@ export default function LoginPage() {
             {/* Password */}
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
-                Password
+                {t("auth.password")}
               </label>
               <div
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
@@ -340,7 +373,7 @@ export default function LoginPage() {
                   onFocus={() => setFocusedField("password")}
                   onBlur={() => setFocusedField(null)}
                   className="w-full pl-11 pr-12 py-3.5 bg-transparent text-gray-900 placeholder-gray-400 text-[15px] outline-none rounded-xl"
-                  placeholder="Enter your password"
+                  placeholder={t("loginPage.passwordPlaceholder")}
                 />
                 <button
                   type="button"
@@ -353,19 +386,75 @@ export default function LoginPage() {
             </div>
 
             {/* Forgot password */}
-            <div className="flex justify-end">
+            <div className="flex items-center justify-end">
               <button
                 type="button"
                 onClick={() => {
-                  setEmail("admin@serphawk.com");
-                  setPassword("password");
-                  setError("Demo credentials autofilled.");
+                  setShowForgot(!showForgot);
+                  setForgotEmail(email);
+                  setForgotMsg(null);
                 }}
                 className="text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors"
               >
-                Use Demo Account
+                {t("loginPage.forgotPassword")}
               </button>
             </div>
+
+            {/* Forgot password inline form */}
+            <AnimatePresence>
+              {showForgot && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="space-y-3 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      {t("loginPage.resetInstructions")}
+                    </p>
+                    <input
+                      type="email"
+                      required
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      placeholder="name@company.com"
+                      className="w-full px-4 py-2.5 rounded-lg bg-white border border-gray-300 text-gray-900 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                    {forgotMsg && (
+                      <p className="text-sm font-medium text-blue-700">{forgotMsg}</p>
+                    )}
+                    {forgotLink && (
+                      <a
+                        href={forgotLink}
+                        className="block text-sm font-bold text-blue-600 underline break-all hover:text-blue-800"
+                      >
+                        {forgotLink}
+                      </a>
+                    )}
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleForgotSubmit}
+                        disabled={forgotSubmitting}
+                        className="flex-1 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                      >
+                        {forgotSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                        {t("auth.sendResetLink")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowForgot(false)}
+                        className="text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+                      >
+                        {t("auth.backToLogin")}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Error */}
             <AnimatePresence>
@@ -410,11 +499,11 @@ export default function LoginPage() {
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Authenticating...</span>
+                    <span>{t("loginPage.authenticating")}</span>
                   </>
                 ) : (
                   <>
-                    <span>Sign In</span>
+                    <span>{t("auth.login")}</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -427,7 +516,7 @@ export default function LoginPage() {
                   whileTap={{ scale: 0.98 }}
                   className="relative w-full h-full py-4 rounded-xl font-bold text-slate-700 bg-white border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-[15px] flex items-center justify-center gap-2.5 transition-all shadow-sm"
                 >
-                  Create Demo
+                  {t("loginPage.createDemo")}
                   <ArrowRight className="w-4 h-4 opacity-50" />
                 </motion.button>
               </Link>
@@ -436,7 +525,7 @@ export default function LoginPage() {
             {/* Divider */}
             <div className="relative flex py-5 items-center">
               <div className="flex-grow border-t border-slate-200"></div>
-              <span className="flex-shrink-0 mx-4 text-slate-400 text-sm font-medium">Or continue with</span>
+              <span className="flex-shrink-0 mx-4 text-slate-400 text-sm font-medium">{t("loginPage.orContinueWith")}</span>
               <div className="flex-grow border-t border-slate-200"></div>
             </div>
 
@@ -457,29 +546,33 @@ export default function LoginPage() {
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                 </svg>
               )}
-              {googleSubmitting ? "Authenticating..." : "Continue with Google"}
+              {googleSubmitting ? t("loginPage.authenticating") : t("loginPage.continueWithGoogle")}
             </button>
           </form>
 
           {/* Footer */}
           <p className="text-center text-gray-400 text-sm font-medium mt-8">
-            Authorized personnel only.{" "}
+            {t("loginPage.authorizedOnly")}{" "}
             <a
               href="mailto:support@serphawk.com"
               className="text-blue-600 font-semibold hover:underline"
             >
-              Contact Support
+              {t("loginPage.contactSupport")}
             </a>
           </p>
 
           {/* Security badges */}
           <div className="flex items-center justify-center gap-4 mt-8">
-            {["🔒 SSL Secured", "🛡️ SOC 2", "🔑 2FA Ready"].map((badge) => (
+            {[
+              ["🔒", t("loginPage.sslSecured")],
+              ["🛡️", t("loginPage.soc2")],
+              ["🔑", t("loginPage.twoFaReady")],
+            ].map(([icon, label]) => (
               <span
-                key={badge}
+                key={label}
                 className="text-[11px] font-medium text-gray-400"
               >
-                {badge}
+                {icon} {label}
               </span>
             ))}
           </div>

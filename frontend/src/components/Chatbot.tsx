@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { MessageSquare, X, Users, UserPlus, Mail, ChevronRight, Send, ShoppingBag, MessageCircle, Settings, Loader2, Mic, MicOff } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useRole } from '@/context/RoleContext';
-import { API_BASE_URL } from '@/config';
+import { API_BASE_URL, WHATSAPP_LINK, WHATSAPP_DISPLAY } from '@/config';
 
 interface QuickAction {
   label: string;
@@ -14,7 +14,7 @@ interface QuickAction {
 }
 
 const ADMIN_ACTIONS: QuickAction[] = [
-  { label: 'View Leads', icon: <Users className="w-3.5 h-3.5 text-blue-500" />, response: 'Taking you to the clients list.', route: '/clients' },
+  { label: 'View Leads', icon: <Users className="w-3.5 h-3.5 text-blue-500" />, response: 'Taking you to the leads list.', route: '/leads' },
   { label: 'New Client', icon: <UserPlus className="w-3.5 h-3.5 text-emerald-500" />, response: 'Navigating to add a new customer.', route: '/clients?action=add' },
   { label: 'Draft Email', icon: <Mail className="w-3.5 h-3.5 text-purple-500" />, response: 'Opening the Email Agent.', route: '/email-agent' },
 ];
@@ -287,12 +287,12 @@ export function Chatbot() {
                   {msg.text}
                   {msg.action === 'trigger_whatsapp' && (
                     <a 
-                      href="https://wa.me/919502901416" 
+                      href={WHATSAPP_LINK}
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="mt-3 block text-center bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-xl transition-colors shadow-sm"
                     >
-                      Chat on WhatsApp (+91 9502901416)
+                      Chat on WhatsApp ({WHATSAPP_DISPLAY})
                     </a>
                   )}
                 </div>

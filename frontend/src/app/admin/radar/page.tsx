@@ -9,6 +9,7 @@ import {
 import CompetitorTable from "./components/CompetitorTable";
 import { API_BASE_URL } from "@/config";
 import DemoLimits from "@/components/DemoLimits";
+import { useLanguage } from "@/context/LanguageContext";
 
 const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyAJbAEbE5egi9y-adJ5G804u_vL64We_nc";
 const RADIUS_OPTIONS = [1, 3, 5, 10, 25];
@@ -77,6 +78,13 @@ interface RadarResult {
 }
 
 export default function RadarAnalysisPage() {
+  const { t } = useLanguage();
+  const colorConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+    red:    { bg: "bg-red-500/10",    text: "text-red-600 dark:text-red-400",    dot: "bg-red-500",    label: t("radar.direct_competitor") },
+    orange: { bg: "bg-orange-500/10", text: "text-orange-600 dark:text-orange-400", dot: "bg-orange-500", label: t("radar.strong_competitor") },
+    yellow: { bg: "bg-yellow-500/10", text: "text-yellow-600 dark:text-yellow-400", dot: "bg-yellow-500", label: t("radar.moderate") },
+    green:  { bg: "bg-green-500/10",  text: "text-green-600 dark:text-green-400",  dot: "bg-green-500",  label: t("radar.weak_competitor") },
+  };
   const [searchQuery, setSearchQuery] = useState("");
   const [locationHint, setLocationHint] = useState("");
   const [category, setCategory] = useState("digital marketing agency");
@@ -174,19 +182,12 @@ export default function RadarAnalysisPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed");
       setAddedPlaceIds(prev => new Set([...prev, c.place_id || c.name]));
-      setAddSuccess(`${c.name} added as Lead! View in CRM → Leads`);
+      setAddSuccess(`${c.name} ${t("radar.added_lead")}`);
       setTimeout(() => setAddSuccess(null), 4000);
     } catch (e: any) {
       setError(e.message || "Failed to add lead");
     }
   }, [radarResult, sourceClientId, foundPlace]);
-
-  const colorConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
-    red:    { bg: "bg-red-500/10",    text: "text-red-600 dark:text-red-400",    dot: "bg-red-500",    label: "Direct Competitor (≥70%)" },
-    orange: { bg: "bg-orange-500/10", text: "text-orange-600 dark:text-orange-400", dot: "bg-orange-500", label: "Strong Competitor (50–70%)" },
-    yellow: { bg: "bg-yellow-500/10", text: "text-yellow-600 dark:text-yellow-400", dot: "bg-yellow-500", label: "Moderate (30–50%)" },
-    green:  { bg: "bg-green-500/10",  text: "text-green-600 dark:text-green-400",  dot: "bg-green-500",  label: "Weak Competitor (<30%)" },
-  };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-gray-50 dark:bg-zinc-950 p-4 md:p-6 space-y-6">
@@ -197,8 +198,8 @@ export default function RadarAnalysisPage() {
           <Radar className="w-7 h-7 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-black text-slate-800 dark:text-slate-900 dark:text-zinc-100">Radar Analysis Engine</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-500 dark:text-zinc-400">Google Maps competitor intelligence &amp; geo-market analysis</p>
+          <h1 className="text-2xl font-black text-slate-800 dark:text-slate-900 dark:text-zinc-100">{t("radar.title")}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-500 dark:text-zinc-400">{t("radar.subtitle")}</p>
         </div>
       </div>
 
@@ -206,36 +207,36 @@ export default function RadarAnalysisPage() {
 
       {/* Search Form */}
       <div className="bg-white dark:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 rounded-2xl p-6 shadow-sm">
-        <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-4">Phase 1 — Target Business Search</p>
+        <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-4">{t("radar.phase1_title")}</p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <div className="lg:col-span-2">
-            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">Business Name / Website</label>
+            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("radar.business_name")}</label>
             <input
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleSearch()}
-              placeholder="e.g. DaPros, Marketing Agency Guadalajara"
+              placeholder={t("radar.ph_business")}
               className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 text-slate-800 dark:text-slate-900 dark:text-zinc-100 text-sm placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
           <div>
             <label className="flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1">
-              <span>City / Region <span className="text-red-500">*</span></span>
-              <span className="text-[9px] lowercase text-slate-400 dark:text-zinc-500">(Required for Google Maps)</span>
+              <span>{t("radar.city_region")} <span className="text-red-500">*</span></span>
+              <span className="text-[9px] lowercase text-slate-400 dark:text-zinc-500">({t("radar.required_gmaps")})</span>
             </label>
             <input
               value={locationHint}
               onChange={e => setLocationHint(e.target.value)}
-              placeholder="e.g. Guadalajara, Mexico"
+              placeholder={t("radar.ph_city")}
               className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 text-sm placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
           <div>
-            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">Business Category</label>
+            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("radar.business_category")}</label>
             <input
               value={category}
               onChange={e => setCategory(e.target.value)}
-              placeholder="digital marketing agency"
+              placeholder={t("radar.ph_category")}
               className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 text-slate-800 dark:text-slate-900 dark:text-zinc-100 text-sm placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
@@ -246,7 +247,7 @@ export default function RadarAnalysisPage() {
             disabled={searchLoading || !searchQuery.trim() || !locationHint.trim()}
             className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md active:scale-95">
             {searchLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-            Find on Google Maps
+            {t("radar.find_on_gmaps")}
           </button>
           {foundPlace && (
             <>
@@ -263,7 +264,7 @@ export default function RadarAnalysisPage() {
                 disabled={analyzeLoading}
                 className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl font-bold text-sm hover:from-violet-700 hover:to-indigo-700 disabled:opacity-50 transition-all shadow-md hover:shadow-lg active:scale-95">
                 {analyzeLoading ? <Loader2 size={16} className="animate-spin" /> : <Radar size={16} />}
-                {analyzeLoading ? "Scanning..." : "Run Radar Analysis"}
+                {analyzeLoading ? t("radar.scanning") : t("radar.run_analysis")}
               </button>
             </>
           )}
@@ -293,7 +294,7 @@ export default function RadarAnalysisPage() {
         {foundPlace && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
             className="bg-white dark:bg-white dark:bg-zinc-900 border border-indigo-500/30 rounded-2xl p-6 shadow-sm">
-            <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-4">Target Business Located</p>
+            <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-4">{t("radar.target_located")}</p>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="lg:col-span-2 flex items-start gap-4">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-white font-black text-lg shrink-0">
@@ -306,14 +307,14 @@ export default function RadarAnalysisPage() {
                     <div className="flex items-center gap-1 mt-1">
                       <Star size={11} className="text-amber-400 fill-amber-400" />
                       <span className="text-xs text-amber-400 font-bold">{foundPlace.rating}</span>
-                      <span className="text-xs text-slate-400">({foundPlace.reviews || 0} reviews)</span>
+                      <span className="text-xs text-slate-400">({foundPlace.reviews || 0} {t("radar.reviews")})</span>
                     </div>
                   )}
                 </div>
               </div>
               {[
-                { label: "Latitude", value: foundPlace.lat?.toFixed(6), icon: Navigation2 },
-                { label: "Longitude", value: foundPlace.lng?.toFixed(6), icon: Navigation2 },
+                { label: t("radar.latitude"), value: foundPlace.lat?.toFixed(6), icon: Navigation2 },
+                { label: t("radar.longitude"), value: foundPlace.lng?.toFixed(6), icon: Navigation2 },
               ].map(({ label, value, icon: Icon }) => (
                 <div key={label} className="p-3 bg-slate-50 dark:bg-zinc-800 rounded-xl border border-slate-100 dark:border-gray-300 dark:border-zinc-700">
                   <div className="flex items-center gap-1.5 mb-1">
@@ -327,13 +328,13 @@ export default function RadarAnalysisPage() {
             {foundPlace.place_id && (
               <div className="mt-3 flex flex-wrap gap-3">
                 <div className="px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 rounded-lg">
-                  <span className="text-[9px] text-slate-500 dark:text-slate-500 dark:text-zinc-400 uppercase font-bold">Place ID </span>
+                  <span className="text-[9px] text-slate-500 dark:text-slate-500 dark:text-zinc-400 uppercase font-bold">{t("radar.place_id")} </span>
                   <span className="text-xs font-mono text-slate-600 dark:text-slate-700 dark:text-zinc-300">{foundPlace.place_id}</span>
                 </div>
                 {foundPlace.maps_url && (
                   <a href={foundPlace.maps_url} target="_blank" rel="noreferrer"
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-bold hover:bg-indigo-500/20 transition-colors">
-                    <MapPin size={11} /> View on Google Maps
+                    <MapPin size={11} /> {t("radar.view_on_maps")}
                   </a>
                 )}
               </div>
@@ -350,10 +351,10 @@ export default function RadarAnalysisPage() {
             {/* Stats Row */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { label: "Competitors Found", value: radarResult.competitor_count, icon: Building2, color: "text-indigo-500" },
-                { label: "Market Density", value: `${radarResult.market_density_score}/100`, icon: BarChart2, color: "text-violet-500" },
-                { label: "Radius Scanned", value: `${radarResult.radius_km} km`, icon: Target, color: "text-blue-500" },
-                { label: "Analysis ID", value: `#${radarResult.radar_id}`, icon: Zap, color: "text-amber-500" },
+                { label: t("radar.competitors_found"), value: radarResult.competitor_count, icon: Building2, color: "text-indigo-500" },
+                { label: t("radar.market_density"), value: `${radarResult.market_density_score}/100`, icon: BarChart2, color: "text-violet-500" },
+                { label: t("radar.radius_scanned"), value: `${radarResult.radius_km} km`, icon: Target, color: "text-blue-500" },
+                { label: t("radar.analysis_id"), value: `#${radarResult.radar_id}`, icon: Zap, color: "text-amber-500" },
               ].map(({ label, value, icon: Icon, color }) => (
                 <div key={label} className="bg-white dark:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 rounded-2xl p-4 shadow-sm">
                   <div className="flex items-center gap-2 mb-2">
@@ -375,7 +376,7 @@ export default function RadarAnalysisPage() {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-full text-slate-400">
-                    <Loader2 className="animate-spin mr-2" size={20} /> Loading map...
+                    <Loader2 className="animate-spin mr-2" size={20} /> {t("radar.loading_map")}...
                   </div>
                 )}
               </div>
@@ -383,7 +384,7 @@ export default function RadarAnalysisPage() {
               {/* Legend + Source */}
               <div className="space-y-4">
                 <div className="bg-white dark:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 rounded-2xl p-4 shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-500 dark:text-zinc-400 mb-3">Pin Legend</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-500 dark:text-zinc-400 mb-3">{t("radar.pin_legend")}</p>
                   <div className="space-y-2.5">
                     {Object.entries(colorConfig).map(([key, cfg]) => (
                       <div key={key} className="flex items-center gap-2.5">
@@ -393,20 +394,20 @@ export default function RadarAnalysisPage() {
                     ))}
                     <div className="flex items-center gap-2.5">
                       <div className="w-3 h-3 rounded-full bg-indigo-500 shrink-0" />
-                      <span className="text-xs text-slate-600 dark:text-slate-700 dark:text-zinc-300">Target Business</span>
+                      <span className="text-xs text-slate-600 dark:text-slate-700 dark:text-zinc-300">{t("radar.target_business")}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Source Client Attribution */}
                 <div className="bg-white dark:bg-white dark:bg-zinc-900 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 rounded-2xl p-4 shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-500 dark:text-zinc-400 mb-3">Attribution Source</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-500 dark:text-zinc-400 mb-2">Link discoveries to a CRM client (optional)</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-500 dark:text-zinc-400 mb-3">{t("radar.attribution_source")}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-500 dark:text-zinc-400 mb-2">{t("radar.attribution_desc")}</p>
                   <select
                     value={sourceClientId || ""}
                     onChange={e => setSourceClientId(e.target.value ? parseInt(e.target.value) : null)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-gray-300 dark:border-zinc-700 text-slate-800 dark:text-slate-900 dark:text-zinc-100 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="">No attribution</option>
+                    <option value="">{t("radar.no_attribution")}</option>
                     {clients.map(c => (
                       <option key={c.id} value={c.id}>{c.companyName}</option>
                     ))}
@@ -415,16 +416,16 @@ export default function RadarAnalysisPage() {
 
                 {/* Market Summary */}
                 <div className="bg-gradient-to-br from-indigo-600 to-violet-600 rounded-2xl p-4 text-white shadow-lg">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200 mb-2">Market Overview</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200 mb-2">{t("radar.market_overview")}</p>
                   <p className="text-3xl font-black mb-1">{radarResult.competitors.filter(c => c.pin_color === "red" || c.pin_color === "orange").length}</p>
-                  <p className="text-xs text-indigo-200">Strong/Direct competitors in {radarResult.radius_km}km radius</p>
+                  <p className="text-xs text-indigo-200">{t("radar.strong_direct_in_radius")} {radarResult.radius_km}km</p>
                 </div>
               </div>
             </div>
 
             {/* Competitor Rankings Table */}
             <div>
-              <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-3">Competitor Rankings — Top 5 per Category</p>
+              <p className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-3">{t("radar.rankings_title")}</p>
               <CompetitorTable
                 rankings={radarResult.rankings}
                 onAddToClients={handleAddToClients}
@@ -442,9 +443,9 @@ export default function RadarAnalysisPage() {
           <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-600/20 to-violet-600/20 border border-indigo-500/20 flex items-center justify-center mb-6">
             <Radar className="w-10 h-10 text-indigo-500 opacity-60" />
           </div>
-          <h2 className="text-xl font-black text-slate-800 dark:text-slate-900 dark:text-zinc-100 mb-2">Start Your Radar Scan</h2>
+          <h2 className="text-xl font-black text-slate-800 dark:text-slate-900 dark:text-zinc-100 mb-2">{t("radar.start_scan")}</h2>
           <p className="text-sm text-slate-500 dark:text-slate-500 dark:text-zinc-400 max-w-md">
-            Enter a business name and city above to locate it on Google Maps, then run a radar scan to discover all nearby competitors with full market intelligence.
+            {t("radar.start_scan_desc")}
           </p>
         </div>
       )}
@@ -454,6 +455,7 @@ export default function RadarAnalysisPage() {
 
 // Lazy-loaded map component using vanilla Google Maps API
 function RadarMapLoader({ target, competitors, radiusKm }: { target: any; competitors: any[]; radiusKm: number }) {
+  const { t } = useLanguage();
   const mapRef = React.useRef<HTMLDivElement>(null);
   const mapInstanceRef = React.useRef<any>(null);
   const markersRef = React.useRef<any[]>([]);
@@ -505,7 +507,7 @@ function RadarMapLoader({ target, competitors, radiusKm }: { target: any; compet
     // Target marker
     const tm = new g.Marker({ position: center, map, icon: makePin(PIN_COLORS.blue), title: target.name, zIndex: 1000 });
     tm.addListener("click", () => {
-      iwRef.current.setContent(`<div style="background:#1e293b;color:#f1f5f9;padding:12px;border-radius:8px;min-width:200px"><div style="font-size:10px;color:#818cf8;font-weight:800;text-transform:uppercase;margin-bottom:6px">TARGET BUSINESS</div><div style="font-size:15px;font-weight:800">${target.name}</div><div style="font-size:11px;color:#94a3b8;margin-top:4px">${target.address || ""}</div>${target.rating ? `<div style="font-size:12px;color:#fbbf24;margin-top:4px">⭐ ${target.rating} (${target.reviews || 0} reviews)</div>` : ""}</div>`);
+      iwRef.current.setContent(`<div style="background:#1e293b;color:#f1f5f9;padding:12px;border-radius:8px;min-width:200px"><div style="font-size:10px;color:#818cf8;font-weight:800;text-transform:uppercase;margin-bottom:6px">${t("radar.target_business")}</div><div style="font-size:15px;font-weight:800">${target.name}</div><div style="font-size:11px;color:#94a3b8;margin-top:4px">${target.address || ""}</div>${target.rating ? `<div style="font-size:12px;color:#fbbf24;margin-top:4px">⭐ ${target.rating} (${target.reviews || 0} ${t("radar.reviews")})</div>` : ""}</div>`);
       iwRef.current.open(map, tm);
     });
     markersRef.current.push(tm);
@@ -517,9 +519,9 @@ function RadarMapLoader({ target, competitors, radiusKm }: { target: any; compet
         icon: makePin(PIN_COLORS[c.pin_color] || PIN_COLORS.green),
         title: c.name,
       });
-      const labelMap: Record<string, string> = { red: "Direct Competitor", orange: "Strong Competitor", yellow: "Moderate", green: "Weak" };
+      const labelMap: Record<string, string> = { red: t("radar.direct_competitor"), orange: t("radar.strong_competitor"), yellow: t("radar.moderate"), green: t("radar.weak_competitor") };
       cm.addListener("click", () => {
-        iwRef.current.setContent(`<div style="background:#1e293b;color:#f1f5f9;padding:12px;border-radius:8px;min-width:220px"><div style="background:${PIN_COLORS[c.pin_color]};color:white;font-size:9px;font-weight:800;text-transform:uppercase;padding:3px 8px;border-radius:4px;display:inline-block;margin-bottom:8px">${labelMap[c.pin_color] || "Competitor"}</div><div style="font-size:14px;font-weight:800;margin-bottom:4px">${c.name}</div><div style="font-size:11px;color:#94a3b8;margin-bottom:8px">${c.address || ""}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px"><div style="background:#0f172a;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#64748b">Distance</div><div style="font-size:13px;font-weight:700">${c.distance_km}km</div></div><div style="background:#0f172a;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#64748b">Market Score</div><div style="font-size:13px;font-weight:700">${c.market_size_score}/100</div></div><div style="background:#0f172a;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#64748b">Team</div><div style="font-size:13px;font-weight:700">${c.team_size_estimate}</div></div><div style="background:#0f172a;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#64748b">Overlap</div><div style="font-size:13px;font-weight:700">${c.overlap_pct}%</div></div></div>${c.maps_url ? `<a href="${c.maps_url}" target="_blank" style="color:#818cf8;font-size:11px">View on Maps ↗</a>` : ""}</div>`);
+        iwRef.current.setContent(`<div style="background:#1e293b;color:#f1f5f9;padding:12px;border-radius:8px;min-width:220px"><div style="background:${PIN_COLORS[c.pin_color]};color:white;font-size:9px;font-weight:800;text-transform:uppercase;padding:3px 8px;border-radius:4px;display:inline-block;margin-bottom:8px">${labelMap[c.pin_color] || t("radar.competitor")}</div><div style="font-size:14px;font-weight:800;margin-bottom:4px">${c.name}</div><div style="font-size:11px;color:#94a3b8;margin-bottom:8px">${c.address || ""}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px"><div style="background:#0f172a;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#64748b">${t("radar.distance")}</div><div style="font-size:13px;font-weight:700">${c.distance_km}km</div></div><div style="background:#0f172a;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#64748b">${t("radar.market_score")}</div><div style="font-size:13px;font-weight:700">${c.market_size_score}/100</div></div><div style="background:#0f172a;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#64748b">${t("radar.team")}</div><div style="font-size:13px;font-weight:700">${c.team_size_estimate}</div></div><div style="background:#0f172a;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#64748b">${t("radar.overlap")}</div><div style="font-size:13px;font-weight:700">${c.overlap_pct}%</div></div></div>${c.maps_url ? `<a href="${c.maps_url}" target="_blank" style="color:#818cf8;font-size:11px">${t("radar.view_on_maps_short")} ↗</a>` : ""}</div>`);
         iwRef.current.open(map, cm);
       });
       markersRef.current.push(cm);

@@ -4,8 +4,10 @@ import { Search, User, Briefcase, CheckSquare, Target, X, Command } from 'lucide
 import { API_BASE_URL } from '@/config';
 import { useRouter } from 'next/navigation';
 import { useRole } from '@/context/RoleContext';
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function OmniSearch() {
+  const { t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
@@ -78,7 +80,7 @@ export default function OmniSearch() {
             ref={inputRef}
             type="text"
             className="flex-1 bg-transparent text-lg text-slate-900 dark:text-white outline-none placeholder:text-slate-400"
-            placeholder="Search clients, leads, tasks, deals..."
+            placeholder={t("omni_search.placeholder")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -89,7 +91,7 @@ export default function OmniSearch() {
 
         <div className="max-h-[60vh] overflow-y-auto p-2">
           {loading ? (
-            <div className="p-8 text-center text-slate-500">Searching...</div>
+            <div className="p-8 text-center text-slate-500">{t("omni_search.searching")}</div>
           ) : results.length > 0 ? (
             <div className="flex flex-col gap-1">
               {results.map((result, idx) => (
@@ -112,11 +114,11 @@ export default function OmniSearch() {
               ))}
             </div>
           ) : query.length >= 2 ? (
-            <div className="p-8 text-center text-slate-500">No results found for "{query}"</div>
+            <div className="p-8 text-center text-slate-500">{t("omni_search.no_results")} "{query}"</div>
           ) : (
             <div className="p-8 text-center flex flex-col items-center justify-center text-slate-400">
               <Command className="w-12 h-12 mb-4 opacity-20" />
-              <p>Type to start searching...</p>
+              <p>{t("omni_search.type_to_search")}</p>
               <div className="mt-4 flex gap-2">
                 <span className="bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded text-xs font-mono">clients</span>
                 <span className="bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded text-xs font-mono">leads</span>
@@ -127,8 +129,8 @@ export default function OmniSearch() {
           )}
         </div>
         <div className="bg-slate-50 dark:bg-zinc-950 px-4 py-3 border-t border-slate-200 dark:border-zinc-800 flex justify-between items-center text-xs text-slate-500">
-          <span>Pro tip: Press <kbd className="bg-slate-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded font-mono">ESC</kbd> to close</span>
-          <span>Search powered by OmniSearch</span>
+          <span>{t("omni_search.pro_tip")} <kbd className="bg-slate-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded font-mono">ESC</kbd> {t("omni_search.to_close")}</span>
+          <span>{t("omni_search.powered_by")}</span>
         </div>
       </div>
     </div>

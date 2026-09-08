@@ -5,8 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Activity, Clock, Timer, ArrowRight } from 'lucide-react';
 import { API_BASE_URL } from '@/config';
 import { useRole } from '@/context/RoleContext';
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function GlobalActivityFeed({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
+  const { t } = useLanguage();
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const { role } = useRole();
@@ -49,8 +51,8 @@ export default function GlobalActivityFeed({ isOpen, onClose }: { isOpen: boolea
                   <Activity className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="font-bold text-slate-900 dark:text-white">Global Activity Feed</h2>
-                  <p className="text-xs text-slate-500">Live stream of CRM events</p>
+                  <h2 className="font-bold text-slate-900 dark:text-white">{t("activity_feed.title")}</h2>
+                  <p className="text-xs text-slate-500">{t("activity_feed.subtitle")}</p>
                 </div>
               </div>
               <button
@@ -63,11 +65,11 @@ export default function GlobalActivityFeed({ isOpen, onClose }: { isOpen: boolea
 
             <div className="flex-1 overflow-y-auto p-4 bg-slate-50 dark:bg-zinc-950/50">
               {loading ? (
-                <div className="flex items-center justify-center h-full text-slate-500">Loading activities...</div>
+                <div className="flex items-center justify-center h-full text-slate-500">{t("activity_feed.loading")}</div>
               ) : activities.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-slate-500 opacity-60">
                   <Timer className="w-12 h-12 mb-3" />
-                  <p>No recent activity found.</p>
+                  <p>{t("activity_feed.no_activity")}</p>
                 </div>
               ) : (
                 <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 dark:before:via-zinc-800 before:to-transparent">

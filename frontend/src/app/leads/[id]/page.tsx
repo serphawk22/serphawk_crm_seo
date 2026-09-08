@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
+import { useLanguage } from "@/context/LanguageContext";
 
 function ScoreRing({ score }: { score: number }) {
   const radius = 42;
@@ -34,7 +35,7 @@ function ScoreRing({ score }: { score: number }) {
           initial={{ strokeDashoffset: circumference }}
           animate={{ strokeDashoffset: circumference - progress }}
           transition={{ duration: 1.5, ease: "easeOut" }}
-          style={{ dropShadow: `0 0 10px ${color}40` }}
+          style={{ filter: `drop-shadow(0 0 10px ${color}40)` }}
         />
       </svg>
       <div className="absolute flex flex-col items-center">
@@ -53,6 +54,7 @@ function ScoreRing({ score }: { score: number }) {
 }
 
 export default function LeadDetailsPage() {
+  const { t } = useLanguage();
   const params = useParams();
   const router = useRouter();
   const leadId = params.id as string;
@@ -62,10 +64,17 @@ export default function LeadDetailsPage() {
   const [converting, setConverting] = useState(false);
   const [activeTab, setActiveTab] = useState("ai-agents");
   const [loadingAgent, setLoadingAgent] = useState<string | null>(null);
+  const [notes, setNotes] = useState<any[]>([]);
+  const [newNote, setNewNote] = useState("");
+  const [notesLoading, setNotesLoading] = useState(false);
 
   useEffect(() => {
     if (leadId) fetchLeadDetails();
   }, [leadId]);
+
+  useEffect(() => {
+    if (leadId && activeTab === "notes") fetchNotes();
+  }, [activeTab, leadId]);
 
   const fetchLeadDetails = async () => {
     try {
@@ -82,8 +91,42 @@ export default function LeadDetailsPage() {
     }
   };
 
+  const fetchNotes = async () => {
+    try {
+      setNotesLoading(true);
+      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/notes`);
+      const data = await res.json().catch(() => null);
+      setNotes(data?.ok && data.notes ? data.notes : []);
+    } catch {
+      setNotes([]);
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
+  const handleAddNote = async () => {
+    const content = newNote.trim();
+    if (!content) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        alert(data?.error || t("lead_detail.failed_add_note"));
+        return;
+      }
+      setNewNote("");
+      setNotes(prev => [data.note, ...prev].sort((a, b) => (b.created_at || "").localeCompare(a.created_at || "")));
+    } catch {
+      alert(t("lead_detail.network_error_note"));
+    }
+  };
+
   const handleConvert = async () => {
-    if (!confirm("Are you sure you want to convert this lead to a Client?")) return;
+    if (!confirm(t("lead_detail.confirm_convert"))) return;
     
     try {
       setConverting(true);
@@ -93,15 +136,15 @@ export default function LeadDetailsPage() {
       
       if (res.ok) {
         const data = await res.json();
-        alert("Lead successfully converted to Client!");
+        alert(t("lead_detail.converted_success"));
         router.push(`/clients/${data.client_id}`);
       } else {
         const err = await res.json();
-        alert(err.detail || "Failed to convert lead");
+        alert(err.detail || t("lead_detail.failed_convert"));
       }
     } catch (error) {
       console.error("Conversion error:", error);
-      alert("Error converting lead");
+      alert(t("lead_detail.error_converting"));
     } finally {
       setConverting(false);
     }
@@ -115,12 +158,19 @@ export default function LeadDetailsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agent_type: agentType })
       });
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        const errMsg = data?.error || t("lead_detail.ai_generation_failed");
+        console.error("Agent failed:", errMsg);
+        alert(errMsg);
+        return;
+      }
+      if (data.lead) {
         setLead(data.lead);
       }
     } catch (error) {
       console.error("Failed to run agent", error);
+      alert(t("lead_detail.network_error_agent"));
     } finally {
       setLoadingAgent(null);
     }
@@ -137,9 +187,9 @@ export default function LeadDetailsPage() {
   if (!lead) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-[#f8fafc] dark:bg-[#0f172a]">
-        <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Lead Not Found</h2>
+        <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">{t("lead_detail.not_found")}</h2>
         <button onClick={() => router.push('/leads')} className="text-blue-600 hover:underline">
-          Return to Leads
+          {t("lead_detail.return_to_leads")}
         </button>
       </div>
     );
@@ -183,7 +233,7 @@ export default function LeadDetailsPage() {
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all disabled:opacity-50"
             >
               <ArrowRightLeft className="w-4 h-4" />
-              {converting ? "Converting..." : "Convert to Client"}
+              {converting ? t("lead_detail.converting") : t("lead_detail.convert_to_client")}
             </button>
           )}
           <button className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors">
@@ -199,11 +249,11 @@ export default function LeadDetailsPage() {
         {/* Left Sidebar (Profile) */}
         <div className="w-80 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] overflow-y-auto">
           <div className="p-6">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-4">Lead Details</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-4">{t("lead_detail.lead_details")}</h3>
             
             <div className="space-y-5">
               <div>
-                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Email</label>
+                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{t("lead_detail.email")}</label>
                 <div className="flex items-center gap-2 mt-1">
                   <Mail className="w-4 h-4 text-slate-400" />
                   <span className="text-sm font-medium text-slate-900 dark:text-white">{lead.email || "—"}</span>
@@ -211,7 +261,7 @@ export default function LeadDetailsPage() {
               </div>
               
               <div>
-                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Phone</label>
+                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{t("lead_detail.phone")}</label>
                 <div className="flex items-center gap-2 mt-1">
                   <Phone className="w-4 h-4 text-slate-400" />
                   <span className="text-sm font-medium text-slate-900 dark:text-white">{lead.phone || "—"}</span>
@@ -219,7 +269,7 @@ export default function LeadDetailsPage() {
               </div>
               
               <div>
-                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Address</label>
+                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{t("lead_detail.address")}</label>
                 <div className="flex items-start gap-2 mt-1">
                   <MapPin className="w-4 h-4 text-slate-400 mt-0.5" />
                   <span className="text-sm font-medium text-slate-900 dark:text-white leading-relaxed">
@@ -229,7 +279,7 @@ export default function LeadDetailsPage() {
               </div>
 
               <div>
-                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Source</label>
+                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{t("lead_detail.source")}</label>
                 <div className="mt-1">
                   <span className="inline-flex items-center px-2 py-1 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300">
                     {lead.source || "Unknown"}
@@ -240,16 +290,16 @@ export default function LeadDetailsPage() {
 
             <hr className="my-6 border-slate-200 dark:border-slate-800" />
             
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-4">System Info</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-4">{t("lead_detail.system_info")}</h3>
             <div className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-xs text-slate-500">Created</span>
+                <span className="text-xs text-slate-500">{t("lead_detail.created")}</span>
                 <span className="text-xs font-medium text-slate-900 dark:text-white">
                   {new Date(lead.created_at).toLocaleDateString()}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-xs text-slate-500">Lead Owner</span>
+                <span className="text-xs text-slate-500">{t("lead_detail.lead_owner")}</span>
                 <span className="text-xs font-medium text-slate-900 dark:text-white">Admin User</span>
               </div>
             </div>
@@ -261,11 +311,11 @@ export default function LeadDetailsPage() {
           {/* Tabs */}
           <div className="flex items-center gap-1 px-6 pt-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shrink-0">
             {[
-              { id: 'ai-agents', icon: Bot, label: 'AI Agents' },
-              { id: 'timeline', icon: History, label: 'Timeline' },
-              { id: 'notes', icon: FileText, label: 'Notes' },
-              { id: 'contacts', icon: UserPlus, label: 'Contacts' },
-              { id: 'emails', icon: Mail, label: 'Emails' },
+              { id: 'ai-agents', icon: Bot, label: t("lead_detail.ai_agents") },
+              { id: 'timeline', icon: History, label: t("lead_detail.timeline") },
+              { id: 'notes', icon: FileText, label: t("lead_detail.notes_tab") },
+              { id: 'contacts', icon: UserPlus, label: t("lead_detail.contacts") },
+              { id: 'emails', icon: Mail, label: t("lead_detail.emails") },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -290,7 +340,7 @@ export default function LeadDetailsPage() {
                 <div>
                   <h3 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white mb-6 flex items-center gap-3">
                     <Bot className="w-6 h-6 text-blue-500" />
-                    AI Intelligence Suite
+                    {t("lead_detail.ai_intelligence_suite")}
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     
@@ -302,8 +352,8 @@ export default function LeadDetailsPage() {
                       <div className="w-12 h-12 rounded-xl bg-pink-100 dark:bg-pink-900/40 flex items-center justify-center mb-4 relative z-10">
                         {loadingAgent === "calling" ? <Loader2 className="w-6 h-6 text-pink-600 animate-spin" /> : <PhoneCall className="w-6 h-6 text-pink-600 dark:text-pink-400 group-hover:scale-110 transition-transform" />}
                       </div>
-                      <h4 className="font-bold text-slate-900 dark:text-white mb-1 relative z-10">Calling Pitch</h4>
-                      <p className="text-xs text-slate-500 relative z-10">Generate a structured teleprompter script.</p>
+                      <h4 className="font-bold text-slate-900 dark:text-white mb-1 relative z-10">{t("lead_detail.calling_pitch")}</h4>
+                      <p className="text-xs text-slate-500 relative z-10">{t("lead_detail.generate_teleprompter")}</p>
                       <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-10 transition-opacity">
                         <PhoneCall className="w-24 h-24 text-pink-500" />
                       </div>
@@ -317,8 +367,8 @@ export default function LeadDetailsPage() {
                       <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center mb-4 relative z-10">
                         {loadingAgent === "email" ? <Loader2 className="w-6 h-6 text-blue-600 animate-spin" /> : <Mail className="w-6 h-6 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />}
                       </div>
-                      <h4 className="font-bold text-slate-900 dark:text-white mb-1 relative z-10">Email Agent</h4>
-                      <p className="text-xs text-slate-500 relative z-10">Draft highly personalized outreach emails.</p>
+                      <h4 className="font-bold text-slate-900 dark:text-white mb-1 relative z-10">{t("lead_detail.email_agent")}</h4>
+                      <p className="text-xs text-slate-500 relative z-10">{t("lead_detail.draft_outreach_emails")}</p>
                       <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-10 transition-opacity">
                         <Mail className="w-24 h-24 text-blue-500" />
                       </div>
@@ -332,8 +382,8 @@ export default function LeadDetailsPage() {
                       <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center mb-4 relative z-10">
                         {loadingAgent === "radar" ? <Loader2 className="w-6 h-6 text-purple-600 animate-spin" /> : <Radar className="w-6 h-6 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform" />}
                       </div>
-                      <h4 className="font-bold text-slate-900 dark:text-white mb-1 relative z-10">Radar Analysis</h4>
-                      <p className="text-xs text-slate-500 relative z-10">Deep dive into social presence and news.</p>
+                      <h4 className="font-bold text-slate-900 dark:text-white mb-1 relative z-10">{t("lead_detail.radar_analysis")}</h4>
+                      <p className="text-xs text-slate-500 relative z-10">{t("lead_detail.deep_dive_social")}</p>
                       <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-10 transition-opacity">
                         <Radar className="w-24 h-24 text-purple-500" />
                       </div>
@@ -347,8 +397,8 @@ export default function LeadDetailsPage() {
                       <div className="w-12 h-12 rounded-xl bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center mb-4 relative z-10">
                         {loadingAgent === "competitor" ? <Loader2 className="w-6 h-6 text-orange-600 animate-spin" /> : <BarChart2 className="w-6 h-6 text-orange-600 dark:text-orange-400 group-hover:scale-110 transition-transform" />}
                       </div>
-                      <h4 className="font-bold text-slate-900 dark:text-white mb-1 relative z-10">Competitor Analysis</h4>
-                      <p className="text-xs text-slate-500 relative z-10">Map out their top industry rivals instantly.</p>
+                      <h4 className="font-bold text-slate-900 dark:text-white mb-1 relative z-10">{t("lead_detail.competitor_analysis")}</h4>
+                      <p className="text-xs text-slate-500 relative z-10">{t("lead_detail.map_industry_rivals")}</p>
                       <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-10 transition-opacity">
                         <BarChart2 className="w-24 h-24 text-orange-500" />
                       </div>
@@ -362,8 +412,8 @@ export default function LeadDetailsPage() {
                       <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center mb-4 relative z-10">
                         {loadingAgent === "scanner" ? <Loader2 className="w-6 h-6 text-emerald-600 animate-spin" /> : <Globe className="w-6 h-6 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />}
                       </div>
-                      <h4 className="font-bold text-slate-900 dark:text-white mb-1 relative z-10">Website Scanner</h4>
-                      <p className="text-xs text-slate-500 relative z-10">Score their digital footprint and find gaps.</p>
+                      <h4 className="font-bold text-slate-900 dark:text-white mb-1 relative z-10">{t("lead_detail.website_scanner")}</h4>
+                      <p className="text-xs text-slate-500 relative z-10">{t("lead_detail.score_digital_footprint")}</p>
                       <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-10 transition-opacity">
                         <Globe className="w-24 h-24 text-emerald-500" />
                       </div>
@@ -377,8 +427,8 @@ export default function LeadDetailsPage() {
                       <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center mb-4 relative z-10">
                         {loadingAgent === "automations" ? <Loader2 className="w-6 h-6 text-amber-600 animate-spin" /> : <Zap className="w-6 h-6 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" />}
                       </div>
-                      <h4 className="font-bold text-slate-900 dark:text-white mb-1 relative z-10">AI Automations</h4>
-                      <p className="text-xs text-slate-500 relative z-10">Create triggers and auto-follow ups.</p>
+                      <h4 className="font-bold text-slate-900 dark:text-white mb-1 relative z-10">{t("lead_detail.ai_automations")}</h4>
+                      <p className="text-xs text-slate-500 relative z-10">{t("lead_detail.create_triggers")}</p>
                       <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-10 transition-opacity">
                         <Zap className="w-24 h-24 text-amber-500" />
                       </div>
@@ -386,7 +436,7 @@ export default function LeadDetailsPage() {
                   </div>
                 </div>
                 
-                {/* INLINE AI RESULTS RENDERED HERE */}
+                {/* INLINE AI RESULTS */}
                 <AnimatePresence>
                   {Object.keys(aiResults).length > 0 && (
                     <motion.div 
@@ -404,30 +454,30 @@ export default function LeadDetailsPage() {
                                 <PhoneCall className="w-6 h-6" />
                               </div>
                               <div>
-                                <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">Sales Teleprompter</h3>
-                                <p className="text-sm text-slate-500">Live script generated by GPT-4o for {lead.company_name}</p>
+                                <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">{t("lead_detail.sales_teleprompter")}</h3>
+                                <p className="text-sm text-slate-500">{t("lead_detail.live_script_generated")} {lead.company_name}</p>
                               </div>
                             </div>
                             <div className="flex gap-2">
                                <button className="px-4 py-2 bg-pink-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-pink-700 flex items-center gap-2">
-                                <Play className="w-4 h-4 fill-current" /> Start Call
+                                <Play className="w-4 h-4 fill-current" /> {t("lead_detail.start_call")}
                                </button>
                             </div>
                           </div>
 
                           <div className="space-y-6">
                             <div className="p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm relative">
-                              <span className="absolute -top-3 left-6 px-3 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded-full text-xs font-black uppercase tracking-widest border border-blue-200 dark:border-blue-800">1. Introduction</span>
+                              <span className="absolute -top-3 left-6 px-3 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded-full text-xs font-black uppercase tracking-widest border border-blue-200 dark:border-blue-800">{t("lead_detail.introduction")}</span>
                               <p className="text-lg text-slate-700 dark:text-slate-300 leading-relaxed font-medium">{aiResults.calling.intro}</p>
                             </div>
 
                             <div className="p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm relative">
-                              <span className="absolute -top-3 left-6 px-3 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 rounded-full text-xs font-black uppercase tracking-widest border border-emerald-200 dark:border-emerald-800">2. Value Proposition</span>
+                              <span className="absolute -top-3 left-6 px-3 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 rounded-full text-xs font-black uppercase tracking-widest border border-emerald-200 dark:border-emerald-800">{t("lead_detail.value_proposition")}</span>
                               <p className="text-lg text-slate-700 dark:text-slate-300 leading-relaxed font-medium">{aiResults.calling.value_prop}</p>
                             </div>
 
                             <div className="p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm relative">
-                              <span className="absolute -top-3 left-6 px-3 py-1 bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300 rounded-full text-xs font-black uppercase tracking-widest border border-orange-200 dark:border-orange-800">3. Objection Handling</span>
+                              <span className="absolute -top-3 left-6 px-3 py-1 bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300 rounded-full text-xs font-black uppercase tracking-widest border border-orange-200 dark:border-orange-800">{t("lead_detail.objection_handling")}</span>
                               <ul className="space-y-3 mt-2">
                                 {aiResults.calling.objections?.map((obj: string, i: number) => (
                                   <li key={i} className="flex items-start gap-3 p-3 rounded-lg bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-800/30">
@@ -439,7 +489,7 @@ export default function LeadDetailsPage() {
                             </div>
 
                             <div className="p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm relative">
-                              <span className="absolute -top-3 left-6 px-3 py-1 bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 rounded-full text-xs font-black uppercase tracking-widest border border-purple-200 dark:border-purple-800">4. Closing</span>
+                              <span className="absolute -top-3 left-6 px-3 py-1 bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 rounded-full text-xs font-black uppercase tracking-widest border border-purple-200 dark:border-purple-800">{t("lead_detail.closing")}</span>
                               <p className="text-lg text-slate-700 dark:text-slate-300 leading-relaxed font-bold">{aiResults.calling.closing}</p>
                             </div>
                           </div>
@@ -455,18 +505,18 @@ export default function LeadDetailsPage() {
                                  <div className="w-3 h-3 rounded-full bg-amber-400"></div>
                                  <div className="w-3 h-3 rounded-full bg-green-400"></div>
                                </div>
-                               <span className="text-sm font-semibold text-slate-500 ml-2">New Message — GPT-4o Draft</span>
+                               <span className="text-sm font-semibold text-slate-500 ml-2">{t("lead_detail.new_message_gpt")}</span>
                             </div>
-                            <button className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm shadow-blue-500/20">Send Email</button>
+                            <button className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm shadow-blue-500/20">{t("lead_detail.send_email")}</button>
                           </div>
                           <div className="p-8">
                             <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
                               <div className="flex items-center gap-4 mb-3">
-                                <span className="text-sm font-bold text-slate-400 w-16">To:</span>
+                                <span className="text-sm font-bold text-slate-400 w-16">{t("lead_detail.to_label")}</span>
                                 <span className="text-sm font-medium bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-lg text-slate-700 dark:text-slate-300">{lead.email || "ceo@" + lead.website?.replace('https://', '').split('/')[0] || "Unknown"}</span>
                               </div>
                               <div className="flex items-center gap-4">
-                                <span className="text-sm font-bold text-slate-400 w-16">Subject:</span>
+                                <span className="text-sm font-bold text-slate-400 w-16">{t("lead_detail.subject_label")}</span>
                                 <span className="text-lg font-bold text-slate-900 dark:text-white">{aiResults.email.subject}</span>
                               </div>
                             </div>
@@ -484,22 +534,22 @@ export default function LeadDetailsPage() {
                               <Globe className="w-6 h-6" />
                             </div>
                             <div>
-                              <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">Website Scan Report</h3>
-                              <p className="text-sm text-slate-500">Deep technical analysis of {aiResults.scanner.url || lead.website}</p>
+                              <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">{t("lead_detail.website_scan_report")}</h3>
+                              <p className="text-sm text-slate-500">{t("lead_detail.deep_tech_analysis")} {aiResults.scanner.url || lead.website}</p>
                             </div>
                           </div>
 
                           <div className="flex flex-col lg:flex-row gap-10">
                             <div className="flex flex-col items-center justify-center p-8 bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm min-w-[280px]">
                               <ScoreRing score={aiResults.scanner.score} />
-                              <h4 className="mt-6 text-lg font-black text-slate-900 dark:text-white">Health Score</h4>
+                              <h4 className="mt-6 text-lg font-black text-slate-900 dark:text-white">{t("lead_detail.health_score")}</h4>
                               <p className="text-sm text-slate-500 text-center mt-2 px-4">{aiResults.scanner.description}</p>
                             </div>
 
                             <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6">
                               <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-red-100 dark:border-red-900/30">
                                 <h4 className="text-base font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                                  <AlertTriangle className="w-5 h-5 text-red-500" /> Critical Issues
+                                  <AlertTriangle className="w-5 h-5 text-red-500" /> {t("lead_detail.critical_issues")}
                                 </h4>
                                 <ul className="space-y-3">
                                   {aiResults.scanner.issues.map((i: string, idx: number) => (
@@ -512,7 +562,7 @@ export default function LeadDetailsPage() {
                               
                               <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-emerald-100 dark:border-emerald-900/30">
                                 <h4 className="text-base font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                                  <Lightbulb className="w-5 h-5 text-emerald-500" /> Opportunities
+                                  <Lightbulb className="w-5 h-5 text-emerald-500" /> {t("lead_detail.opportunities")}
                                 </h4>
                                 <ul className="space-y-3">
                                   {aiResults.scanner.opportunities.map((o: string, idx: number) => (
@@ -527,7 +577,7 @@ export default function LeadDetailsPage() {
                           
                           {aiResults.scanner.tech && (
                             <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800 flex items-center gap-4 flex-wrap">
-                               <span className="text-sm font-bold text-slate-500">Tech Stack:</span>
+                               <span className="text-sm font-bold text-slate-500">{t("lead_detail.tech_stack")}</span>
                                {aiResults.scanner.tech.map((t: string, idx: number) => (
                                  <span key={idx} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-semibold">{t}</span>
                                ))}
@@ -543,18 +593,18 @@ export default function LeadDetailsPage() {
                               <BarChart2 className="w-6 h-6" />
                             </div>
                             <div>
-                              <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">Competitor Landscape</h3>
-                              <p className="text-sm text-slate-500">Market analysis for {lead.industry}</p>
+                              <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">{t("lead_detail.competitor_landscape")}</h3>
+                              <p className="text-sm text-slate-500">{t("lead_detail.market_analysis_for")} {lead.industry}</p>
                             </div>
                           </div>
                           <div className="overflow-x-auto">
                             <table className="w-full text-left border-collapse">
                               <thead>
                                 <tr className="bg-slate-50 dark:bg-slate-900/50">
-                                  <th className="px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Competitor</th>
-                                  <th className="px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Overlap</th>
-                                  <th className="px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Key Strengths</th>
-                                  <th className="px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Weaknesses</th>
+                                  <th className="px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">{t("lead_detail.competitor_col")}</th>
+                                  <th className="px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">{t("lead_detail.overlap_col")}</th>
+                                  <th className="px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">{t("lead_detail.key_strengths_col")}</th>
+                                  <th className="px-8 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">{t("lead_detail.weaknesses_col")}</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -598,8 +648,8 @@ export default function LeadDetailsPage() {
                               <Radar className="w-6 h-6" />
                             </div>
                             <div>
-                              <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">Radar Intelligence Feed</h3>
-                              <p className="text-sm text-slate-500">Real-time market signals</p>
+                              <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">{t("lead_detail.radar_intelligence_feed")}</h3>
+                              <p className="text-sm text-slate-500">{t("lead_detail.realtime_market_signals")}</p>
                             </div>
                           </div>
                           
@@ -623,7 +673,60 @@ export default function LeadDetailsPage() {
               </div>
             )}
             
-            {/* OTHER TABS OMITTED FOR BREVITY, BUT KEPT IN COMPONENT CODE FOR FUNCTIONALITY */}
+            {activeTab === 'notes' && (
+              <div className="max-w-3xl">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
+                    <FileText className="w-6 h-6 text-blue-500" />
+                    {t("lead_detail.lead_notes")}
+                  </h3>
+                </div>
+
+                <div className="bg-white dark:bg-[#1e293b] rounded-2xl border border-slate-200 dark:border-slate-800 p-4 mb-6">
+                  <textarea
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder={t("lead_detail.write_note_placeholder")}
+                    rows={3}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  />
+                  <div className="flex justify-end mt-3">
+                    <button
+                      onClick={handleAddNote}
+                      disabled={!newNote.trim()}
+                      className="px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {t("lead_detail.add_note")}
+                    </button>
+                  </div>
+                </div>
+
+                {notesLoading ? (
+                  <div className="flex justify-center py-12">
+                    <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+                  </div>
+                ) : notes.length === 0 ? (
+                  <div className="text-center py-12 text-sm text-slate-400">
+                    {t("lead_detail.no_notes_yet")}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {notes.map((n) => (
+                      <div key={n.id} className="bg-white dark:bg-[#1e293b] rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+                        <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">{n.content}</p>
+                        <div className="mt-3 flex items-center gap-2 text-[11px] text-slate-400">
+                          <span className="font-semibold text-slate-500 dark:text-slate-400">{n.author_name || t("lead_detail.anonymous")}</span>
+                          <span>·</span>
+                          <Clock className="w-3 h-3" />
+                          <span>{n.created_at ? new Date(n.created_at).toLocaleString() : ""}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
           </div>
         </div>
       </div>

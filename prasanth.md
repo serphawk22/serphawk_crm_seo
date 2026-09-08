@@ -13,10 +13,10 @@ Password: Admin@123
 <!-- npx ngrok http 8000 -->
 
 # --- Email Agent UI Settings ---
-# To manually change the default 'From' email address (currently set to support.crm@serphawk.in):
+# To manually change the default 'From' email address (currently set to crm@serphawk.in):
 # Open the file: frontend/src/app/email-agent/page.tsx
 # Go to line ~226 and edit this exact code:
-# const [fromEmail, setFromEmail] = useState("support.crm@serphawk.in");
+# const [fromEmail, setFromEmail] = useState("crm@serphawk.in");
 
 ---
 

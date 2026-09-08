@@ -6,10 +6,12 @@ import { useRouter } from "next/navigation";
 import { useGoogleLogin } from "@react-oauth/google";
 import { useRole } from "@/context/RoleContext";
 import { API_BASE_URL } from "@/config";
-import { Lock, Mail, Loader2, Eye, EyeOff, ArrowRight, Globe, ChevronDown, Check } from "lucide-react";
+import { Lock, Mail, Loader2, Eye, EyeOff, ArrowRight, Globe, ChevronDown, Check, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import "@/i18n/config";
+import PasswordStrengthMeter from "@/components/PasswordStrengthMeter";
+import EmailOTPVerification from "@/components/EmailOTPVerification";
 
 
 // ── Language options shown on the Sign Up page: English + Spanish ONLY ──────
@@ -193,8 +195,34 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [focusedField, setFocusedField] = useState<"name" | "email" | "password" | null>(null);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
   const { login } = useRole();
   const router = useRouter();
+
+  // Prefer full-width unicode Light characters (googtrans-compatible) and common symbols/numbers
+  function suggestPassword() {
+    const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    const lower = "abcdefghijkmnpqrstuvwxyz";
+    const digits = "23456789";
+    const symbols = "!@#$%^&*";
+    const rand = (set: string) => set[Math.floor(Math.random() * set.length)];
+    const parts = [
+      rand(upper), rand(lower), rand(digits), rand(symbols),
+      Array.from({ length: 8 }, () => rand(upper + lower + digits + symbols)).join(""),
+    ];
+    const shuffled = parts
+      .map((part) => part.split(""))
+      .flat()
+      .sort(() => Math.random() - 0.5)
+      .join("");
+    return shuffled.slice(0, 16);
+  }
+
+  const useSuggestedPassword = () => {
+    const pw = suggestPassword();
+    setPassword(pw);
+    setShowPassword(true);
+  };
 
   const googleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
@@ -230,7 +258,14 @@ export default function SignupPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    // First step: verify the email address via OTP before creating the account
+    setVerifyingOtp(true);
+  };
+
+  const createAccount = async () => {
     setIsSubmitting(true);
+    setError("");
 
     try {
       const res = await fetch(`${API_BASE_URL}/demo/signup`, {
@@ -245,6 +280,7 @@ export default function SignupPage() {
       await login(email, password);
     } catch (err: any) {
       setError(err.message || "An error occurred.");
+      setVerifyingOtp(false);
       setIsSubmitting(false);
     }
   };
@@ -414,7 +450,22 @@ export default function SignupPage() {
             </p>
           </div>
 
-          {/* Form */}
+          {/* Form / OTP verification */}
+          {verifyingOtp ? (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border border-slate-200 bg-slate-50/60 p-6"
+            >
+              <EmailOTPVerification
+                email={email}
+                purpose="signup"
+                autoSend
+                onVerified={createAccount}
+                onCancel={() => setVerifyingOtp(false)}
+              />
+            </motion.div>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Name */}
             <div>
@@ -473,9 +524,20 @@ export default function SignupPage() {
 
             {/* Password */}
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest">
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={useSuggestedPassword}
+                  className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors"
+                  title="Suggest a strong password"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Suggest strong password
+                </button>
+              </div>
               <div
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
                   focusedField === "password"
@@ -506,6 +568,9 @@ export default function SignupPage() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+
+              {/* Strength indicator + rules */}
+              <PasswordStrengthMeter password={password} />
             </div>
 
             {/* Forgot password */}
@@ -603,6 +668,7 @@ export default function SignupPage() {
               {googleSubmitting ? "Authenticating..." : "Continue with Google"}
             </button>
           </form>
+          )}
 
           {/* Footer */}
           <p className="text-center text-gray-400 text-sm font-medium mt-8">

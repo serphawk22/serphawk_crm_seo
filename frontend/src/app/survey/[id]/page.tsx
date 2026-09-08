@@ -5,8 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import { Loader2, Star, CheckCircle } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function SurveyPage() {
+  const { t } = useLanguage();
   const { id } = useParams() as { id: string };
   const router = useRouter();
   const [score, setScore] = useState<number | null>(null);
@@ -28,15 +30,15 @@ export default function SurveyPage() {
   }
 
   const getLabel = (s: number) =>
-    s <= 6 ? "😞 Needs Improvement" : s <= 8 ? "😊 Good" : "🤩 Excellent!";
+    s <= 6 ? t("survey.label_bad") : s <= 8 ? t("survey.label_ok") : t("survey.label_great");
 
   if (done) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-white">
         <div className="text-center">
           <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-black text-gray-900 dark:text-zinc-50 mb-2">Thank you!</h1>
-          <p className="text-gray-500 dark:text-zinc-400">Your feedback helps us improve our services.</p>
+          <h1 className="text-2xl font-black text-gray-900 dark:text-zinc-50 mb-2">{t("survey.thank_you")}</h1>
+          <p className="text-gray-500 dark:text-zinc-400">{t("survey.thank_you_desc")}</p>
         </div>
       </div>
     );
@@ -45,9 +47,9 @@ export default function SurveyPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-white p-4">
       <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl p-10 w-full max-w-lg">
-        <h1 className="text-2xl font-black text-gray-900 dark:text-zinc-50 mb-2">How are we doing?</h1>
+        <h1 className="text-2xl font-black text-gray-900 dark:text-zinc-50 mb-2">{t("survey.heading")}</h1>
         <p className="text-gray-500 dark:text-zinc-400 mb-8">
-          On a scale of 0–10, how likely are you to recommend SerpHawk to a friend or colleague?
+          {t("survey.description")}
         </p>
 
         <form onSubmit={submit} className="space-y-6">
@@ -75,14 +77,14 @@ export default function SurveyPage() {
 
           <div>
             <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">
-              What's the main reason for your score?
+              {t("survey.reason_label")}
             </label>
             <textarea
               value={feedback}
               onChange={e => setFeedback(e.target.value)}
               rows={3}
               className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-              placeholder="Your feedback (optional)..."
+              placeholder={t("survey.ph_feedback")}
             />
           </div>
 
@@ -91,7 +93,7 @@ export default function SurveyPage() {
             disabled={score === null || submitting}
             className="w-full py-3 bg-gray-900 text-white rounded-2xl font-black text-sm hover:bg-black flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit Feedback"}
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : t("survey.submit")}
           </button>
         </form>
       </div>

@@ -18,6 +18,7 @@ import {
   UserPlus,
   ExternalLink,
 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface CompetitorResult {
   domain: string;
@@ -64,24 +65,26 @@ function mockCompetitorAnalysis(domains: string[]): Promise<CompetitorResult[]> 
 }
 
 function VsBadge({ vs }: { vs: CompetitorResult["vs"] }) {
+  const { t } = useLanguage();
   if (vs === "ahead") return (
     <span className="flex items-center gap-1 text-[11px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full">
-      <TrendingUp className="w-3 h-3" /> They&apos;re ahead
+      <TrendingUp className="w-3 h-3" /> {t("agents_competitor.vs_ahead")}
     </span>
   );
   if (vs === "behind") return (
     <span className="flex items-center gap-1 text-[11px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-      <TrendingDown className="w-3 h-3" /> You&apos;re winning
+      <TrendingDown className="w-3 h-3" /> {t("agents_competitor.vs_behind")}
     </span>
   );
   return (
     <span className="flex items-center gap-1 text-[11px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-      <Minus className="w-3 h-3" /> Neck and neck
+      <Minus className="w-3 h-3" /> {t("agents_competitor.vs_equal")}
     </span>
   );
 }
 
 export default function CompetitorAnalysisPage() {
+  const { t } = useLanguage();
   const [urls, setUrls] = useState<string[]>([""]);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<CompetitorResult[] | null>(null);
@@ -129,10 +132,10 @@ export default function CompetitorAnalysisPage() {
           </div>
           <div>
             <h1 className="text-2xl font-extrabold" style={{ color: "var(--text-primary)" }}>
-              Competitor Analysis
+              {t("agents_competitor.title")}
             </h1>
             <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-              Deep-dive into competitor SEO metrics and find your edge
+              {t("agents_competitor.subtitle")}
             </p>
           </div>
         </div>
@@ -147,7 +150,7 @@ export default function CompetitorAnalysisPage() {
         style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
       >
         <p className="text-[13px] font-semibold mb-3" style={{ color: "var(--text-primary)" }}>
-          Enter competitor URLs (up to 5)
+          {t("agents_competitor.enter_urls")}
         </p>
         {urls.map((u, i) => (
           <div key={i} className="flex gap-2">
@@ -160,7 +163,7 @@ export default function CompetitorAnalysisPage() {
                 type="text"
                 value={u}
                 onChange={(e) => updateUrl(i, e.target.value)}
-                placeholder={`Competitor ${i + 1} URL — e.g. competitor.com`}
+                placeholder={`${t("agents_competitor.competitor")} ${i + 1} URL — e.g. competitor.com`}
                 className="flex-1 text-[13px] bg-transparent outline-none"
                 style={{ color: "var(--text-primary)" }}
               />
@@ -186,7 +189,7 @@ export default function CompetitorAnalysisPage() {
               className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-lg transition-colors hover:bg-gray-100"
               style={{ color: "var(--text-secondary)" }}
             >
-              <Plus className="w-3.5 h-3.5" /> Add competitor
+              <Plus className="w-3.5 h-3.5" /> {t("agents_competitor.add_competitor")}
             </button>
           )}
           <motion.button
@@ -198,7 +201,7 @@ export default function CompetitorAnalysisPage() {
             style={{ background: "linear-gradient(135deg, #0891b2, #2563eb)" }}
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            {loading ? "Analyzing..." : "Run Analysis"}
+            {loading ? t("agents_competitor.analyzing") : t("agents_competitor.run_analysis")}
           </motion.button>
         </div>
       </motion.form>
@@ -212,7 +215,7 @@ export default function CompetitorAnalysisPage() {
             ))}
             <p className="text-center text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
               <motion.span animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.5, repeat: Infinity }}>
-                📊 Pulling competitor metrics from 50+ data sources…
+                📊 {t("agents_competitor.loading_metrics")}
               </motion.span>
             </p>
           </motion.div>
@@ -269,9 +272,9 @@ export default function CompetitorAnalysisPage() {
                     }
                   >
                     {addedDomains.includes(r.domain) ? (
-                      <><CheckCircle className="w-3.5 h-3.5" /> Added</>
+                      <><CheckCircle className="w-3.5 h-3.5" /> {t("agents_competitor.added")}</>
                     ) : (
-                      <><UserPlus className="w-3.5 h-3.5" /> Add as Lead</>
+                      <><UserPlus className="w-3.5 h-3.5" /> {t("agents_competitor.add_as_lead")}</>
                     )}
                   </button>
                 </div>
@@ -279,10 +282,10 @@ export default function CompetitorAnalysisPage() {
                 {/* Metrics */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
                   {[
-                    { label: "Domain Rating", value: r.dr, suffix: "/100", color: r.dr > 60 ? "#ef4444" : r.dr > 40 ? "#f59e0b" : "#10b981" },
-                    { label: "Organic Traffic", value: r.traffic, suffix: "/mo", color: "#2563eb" },
-                    { label: "Ranked Keywords", value: r.keywords.toLocaleString(), suffix: "", color: "#7c3aed" },
-                    { label: "Backlinks", value: r.backlinks, suffix: "", color: "#0891b2" },
+                    { label: t("agents_competitor.domain_rating"), value: r.dr, suffix: "/100", color: r.dr > 60 ? "#ef4444" : r.dr > 40 ? "#f59e0b" : "#10b981" },
+                    { label: t("agents_competitor.organic_traffic"), value: r.traffic, suffix: "/mo", color: "#2563eb" },
+                    { label: t("agents_competitor.ranked_keywords"), value: r.keywords.toLocaleString(), suffix: "", color: "#7c3aed" },
+                    { label: t("agents_competitor.backlinks"), value: r.backlinks, suffix: "", color: "#0891b2" },
                   ].map((m) => (
                     <div
                       key={m.label}
@@ -304,7 +307,7 @@ export default function CompetitorAnalysisPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <p className="text-[11px] font-bold uppercase tracking-widest mb-2 flex items-center gap-1.5" style={{ color: "var(--text-secondary)" }}>
-                      <Star className="w-3 h-3 text-amber-400" /> Strengths
+                      <Star className="w-3 h-3 text-amber-400" /> {t("agents_competitor.strengths")}
                     </p>
                     <ul className="space-y-1.5">
                       {r.strengths.map((s, j) => (
@@ -317,7 +320,7 @@ export default function CompetitorAnalysisPage() {
                   </div>
                   <div>
                     <p className="text-[11px] font-bold uppercase tracking-widest mb-2 flex items-center gap-1.5" style={{ color: "var(--text-secondary)" }}>
-                      <AlertTriangle className="w-3 h-3 text-green-500" /> Their Weaknesses
+                      <AlertTriangle className="w-3 h-3 text-green-500" /> {t("agents_competitor.weaknesses")}
                     </p>
                     <ul className="space-y-1.5">
                       {r.weaknesses.map((w, j) => (

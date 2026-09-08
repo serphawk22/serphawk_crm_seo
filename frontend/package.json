@@ -46,5 +46,9 @@
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4.2.1",
     "typescript": "^5"
+  },
+  "overrides": {
+    "@next/swc-linux-x64-gnu": "16.1.7",
+    "@next/swc-linux-x64-musl": "16.1.7"
   }
 }
