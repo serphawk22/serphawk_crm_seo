@@ -821,13 +821,24 @@ Your CRM capabilities:
 2. **schedule_meeting** — Schedule a meeting/call. Trigger on: "book meeting with X tomorrow 5pm", "call Y on Monday".
 3. **add_note** — Add a note to a client/lead. Trigger on: "note that X is interested", "log that Y called back".
 4. **add_task** — Create a task/reminder. Trigger on: "remind me to follow up", "create task to send proposal".
-5. **radar_search** — Search for competitors or research a business via radar. Trigger on: "radar on acme.com", "research competitors for X", "analyze mysore restaurant market".
+5. **radar_search** — Search for competitors or research a business via radar. Trigger on: "radar on acme.com", "research competitors for X".
 6. **get_call_pitch** — Get the AI call pitch for a client. Trigger on: "get pitch for X", "what do I say to Y", "call pitch for Acme".
-7. **research_client** — Run AI research on a client/lead/website. Trigger on: "research X", "find info about acme.com", "what does Y company do".
+7. **research_client** — Run AI research on a client/lead/website. Trigger on: "research X", "find info about acme.com".
+8. **list_clients** — List existing clients. Trigger on: "show clients", "list clients", "how many clients do I have", "my clients".
+9. **list_leads** — List existing leads. Trigger on: "show leads", "list leads", "new leads", "leads today".
+10. **list_tasks** — List pending tasks. Trigger on: "show tasks", "my tasks", "pending tasks", "what do I need to do".
+11. **list_upcoming_meetings** — List upcoming meetings/calls. Trigger on: "upcoming meetings", "what's on my calendar", "meetings today", "scheduled calls".
+12. **get_client_summary** — Get a detailed summary of one specific client or lead. Trigger on: "tell me about Acme", "summary of Blue Barrier", "info on Ravi".
+13. **assign_salesperson** — Assign a sales rep/employee to a client or lead. Trigger on: "assign Ravi to Acme", "set sales rep for Blue Barrier to Prasanth", "give Acme to John".
+14. **update_lead_status** — Change the status of a lead. Trigger on: "update lead Acme to Qualified", "move Blue Barrier to Closed Won", "mark lead as Hot".
+15. **update_client_status** — Change the status of a client. Trigger on: "set Acme to Hold", "mark Blue Barrier as Active", "pause Ravi's account".
+16. **generate_email_draft** — Generate an AI email draft for a client or lead. Trigger on: "generate draft for Acme", "create email for Blue Barrier", "write outreach for Ravi".
+17. **send_success_message** — Get the AI agent success/onboarding message or SWOT summary for a client. Trigger on: "send success message to Acme", "agent results for Blue Barrier", "get analysis for Acme".
+18. **quick_followup** — Schedule a quick follow-up reminder. Trigger on: "follow up with Acme tomorrow", "remind me to call Ravi on Friday", "ping Blue Barrier next week".
 
 Rules:
-- ALWAYS call a tool if user intent matches any of the 7 actions above — no matter how informal or broken the speech-to-text is.
-- Aggressively fix speech-to-text errors (e.g., "varsit adre gmail dot com" → "varsitadre@gmail.com").
+- ALWAYS call a tool if user intent matches any of the 18 actions above — no matter how informal or broken the speech-to-text is.
+- Aggressively fix speech-to-text errors (e.g., "varsit adre gmail dot com" -> "varsitadre@gmail.com").
 - For pure conversation (greetings, questions about CRM status, thank-yous) — respond naturally without calling any tool. Keep it brief.
 - Never say "I cannot" or "I don't have access to". Just do it.
 """
@@ -863,7 +874,9 @@ Rules:
                         "type": "object",
                         "properties": {
                             "target_name": {"type": "string", "description": "Name of the lead/client to meet."},
-                            "time_str": {"type": "string", "description": "When (e.g. 'tomorrow at 5pm', 'Monday 3pm')."}
+                            "time_str": {"type": "string", "description": "When (e.g. 'tomorrow at 5pm', 'Monday 3pm')."},
+                            "meeting_type": {"type": "string", "description": "Type: Meeting, Demo, Follow-up, Discovery. Default: Meeting."},
+                            "notes": {"type": "string", "description": "Optional agenda or notes for the meeting."}
                         },
                         "required": ["target_name", "time_str"]
                     }
@@ -906,12 +919,12 @@ Rules:
                 "type": "function",
                 "function": {
                     "name": "radar_search",
-                    "description": "Runs a radar/competitor analysis on a website, keyword, or business type. Use for competitor research, local market analysis, or finding businesses in a niche.",
+                    "description": "Runs a radar/competitor analysis on a website, keyword, or business type.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "query": {"type": "string", "description": "The website URL, keyword, or business niche to research (e.g. 'acme.com', 'SEO agencies in Hyderabad', 'restaurants in Mysore')."},
-                            "location": {"type": "string", "description": "Optional location context (e.g. 'Hyderabad', 'Bangalore')."}
+                            "query": {"type": "string", "description": "The website URL, keyword, or business niche to research."},
+                            "location": {"type": "string", "description": "Optional location context."}
                         },
                         "required": ["query"]
                     }
@@ -935,13 +948,177 @@ Rules:
                 "type": "function",
                 "function": {
                     "name": "research_client",
-                    "description": "Runs AI-powered research on a client, lead, or website and returns a summary with company info, contacts, and recommended services.",
+                    "description": "Runs AI-powered research on a client, lead, or website and returns a summary.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "query": {"type": "string", "description": "Client/lead name or website URL to research (e.g. 'Acme Corp', 'acme.com')."}
+                            "query": {"type": "string", "description": "Client/lead name or website URL to research."}
                         },
                         "required": ["query"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_clients",
+                    "description": "Lists existing clients from the CRM. Use when the user asks to see their clients.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "status_filter": {"type": "string", "description": "Optional: filter by status (Active, Hold, Pending). Leave empty for all."},
+                            "limit": {"type": "integer", "description": "Max number to return. Default 10."}
+                        },
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_leads",
+                    "description": "Lists existing leads from the CRM. Use when the user asks to see their leads.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "status_filter": {"type": "string", "description": "Optional: filter by status (New, Contacted, Qualified, Closed Won, Closed Lost). Leave empty for all."},
+                            "limit": {"type": "integer", "description": "Max number to return. Default 10."}
+                        },
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_tasks",
+                    "description": "Lists pending or all tasks from the CRM.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "status_filter": {"type": "string", "description": "Optional: filter by status (Todo, In Progress, Done). Default: Todo and In Progress."},
+                            "limit": {"type": "integer", "description": "Max number to return. Default 10."}
+                        },
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_upcoming_meetings",
+                    "description": "Lists upcoming meetings and scheduled calls.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "limit": {"type": "integer", "description": "Max number to return. Default 10."}
+                        },
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_client_summary",
+                    "description": "Gets a detailed summary/info card for a specific client or lead by name.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "Name of the client or lead."}
+                        },
+                        "required": ["name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "assign_salesperson",
+                    "description": "Assigns a salesperson or employee to a client or lead.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "entity_name": {"type": "string", "description": "Name of the client or lead to assign to."},
+                            "salesperson_name": {"type": "string", "description": "Name of the salesperson/employee to assign."},
+                            "entity_type": {"type": "string", "description": "client or lead. Default: client."}
+                        },
+                        "required": ["entity_name", "salesperson_name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "update_lead_status",
+                    "description": "Updates the status of a lead (e.g., New, Contacted, Qualified, Closed Won, Closed Lost).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "lead_name": {"type": "string", "description": "Name of the lead to update."},
+                            "new_status": {"type": "string", "description": "New status: New, Contacted, Qualified, Proposal Sent, Closed Won, Closed Lost."}
+                        },
+                        "required": ["lead_name", "new_status"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "update_client_status",
+                    "description": "Updates the status of a client (Active, Hold, Pending).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "client_name": {"type": "string", "description": "Name of the client to update."},
+                            "new_status": {"type": "string", "description": "New status: Active, Hold, Pending."}
+                        },
+                        "required": ["client_name", "new_status"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "generate_email_draft",
+                    "description": "Generates an AI email draft for a client or lead for outreach or follow-up.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "entity_name": {"type": "string", "description": "Name of the client or lead."},
+                            "context": {"type": "string", "description": "Optional: extra context for the email (e.g., 'they asked about SEO', 'follow-up after call')."}
+                        },
+                        "required": ["entity_name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "send_success_message",
+                    "description": "Gets the AI-generated success/onboarding summary or SWOT analysis for a client from the research agents.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "entity_name": {"type": "string", "description": "Name of the client or lead."}
+                        },
+                        "required": ["entity_name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "quick_followup",
+                    "description": "Creates a quick follow-up reminder or task for a client/lead.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "entity_name": {"type": "string", "description": "Name of the client or lead to follow up with."},
+                            "time_str": {"type": "string", "description": "When to follow up (e.g. 'tomorrow', 'Friday', 'next week')."},
+                            "note": {"type": "string", "description": "Optional reason or note for the follow-up."}
+                        },
+                        "required": ["entity_name", "time_str"]
                     }
                 }
             }
@@ -987,7 +1164,7 @@ Rules:
             return {
                 "action": "none",
                 "parameters": {},
-                "reply": msg.content or "Hey! I'm Hawk, your CRM assistant. Try: 'add lead Acme Corp', 'radar on acme.com', or send a business card photo! 🦅"
+                "reply": msg.content or "Hey! I'm Hawk, your CRM assistant 🦅\n\nTry:\n• _Add lead Acme Corp_\n• _List my clients_\n• _Note that Blue Barrier is interested in SEO_\n• _Assign Ravi to Acme_\n• _Schedule meeting with Blue Barrier tomorrow 5pm_\n• Or send a voice note or business card photo!"
             }
     except Exception as e:
         print(f"Error in process_whatsapp_command: {e}")
@@ -996,6 +1173,7 @@ Rules:
             "parameters": {},
             "reply": "Sorry, I ran into an error. Try again in a moment! 🙏"
         }
+
 
 
 async def generate_swot_analysis(url: str, company_name: str = "the company") -> dict:
