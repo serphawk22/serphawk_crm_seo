@@ -6,8 +6,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity, MessageSquare, StickyNote, CheckSquare, Building2, ChevronDown,
   Target, FolderOpen, HeartPulse, LayoutDashboard, Users,
-  TrendingUp, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X
+  TrendingUp, TrendingDown, Lightbulb, ShieldAlert, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, BrainCircuit, Loader2, Radar
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { ResultCard } from '@/components/email-agent/ResultCard';
 
 import { API_BASE_URL } from '@/config';
 import { useRole } from '@/context/RoleContext';
@@ -31,7 +34,7 @@ const TABS = [
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
   { key: 'tasks',          label: 'Tasks',           icon: CheckSquare     },
   { key: 'tickets',        label: 'Tickets',         icon: Ticket          },
-  { key: 'opportunities',  label: 'Opportunities',   icon: Target          },
+
   { key: 'files',          label: 'Files',           icon: FolderOpen      },
   { key: 'health',         label: 'Health',          icon: HeartPulse      },
   { key: 'conversations',  label: 'Conversations',   icon: MessageSquare   },
@@ -98,7 +101,7 @@ function CollapsibleSection({ title, icon: Icon, count, defaultOpen = false, acc
 }
 
 // ─── Overview Tab — premium light ──────────────────────────────────────────
-function OverviewTab({ client, employees, serviceRequests, activities, timeline, research, notes, conversations, clientId, onNotesRefresh, onConversationsRefresh, emails }: any) {
+function OverviewTab({ client, employees, serviceRequests, activities, timeline, research, notes, conversations, clientId, onNotesRefresh, onConversationsRefresh, emails, handleGenerateAnalysis, isGeneratingResearch, onRefresh }: any) {
   const { t, language } = useLanguage();
   const recentActivities = (activities || []).slice(0, 8);
 
@@ -447,7 +450,284 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
           )}
         </div>
       </CollapsibleSection>
+
+      {/* Agent Data */}
+      <CollapsibleSection title="Agent data" icon={Target} accentColor="#4f46e5" defaultOpen={true}>
+        {(() => {
+          let eaData: any = null;
+          if (research?.email_agent_data) {
+            try { eaData = typeof research.email_agent_data === 'string' ? JSON.parse(research.email_agent_data) : research.email_agent_data; } catch(e) {}
+          }
+          const hasValidData = eaData && !!eaData.full_markdown_report;
+          
+          if (hasValidData) {
+            return (
+          <div style={{ paddingTop: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 16 }}>
+              <button
+                onClick={() => {
+                  const printWindow = window.open('', '_blank');
+                  if (!printWindow) return;
+                  let eaData: any = null;
+                  try { eaData = typeof research.email_agent_data === 'string' ? JSON.parse(research.email_agent_data) : research.email_agent_data; } catch(e) {}
+                  printWindow.document.write(`
+                    <html>
+                      <head>
+                        <title>AI Investigation Report - ${client?.companyName || 'Client'}</title>
+                        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+                        <style>
+                          body { font-family: system-ui, -apple-system, sans-serif; padding: 40px; color: #1e293b; max-width: 800px; margin: 0 auto; line-height: 1.6; }
+                          h1 { color: #4f46e5; margin-bottom: 8px; font-size: 28px; }
+                          h2 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-top: 40px; font-size: 20px; }
+                          h3 { color: #334155; font-size: 16px; margin-top: 24px; }
+                          p { color: #334155; font-size: 14px; }
+                          ul, ol { font-size: 14px; color: #334155; padding-left: 20px; }
+                          li { margin-bottom: 8px; }
+                          table { width: 100%; border-collapse: collapse; margin-top: 16px; margin-bottom: 16px; font-size: 14px; }
+                          th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: left; }
+                          th { background: #f8fafc; color: #0f172a; }
+                          .meta { color: #64748b; font-size: 14px; margin-bottom: 40px; }
+                          #content { margin-top: 30px; }
+                        </style>
+                      </head>
+                      <body>
+                        <h1>AI Deep Investigation Report</h1>
+                        <div class="meta">Generated for ${client?.companyName || 'Client'} • ${new Date().toLocaleDateString()}</div>
+                        
+                        <div id="content">Loading report...</div>
+
+                        <script>
+                          const rawData = ${JSON.stringify(eaData || {})};
+                          
+                          if (rawData.full_markdown_report) {
+                            document.getElementById('content').innerHTML = marked.parse(rawData.full_markdown_report);
+                          } else {
+                            document.getElementById('content').innerHTML = "<pre style='white-space: pre-wrap; font-size: 12px;'>" + JSON.stringify(rawData, null, 2) + "</pre>";
+                          }
+                          
+                          setTimeout(() => {
+                            window.print();
+                          }, 1000);
+                        </script>
+                      </body>
+                    </html>
+                  `);
+                  printWindow.document.close();
+                }}
+                style={{ background: '#1e293b', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+              >
+                <FileText size={14} /> Download PDF Report
+              </button>
+            </div>
+            {(() => {
+              let eaData: any = null;
+              try { eaData = typeof research.email_agent_data === 'string' ? JSON.parse(research.email_agent_data) : research.email_agent_data; } catch(e) {}
+              if (!eaData) return null;
+              
+              if (eaData.full_markdown_report) {
+                return (
+                  <div className="mt-4 p-6 bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-700 shadow-sm overflow-hidden text-sm leading-relaxed prose prose-slate dark:prose-invert prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-a:text-indigo-600 dark:prose-a:text-indigo-400 max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {eaData.full_markdown_report}
+                    </ReactMarkdown>
+                  </div>
+                );
+              }
+              
+              return null;
+            })()}
+          </div>
+          );
+        } else {
+          return (
+          <div style={{ paddingTop: 32, paddingBottom: 32, textAlign: 'center', color: 'var(--text-muted)' }}>
+            <div style={{ background: 'var(--bg-card)', width: 64, height: 64, borderRadius: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', border: '1px solid var(--border)' }}>
+              <BrainCircuit size={28} color="var(--text-secondary)" />
+            </div>
+            <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>Agent Analysis is pending</p>
+            <p style={{ fontSize: 13, marginTop: 4, maxWidth: 400, margin: '8px auto 24px' }}>Click below to manually trigger a deep, comprehensive AI investigation of this client. This will analyze their website, discover their core ICPs, find competitors, and write a detailed GTM markdown report.</p>
+            <button 
+              onClick={handleGenerateAnalysis}
+              disabled={isGeneratingResearch}
+              style={{
+                padding: '10px 24px',
+                background: isGeneratingResearch ? '#94a3b8' : '#4f46e5',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: isGeneratingResearch ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                transition: 'all 0.2s'
+              }}
+            >
+              {isGeneratingResearch ? (
+                <>Generating... Please wait</>
+              ) : (
+                <><Target size={16} /> Generate Comprehensive Analysis</>
+              )}
+            </button>
+          </div>
+          );
+        }})()}
+
+        {/* Opportunities Section moved here */}
+        <div style={{ marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 24 }}>
+          <OpportunitiesTab
+            client={client}
+            timeline={timeline}
+            serviceRequests={serviceRequests}
+            research={research}
+            emails={emails}
+          />
+        </div>
+      </CollapsibleSection>
+
+      {/* SWOT Section */}
+      <CollapsibleSection title="SWOT Analysis" icon={Radar} accentColor="#f97316" defaultOpen={true}>
+        <div style={{ paddingTop: 16 }}>
+          <AdminClientSwotTab client={client} onRefresh={onRefresh} />
+        </div>
+      </CollapsibleSection>
     </div>
+  );
+}
+
+// ─── SWOT TAB ────────────────────────────────────────────────────────────────
+function AdminClientSwotTab({ client, onRefresh }: { client: any, onRefresh: () => void }) {
+  const [isSwotLoading, setIsSwotLoading] = useState(false);
+
+  const handleGenerateSwot = async () => {
+    setIsSwotLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${client.id}/swot`, { method: 'POST' });
+      if (res.ok) {
+        onRefresh();
+      } else {
+        const err = await res.json();
+        alert(`Failed to generate SWOT: ${err.detail || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error connecting to AI');
+    } finally {
+      setIsSwotLoading(false);
+    }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-4">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="h-1 w-12 bg-gradient-to-r from-orange-400 to-red-500 rounded-full"></div>
+          <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">SWOT Analysis</h2>
+        </div>
+        {client.swot_analysis && (
+          <button
+            onClick={handleGenerateSwot}
+            disabled={isSwotLoading}
+            className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-red-500/30 transition-all disabled:opacity-50"
+          >
+            {isSwotLoading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+            {isSwotLoading ? 'Analyzing...' : 'Refresh SWOT'}
+          </button>
+        )}
+      </div>
+
+      {client.swot_analysis ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {(() => {
+            let swot = null;
+            try {
+              swot = JSON.parse(client.swot_analysis);
+            } catch (e) {}
+
+            if (!swot) return <div className="col-span-2 text-slate-500 italic p-6 bg-slate-50 rounded-2xl">Invalid SWOT data. Please regenerate.</div>;
+
+            return (
+              <>
+                <div className="col-span-1 md:col-span-2 p-6 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl shadow-sm">
+                  <p className="text-sm font-medium text-slate-700 dark:text-zinc-300 leading-relaxed text-center">
+                    {swot.summary}
+                  </p>
+                </div>
+
+                <div className="p-6 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-3xl">
+                  <h3 className="text-lg font-black text-emerald-800 dark:text-emerald-400 mb-4 flex items-center gap-2">
+                    <TrendingUp size={20} /> Strengths
+                  </h3>
+                  <ul className="space-y-3">
+                    {swot.strengths?.map((s: string, i: number) => (
+                      <li key={i} className="flex gap-2 text-sm text-emerald-700 dark:text-emerald-300">
+                        <span className="font-bold shrink-0 mt-0.5">•</span> <span>{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="p-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-3xl">
+                  <h3 className="text-lg font-black text-red-800 dark:text-red-400 mb-4 flex items-center gap-2">
+                    <TrendingDown size={20} /> Weaknesses
+                  </h3>
+                  <ul className="space-y-3">
+                    {swot.weaknesses?.map((w: string, i: number) => (
+                      <li key={i} className="flex gap-2 text-sm text-red-700 dark:text-red-300">
+                        <span className="font-bold shrink-0 mt-0.5">•</span> <span>{w}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="p-6 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-3xl">
+                  <h3 className="text-lg font-black text-blue-800 dark:text-blue-400 mb-4 flex items-center gap-2">
+                    <Lightbulb size={20} /> Opportunities
+                  </h3>
+                  <ul className="space-y-3">
+                    {swot.opportunities?.map((o: string, i: number) => (
+                      <li key={i} className="flex gap-2 text-sm text-blue-700 dark:text-blue-300">
+                        <span className="font-bold shrink-0 mt-0.5">•</span> <span>{o}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-3xl">
+                  <h3 className="text-lg font-black text-amber-800 dark:text-amber-400 mb-4 flex items-center gap-2">
+                    <ShieldAlert size={20} /> Threats
+                  </h3>
+                  <ul className="space-y-3">
+                    {swot.threats?.map((t: string, i: number) => (
+                      <li key={i} className="flex gap-2 text-sm text-amber-700 dark:text-amber-300">
+                        <span className="font-bold shrink-0 mt-0.5">•</span> <span>{t}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center py-16 px-6 bg-slate-50 dark:bg-zinc-900/50 border border-dashed border-slate-300 dark:border-zinc-700 rounded-3xl">
+          <div className="w-16 h-16 bg-white dark:bg-zinc-800 rounded-full flex items-center justify-center shadow-sm mb-4">
+            <Radar size={28} className="text-slate-400" />
+          </div>
+          <h3 className="text-lg font-bold text-slate-700 dark:text-zinc-300 mb-2">No SWOT Analysis yet</h3>
+          <p className="text-sm text-slate-500 text-center max-w-md mb-6">Run a deep AI analysis of this client's website to identify their Strengths, Weaknesses, Opportunities, and Threats.</p>
+          <button
+            onClick={handleGenerateSwot}
+            disabled={isSwotLoading || !client.websiteUrl}
+            className="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 dark:bg-white dark:hover:bg-slate-200 dark:text-slate-900 text-white rounded-xl font-bold text-sm shadow-sm transition-all disabled:opacity-50 flex items-center gap-2"
+          >
+            {isSwotLoading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+            {isSwotLoading ? 'Analyzing...' : (client.websiteUrl ? 'Perform SWOT Analysis' : 'Add Website URL first')}
+          </button>
+        </div>
+      )}
+    </motion.div>
   );
 }
 
@@ -472,6 +752,7 @@ export default function AdminClientDetailPage() {
   const [tasks, setTasks]                 = useState<any[]>([]);
   const [files, setFiles]                 = useState<any[]>([]);
   const [research, setResearch]           = useState<any>(null);
+  const [isGeneratingResearch, setIsGeneratingResearch] = useState(false);
 
   // UI state
   const [activeTab, setActiveTab]         = useState('overview');
@@ -498,6 +779,7 @@ export default function AdminClientDetailPage() {
   const fetchClient = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/clients/${id}`);
+      if (!res.ok) throw new Error("Failed to load client");
       const data = await res.json();
       setClient(data.client || data);
     } catch (e) { console.error(e); }
@@ -506,18 +788,19 @@ export default function AdminClientDetailPage() {
   const fetchAll = useCallback(async () => {
     if (!id) return;
     try {
+      const fetchJson = (url: string) => fetch(url).then(r => { if (!r.ok) throw new Error(`Fetch failed for ${url}`); return r.json(); });
       const [clientRes, empRes, actRes, emailRes, svcRes, tlRes, notesRes, convRes, taskRes, filesRes, researchRes] = await Promise.allSettled([
-        fetch(`${API_BASE_URL}/clients/${id}`).then(r => r.json()),
-        fetch(`${API_BASE_URL}/employees`).then(r => r.json()),
-        fetch(`${API_BASE_URL}/clients/${id}/activities`).then(r => r.json()),
-        fetch(`${API_BASE_URL}/clients/${id}/emails`).then(r => r.json()),
-        fetch(`${API_BASE_URL}/services/requests`).then(r => r.json()),
-        fetch(`${API_BASE_URL}/clients/${id}/timeline`).then(r => r.json()),
-        fetch(`${API_BASE_URL}/clients/${id}/notes`).then(r => r.json()),
-        fetch(`${API_BASE_URL}/clients/${id}/conversations`).then(r => r.json()),
-        fetch(`${API_BASE_URL}/tasks?client_id=${id}`).then(r => r.json()),
-        fetch(`${API_BASE_URL}/clients/${id}/files`).then(r => r.json()),
-        fetch(`${API_BASE_URL}/clients/${id}/research`).then(r => r.json()),
+        fetchJson(`${API_BASE_URL}/clients/${id}`),
+        fetchJson(`${API_BASE_URL}/employees`),
+        fetchJson(`${API_BASE_URL}/clients/${id}/activities`),
+        fetchJson(`${API_BASE_URL}/clients/${id}/emails`),
+        fetchJson(`${API_BASE_URL}/services/requests`),
+        fetchJson(`${API_BASE_URL}/clients/${id}/timeline`),
+        fetchJson(`${API_BASE_URL}/clients/${id}/notes`),
+        fetchJson(`${API_BASE_URL}/clients/${id}/conversations`),
+        fetchJson(`${API_BASE_URL}/tasks?client_id=${id}`),
+        fetchJson(`${API_BASE_URL}/clients/${id}/files`),
+        fetchJson(`${API_BASE_URL}/clients/${id}/research`),
       ]);
 
       if (clientRes.status === 'fulfilled') setClient(clientRes.value.client || clientRes.value);
@@ -561,7 +844,9 @@ export default function AdminClientDetailPage() {
         body: JSON.stringify(newUserForm),
       });
       if (res.ok) {
-        const data = await res.json();
+        const text = await res.text().catch(() => "");
+        let data: any = {};
+        try { data = JSON.parse(text); } catch (e) {}
         // Automatically assign the newly created user to this client
         await fetch(`${API_BASE_URL}/clients/${id}/assign-employee`, {
           method: 'POST',
@@ -577,6 +862,24 @@ export default function AdminClientDetailPage() {
     } catch (err) {
       console.error(err);
       alert('Error creating salesperson');
+    }
+  };
+
+  const handleGenerateAnalysis = async () => {
+    if (!id) return;
+    setIsGeneratingResearch(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${id}/auto-research`, { method: 'POST' });
+      if (res.ok) {
+        alert('Deep investigation started in the background! It may take 1-3 minutes. Refresh the page later to see the results.');
+      } else {
+        alert('Failed to start research.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error triggering research.');
+    } finally {
+      setIsGeneratingResearch(false);
     }
   };
 
@@ -733,8 +1036,11 @@ export default function AdminClientDetailPage() {
                     conversations={conversations}
                     emails={emails}
                     clientId={id}
-                    onNotesRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/notes`).then(r => r.json()).then(d => setNotes(d.notes || []))}
-                    onConversationsRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/conversations`).then(r => r.json()).then(d => setConversations(d.conversations || []))}
+                    onNotesRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/notes`).then(async r => { if (!r.ok) throw new Error(); return r.json(); }).then(d => setNotes(d.notes || []))}
+                    onConversationsRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/conversations`).then(async r => { if (!r.ok) throw new Error(); return r.json(); }).then(d => setConversations(d.conversations || []))}
+                    handleGenerateAnalysis={handleGenerateAnalysis}
+                    isGeneratingResearch={isGeneratingResearch}
+                    onRefresh={fetchClient}
                   />
                 )}
                 {activeTab === 'timeline' && (
@@ -750,14 +1056,14 @@ export default function AdminClientDetailPage() {
                     conversations={conversations}
                     employees={employees}
                     currentUser="Admin"
-                    onRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/conversations`).then(r => r.json()).then(d => setConversations(d.conversations || []))}
+                    onRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/conversations`).then(async r => { if (!r.ok) throw new Error(); return r.json(); }).then(d => setConversations(d.conversations || []))}
                   />
                 )}
                 {activeTab === 'notes' && (
                   <NotesTab
                     clientId={id}
                     notes={notes}
-                    onRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/notes`).then(r => r.json()).then(d => setNotes(d.notes || []))}
+                    onRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/notes`).then(async r => { if (!r.ok) throw new Error(); return r.json(); }).then(d => setNotes(d.notes || []))}
                   />
                 )}
                 {activeTab === 'tasks' && (
@@ -765,26 +1071,18 @@ export default function AdminClientDetailPage() {
                     clientId={id}
                     tasks={tasks}
                     employees={employees}
-                    onRefresh={() => fetch(`${API_BASE_URL}/tasks?client_id=${id}`).then(r => r.json()).then(d => {
+                    onRefresh={() => fetch(`${API_BASE_URL}/tasks?client_id=${id}`).then(async r => { if (!r.ok) throw new Error(); return r.json(); }).then(d => {
                       const all = d.tasks || d || [];
                       setTasks(all.filter((t: any) => String(t.client_id) === String(id)));
                     })}
                   />
                 )}
-                {activeTab === 'opportunities' && (
-                  <OpportunitiesTab
-                    client={client}
-                    timeline={timeline}
-                    serviceRequests={serviceRequests}
-                    research={research}
-                    emails={emails}
-                  />
-                )}
+
                 {activeTab === 'files' && (
                   <FilesTab
                     clientId={id}
                     files={files}
-                    onRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/files`).then(r => r.json()).then(d => setFiles(d.files || d || []))}
+                    onRefresh={() => fetch(`${API_BASE_URL}/clients/${id}/files`).then(async r => { if (!r.ok) throw new Error(); return r.json(); }).then(d => setFiles(d.files || d || []))}
                   />
                 )}
                 {activeTab === 'health' && (

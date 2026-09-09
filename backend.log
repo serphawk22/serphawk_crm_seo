@@ -1,9 +1,17 @@
-INFO:     Started server process [11306]
+/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/google/auth/__init__.py:54: FutureWarning: You are using a Python version 3.9 past its end of life. Google will update google-auth with critical bug fixes on a best-effort basis, but not with any other fixes or features. Please upgrade your Python version, and then update google-auth.
+  warnings.warn(eol_message.format("3.9"), FutureWarning)
+/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/google/oauth2/__init__.py:40: FutureWarning: You are using a Python version 3.9 past its end of life. Google will update google-auth with critical bug fixes on a best-effort basis, but not with any other fixes or features. Please upgrade your Python version, and then update google-auth.
+  warnings.warn(eol_message.format("3.9"), FutureWarning)
+/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/google/api_core/_python_version_support.py:242: FutureWarning: You are using a non-supported Python version (3.9.6). Google will not post any further updates to google.api_core supporting this Python version. Please upgrade to the latest Python version, or at least Python 3.10, and then update google.api_core.
+  warnings.warn(message, FutureWarning)
+INFO:     Started server process [9940]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 OpenAI client globally patched for API Intelligence Tracking.
-Finished checking and adding tenant_id columns to 66 tables.
+Finished checking and adding tenant_id columns to 64 tables.
 sidebar_preferences column already exists or error: (psycopg2.errors.DuplicateColumn) column "sidebar_preferences" of relation "users" already exists
 
 [SQL: ALTER TABLE users ADD COLUMN sidebar_preferences JSON;]
@@ -35,1007 +43,288 @@ tenant call limits already exist or error: (psycopg2.errors.DuplicateColumn) col
 
 [SQL: ALTER TABLE tenants ADD COLUMN limit_calls INTEGER DEFAULT 5;]
 (Background on this error at: https://sqlalche.me/e/20/f405)
-DB keepalive started (pings every 60s).
-INFO:     127.0.0.1:39544 - "GET /health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:39556 - "GET /quotes/8/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60002 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59992 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46144 - "OPTIONS /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46144 - "OPTIONS /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46182 - "OPTIONS /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46196 - "OPTIONS /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46182 - "OPTIONS /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46196 - "OPTIONS /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46144 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46154 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46174 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46160 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46196 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46144 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46182 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46154 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46160 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46196 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46182 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40412 - "OPTIONS /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40416 - "GET /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40416 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40426 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49232 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49230 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40424 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40440 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45920 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45920 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45926 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57952 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57946 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:34226 - "GET /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46540 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46532 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57426 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57434 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57434 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36662 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36668 - "GET /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:34946 - "OPTIONS /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:34954 - "OPTIONS /calls?unsummarized=true HTTP/1.1" 200 OK
-/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/pydantic/main.py:475: UserWarning: Pydantic serializer warnings:
-  PydanticSerializationUnexpectedValue(Expected `dict[any, any]` - serialized value may not be as expected [field_name='ai_analysis_results', input_value='{"company_info": {"compa...xtracted_services": []}', input_type=str])
-  return self.__pydantic_serializer__.to_python(
-/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/pydantic/main.py:475: UserWarning: Pydantic serializer warnings:
-  PydanticSerializationUnexpectedValue(Expected `dict[any, any]` - serialized value may not be as expected [field_name='ai_analysis_results', input_value='{"company_info": {"compa...is_estimated": false}]}', input_type=str])
-  return self.__pydantic_serializer__.to_python(
-INFO:     127.0.0.1:34944 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:34946 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:34964 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:34888 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56016 - "GET /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44320 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44316 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58680 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58668 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58668 - "GET /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58668 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49116 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49082 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49104 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49094 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49112 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49116 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49082 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49104 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49094 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49116 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49112 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49082 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49104 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49094 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49116 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49082 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49104 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49094 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49112 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49112 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60862 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60854 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59182 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59186 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50744 - "GET /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57466 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57470 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56546 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56548 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53656 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53658 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49202 - "GET /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36924 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36916 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36924 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36938 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36972 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36948 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36958 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36916 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36924 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36938 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36972 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36948 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36958 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36958 - "GET /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47586 - "OPTIONS /client-statuses HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47588 - "OPTIONS /activities HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47590 - "OPTIONS /clients?page=1&per_page=12 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47604 - "OPTIONS /client-statuses HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47610 - "OPTIONS /activities HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47586 - "OPTIONS /clients?page=1&per_page=12 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47588 - "OPTIONS /clients?page=1&per_page=12 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47574 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47586 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47590 - "GET /client-statuses HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47588 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47604 - "GET /activities HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47610 - "GET /clients?page=1&per_page=12 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47590 - "GET /client-statuses HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47604 - "GET /activities HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47610 - "GET /clients?page=1&per_page=12 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47610 - "GET /clients?page=1&per_page=12 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49206 - "OPTIONS /clients/8 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49212 - "OPTIONS /employees HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49226 - "OPTIONS /clients/8/activities HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49232 - "OPTIONS /clients/8/emails HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49240 - "OPTIONS /services/requests HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49206 - "OPTIONS /clients/8/timeline HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49212 - "OPTIONS /clients/8/notes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49226 - "OPTIONS /clients/8/conversations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49232 - "OPTIONS /tasks?client_id=8 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49240 - "OPTIONS /clients/8/files HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49226 - "OPTIONS /clients/8/research HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49232 - "OPTIONS /clients/8 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49212 - "OPTIONS /employees HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49206 - "OPTIONS /clients/8/activities HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49240 - "OPTIONS /clients/8/emails HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49226 - "OPTIONS /services/requests HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49232 - "OPTIONS /clients/8/timeline HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49206 - "OPTIONS /clients/8/notes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49240 - "OPTIONS /clients/8/conversations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49212 - "OPTIONS /tasks?client_id=8 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49226 - "OPTIONS /clients/8/files HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49232 - "OPTIONS /clients/8/research HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47610 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49206 - "GET /clients/8/activities HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49232 - "GET /services/requests HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49240 - "GET /employees HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49226 - "GET /clients/8/emails HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47610 - "GET /clients/8/conversations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49212 - "GET /clients/8 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49206 - "GET /tasks?client_id=8 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49226 - "GET /clients/8/files HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49232 - "GET /clients/8/notes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49240 - "GET /clients/8/timeline HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49212 - "GET /clients/8/research HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47610 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49206 - "GET /client-statuses HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49232 - "GET /clients?page=1&per_page=12 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49226 - "GET /activities HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49212 - "GET /clients/8/activities HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49240 - "GET /employees HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47610 - "GET /services/requests HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49206 - "GET /clients/8/emails HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49232 - "GET /clients/8/conversations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49226 - "GET /clients/8 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49240 - "GET /tasks?client_id=8 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49212 - "GET /clients/8/notes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49206 - "GET /clients/8/files HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49232 - "GET /client-statuses HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47610 - "GET /clients/8/timeline HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49226 - "GET /clients/8/research HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49240 - "GET /activities HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49206 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49212 - "GET /clients?page=1&per_page=12 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47610 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49226 - "GET /clients?page=1&per_page=12 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53184 - "OPTIONS /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53184 - "OPTIONS /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53200 - "OPTIONS /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53198 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53204 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53184 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:34774 - "GET /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53198 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53204 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50822 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50836 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45746 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45756 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58670 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58656 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52564 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52556 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42662 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42672 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58020 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58022 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58008 - "GET /clients?per_page=1000 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:43160 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:43168 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:35400 - "GET /clients HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33000 - "OPTIONS /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "OPTIONS /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33014 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33000 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52708 - "GET /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52720 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52728 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60532 - "OPTIONS /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60532 - "OPTIONS /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60532 - "OPTIONS /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60564 - "OPTIONS /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60518 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60546 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60546 - "OPTIONS /contacts HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60550 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60564 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60532 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60546 - "OPTIONS /contacts?search= HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60550 - "OPTIONS /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60532 - "OPTIONS /clients HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60564 - "OPTIONS /contacts HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60546 - "OPTIONS /contacts?search= HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60550 - "OPTIONS /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60532 - "OPTIONS /clients HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60564 - "OPTIONS /contacts HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60552 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60518 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60550 - "GET /client-statuses HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60546 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60564 - "GET /clients?page=1&per_page=12 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60532 - "GET /activities HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60518 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60552 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60564 - "GET /contacts HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60550 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60532 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60552 - "GET /contacts?search= HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60546 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60518 - "GET /clients HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60532 - "GET /client-statuses HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60564 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60550 - "GET /activities HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60552 - "GET /contacts HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60546 - "GET /clients?page=1&per_page=12 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60518 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60564 - "GET /contacts?search= HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60532 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60552 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60550 - "GET /clients HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60518 - "GET /clients?page=1&per_page=12 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60546 - "GET /contacts HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60564 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60532 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60552 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59274 - "OPTIONS /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59278 - "GET /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59002 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59010 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41588 - "OPTIONS /sales-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41612 - "OPTIONS /clients?per_page=1000 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41622 - "OPTIONS /sales-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41626 - "OPTIONS /clients?per_page=1000 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41586 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41588 - "GET /sales-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41600 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41588 - "GET /sales-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41612 - "GET /clients?per_page=1000 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41600 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41586 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41626 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41588 - "GET /clients?per_page=1000 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41626 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41588 - "OPTIONS /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41586 - "OPTIONS /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41612 - "OPTIONS /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50666 - "OPTIONS /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41588 - "OPTIONS /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41612 - "OPTIONS /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41626 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41600 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41612 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41586 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50666 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41588 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41626 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41600 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41586 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41612 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41626 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:38058 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:38042 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:48112 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:48128 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54862 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54850 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42328 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42314 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53944 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53960 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44288 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44284 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-Traceback (most recent call last):
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
-    self.dialect.do_execute(
-    ~~~~~~~~~~~~~~~~~~~~~~~^
-        cursor, str_statement, effective_parameters, context
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
-    cursor.execute(statement, parameters)
-    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-psycopg2.OperationalError: server closed the connection unexpectedly
-	This probably means the server terminated abnormally
-	before or while processing the request.
-server closed the connection unexpectedly
-	This probably means the server terminated abnormally
-	before or while processing the request.
+INFO:     127.0.0.1:63096 - "OPTIONS /notifications/1?unread_only=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63097 - "OPTIONS /calls?unsummarized=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63096 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63098 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
+  + Exception Group Traceback (most recent call last):
+  |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_utils.py", line 77, in collapse_excgroups
+  |     yield
+  |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 189, in __call__
+  |     response_sent.set()
+  |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 783, in __aexit__
+  |     raise BaseExceptionGroup(
+  | exceptiongroup.ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    |     await self.app(scope, receive, _send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 189, in __call__
+    |     response_sent.set()
+    |   File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/contextlib.py", line 135, in __exit__
+    |     self.gen.throw(type, value, traceback)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_utils.py", line 83, in collapse_excgroups
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 187, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 395, in dispatch
+    |     response = await call_next(request)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 163, in call_next
+    |     raise app_exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 149, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 715, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 735, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 288, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 76, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 73, in app
+    |     response = await f(request)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 301, in app
+    |     raw_response = await run_endpoint_function(
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 214, in run_endpoint_function
+    |     return await run_in_threadpool(dependant.call, **values)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/concurrency.py", line 39, in run_in_threadpool
+    |     return await anyio.to_thread.run_sync(func, *args)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/to_thread.py", line 63, in run_sync
+    |     return await get_async_backend().run_sync_in_worker_thread(
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 2502, in run_sync_in_worker_thread
+    |     return await future
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 986, in run
+    |     result = context.run(func, *args)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 2210, in get_dashboard_call_pitch
+    |     "agent_data": research_entry.research_markdown if research_entry else None,
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/pydantic/main.py", line 1042, in __getattr__
+    |     raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+    | AttributeError: 'ClientResearch' object has no attribute 'research_markdown'
+    +------------------------------------
 
-
-The above exception was the direct cause of the following exception:
+During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 165, in __call__
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 165, in __call__
     await self.app(scope, receive, _send)
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 93, in __call__
-    await self.simple_response(scope, receive, send, request_headers=headers)
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 144, in simple_response
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/cors.py", line 85, in __call__
     await self.app(scope, receive, send)
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 185, in __call__
-    with collapse_excgroups():
-         ~~~~~~~~~~~~~~~~~~^^
-  File "/usr/lib/python3.13/contextlib.py", line 162, in __exit__
-    self.gen.throw(value)
-    ~~~~~~~~~~~~~~^^^^^^^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/_utils.py", line 83, in collapse_excgroups
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 189, in __call__
+    response_sent.set()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/contextlib.py", line 135, in __exit__
+    self.gen.throw(type, value, traceback)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_utils.py", line 83, in collapse_excgroups
     raise exc
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 187, in __call__
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 187, in __call__
     response = await self.dispatch_func(request, call_next)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/vijay/Projects/serphawk_crm_seo/main.py", line 390, in dispatch
-    user_obj = session.get(User, user_id_val)
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 3702, in get
-    return self._get_impl(
-           ~~~~~~~~~~~~~~^
-        entity,
-        ^^^^^^^
-    ...<7 lines>...
-        bind_arguments=bind_arguments,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 3881, in _get_impl
-    return db_load_fn(
-        self,
-    ...<5 lines>...
-        bind_arguments=bind_arguments,
-    )
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/loading.py", line 695, in load_on_pk_identity
-    session.execute(
-    ~~~~~~~~~~~~~~~^
-        q,
-        ^^
-    ...<2 lines>...
-        bind_arguments=bind_arguments,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlmodel/orm/session.py", line 136, in execute
-    return super().execute(
-           ~~~~~~~~~~~~~~~^
-        statement,
-        ^^^^^^^^^^
-    ...<4 lines>...
-        _add_event=_add_event,
-        ^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2373, in execute
-    return self._execute_internal(
-           ~~~~~~~~~~~~~~~~~~~~~~^
-        statement,
-        ^^^^^^^^^^
-    ...<4 lines>...
-        _add_event=_add_event,
-        ^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
-    result: Result[Any] = compile_state_cls.orm_execute_statement(
-                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
-        self,
-        ^^^^^
-    ...<4 lines>...
-        conn,
-        ^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
-    result = conn.execute(
-        statement, params or {}, execution_options=execution_options
-    )
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
-    return meth(
-        self,
-        distilled_parameters,
-        execution_options or NO_OPTIONS,
-    )
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
-    return connection._execute_clauseelement(
-           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
-        self, distilled_params, execution_options
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
-    ret = self._execute_context(
-        dialect,
-    ...<8 lines>...
-        cache_hit=cache_hit,
-    )
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
-    return self._exec_single_context(
-           ~~~~~~~~~~~~~~~~~~~~~~~~~^
-        dialect, context, statement, parameters
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
-    self._handle_dbapi_exception(
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
-        e, str_statement, effective_parameters, cursor, context
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
-    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
-    self.dialect.do_execute(
-    ~~~~~~~~~~~~~~~~~~~~~~~^
-        cursor, str_statement, effective_parameters, context
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
-    cursor.execute(statement, parameters)
-    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) server closed the connection unexpectedly
-	This probably means the server terminated abnormally
-	before or while processing the request.
-server closed the connection unexpectedly
-	This probably means the server terminated abnormally
-	before or while processing the request.
-
-[SQL: SELECT users.tenant_id AS users_tenant_id, users.id AS users_id, users.email AS users_email, users.password AS users_password, users.hashed_password AS users_hashed_password, users.name AS users_name, users.phone AS users_phone, users.role AS users_role, users.is_active AS users_is_active, users.status AS users_status, users.sidebar_preferences AS users_sidebar_preferences, users.created_at AS users_created_at, users.updated_at AS users_updated_at 
-FROM users 
-WHERE users.id = %(pk_1)s]
-[parameters: {'pk_1': 527}]
-(Background on this error at: https://sqlalche.me/e/20/e3q8)
-Keepalive ping failed: (psycopg2.OperationalError) server closed the connection unexpectedly
-	This probably means the server terminated abnormally
-	before or while processing the request.
-server closed the connection unexpectedly
-	This probably means the server terminated abnormally
-	before or while processing the request.
-
-[SQL: SELECT 1]
-(Background on this error at: https://sqlalche.me/e/20/e3q8)
-Unhandled Exception: (psycopg2.OperationalError) server closed the connection unexpectedly
-	This probably means the server terminated abnormally
-	before or while processing the request.
-server closed the connection unexpectedly
-	This probably means the server terminated abnormally
-	before or while processing the request.
-
-[SQL: SELECT users.tenant_id AS users_tenant_id, users.id AS users_id, users.email AS users_email, users.password AS users_password, users.hashed_password AS users_hashed_password, users.name AS users_name, users.phone AS users_phone, users.role AS users_role, users.is_active AS users_is_active, users.status AS users_status, users.sidebar_preferences AS users_sidebar_preferences, users.created_at AS users_created_at, users.updated_at AS users_updated_at 
-FROM users 
-WHERE users.id = %(pk_1)s]
-[parameters: {'pk_1': 527}]
-(Background on this error at: https://sqlalche.me/e/20/e3q8)
-INFO:     127.0.0.1:35376 - "GET /notifications/527?unread_only=true HTTP/1.1" 500 Internal Server Error
-ERROR:    Exception in ASGI application
-Traceback (most recent call last):
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
-    self.dialect.do_execute(
-    ~~~~~~~~~~~~~~~~~~~~~~~^
-        cursor, str_statement, effective_parameters, context
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
-    cursor.execute(statement, parameters)
-    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-psycopg2.OperationalError: server closed the connection unexpectedly
-	This probably means the server terminated abnormally
-	before or while processing the request.
-server closed the connection unexpectedly
-	This probably means the server terminated abnormally
-	before or while processing the request.
-
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/uvicorn/protocols/http/httptools_impl.py", line 399, in run_asgi
-    result = await app(  # type: ignore[func-returns-value]
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        self.scope, self.receive, self.send
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/uvicorn/middleware/proxy_headers.py", line 70, in __call__
-    return await self.app(scope, receive, send)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/fastapi/applications.py", line 1054, in __call__
-    await super().__call__(scope, receive, send)
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/applications.py", line 113, in __call__
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 395, in dispatch
+    response = await call_next(request)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 163, in call_next
+    raise app_exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 149, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    raise exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 715, in __call__
     await self.middleware_stack(scope, receive, send)
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 187, in __call__
-    raise exc
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 165, in __call__
-    await self.app(scope, receive, _send)
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 93, in __call__
-    await self.simple_response(scope, receive, send, request_headers=headers)
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 144, in simple_response
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 735, in app
+    await route.handle(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 288, in handle
     await self.app(scope, receive, send)
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 185, in __call__
-    with collapse_excgroups():
-         ~~~~~~~~~~~~~~~~~~^^
-  File "/usr/lib/python3.13/contextlib.py", line 162, in __exit__
-    self.gen.throw(value)
-    ~~~~~~~~~~~~~~^^^^^^^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/_utils.py", line 83, in collapse_excgroups
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
     raise exc
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 187, in __call__
-    response = await self.dispatch_func(request, call_next)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/vijay/Projects/serphawk_crm_seo/main.py", line 390, in dispatch
-    user_obj = session.get(User, user_id_val)
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 3702, in get
-    return self._get_impl(
-           ~~~~~~~~~~~~~~^
-        entity,
-        ^^^^^^^
-    ...<7 lines>...
-        bind_arguments=bind_arguments,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 3881, in _get_impl
-    return db_load_fn(
-        self,
-    ...<5 lines>...
-        bind_arguments=bind_arguments,
-    )
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/loading.py", line 695, in load_on_pk_identity
-    session.execute(
-    ~~~~~~~~~~~~~~~^
-        q,
-        ^^
-    ...<2 lines>...
-        bind_arguments=bind_arguments,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlmodel/orm/session.py", line 136, in execute
-    return super().execute(
-           ~~~~~~~~~~~~~~~^
-        statement,
-        ^^^^^^^^^^
-    ...<4 lines>...
-        _add_event=_add_event,
-        ^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2373, in execute
-    return self._execute_internal(
-           ~~~~~~~~~~~~~~~~~~~~~~^
-        statement,
-        ^^^^^^^^^^
-    ...<4 lines>...
-        _add_event=_add_event,
-        ^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
-    result: Result[Any] = compile_state_cls.orm_execute_statement(
-                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
-        self,
-        ^^^^^
-    ...<4 lines>...
-        conn,
-        ^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
-    result = conn.execute(
-        statement, params or {}, execution_options=execution_options
-    )
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
-    return meth(
-        self,
-        distilled_parameters,
-        execution_options or NO_OPTIONS,
-    )
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
-    return connection._execute_clauseelement(
-           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
-        self, distilled_params, execution_options
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
-    ret = self._execute_context(
-        dialect,
-    ...<8 lines>...
-        cache_hit=cache_hit,
-    )
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
-    return self._exec_single_context(
-           ~~~~~~~~~~~~~~~~~~~~~~~~~^
-        dialect, context, statement, parameters
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
-    self._handle_dbapi_exception(
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
-        e, str_statement, effective_parameters, cursor, context
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
-    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
-    self.dialect.do_execute(
-    ~~~~~~~~~~~~~~~~~~~~~~~^
-        cursor, str_statement, effective_parameters, context
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/home/vijay/Projects/serphawk_crm_seo/.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
-    cursor.execute(statement, parameters)
-    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) server closed the connection unexpectedly
-	This probably means the server terminated abnormally
-	before or while processing the request.
-server closed the connection unexpectedly
-	This probably means the server terminated abnormally
-	before or while processing the request.
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 73, in app
+    response = await f(request)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 214, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/concurrency.py", line 39, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 2502, in run_sync_in_worker_thread
+    return await future
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 986, in run
+    result = context.run(func, *args)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 2210, in get_dashboard_call_pitch
+    "agent_data": research_entry.research_markdown if research_entry else None,
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'ClientResearch' object has no attribute 'research_markdown'
+Unhandled Exception: 'ClientResearch' object has no attribute 'research_markdown'
+INFO:     127.0.0.1:63184 - "GET /dashboard-call-pitch HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+  + Exception Group Traceback (most recent call last):
+  |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_utils.py", line 77, in collapse_excgroups
+  |     yield
+  |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 189, in __call__
+  |     response_sent.set()
+  |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 783, in __aexit__
+  |     raise BaseExceptionGroup(
+  | exceptiongroup.ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/uvicorn/protocols/http/httptools_impl.py", line 399, in run_asgi
+    |     result = await app(  # type: ignore[func-returns-value]
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/uvicorn/middleware/proxy_headers.py", line 70, in __call__
+    |     return await self.app(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/applications.py", line 1054, in __call__
+    |     await super().__call__(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/applications.py", line 113, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    |     await self.app(scope, receive, _send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 189, in __call__
+    |     response_sent.set()
+    |   File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/contextlib.py", line 135, in __exit__
+    |     self.gen.throw(type, value, traceback)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_utils.py", line 83, in collapse_excgroups
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 187, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 395, in dispatch
+    |     response = await call_next(request)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 163, in call_next
+    |     raise app_exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 149, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 715, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 735, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 288, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 76, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    |     raise exc
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 73, in app
+    |     response = await f(request)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 301, in app
+    |     raw_response = await run_endpoint_function(
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 214, in run_endpoint_function
+    |     return await run_in_threadpool(dependant.call, **values)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/concurrency.py", line 39, in run_in_threadpool
+    |     return await anyio.to_thread.run_sync(func, *args)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/to_thread.py", line 63, in run_sync
+    |     return await get_async_backend().run_sync_in_worker_thread(
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 2502, in run_sync_in_worker_thread
+    |     return await future
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 986, in run
+    |     result = context.run(func, *args)
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 2210, in get_dashboard_call_pitch
+    |     "agent_data": research_entry.research_markdown if research_entry else None,
+    |   File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/pydantic/main.py", line 1042, in __getattr__
+    |     raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+    | AttributeError: 'ClientResearch' object has no attribute 'research_markdown'
+    +------------------------------------
 
-[SQL: SELECT users.tenant_id AS users_tenant_id, users.id AS users_id, users.email AS users_email, users.password AS users_password, users.hashed_password AS users_hashed_password, users.name AS users_name, users.phone AS users_phone, users.role AS users_role, users.is_active AS users_is_active, users.status AS users_status, users.sidebar_preferences AS users_sidebar_preferences, users.created_at AS users_created_at, users.updated_at AS users_updated_at 
-FROM users 
-WHERE users.id = %(pk_1)s]
-[parameters: {'pk_1': 527}]
-(Background on this error at: https://sqlalche.me/e/20/e3q8)
-INFO:     127.0.0.1:35380 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44206 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44216 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:48766 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46524 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:48764 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44072 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60612 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44072 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60628 - "GET /products?active_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46548 - "GET /static/uploads/88c45827_2b63ae732ed04708be68785e573a4b6f.jpg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:37994 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:38004 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49522 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49526 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49526 - "OPTIONS /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49526 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49522 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49570 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49542 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49558 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49526 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49576 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49522 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49542 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49558 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49570 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49576 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49526 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49576 - "OPTIONS /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49526 - "OPTIONS /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49522 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49542 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49570 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49558 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49526 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49576 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49522 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49542 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49526 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49558 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49570 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49522 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49542 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49526 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49558 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49570 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49526 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49558 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52186 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52182 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52216 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52192 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52208 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52232 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52186 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52182 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52192 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52208 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52216 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52186 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52182 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52232 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52216 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52192 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52208 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52436 - "OPTIONS /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52438 - "OPTIONS /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52442 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52436 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:43670 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:43686 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42016 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42024 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40628 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40638 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60568 - "OPTIONS /marketplace/services?page=1&per_page=18 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60572 - "OPTIONS /marketplace/categories HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60584 - "OPTIONS /clients?page=1&per_page=200 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60588 - "OPTIONS /marketplace/services?page=1&per_page=18 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60590 - "OPTIONS /marketplace/categories HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60568 - "OPTIONS /clients?page=1&per_page=200 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60572 - "GET /marketplace/services?page=1&per_page=18 HTTP/1.1" 422 Unprocessable Content
-INFO:     127.0.0.1:60554 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60584 - "GET /marketplace/categories HTTP/1.1" 422 Unprocessable Content
-INFO:     127.0.0.1:60572 - "OPTIONS /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60590 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60572 - "OPTIONS /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60588 - "GET /clients?page=1&per_page=200 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60568 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60590 - "GET /marketplace/services?page=1&per_page=18 HTTP/1.1" 422 Unprocessable Content
-INFO:     127.0.0.1:60572 - "GET /marketplace/categories HTTP/1.1" 422 Unprocessable Content
-INFO:     127.0.0.1:60584 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60554 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60590 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60588 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60554 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60568 - "GET /clients?page=1&per_page=200 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60584 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60588 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60588 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60584 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46928 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46918 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46918 - "OPTIONS /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46928 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44930 - "GET /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44930 - "OPTIONS /quotes/10/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44930 - "OPTIONS /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46928 - "GET /quotes/10/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44930 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51890 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51892 - "PUT /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51888 - "PUT /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51898 - "PUT /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51898 - "PUT /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51888 - "PUT /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44156 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44164 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40892 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40896 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58542 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58534 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33554 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33540 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44608 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44616 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57258 - "PUT /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57268 - "PUT /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57274 - "PUT /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57274 - "PUT /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52012 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52016 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41904 - "OPTIONS /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41912 - "GET /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41912 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41918 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33162 - "OPTIONS /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33164 - "OPTIONS /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33162 - "OPTIONS /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33164 - "OPTIONS /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33184 - "OPTIONS /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33192 - "OPTIONS /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33160 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33180 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33164 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33184 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33162 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33192 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33180 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33160 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33164 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33184 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33162 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55258 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55264 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51972 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51976 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59716 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59710 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50190 - "GET /products?active_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50196 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50212 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40020 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40004 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60078 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60066 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:48938 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58298 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58290 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:38346 - "GET /static/uploads/2c7c1a8e_Screenshot_From_2026-05-14_16-23-35.png HTTP/1.1" 200 OK
-INFO:     127.0.0.1:38356 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56176 - "GET /static/uploads/2c7c1a8e_Screenshot_From_2026-05-14_16-23-35.png HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:56158 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56164 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56128 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56144 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56144 - "OPTIONS /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56128 - "OPTIONS /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56144 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56164 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57928 - "OPTIONS /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57928 - "OPTIONS /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57942 - "OPTIONS /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57960 - "OPTIONS /products?active_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57938 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57958 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57928 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57968 - "GET /products?active_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57942 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57958 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36184 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36172 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49374 - "GET /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49374 - "GET /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53222 - "GET /quotes/10/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49374 - "PUT /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53232 - "PUT /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53242 - "PUT /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49374 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53222 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53238 - "PUT /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53238 - "GET /quotes/10/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56182 - "OPTIONS /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56182 - "OPTIONS /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56182 - "OPTIONS /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56222 - "OPTIONS /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56210 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56198 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56222 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56182 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56168 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56210 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56212 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56182 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56222 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56168 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56210 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56210 - "GET /quotes/10/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54976 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54960 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59278 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46898 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46906 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44220 - "GET /quotes/10/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:48470 - "GET /quotes/3/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:48478 - "GET /quotes/1/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:48488 - "GET /quotes/5/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49542 - "GET /quotes/8/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40112 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49550 - "GET /quotes/7/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40116 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46792 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46808 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40276 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40270 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47584 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47590 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47628 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47580 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47604 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47584 - "GET /users/me/sidebar-preferences?user_id=527 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47620 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47590 - "GET /chatbot/history/gmv3gqri065 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47604 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47628 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47584 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47584 - "GET /quotes/9/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49812 - "OPTIONS /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49830 - "OPTIONS /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49796 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49794 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49830 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49808 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49812 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49820 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49796 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49794 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49830 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49820 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49796 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53886 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53896 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55172 - "OPTIONS /marketplace/services?page=1&per_page=18 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55188 - "OPTIONS /marketplace/categories HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55200 - "OPTIONS /clients?page=1&per_page=200 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55202 - "OPTIONS /marketplace/services?page=1&per_page=18 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55204 - "OPTIONS /marketplace/categories HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55172 - "OPTIONS /clients?page=1&per_page=200 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55188 - "GET /marketplace/services?page=1&per_page=18 HTTP/1.1" 422 Unprocessable Content
-INFO:     127.0.0.1:55200 - "GET /marketplace/categories HTTP/1.1" 422 Unprocessable Content
-INFO:     127.0.0.1:55156 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55156 - "GET /marketplace/categories HTTP/1.1" 422 Unprocessable Content
-INFO:     127.0.0.1:55200 - "GET /marketplace/services?page=1&per_page=18 HTTP/1.1" 422 Unprocessable Content
-INFO:     127.0.0.1:55202 - "GET /clients?page=1&per_page=200 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55200 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55156 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55202 - "GET /clients?page=1&per_page=200 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55188 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55220 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55156 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55200 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55220 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55202 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55188 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55220 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55156 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55156 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58606 - "OPTIONS /quotes/10/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58616 - "GET /quotes/10/email-preview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58616 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58606 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58606 - "OPTIONS /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33676 - "OPTIONS /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33686 - "OPTIONS /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33676 - "OPTIONS /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33686 - "OPTIONS /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33710 - "OPTIONS /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58616 - "DELETE /quotes/10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33686 - "OPTIONS /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58606 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33700 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33710 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58616 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33700 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33676 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33710 - "GET /proposals HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58616 - "GET /proposals/catalog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33700 - "GET /clients?per_page=500 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58616 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33710 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33710 - "GET /quotes HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58616 - "OPTIONS /sales-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44436 - "OPTIONS /clients?per_page=1000 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44452 - "OPTIONS /sales-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44462 - "OPTIONS /clients?per_page=1000 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58616 - "OPTIONS /purchase-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44436 - "OPTIONS /purchase-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33710 - "POST /telemetry/page-visit HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33700 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44452 - "GET /sales-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58616 - "GET /purchase-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44436 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44462 - "GET /clients?per_page=1000 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33710 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33700 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44452 - "GET /sales-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58616 - "GET /purchase-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33710 - "GET /clients?per_page=1000 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33700 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44452 - "GET /sales-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33710 - "GET /clients?per_page=1000 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33700 - "GET /leads HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44452 - "GET /sales-orders HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33710 - "GET /clients?per_page=1000 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:43004 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
-INFO:     127.0.0.1:43000 - "GET /notifications/527?unread_only=true HTTP/1.1" 200 OK
-INFO:     Shutting down
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [11306]
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/uvicorn/protocols/http/httptools_impl.py", line 399, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/uvicorn/middleware/proxy_headers.py", line 70, in __call__
+    return await self.app(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/applications.py", line 113, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    raise exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 189, in __call__
+    response_sent.set()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/contextlib.py", line 135, in __exit__
+    self.gen.throw(type, value, traceback)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_utils.py", line 83, in collapse_excgroups
+    raise exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 187, in __call__
+    response = await self.dispatch_func(request, call_next)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 395, in dispatch
+    response = await call_next(request)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 163, in call_next
+    raise app_exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/base.py", line 149, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    raise exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 715, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 735, in app
+    await route.handle(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 62, in wrapped_app
+    raise exc
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 51, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/routing.py", line 73, in app
+    response = await f(request)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 214, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/starlette/concurrency.py", line 39, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 2502, in run_sync_in_worker_thread
+    return await future
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/anyio/_backends/_asyncio.py", line 986, in run
+    result = context.run(func, *args)
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/main.py", line 2210, in get_dashboard_call_pitch
+    "agent_data": research_entry.research_markdown if research_entry else None,
+  File "/Users/apple/Desktop/emailagent/serphawk_crm_seo/venv/lib/python3.9/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'ClientResearch' object has no attribute 'research_markdown'
+INFO:     127.0.0.1:63342 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63343 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63591 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63592 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63836 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63837 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64083 - "GET /calls?unsummarized=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64082 - "GET /notifications/1?unread_only=true HTTP/1.1" 200 OK

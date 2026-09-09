@@ -22,12 +22,12 @@ export default function SuperAdminPage() {
     }
     
     fetch(`${API_BASE_URL}/superadmin/telemetry/global`)
-      .then(res => res.json())
+      .then(async res => { if (!res.ok) throw new Error("Telemetry fetch failed"); return res.json(); })
       .then(data => setGlobalStats(data))
       .catch(console.error);
 
     fetch(`${API_BASE_URL}/superadmin/tenants`)
-      .then(res => res.json())
+      .then(async res => { if (!res.ok) throw new Error("Tenants fetch failed"); return res.json(); })
       .then(data => {
         setTenants(data);
         setLoading(false);

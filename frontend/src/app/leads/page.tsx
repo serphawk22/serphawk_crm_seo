@@ -99,10 +99,13 @@ export default function LeadsPage() {
 
   const fetchActivities = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/activities`);
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/activities`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
       if (res.ok) {
         const data = await res.json();
-        setActivities((data.activities || []).filter((a: any) => a.leadId));
+        setActivities((data.activities || []).filter((a: any) => a.lead_id));
       }
     } catch (e) {
       console.error(e);

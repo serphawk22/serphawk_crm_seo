@@ -58,8 +58,8 @@ export default function RankingsPage() {
       ? `${API_BASE_URL}/rankings?client_id=${clientId}`
       : `${API_BASE_URL}/rankings`;
     const [r, c] = await Promise.all([
-      fetch(rankUrl).then(res => res.json()),
-      isClient ? Promise.resolve({ clients: [] }) : fetch(`${API_BASE_URL}/clients`).then(res => res.json()),
+      fetch(rankUrl).then(async res => { if (!res.ok) throw new Error("Rankings fetch failed"); return res.json(); }).catch(() => ({ rankings: [] })),
+      isClient ? Promise.resolve({ clients: [] }) : fetch(`${API_BASE_URL}/clients`).then(async res => { if (!res.ok) throw new Error("Clients fetch failed"); return res.json(); }).catch(() => ({ clients: [] })),
     ]);
     setRankings(r.rankings || []);
     setClients(c.clients || []);

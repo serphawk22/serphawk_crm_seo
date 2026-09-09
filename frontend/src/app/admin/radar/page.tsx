@@ -11,22 +11,8 @@ import { API_BASE_URL } from "@/config";
 import DemoLimits from "@/components/DemoLimits";
 import { useLanguage } from "@/context/LanguageContext";
 
-const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyAJbAEbE5egi9y-adJ5G804u_vL64We_nc";
-const RADIUS_OPTIONS = [1, 3, 5, 10, 25];
-
-function loadGoogleMapsScript(apiKey: string): Promise<void> {
-  return new Promise((resolve) => {
-    if (typeof window === "undefined") return;
-    if (window.google?.maps) { resolve(); return; }
-    const existing = document.querySelector(`script[src*="maps.googleapis.com"]`);
-    if (existing) { existing.addEventListener("load", () => resolve()); return; }
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-    script.async = true;
-    script.onload = () => resolve();
-    document.head.appendChild(script);
-  });
-}
+import dynamic from 'next/dynamic';
+const LeafletRadarMap = dynamic(() => import('@/app/admin/clients/[id]/competitors/RadarMap'), { ssr: false });
 
 interface PlaceResult {
   place_id: string;
@@ -100,9 +86,9 @@ export default function RadarAnalysisPage() {
   const [mapReady, setMapReady] = useState(false);
   const [addSuccess, setAddSuccess] = useState<string | null>(null);
 
-  // Load Google Maps Script
+  // Load Google Maps Script (Removed)
   useEffect(() => {
-    loadGoogleMapsScript(GOOGLE_MAPS_KEY).then(() => setMapReady(true));
+    setMapReady(true);
   }, []);
 
   // Load clients for source selection
@@ -455,78 +441,5 @@ export default function RadarAnalysisPage() {
 
 // Lazy-loaded map component using vanilla Google Maps API
 function RadarMapLoader({ target, competitors, radiusKm }: { target: any; competitors: any[]; radiusKm: number }) {
-  const { t } = useLanguage();
-  const mapRef = React.useRef<HTMLDivElement>(null);
-  const mapInstanceRef = React.useRef<any>(null);
-  const markersRef = React.useRef<any[]>([]);
-  const circleRef = React.useRef<any>(null);
-  const iwRef = React.useRef<any>(null);
-
-  React.useEffect(() => {
-    if (!mapRef.current || !window.google || !target) return;
-    const g = window.google.maps;
-    const center = { lat: target.lat, lng: target.lng };
-    const darkStyles = [
-      { featureType: "all", elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-      { featureType: "all", elementType: "labels.text.fill", stylers: [{ color: "#a0aec0" }] },
-      { featureType: "all", elementType: "labels.text.stroke", stylers: [{ color: "#000000" }] },
-      { featureType: "road", elementType: "geometry", stylers: [{ color: "#2d3748" }] },
-      { featureType: "water", elementType: "geometry", stylers: [{ color: "#0f172a" }] },
-    ];
-
-        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    if (!mapInstanceRef.current) {
-      mapInstanceRef.current = new g.Map(mapRef.current, {
-        center, zoom: radiusKm <= 2 ? 15 : radiusKm <= 5 ? 14 : radiusKm <= 10 ? 13 : 12,
-        styles: isDark ? darkStyles : [], mapTypeControl: false, streetViewControl: false,
-      });
-    } else {
-      mapInstanceRef.current.panTo(center);
-    }
-
-    const map = mapInstanceRef.current;
-    markersRef.current.forEach((m: any) => m.setMap(null));
-    markersRef.current = [];
-    if (circleRef.current) circleRef.current.setMap(null);
-    if (!iwRef.current) iwRef.current = new g.InfoWindow();
-
-    circleRef.current = new g.Circle({
-      map, center, radius: radiusKm * 1000,
-      strokeColor: "#6366f1", strokeOpacity: 0.6, strokeWeight: 2,
-      fillColor: "#6366f1", fillOpacity: 0.06,
-    });
-
-    const makePin = (color: string) => ({
-      path: "M 12 0 C 5.37 0 0 5.37 0 12 c 0 9 12 18 12 18 s 12 -9 12 -18 C 24 5.37 18.63 0 12 0 z",
-      fillColor: color, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 1.5,
-      scale: 1.5, anchor: new g.Point(12, 30),
-    });
-
-    const PIN_COLORS: Record<string, string> = { red: "#ef4444", orange: "#f97316", yellow: "#eab308", green: "#22c55e", blue: "#6366f1" };
-
-    // Target marker
-    const tm = new g.Marker({ position: center, map, icon: makePin(PIN_COLORS.blue), title: target.name, zIndex: 1000 });
-    tm.addListener("click", () => {
-      iwRef.current.setContent(`<div style="background:#1e293b;color:#f1f5f9;padding:12px;border-radius:8px;min-width:200px"><div style="font-size:10px;color:#818cf8;font-weight:800;text-transform:uppercase;margin-bottom:6px">${t("radar.target_business")}</div><div style="font-size:15px;font-weight:800">${target.name}</div><div style="font-size:11px;color:#94a3b8;margin-top:4px">${target.address || ""}</div>${target.rating ? `<div style="font-size:12px;color:#fbbf24;margin-top:4px">⭐ ${target.rating} (${target.reviews || 0} ${t("radar.reviews")})</div>` : ""}</div>`);
-      iwRef.current.open(map, tm);
-    });
-    markersRef.current.push(tm);
-
-    // Competitor markers
-    competitors.forEach((c: any) => {
-      const cm = new g.Marker({
-        position: { lat: c.lat, lng: c.lng }, map,
-        icon: makePin(PIN_COLORS[c.pin_color] || PIN_COLORS.green),
-        title: c.name,
-      });
-      const labelMap: Record<string, string> = { red: t("radar.direct_competitor"), orange: t("radar.strong_competitor"), yellow: t("radar.moderate"), green: t("radar.weak_competitor") };
-      cm.addListener("click", () => {
-        iwRef.current.setContent(`<div style="background:#1e293b;color:#f1f5f9;padding:12px;border-radius:8px;min-width:220px"><div style="background:${PIN_COLORS[c.pin_color]};color:white;font-size:9px;font-weight:800;text-transform:uppercase;padding:3px 8px;border-radius:4px;display:inline-block;margin-bottom:8px">${labelMap[c.pin_color] || t("radar.competitor")}</div><div style="font-size:14px;font-weight:800;margin-bottom:4px">${c.name}</div><div style="font-size:11px;color:#94a3b8;margin-bottom:8px">${c.address || ""}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px"><div style="background:#0f172a;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#64748b">${t("radar.distance")}</div><div style="font-size:13px;font-weight:700">${c.distance_km}km</div></div><div style="background:#0f172a;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#64748b">${t("radar.market_score")}</div><div style="font-size:13px;font-weight:700">${c.market_size_score}/100</div></div><div style="background:#0f172a;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#64748b">${t("radar.team")}</div><div style="font-size:13px;font-weight:700">${c.team_size_estimate}</div></div><div style="background:#0f172a;border-radius:6px;padding:4px 8px"><div style="font-size:9px;color:#64748b">${t("radar.overlap")}</div><div style="font-size:13px;font-weight:700">${c.overlap_pct}%</div></div></div>${c.maps_url ? `<a href="${c.maps_url}" target="_blank" style="color:#818cf8;font-size:11px">${t("radar.view_on_maps_short")} ↗</a>` : ""}</div>`);
-        iwRef.current.open(map, cm);
-      });
-      markersRef.current.push(cm);
-    });
-  }, [target, competitors, radiusKm]);
-
-  return <div ref={mapRef} style={{ width: "100%", height: "520px" }} />;
+  return <LeafletRadarMap clientLat={target.lat} clientLng={target.lng} competitors={competitors} clientName={target.name} />;
 }

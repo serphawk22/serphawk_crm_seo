@@ -17,7 +17,7 @@ export default function GlobalActivityFeed({ isOpen, onClose }: { isOpen: boolea
     if (isOpen) {
       setLoading(true);
       fetch(`${API_BASE_URL}/activities/global`)
-        .then(res => res.json())
+        .then(async res => { if (!res.ok) throw new Error("Activity fetch failed"); return res.json(); })
         .then(data => {
           setActivities(data.activities || []);
         })

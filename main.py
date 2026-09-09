@@ -602,6 +602,15 @@ def on_startup():
         
     try:
         with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
+            conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
+            conn.commit()
+            print("Successfully added swot_analysis to client_profiles and leads tables.")
+    except Exception as e:
+        print("swot_analysis column already exists or error:", e)
+        
+    try:
+        with engine.connect() as conn:
             conn.execute(text("ALTER TABLE projects ADD COLUMN project_type VARCHAR DEFAULT 'Development';"))
             conn.commit()
             print("Successfully added project_type to projects table.")
@@ -641,7 +650,7 @@ def on_startup():
     except Exception as e:
         print("tenant call limits already exist or error:", e)
 
-    # Keep the Neon serverless DB awake + pool warm. Without this, the first
+# Keep the Neon serverless DB awake + pool warm. Without this, the first
     # requests after ~5min of idle trigger a slow cold-start (~5-7s each).
     try:
         import threading as _threading
@@ -662,6 +671,15 @@ def on_startup():
         print("DB keepalive started (pings every 60s).")
     except Exception as e:
         print("Could not start DB keepalive:", e)
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS url VARCHAR(1000);"))
+            conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS case_type VARCHAR(100) DEFAULT 'Bug';"))
+            conn.commit()
+            print("Successfully added url and case_type columns to cases table.")
+    except Exception as e:
+        print("cases url/case_type columns already exist or error:", e)
 
 allowed_origins = [
     "https://serphawk-crm-seo.vercel.app",
@@ -755,111 +773,292 @@ class SmartResearchRequest(BaseModel):
     client_id: Optional[int] = None  # If set, link extracted services to this CRM client
     owner_name: Optional[str] = "Varshith"
 
+
+# ─── Background Auto-Research Helper ────────────────────────────────────────
+def _trigger_background_research(entity_id: int, entity_type: str, company_name: str, website: str, session_factory=None):
+    """
+    Fire-and-forget background task: runs the full scraper+LLM pipeline for a
+    lead or client and stores results in ClientResearch.
+    entity_type: 'lead' or 'client'
+    """
+    import threading
+    import asyncio
+
+    def _run():
+        try:
+            from modules.llm_engine import deep_investigate_company
+            from modules.scraper import research_and_map_company
+            import json, re, asyncio as _asyncio
+
+            url = website or ""
+            if not url and company_name:
+                slug = company_name.lower().replace(" ", "").replace(",","").replace(".","")
+                url = f"https://www.{slug}.com"
+            if not url:
+                return
+
+            # Step 1: Scrape the website for raw text context
+            raw_text = ""
+            try:
+                loop = _asyncio.new_event_loop()
+                scrape_result = loop.run_until_complete(research_and_map_company(url))
+                loop.close()
+                raw_text = scrape_result.get("raw_text", "") or ""
+            except Exception as scrape_err:
+                print(f"[AutoResearch] Scrape failed (using GPT knowledge only): {scrape_err}")
+
+            # Step 2: Run the deep investigation with GPT-4o
+            print(f"[AutoResearch] Running deep investigation for {company_name} ({url})")
+            data = deep_investigate_company(
+                company_name=company_name,
+                website=url,
+                scraped_text=raw_text
+            )
+
+            # Step 3: Extract key contact info to also update the lead/client record
+            contacts = data.get("contacts", []) or []
+            contact = contacts[0] if contacts else {}
+            email_addr = contact.get("email") or ""
+            phone_num = contact.get("phone_number") or ""
+            company_info = data.get("company_info", {}) or {}
+            if not email_addr:
+                extracted = company_info.get("extracted_emails", "") or ""
+                email_addr = extracted.split(",")[0].strip() if extracted else ""
+            if not phone_num:
+                extracted_ph = company_info.get("extracted_phone_numbers", "") or ""
+                phone_num = extracted_ph.split(",")[0].strip() if extracted_ph else ""
+
+            from sqlmodel import Session as _Session, select as _select
+            from database import ClientResearch, Lead, ClientProfile, engine as _engine
+            with _Session(_engine) as sess:
+                if entity_type == "lead":
+                    cr = sess.exec(_select(ClientResearch).where(ClientResearch.lead_id == entity_id)).first()
+                    if not cr:
+                        cr = ClientResearch(lead_id=entity_id)
+                    # Also update lead email/phone if discovered
+                    lead_obj = sess.get(Lead, entity_id)
+                    if lead_obj:
+                        if not lead_obj.email and email_addr: lead_obj.email = email_addr
+                        if not lead_obj.phone and phone_num: lead_obj.phone = phone_num
+                        sess.add(lead_obj)
+                else:
+                    cr = sess.exec(_select(ClientResearch).where(ClientResearch.client_id == entity_id)).first()
+                    if not cr:
+                        cr = ClientResearch(client_id=entity_id)
+                cr.email_agent_data = json.dumps(data)
+                cr.company_overview = data.get("company_overview", "") or data.get("executive_verdict", "")
+                cr.key_decision_makers = json.dumps(contacts)
+                # Store additional rich fields
+                icps = data.get("ideal_customer_profiles", [])
+                cr.pain_points = json.dumps(icps) if icps else None
+                cr.business_goals = json.dumps(data.get("gtm_recommendations", {})) if data.get("gtm_recommendations") else None
+                cr.competitors = json.dumps(data.get("competitive_landscape", {})) if data.get("competitive_landscape") else None
+                sess.add(cr)
+                sess.commit()
+            print(f"[AutoResearch] Done for {entity_type} id={entity_id}")
+        except Exception as ex:
+            import traceback
+            print(f"[AutoResearch] Error for {entity_type} id={entity_id}: {ex}")
+            traceback.print_exc()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest, session: Session = Depends(get_session)):
     """
-    Takes a company name (and optional URL) and forwards the request to the N8N webhook.
-    Returns the exact JSON response from N8N.
+    Takes a company name (and optional URL) and uses local scraper and LLM to return
+    analysis, extracted contacts, and generated emails.
     """
     check_tenant_limit(session, "emails")
-    import os
-    import httpx
-
-    webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "http://localhost:5678/webhook-test/your-webhook-id")
-
-    payload = {
-        "event": "research",
-        "company_name": body.company_name,
-        "company_url": body.company_url,
-        "client_id": body.client_id,
-        "owner_name": body.owner_name
-    }
-
+    from modules.scraper import research_and_map_company
+    from modules.llm_engine import generate_email
+    import json
+    
+    # Determine the URL
+    url = body.company_url
+    if not url:
+        # Simple fallback if no URL provided
+        formatted_name = body.company_name.replace(" ", "").replace(",", "").replace(".", "").lower()
+        url = f"https://www.{formatted_name}.com"
+        
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(webhook_url, json=payload, timeout=60.0)
+        # Run local research (which uses Firecrawl and OpenAI)
+        result = await research_and_map_company(url)
+        analysis = result.get("company_analysis", {})
+        mapping = result.get("service_mapping", [])
+        
+        # Extract Contact Info
+        contacts = analysis.get("contacts", [])
+        contact = contacts[0] if contacts else {}
+        email = contact.get("email", "")
+        if email is None:
+            email = ""
+        phone = contact.get("phone_number", "")
+        if phone is None:
+            phone = ""
+        name = contact.get("name", "")
+        if name is None:
+            name = ""
             
-            if response.status_code != 200:
-                print(f"N8N Webhook Error: {response.status_code} - {response.text}")
-                return {
-                    "company_info": {"company_name": body.company_name, "summary": f"N8N Webhook Error {response.status_code}. Please make sure you are listening for test events in n8n."},
-                    "contact": {"email": "test@example.com"},
-                    "draft": {"subject": "Test Draft", "english_body": "N8N Webhook Error occurred. Workflow not started."},
-                    "recommended_services": [],
-                    "extracted_services": []
-                }
+        # Contact social
+        personal_social = contact.get("personal_social_media", {})
+        if personal_social is None:
+            personal_social = {}
+        contact_linkedin = personal_social.get("linkedin", "") if isinstance(personal_social, dict) else ""
+        contact_twitter = personal_social.get("twitter", "") if isinstance(personal_social, dict) else ""
+        
+        # Company Socials
+        socials = analysis.get("company_social_media", {})
+        if socials is None:
+            socials = {}
+        comp_linkedin = socials.get("linkedin", "") if isinstance(socials, dict) else ""
+        comp_twitter = socials.get("twitter", "") if isinstance(socials, dict) else ""
+        comp_instagram = socials.get("instagram", "") if isinstance(socials, dict) else ""
+        comp_facebook = socials.get("facebook", "") if isinstance(socials, dict) else ""
+        
+        # Get recommended services from the mapping
+        recommended_services = [m.get("dapros_service") for m in mapping if m.get("dapros_service") and m.get("dapros_service") != "None"]
+        # Fallback to key value props if empty
+        if not recommended_services:
+            recommended_services = analysis.get("key_value_props", [])
             
-            # If successful, handle JSON decoding properly
-            try:
-                data = response.json()
-            except Exception as e:
-                print(f"Failed to parse JSON from N8N: {e}")
-                data = {}
-                
-            # If N8N returns custom fields (like emails, phone, cold_email_english), map them to expected schema
-            if "emails" in data or "cold_email_english" in data or "company_services" in data:
-                raw_english = data.get("cold_email_english", "")
-                raw_spanish = data.get("cold_email_spanish", "")
-                
-                subject = "Growth Partnership"
-                if raw_english.startswith("Subject:"):
-                    parts = raw_english.split("\n\n", 1)
-                    if len(parts) == 2:
-                        subject = parts[0].replace("Subject:", "").strip()
-                        raw_english = parts[1].strip()
-                        
-                if raw_spanish.startswith("Asunto:"):
-                    parts = raw_spanish.split("\n\n", 1)
-                    if len(parts) == 2:
-                        raw_spanish = parts[1].strip()
+        # Generate the email draft
+        draft_result = generate_email(analysis, contact, recommended_services, body.owner_name)
+        
+        # Extract Emails, Phones, and Socials from scraper raw text
+        raw_text = result.get("raw_text", "")
+        import re
+        scraped_emails = []
+        scraped_phones = []
+        scraped_linkedin = ""
+        scraped_twitter = ""
+        
+        email_match = re.search(r"Extracted Emails:\s*(.+)", raw_text)
+        if email_match:
+            scraped_emails = [e.strip() for e in email_match.group(1).split(",") if e.strip()]
+            
+        phone_match = re.search(r"Extracted Phone Numbers:\s*(.+)", raw_text)
+        if phone_match:
+            scraped_phones = [p.strip() for p in phone_match.group(1).split(",") if p.strip()]
+            
+        li_match = re.search(r"Extracted LinkedIn Profiles:\s*(.+)", raw_text)
+        if li_match:
+            scraped_linkedin = li_match.group(1).split(",")[0].strip() if li_match.group(1).strip() else ""
+            
+        tw_match = re.search(r"Extracted Twitter Profiles:\s*(.+)", raw_text)
+        if tw_match:
+            scraped_twitter = tw_match.group(1).split(",")[0].strip() if tw_match.group(1).strip() else ""
+            
+        ig_match = re.search(r"Extracted Instagram Profiles:\s*(.+)", raw_text)
+        scraped_ig = ig_match.group(1).split(",")[0].strip() if (ig_match and ig_match.group(1).strip()) else ""
+        
+        fb_match = re.search(r"Extracted Facebook Profiles:\s*(.+)", raw_text)
+        scraped_fb = fb_match.group(1).split(",")[0].strip() if (fb_match and fb_match.group(1).strip()) else ""
+        
+        yt_match = re.search(r"Extracted Youtube Profiles:\s*(.+)", raw_text)
+        scraped_yt = yt_match.group(1).split(",")[0].strip() if (yt_match and yt_match.group(1).strip()) else ""
 
-                socials = data.get("social_links", {})
-                linkedin = socials.get("linkedin", "") if isinstance(socials, dict) else ""
-                twitter = socials.get("twitter", "") if isinstance(socials, dict) else ""
-                
-                company_info = data.get("company_info", {})
-                company_info["company_name"] = body.company_name
-                company_info["extracted_emails"] = data.get("emails", "")
-                company_info["extracted_phone_numbers"] = data.get("phone", "")
-                company_info["linkedin"] = linkedin
-                company_info["company_social_media"] = {
-                    "linkedin": linkedin,
-                    "twitter": twitter,
-                    "instagram": socials.get("instagram", "") if isinstance(socials, dict) else "",
-                    "facebook": socials.get("facebook", "") if isinstance(socials, dict) else ""
-                }
-                
-                return {
-                    "company_info": company_info,
-                    "contact": {
-                        "email": data.get("emails", ""),
-                        "phone_number": data.get("phone", ""),
-                        "linkedin": linkedin,
-                        "twitter": twitter,
-                        "name": ""
-                    },
-                    "draft": {
-                        "subject": subject,
-                        "english_body": raw_english,
-                        "spanish_body": raw_spanish
-                    },
-                    "recommended_services": data.get("company_services", []),
-                    "extracted_services": data.get("extracted_services", [])
-                }
+        # Merge with LLM findings
+        if email and email not in scraped_emails:
+            scraped_emails.append(email)
+        if phone and phone not in scraped_phones:
+            scraped_phones.append(phone)
+            
+        extracted_emails = ", ".join(scraped_emails) if scraped_emails else ""
+        extracted_phones = ", ".join(scraped_phones) if scraped_phones else ""
+        
+        if scraped_linkedin and not comp_linkedin:
+            comp_linkedin = scraped_linkedin
+        if scraped_twitter and not comp_twitter:
+            comp_twitter = scraped_twitter
+        if scraped_ig and not comp_instagram:
+            comp_instagram = scraped_ig
+        if scraped_fb and not comp_facebook:
+            comp_facebook = scraped_fb
 
-            # Fill in defaults if N8N returns an empty or old format response
-            if "company_info" not in data:
-                data["company_info"] = {"company_name": body.company_name, "summary": "N8N didn't return the expected JSON format."}
-            if "contact" not in data:
-                data["contact"] = {"email": "test@example.com", "name": "Test Prospect"}
-            if "draft" not in data:
-                data["draft"] = {"subject": "Automated Draft", "english_body": "Your N8N workflow executed successfully."}
+        
+        data = {
+            "company_info": {
+                "company_name": analysis.get("company_name", body.company_name),
+                "summary": analysis.get("what_they_do", ""),
+                "extracted_emails": extracted_emails,
+                "extracted_phone_numbers": extracted_phones,
+                "linkedin": comp_linkedin,
+                "company_social_media": {
+                    "linkedin": comp_linkedin,
+                    "twitter": comp_twitter,
+                    "instagram": comp_instagram,
+                    "facebook": comp_facebook,
+                    "youtube": scraped_yt
+                }
+            },
+            "contact": {
+                "email": email,
+                "phone_number": phone,
+                "linkedin": contact_linkedin,
+                "twitter": contact_twitter,
+                "name": name
+            },
+            "draft": {
+                "subject": draft_result.get("subject", "Partnership Request"),
+                "english_body": draft_result.get("english_body", ""),
+                "spanish_body": draft_result.get("spanish_body", "")
+            },
+            "recommended_services": recommended_services,
+            "extracted_services": [{"name": m.get("company_service"), "category": "Service", "approx_cost": 0, "cost_is_estimated": False} for m in mapping if m.get("company_service")]
+        }
+        
+
+        # --- AUTO-CREATE LEAD AND SAVE RESEARCH ---
+        import json
+        from database import Lead, ClientResearch
+        from sqlmodel import select
+        
+        # See if a lead already exists for this domain
+        existing_lead = None
+        if url:
+            domain = url.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
+            if domain:
+                existing_lead = session.exec(select(Lead).where(Lead.website.like(f"%{domain}%"))).first()
                 
-            return data
+        if not existing_lead and email:
+            existing_lead = session.exec(select(Lead).where(Lead.email == email)).first()
+
+        lead_id = None
+        if not existing_lead:
+            # Create a new lead
+            new_lead = Lead(
+                company_name=data["company_info"].get("company_name", body.company_name) or "Unknown Company",
+                website=url,
+                email=email if email else None,
+                phone=phone if phone else None,
+                source="Email Agent",
+                status="Generated",
+                ai_analysis_results=json.dumps(data)
+            )
+            session.add(new_lead)
+            session.commit()
+            session.refresh(new_lead)
+            lead_id = new_lead.id
+        else:
+            existing_lead.ai_analysis_results = json.dumps(data)
+            session.add(existing_lead)
+            session.commit()
+            lead_id = existing_lead.id
+            
+        # We no longer save Email Agent JSON to ClientResearch.email_agent_data
+        # because that field is reserved for the massive Deep Research Markdown report.
+        # ------------------------------------------
+
+        return data
+        
     except Exception as e:
-        print(f"Webhook Exception: {e}")
+        import traceback
+        traceback.print_exc()
+        print(f"Smart Research Local Exception: {e}")
         return {
-            "company_info": {"company_name": body.company_name, "summary": f"Webhook Exception: {e}"},
+            "company_info": {"company_name": body.company_name, "summary": f"Smart Research Exception: {e}"},
             "contact": {"email": ""},
             "draft": {"subject": "", "english_body": ""},
             "recommended_services": [],
@@ -873,6 +1072,7 @@ class SendManualRequest(BaseModel):
     subject: str
     english_body: str
     spanish_body: Optional[str] = None
+    whatsapp_body: Optional[str] = None
     recommended_services: Optional[str] = None
     contact_name: Optional[str] = None
     contact_role: Optional[str] = None
@@ -946,23 +1146,30 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
             session.add(contact)
             session.commit()
 
-    # Step 2.5: Find or create ClientResearch to save email_agent_data
+    # Step 2.5: Save email_agent_data to lead.ai_analysis_results for Opportunities tab
     if body.email_agent_data:
-        client_research = session.exec(
-            select(ClientResearch).where(ClientResearch.lead_id == lead.id)
-        ).first()
-        if not client_research:
-            client_research = ClientResearch(
-                lead_id=lead.id,
-                email_agent_data=body.email_agent_data
-            )
-            session.add(client_research)
-        else:
-            client_research.email_agent_data = body.email_agent_data
-            session.add(client_research)
+        try:
+            import json as _j
+            parsed = _j.loads(body.email_agent_data) if isinstance(body.email_agent_data, str) else body.email_agent_data
+            lead.ai_analysis_results = parsed
+        except:
+            lead.ai_analysis_results = body.email_agent_data
+        session.add(lead)
         session.commit()
 
     # Step 3: Save SentEmail record
+    import json as _json_se
+    _draft_json_payload = _json_se.dumps({
+        "subject": body.subject,
+        "english_body": body.english_body,
+        "spanish_body": body.spanish_body or "",
+        "whatsapp_draft": getattr(body, "whatsapp_body", "") or "",
+        "contact_name": body.contact_name or "",
+        "contact_email": to_email,
+        "company_name": body.company_name or "",
+        "website_url": getattr(body, "website_url", "") or "",
+        "recommended_services": body.recommended_services or "",
+    })
     sent_email = SentEmail(
         lead_id=lead.id,
         to_email=to_email,
@@ -970,6 +1177,7 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
         english_body=body.english_body,
         spanish_body=body.spanish_body or "",
         recommended_services=body.recommended_services or "",
+        draft_json=_draft_json_payload,
         manual=body.manual if body.manual is not None else True,
         sent_at=datetime.utcnow(),
     )
@@ -1668,7 +1876,7 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
 
     services        = _get(cp.services_offered, "Services", "Services providing", "Services Offered")
     description     = _get(cp.tagline, "Description", "description", "Notes")
-    phone           = _get(cp.phone, "Contact", "Phone")
+    phone           = _get(cp.phone, "Contact", "Phone", "Phone Number", "phone_number", "phone")
     country         = _get(cp.address, "Country", "country", "Region")
 
     last_act_log = session.exec(select(ActivityLog).where(ActivityLog.clientId == cp.id).order_by(ActivityLog.createdAt.desc())).first()
@@ -1712,6 +1920,7 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
         "next_followup_date": cp.next_followup_date,
         "description": cf.get("ai_description") or cf.get("description") or description,
         "country": cf.get("country") or sd.get("Country") or sd.get("country"),
+        "swot_analysis": cp.swot_analysis,
         "customFields": cf,
     }
 
@@ -2111,15 +2320,34 @@ def get_dashboard_call_pitch(session: Session = Depends(get_session)):
             session.add(client)
             session.commit()
             
-    return {"client": _client_dict(client, session), "pitch_text": client.call_pitch_text}
+    research_entry = session.exec(select(ClientResearch).where(ClientResearch.client_id == client.id)).first()
+    return {
+        "client": _client_dict(client, session), 
+        "pitch_text": client.call_pitch_text,
+        "agent_data": research_entry.email_agent_data if research_entry else None,
+        "deep_research": research_entry.company_overview if research_entry else None
+    }
+
+class CallPitchDoneRequest(BaseModel):
+    feedback: str = ""
 
 @app.post("/dashboard-call-pitch/{client_id}/done")
-def mark_call_pitch_done(client_id: int, session: Session = Depends(get_session)):
+def mark_call_pitch_done(client_id: int, body: Optional[CallPitchDoneRequest] = None, session: Session = Depends(get_session)):
     client = session.exec(select(ClientProfile).where(ClientProfile.id == client_id)).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     client.call_pitch_done = True
     session.add(client)
+    
+    if body and body.feedback:
+        act = ActivityLog(
+            clientId=client.id,
+            action="Sales Call Outcome",
+            method="Phone",
+            content=f"AI Call Pitch Outcome: {body.feedback}"
+        )
+        session.add(act)
+        
     session.commit()
     return {"status": "ok"}
 
@@ -2607,6 +2835,17 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
         send_ai_polished_whatsapp_message("New Client Onboarded", cp.dict(), f"{base_url}/clients/{cp.id}")
     except Exception as e:
         print("WhatsApp Error:", e)
+
+    # ── AUTO-RESEARCH ──
+    try:
+        _trigger_background_research(
+            entity_id=cp.id,
+            entity_type="client",
+            company_name=cp.companyName or "",
+            website=cp.websiteUrl or ""
+        )
+    except Exception as e:
+        print(f"AutoResearch trigger error for client {cp.id}: {e}")
         
     return {"client": _client_dict(cp, session)}
 
@@ -2867,23 +3106,34 @@ async def _auto_research_client_bg(client_id: int, website: str):
 
 # ─── CSV Export ────────────────────────────────────────────────────────────────
 @app.get("/clients/export-csv")
-def export_clients_csv(tenant_id: Optional[int] = None, session: Session = Depends(get_session)):
+def export_clients_csv(session: Session = Depends(get_session)):
     from fastapi.responses import StreamingResponse
 
+    tenant_id = current_tenant_id.get()
     q = select(ClientProfile)
-    if tenant_id and tenant_id != 1:
+    if tenant_id and tenant_id > 0:
         q = q.where(ClientProfile.tenant_id == tenant_id)
     clients_list = session.exec(q.order_by(ClientProfile.id.asc())).all()
     output = _io.StringIO()
     writer = _csv.writer(output)
-    writer.writerow(["Client Name", "Email", "Phone"])
-    for i, c in enumerate(clients_list, 1):
+    writer.writerow(["ID", "Company Name", "Email", "Phone", "Website", "Status", "Industry", "Address", "Services Offered", "Target Keywords", "Deal Value", "Payment Status"])
+    for c in clients_list:
         user = session.get(User, c.userId) if c.userId else None
         client_email = c.email if hasattr(c, 'email') and c.email else (user.email if user else "")
+        keywords = ", ".join(c.targetKeywords) if isinstance(c.targetKeywords, list) else (c.targetKeywords or "")
         writer.writerow([
-            c.companyName or "", 
+            c.id,
+            c.companyName or "",
             client_email,
-            c.phone or ""
+            c.phone or "",
+            c.websiteUrl or "",
+            c.status or "",
+            c.industry or "",
+            c.address or "",
+            c.services_offered or "",
+            keywords,
+            c.deal_value or "",
+            c.payment_status or ""
         ])
     output.seek(0)
     return StreamingResponse(
@@ -3240,6 +3490,25 @@ def update_client(
     session.commit()
     session.refresh(cp)
     return {"client": _client_dict(cp, session)}
+
+
+@app.post("/clients/{client_id}/swot")
+async def generate_client_swot(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if not cp.websiteUrl:
+        raise HTTPException(status_code=400, detail="Client has no website URL configured")
+        
+    from modules.llm_engine import generate_swot_analysis
+    import json
+    
+    swot_data = await generate_swot_analysis(cp.websiteUrl, cp.companyName or "Client")
+    cp.swot_analysis = json.dumps(swot_data)
+    session.add(cp)
+    session.commit()
+    session.refresh(cp)
+    return {"ok": True, "swot_analysis": swot_data}
 
 
 @app.post("/clients/{client_id}/assign-employee")
@@ -3687,60 +3956,14 @@ def auto_research_client(client_id: int, session: Session = Depends(get_session)
         raise HTTPException(status_code=404, detail="Client not found")
         
     try:
-        from modules.llm_engine import get_openai_client
-        import json as _json
-        client_ai = get_openai_client()
-        
-        prompt = f"""
-        You are an expert pre-sales researcher for an SEO/Marketing agency.
-        Research the following company and provide a detailed summary.
-        Company Name: {cp.companyName}
-        Website: {cp.websiteUrl or 'Unknown'}
-        Industry: {cp.industry or 'Unknown'}
-        
-        Return ONLY valid JSON matching this schema exactly (no markdown formatting, no code blocks):
-        {{
-            "company_overview": "Detailed overview...",
-            "competitors": "List 3-5 main competitors...",
-            "tech_stack": "Likely technologies used...",
-            "recent_news": "Any recent news or general industry trends...",
-            "pain_points": "Likely pain points they face...",
-            "business_goals": "Likely business goals...",
-            "key_decision_makers": "Titles of key decision makers..."
-        }}
-        """
-        
-        resp = client_ai.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=1000,
+        # Trigger the same deep background research we use on creation
+        _trigger_background_research(
+            entity_id=client_id,
+            entity_type="client",
+            company_name=cp.companyName or "",
+            website=cp.websiteUrl or ""
         )
-        content = resp.choices[0].message.content.strip()
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-        elif content.startswith("```"):
-            content = content[3:-3].strip()
-            
-        data = _json.loads(content)
-        
-        research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
-        if not research:
-            research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
-            
-        research.company_overview = data.get("company_overview", "")
-        research.competitors = data.get("competitors", "")
-        research.tech_stack = data.get("tech_stack", "")
-        research.recent_news = data.get("recent_news", "")
-        research.pain_points = data.get("pain_points", "")
-        research.business_goals = data.get("business_goals", "")
-        research.key_decision_makers = data.get("key_decision_makers", "")
-        research.updated_at = datetime.utcnow()
-        
-        session.add(research)
-        session.commit()
-        return {"ok": True, "research": data}
-        
+        return {"ok": True, "message": "Research started in background"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
 
@@ -3757,8 +3980,39 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
         import json as _json
         client_ai = get_openai_client()
         
-        # Get existing research
+        # ── Safe upsert: always fetch (or create) research in ONE place ──────
         research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+        
+        # If no OSINT data yet, run deep investigation synchronously
+        if not research or not research.email_agent_data:
+            from modules.llm_engine import deep_investigate_company
+            url = cp.websiteUrl or cp.website or ""
+            if not url and cp.companyName:
+                slug = cp.companyName.lower().replace(" ", "").replace(",","").replace(".","")
+                url = f"https://www.{slug}.com"
+            
+            if url:
+                print(f"[DraftGen] No existing research for client {client_id}. Running deep investigation first...")
+                try:
+                    osint_data = deep_investigate_company(
+                        company_name=cp.companyName or "Unknown",
+                        website=url,
+                        scraped_text=""
+                    )
+                    if not research:
+                        research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
+                        session.add(research)
+                        session.flush()  # get the id without committing
+                    research.company_overview = osint_data.get("company_overview", "")
+                    research.email_agent_data = _json.dumps(osint_data)
+                    session.commit()
+                    print(f"[DraftGen] Deep investigation complete for client {client_id}")
+                except Exception as osint_err:
+                    session.rollback()
+                    print(f"[DraftGen] OSINT failed (continuing with draft anyway): {osint_err}")
+                    # Re-fetch research after rollback
+                    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+
         research_context = ""
         if research:
             research_context = f"""
@@ -3775,13 +4029,13 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
 
         # Get Notes and Conversations
         notes = session.exec(select(ClientNote).where(ClientNote.client_id == client_id).order_by(ClientNote.created_at.desc()).limit(10)).all()
-        conversations = session.exec(select(ClientConversation).where(ClientConversation.client_id == client_id).order_by(ClientConversation.date.desc()).limit(5)).all()
+        conversations = session.exec(select(ConversationLog).where(ConversationLog.client_id == client_id).order_by(ConversationLog.created_at.desc()).limit(5)).all()
         
         interaction_context = ""
         if notes:
             interaction_context += "Recent Notes:\n" + "\n".join([f"- {n.content}" for n in notes]) + "\n"
         if conversations:
-            interaction_context += "Recent Conversations:\n" + "\n".join([f"- {c.type} on {c.date}: {c.summary}" for c in conversations]) + "\n"
+            interaction_context += "Recent Conversations:\n" + "\n".join([f"- {c.type} on {c.created_at}: {c.description or c.title}" for c in conversations]) + "\n"
 
         prompt = f"""
         You are an expert SDR (Sales Development Representative) at an agency. 
@@ -3833,7 +4087,9 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
         )
         session.add(draft)
         
-        # Save to research so the UI can display it in OpportunitiesTab
+        # ── Safe upsert research (use existing row, never re-insert) ─────────
+        if not research:
+            research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
         if not research:
             research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
             session.add(research)
@@ -3854,7 +4110,10 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
         return {"ok": True, "draft": data, "email_id": draft.id}
         
     except Exception as e:
+        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to generate draft: {str(e)}")
+
+
 
 
 # ─── Extract Client Services from Website ─────────────────────────────────────
@@ -4922,6 +5181,7 @@ def list_activities(user_id: Optional[int] = None, session: Session = Depends(ge
                 "content": a.content,
                 "details": a.details,
                 "clientId": a.clientId,
+                "lead_id": a.lead_id,
                 "createdAt": a.createdAt.isoformat(),
             }
             for a in logs
@@ -9169,6 +9429,17 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
         send_ai_polished_whatsapp_message("New Lead Added", lead.dict(), f"{base_url}/leads/{lead.id}")
     except Exception as e:
         print("WhatsApp Error:", e)
+
+    # ── AUTO-RESEARCH ──
+    try:
+        _trigger_background_research(
+            entity_id=lead.id,
+            entity_type="lead",
+            company_name=lead.company_name or "",
+            website=lead.website or ""
+        )
+    except Exception as e:
+        print(f"AutoResearch trigger error for lead {lead.id}: {e}")
         
     return lead
 
@@ -9178,6 +9449,233 @@ def get_lead(lead_id: int, session: Session = Depends(get_session)):
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     return lead
+
+@app.get("/leads/{lead_id}/activities")
+def get_lead_activities(lead_id: int, session: Session = Depends(get_session)):
+    return {"activities": []}
+
+@app.get("/leads/{lead_id}/timeline")
+def get_lead_timeline(lead_id: int, session: Session = Depends(get_session)):
+    events: list[dict] = []
+    # Activities
+    for a in session.exec(select(ActivityLog).where(ActivityLog.lead_id == lead_id)).all():
+        events.append({"type": "activity", "id": a.id, "title": a.action or a.method or "Activity", "detail": a.content or "", "date": a.createdAt.isoformat() if a.createdAt else None})
+    # Emails
+    for e in session.exec(select(SentEmail).where(SentEmail.lead_id == lead_id)).all():
+        events.append({"type": "email", "id": e.id, "title": f"Email: {e.subject or 'No subject'}", "detail": e.to_email or "", "date": e.sent_at.isoformat() if e.sent_at else None})
+    # Notes
+    for n in session.exec(select(ClientNote).where(ClientNote.lead_id == lead_id)).all():
+        events.append({"type": "note", "id": n.id, "title": "Note Added", "detail": n.content or "", "date": n.created_at.isoformat() if n.created_at else None})
+    # Conversations
+    for c in session.exec(select(ConversationLog).where(ConversationLog.lead_id == lead_id)).all():
+        events.append({"type": "conversation", "id": c.id, "title": c.title or "Conversation", "detail": c.description or "", "date": c.created_at.isoformat() if c.created_at else None})
+    
+    events.sort(key=lambda x: x["date"] or "", reverse=True)
+    return {"timeline": events}
+
+@app.get("/leads/{lead_id}/activities")
+def get_lead_activities(lead_id: int, session: Session = Depends(get_session)):
+    acts = session.exec(select(ActivityLog).where(ActivityLog.lead_id == lead_id).order_by(ActivityLog.createdAt.desc())).all()
+    return {"activities": [a.dict() for a in acts]}
+
+@app.get("/leads/{lead_id}/notes")
+def get_lead_notes(lead_id: int, session: Session = Depends(get_session)):
+    notes = session.exec(select(ClientNote).where(ClientNote.lead_id == lead_id).order_by(ClientNote.created_at.desc())).all()
+    return {"notes": [n.dict() for n in notes]}
+
+class LeadNoteCreate(BaseModel):
+    content: str
+    author_name: str = "Admin"
+    tags: Optional[List[str]] = []
+
+@app.post("/leads/{lead_id}/notes")
+def create_lead_note(lead_id: int, body: LeadNoteCreate, session: Session = Depends(get_session)):
+    note = ClientNote(lead_id=lead_id, content=body.content, author_name=body.author_name, tags=body.tags)
+    session.add(note)
+    session.commit()
+    session.refresh(note)
+    return note.dict()
+
+@app.get("/leads/{lead_id}/conversations")
+def get_lead_conversations(lead_id: int, session: Session = Depends(get_session)):
+    convs = session.exec(select(ConversationLog).where(ConversationLog.lead_id == lead_id).order_by(ConversationLog.created_at.desc())).all()
+    return {"conversations": [c.dict() for c in convs]}
+
+class LeadConversationCreate(BaseModel):
+    title: str
+    type: str = "call"
+    description: Optional[str] = None
+    author_name: str = "Admin"
+
+@app.post("/leads/{lead_id}/conversations")
+def create_lead_conversation(lead_id: int, body: LeadConversationCreate, session: Session = Depends(get_session)):
+    conv = ConversationLog(lead_id=lead_id, title=body.title, type=body.type, description=body.description, author_name=body.author_name)
+    session.add(conv)
+    session.commit()
+    session.refresh(conv)
+    return conv.dict()
+
+@app.get("/leads/{lead_id}/files")
+def get_lead_files(lead_id: int, session: Session = Depends(get_session)):
+    return {"files": []}
+
+@app.post("/leads/{lead_id}/auto-research")
+def auto_research_lead(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+        
+    try:
+        # Trigger the same deep background research we use on creation
+        _trigger_background_research(
+            entity_id=lead_id,
+            entity_type="lead",
+            company_name=lead.company_name or "",
+            website=lead.website or ""
+        )
+        return {"ok": True, "message": "Research started in background"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
+
+@app.post("/leads/{lead_id}/extract-services")
+async def extract_lead_services_endpoint(lead_id: int, session: Session = Depends(get_session)):
+    """
+    Scrapes the lead's website and uses AI to extract services they offer.
+    Falls back to LLM world-knowledge when website is unreachable.
+    Stores results in MarketplaceService table.
+    """
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    website_url = lead.website
+    company_name = lead.company_name or "Unknown Company"
+
+    if not website_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Lead has no website URL. Add one in the lead profile first."
+        )
+
+    # ── Step 1: Try scraping (fail gracefully on any network error) ────────────
+    website_text = ""
+    scrape_method = "website_scrape"
+    try:
+        from modules.scraper import scrape_website
+        website_text = await scrape_website(website_url)
+        if website_text.startswith("ERROR"):
+            print(f"[extract-services] Scrape failed for {website_url}: {website_text[:100]}. Falling back to LLM.")
+            website_text = ""
+            scrape_method = "llm_fallback"
+    except Exception as scrape_err:
+        print(f"[extract-services] Scraper exception ({website_url}): {scrape_err}. Falling back to LLM.")
+        scrape_method = "llm_fallback"
+
+    # ── Step 2: Extract services (from scraped text, or via LLM knowledge) ─────
+    import json as _json
+    from modules.llm_engine import extract_client_services as _extract_services, get_openai_client
+
+    services = []
+
+    if website_text:
+        services = _extract_services(website_text, company_name)
+
+    # If scraping failed or extracted nothing → use LLM world-knowledge fallback
+    if not services:
+        scrape_method = "llm_fallback"
+        try:
+            oai = get_openai_client()
+            fallback_prompt = f"""You are a B2B business intelligence expert.
+
+The company "{company_name}" has website: {website_url}
+Industry: {lead.industry or "unknown"}
+
+We could not access their website. Based on the company name, domain, and industry,
+list the most likely services they offer.
+
+Return ONLY valid JSON:
+{{
+  "services": [
+    {{
+      "name": "Service name",
+      "brief": "1-2 sentence description of this service",
+      "category": "One of: SEO, Web Design, Marketing, Plumbing, Legal, Accounting, Consulting, Construction, Healthcare, Real Estate, IT Services, Landscaping, Cleaning, Electrical, HVAC, Retail, Education, Finance, Transportation, Other",
+      "approx_cost": 1200,
+      "cost_is_estimated": true
+    }}
+  ]
+}}
+
+Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for fallback."""
+            resp = oai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": fallback_prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.3,
+            )
+            services = _json.loads(resp.choices[0].message.content).get("services", [])
+        except Exception as llm_err:
+            print(f"[extract-services] LLM fallback also failed: {llm_err}")
+
+    if not services:
+        return {
+            "ok": False,
+            "extracted_count": 0,
+            "marketplace_count": 0,
+            "scrape_method": scrape_method,
+            "message": "Could not extract services. Try adding the Industry field to improve AI fallback accuracy.",
+        }
+
+    # ── Step 3: Save to Lead ai_analysis_results (simulate services_offered) ────────
+    if lead.ai_analysis_results:
+        analysis_data = dict(lead.ai_analysis_results)
+    else:
+        analysis_data = {}
+    analysis_data["product_portfolio"] = services
+    lead.ai_analysis_results = analysis_data
+    session.add(lead)
+
+    # ── Step 4: Upsert into MarketplaceService (skip exact name duplicates) ───
+    existing = session.exec(
+        select(MarketplaceService).where(
+            MarketplaceService.provider_name == company_name,
+            MarketplaceService.is_active == True,
+        )
+    ).all()
+    existing_names = {s.service_name.lower() for s in existing}
+
+    added = 0
+    for svc in services:
+        svc_name = svc.get("name", "").strip()
+        if not svc_name or svc_name.lower() in existing_names:
+            continue
+        ms = MarketplaceService(
+            service_name=svc_name,
+            normalized_name=svc_name,
+            category=svc.get("category"),
+            description=svc.get("brief"),
+            estimated_cost=float(svc.get("approx_cost", 0)),
+            cost_is_estimated=svc.get("cost_is_estimated", True),
+            provider_name=company_name,
+            provider_client_id=None,
+            provider_industry=lead.industry,
+            provider_address=lead.address,
+            source=scrape_method,
+        )
+        session.add(ms)
+        existing_names.add(svc_name.lower())
+        added += 1
+
+    session.commit()
+
+    method_label = "live website" if scrape_method == "website_scrape" else "AI knowledge (site unreachable)"
+    return {
+        "ok": True,
+        "extracted_count": len(services),
+        "marketplace_count": added,
+        "scrape_method": scrape_method,
+        "message": f"Extracted {len(services)} services via {method_label}. Added {added} to Marketplace.",
+    }
 
 @app.put("/leads/{lead_id}")
 def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depends(get_session)):
@@ -9190,6 +9688,192 @@ def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depend
     session.commit()
     session.refresh(lead)
     return lead
+
+
+@app.post("/leads/{lead_id}/generate-outbound-draft")
+def generate_lead_outbound_draft(lead_id: int, session: Session = Depends(get_session)):
+    check_tenant_limit(session, "emails")
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+        
+    try:
+        from modules.llm_engine import get_openai_client
+        import json as _json
+        client_ai = get_openai_client()
+        
+        # Get existing research
+        research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+        
+        # If no OSINT data yet, run deep investigation synchronously (blocking) so we have rich context
+        if not research or not research.email_agent_data:
+            from modules.llm_engine import deep_investigate_company
+            url = lead.website or ""
+            if not url and lead.company_name:
+                slug = lead.company_name.lower().replace(" ", "").replace(",","").replace(".","")
+                url = f"https://www.{slug}.com"
+            
+            if url:
+                print(f"[DraftGen] No existing research for lead {lead_id}. Running deep investigation first...")
+                try:
+                    osint_data = deep_investigate_company(
+                        company_name=lead.company_name or "Unknown",
+                        website=url,
+                        scraped_text=""
+                    )
+                    # Save research so it's available and also for context
+                    if not research:
+                        research = ClientResearch(lead_id=lead_id, tenant_id=current_tenant_id.get())
+                        session.add(research)
+                    research.company_overview = osint_data.get("company_overview", "")
+                    research.email_agent_data = _json.dumps(osint_data)
+                    # Update lead phone/email if found
+                    contacts = osint_data.get("contacts", []) or []
+                    contact = contacts[0] if contacts else {}
+                    company_info = osint_data.get("company_info", {}) or {}
+                    if not lead.email:
+                        email_found = contact.get("email") or company_info.get("extracted_emails","").split(",")[0].strip()
+                        if email_found: lead.email = email_found
+                    if not lead.phone:
+                        phone_found = contact.get("phone_number") or company_info.get("extracted_phone_numbers","").split(",")[0].strip()
+                        if phone_found: lead.phone = phone_found
+                    session.add(lead)
+                    session.commit()
+                    print(f"[DraftGen] Deep investigation complete for lead {lead_id}")
+                except Exception as osint_err:
+                    session.rollback()
+                    print(f"[DraftGen] OSINT failed (continuing with draft anyway): {osint_err}")
+                    # Re-fetch after rollback to avoid stale session state
+                    research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+
+        research_context = ""
+        if research:
+            research_context = f"""
+            Company Overview: {research.company_overview or 'N/A'}
+            Pain Points: {research.pain_points or 'N/A'}
+            Business Goals: {research.business_goals or 'N/A'}
+            """
+            if research.email_agent_data:
+                try:
+                    ea_data = _json.loads(research.email_agent_data)
+                    research_context += f"\nEmail Agent Intel: {_json.dumps(ea_data.get('company_info', {}), indent=2)}"
+                except:
+                    pass
+
+        # Get Notes (Leads don't have notes implemented yet, skipping)
+        notes = []
+        
+        interaction_context = ""
+        if notes:
+            interaction_context += "Recent Notes:\n" + "\n".join([f"- {n.content}" for n in notes]) + "\n"
+
+
+        prompt = f"""
+        You are an expert SDR (Sales Development Representative) at an agency. 
+        Write a highly personalized, cold outreach email draft for the following prospect.
+        Company: {lead.company_name or 'Unknown'}
+        Website: {lead.website or 'Unknown'}
+        {research_context}
+
+        {interaction_context}
+        If there are recent notes or conversations above, make sure the email acknowledges them appropriately as a follow-up. If none exist, write a standard cold outreach email based on the research.
+
+        
+        Return ONLY valid JSON matching this schema exactly (no markdown formatting):
+        {{
+            "subject": "Email subject",
+            "english_body": "Email body in English",
+            "spanish_body": "Email body translated to Spanish",
+            "whatsapp_draft": "Short, punchy WhatsApp message (plain text, emojis allowed)"
+        }}
+        """
+        
+        resp = client_ai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=800,
+        )
+        content = resp.choices[0].message.content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+            
+        data = _json.loads(content)
+        
+        # Save as a draft in SentEmail
+        from database import SentEmail
+        to_email = lead.email or "unknown@example.com"
+        
+        draft = SentEmail(
+            tenant_id=current_tenant_id.get(),
+            lead_id=lead_id,
+            to_email=to_email,
+            subject=data.get("subject", "Proposal"),
+            english_body=data.get("english_body", ""),
+            spanish_body=data.get("spanish_body", ""),
+            draft_json=_json.dumps(data),
+            manual=True,
+            sent_at=datetime.utcnow()
+        )
+        session.add(draft)
+        
+        # ── Safe upsert research (use existing row, never re-insert) ──────────
+        if not research:
+            research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+        if not research:
+            research = ClientResearch(lead_id=lead_id, tenant_id=current_tenant_id.get())
+            session.add(research)
+        
+        ea_payload = {}
+        if research.email_agent_data:
+            try:
+                ea_payload = _json.loads(research.email_agent_data)
+            except:
+                pass
+                
+        # Ensure company_info exists so the UI doesn't show empty fields if auto-research wasn't run
+        if "company_info" not in ea_payload:
+            ea_payload["company_info"] = {
+                "company_name": lead.company_name or "Unknown Company",
+                "extracted_emails": lead.email or "",
+                "extracted_phone_numbers": lead.phone or "",
+                "company_social_media": {},
+                "summary": "AI Draft generated. Run 'AI Agent Analysis' in Pre-Sales tab for deep OSINT data."
+            }
+            
+        ea_payload["draft"] = data
+        ea_payload["email_hook"] = data.get("whatsapp_draft", "Custom outreach generated from latest interactions.")
+        
+        research.email_agent_data = _json.dumps(ea_payload)
+        
+        session.commit()
+        
+        return {"ok": True, "draft": data}
+    except Exception as e:
+        session.rollback()
+        print(f"Error generating lead draft: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to generate draft: {str(e)}")
+
+
+@app.post("/leads/{lead_id}/swot")
+async def generate_lead_swot(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if not lead.website:
+        raise HTTPException(status_code=400, detail="Lead has no website URL configured")
+        
+    from modules.llm_engine import generate_swot_analysis
+    import json
+    
+    swot_data = await generate_swot_analysis(lead.website, lead.company_name or "Lead")
+    lead.swot_analysis = json.dumps(swot_data)
+    session.add(lead)
+    session.commit()
+    session.refresh(lead)
+    return {"ok": True, "swot_analysis": swot_data}
 
 from sqlmodel import text
 
@@ -9429,6 +10113,17 @@ def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)
         contact.account_id = account.id
         contact.client_id = client.id
         session.add(contact)
+        
+    # 3.5 Re-link Research Data and Sent Emails
+    research_entries = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead.id)).all()
+    for r in research_entries:
+        r.client_id = client.id
+        session.add(r)
+        
+    sent_emails = session.exec(select(SentEmail).where(SentEmail.lead_id == lead.id)).all()
+    for e in sent_emails:
+        e.client_id = client.id
+        session.add(e)
     
     # 4. Mark Lead as converted
     lead.is_converted = True
@@ -10991,6 +11686,8 @@ class CaseCreateRequest(BaseModel):
     status: str = "Open"
     priority: str = "Medium"
     category: Optional[str] = None
+    case_type: Optional[str] = "Bug"
+    url: Optional[str] = None
     lead_id: Optional[int] = None
     client_id: Optional[int] = None
     contact_id: Optional[int] = None
@@ -11002,6 +11699,8 @@ class CaseUpdateRequest(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
     category: Optional[str] = None
+    case_type: Optional[str] = None
+    url: Optional[str] = None
     assigned_to: Optional[int] = None
     resolution: Optional[str] = None
 
@@ -11602,6 +12301,7 @@ def verify_extracted_email(email_id: int, data: VerifyEmailRequest, session: Ses
 
 from fastapi.responses import PlainTextResponse
 
+
 @app.post("/whatsapp-webhook")
 async def whatsapp_webhook(
     background_tasks: BackgroundTasks,
@@ -11617,92 +12317,126 @@ async def whatsapp_webhook(
     from modules.whatsapp import send_whatsapp_message
     import json
 
-    # Helper: normalise the sender number so we can push outbound messages
-    # From arrives as "whatsapp:+919502901416" — strip the prefix for our helper
-    # which re-adds it internally.
-    sender_number = From  # keep original for DB lookups
-    # We pass From directly to send_whatsapp_message; that function handles the prefix.
-
     # ── Empty TwiML we always return so Twilio never waits / times-out ───
     EMPTY_TWIML = PlainTextResponse(
         '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
         media_type="application/xml"
     )
 
-    # 1. Authorize sender dynamically
+    # 1. Authorize sender dynamically — match by last 10 digits of phone
     from database import User
-    from main import current_tenant_id
-    
     sender_phone = From.replace("whatsapp:", "").replace("+", "").replace("-", "").replace(" ", "").strip()
     match_str = sender_phone[-10:] if len(sender_phone) >= 10 else sender_phone
-    
+
     auth_user = session.exec(select(User).where(User.phone.like(f"%{match_str}%"))).first()
-    
+
     if not auth_user:
         print(f"[WhatsApp] Unauthorized sender {From} tried to use the bot.")
         return EMPTY_TWIML
-        
+
     allowed_roles = {"admin", "superadmin", "salesmanager", "employee"}
     if (auth_user.role or "").lower().replace(" ", "") not in allowed_roles:
         print(f"[WhatsApp] Sender {From} authorized but lacks CRM bot role ({auth_user.role}).")
         return EMPTY_TWIML
-        
-    # Inject tenant context so downstream DB operations attach to the right tenant
+
+    # Inject tenant context — use current_tenant_id defined at module level in main.py
     current_tenant_id.set(auth_user.tenant_id)
-    
-    msg_text = Body.strip().lower()  # Note: refreshed after voice transcription below
-    
-    # 2. Check for existing session (pending action or active live chat)
-    ws_session = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == From)).first()
-    
-    # 2.0 Check Session Expiration & Authentication
+    tenant_id = auth_user.tenant_id
+
+    msg_text = Body.strip().lower()
+
+    # 2. Load existing session
+    ws_session = session.exec(
+        select(WhatsAppSession).where(WhatsAppSession.phone_number == From)
+    ).first()
+
+    # 2.0 Check Session Expiration (24h)
     if ws_session:
         from datetime import datetime, timedelta
         if datetime.utcnow() - ws_session.created_at > timedelta(hours=24):
-            session.delete(ws_session)
-            session.commit()
+            try:
+                session.delete(ws_session)
+                session.commit()
+            except Exception:
+                session.rollback()
             ws_session = None
-            
+
+    # 2.1 Security Key Auth
     expected_key = os.environ.get("WHATSAPP_SECURITY_KEY")
     if expected_key:
-        if not ws_session:
-            new_session = WhatsAppSession(
-                phone_number=From,
-                pending_action="auth"
+        greeting_words = {"hi", "hello", "hey", "start", "login", "reset", "authenticate"}
+
+        # If user greets/starts OR has no active session: prompt for password
+        if not ws_session or (msg_text in greeting_words and ws_session.pending_action != "auth"):
+            if not ws_session:
+                ws_session = WhatsAppSession(
+                    phone_number=From,
+                    pending_action="auth"
+                )
+            else:
+                ws_session.pending_action = "auth"
+                ws_session.action_data = None
+            session.add(ws_session)
+            try:
+                session.commit()
+            except Exception:
+                session.rollback()
+            send_whatsapp_message(
+                "🔒 *Security Key Required*\n\nPlease enter your passcode to access SerpHawk CRM 🦅",
+                From
             )
-            session.add(new_session)
-            session.commit()
-            send_whatsapp_message("🔒 Security Key required. Please enter your passcode to access the CRM.", From)
             return EMPTY_TWIML
-            
+
         if ws_session.pending_action == "auth":
             if Body.strip() == expected_key:
-                from datetime import datetime
+                from datetime import datetime as _dt
                 ws_session.pending_action = None
-                ws_session.created_at = datetime.utcnow() # Reset timer for 24h
-                session.commit()
-                send_whatsapp_message("✅ Access Granted. Welcome to the CRM! What would you like to do? (e.g. 'Add lead John Doe from example.com')", From)
+                ws_session.action_data = None
+                ws_session.created_at = _dt.utcnow()
+                session.add(ws_session)
+                try:
+                    session.commit()
+                except Exception:
+                    session.rollback()
+                send_whatsapp_message(
+                    "✅ *Access Granted! Welcome to SerpHawk CRM 🦅*\n\n"
+                    "I'm *Hawk*, your AI CRM assistant. You can now tell me or send a voice note to:\n\n"
+                    "📋 *View Data:*\n"
+                    "• _List my clients_\n"
+                    "• _Show leads_\n"
+                    "• _Show upcoming meetings_\n"
+                    "• _Show my tasks_\n\n"
+                    "⚡ *Actions:*\n"
+                    "• _Add lead Acme Corp, website acme.com_\n"
+                    "• _Add client Apex Media_\n"
+                    "• _Add note to lead Acme: interested in SEO audit_\n"
+                    "• _Assign salesperson Varshith to lead Acme_\n"
+                    "• _Schedule meeting with Acme tomorrow at 3pm_\n\n"
+                    "🎙️ *Voice Notes:* Just hold the mic and speak naturally!\n"
+                    "📸 *Business Cards:* Send a photo of any business card.",
+                    From
+                )
             else:
-                send_whatsapp_message("❌ Incorrect Security Key. Access denied.", From)
+                send_whatsapp_message(
+                    "❌ Incorrect Security Key. Please enter your passcode to access the CRM (or send 'hi' to restart).",
+                    From
+                )
             return EMPTY_TWIML
-            
-    # ── Step 0: Voice message detection & transcription ───────────────────
-    # Twilio sets NumMedia >= 1 and MediaContentType0 = audio/* for voice notes.
+
+    # ── Step 0: Voice message transcription ──────────────────────────────
     voice_transcript = None
     if int(NumMedia or 0) >= 1 and MediaUrl0 and (MediaContentType0 or "").startswith("audio/"):
         account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
-        auth_token  = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
         try:
             from modules.whatsapp import transcribe_voice_message
-            # ① Immediately ACK so the user knows we got it
             send_whatsapp_message(
                 "🎙️ Got your voice note! Transcribing and processing... give me a moment ⏳",
                 From
             )
             voice_transcript = transcribe_voice_message(MediaUrl0, account_sid, auth_token)
-            # Use the transcript as the body for downstream processing
             Body = voice_transcript
-            msg_text = voice_transcript.strip().lower()  # IMPORTANT: refresh msg_text with actual transcript
+            msg_text = voice_transcript.strip().lower()
             print(f"[Voice] Final transcript: {voice_transcript}")
         except Exception as ve:
             print(f"[Voice] Transcription failed: {ve}")
@@ -11712,277 +12446,271 @@ async def whatsapp_webhook(
                 From
             )
             return EMPTY_TWIML
-            
-    # ── Step 0.5: Image detection & processing (Business Cards, IDs) ──────
+
+    # ── Step 0.5: Image/Business-card processing ─────────────────────────
     image_data = None
     if int(NumMedia or 0) >= 1 and MediaUrl0 and (MediaContentType0 or "").startswith("image/"):
         account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
-        auth_token  = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
         try:
-            send_whatsapp_message(
-                "🖼️ Got your image! Scanning for details... ⏳",
-                From
-            )
-            print(f"[Image] Downloading image from: {MediaUrl0}")
-            import requests, base64
+            send_whatsapp_message("🖼️ Got your image! Scanning for details... ⏳", From)
+            import requests as _req, base64
             from requests.auth import HTTPBasicAuth
-            img_resp = requests.get(
+            img_resp = _req.get(
                 MediaUrl0,
                 auth=HTTPBasicAuth(account_sid, auth_token),
                 timeout=30
             )
             img_resp.raise_for_status()
-            base64_img = base64.b64encode(img_resp.content).decode('utf-8')
-            image_data = {
-                "base64": base64_img,
-                "mime_type": MediaContentType0
-            }
-            print(f"[Image] Successfully downloaded and encoded image ({len(img_resp.content)} bytes)")
-        except Exception as e:
-            print(f"[Image] Failed to download or process image: {e}")
-            send_whatsapp_message(
-                "❌ Sorry, I couldn't process the image you sent.",
-                From
-            )
+            base64_img = base64.b64encode(img_resp.content).decode("utf-8")
+            image_data = {"base64": base64_img, "mime_type": MediaContentType0}
+            print(f"[Image] Downloaded {len(img_resp.content)} bytes")
+        except Exception as ie:
+            print(f"[Image] Failed: {ie}")
+            send_whatsapp_message("❌ Sorry, I couldn't process the image you sent.", From)
             return EMPTY_TWIML
 
-    # 2.1 Handle Active Live Chat Messages
+    # 2.2 Handle Active Live Chat
     if ws_session and ws_session.active_live_chat_session:
-        print(f"[WhatsApp Flow] User is in active live chat session: {ws_session.active_live_chat_session}")
-        if msg_text == "end":
+        print(f"[WhatsApp] User in live chat: {ws_session.active_live_chat_session}")
+        if msg_text in ("end", "stop", "exit"):
             from database import LiveChatSession
-            lcs = session.exec(select(LiveChatSession).where(LiveChatSession.session_id == ws_session.active_live_chat_session)).first()
+            lcs = session.exec(
+                select(LiveChatSession).where(
+                    LiveChatSession.session_id == ws_session.active_live_chat_session
+                )
+            ).first()
             if lcs:
                 lcs.status = "ended"
-            session.delete(ws_session)
-            session.commit()
-            send_whatsapp_message("✅ Live chat ended. You can now send CRM commands again.", From)
-            return EMPTY_TWIML
+            try:
+                session.delete(ws_session)
+                session.commit()
+            except Exception:
+                session.rollback()
+            send_whatsapp_message("✅ Live chat ended. Send a new command whenever you're ready.", From)
         else:
             from database import LiveChatMessage
-            # Forward msg to live chat
             chat_msg = LiveChatMessage(
                 session_id=ws_session.active_live_chat_session,
                 sender="admin",
                 message=Body.strip()
             )
             session.add(chat_msg)
-            session.commit()
-            print("[WhatsApp Flow] Message forwarded to live chat. Exiting.")
-            return EMPTY_TWIML
-    
-    # 2.2 Handle Pending Actions
+            try:
+                session.commit()
+            except Exception:
+                session.rollback()
+        return EMPTY_TWIML
+
+    # 2.3 Handle Pending Actions (awaiting YES/NO/1/2/3 or corrections)
     previous_state = None
-    if ws_session and ws_session.pending_action:
-        print(f"[WhatsApp Flow] User has pending action: {ws_session.pending_action}")
+    if ws_session and ws_session.pending_action and ws_session.pending_action != "auth":
+        print(f"[WhatsApp] Pending action: {ws_session.pending_action}")
         action = ws_session.pending_action
-        args = json.loads(ws_session.action_data)
-        
+        args = json.loads(ws_session.action_data or "{}")
+
+        # Determine if user is confirming
         is_confirm = False
         if action == "add_entity" and msg_text in ["1", "2", "3"]:
             is_confirm = True
-        elif action != "add_entity" and msg_text in ["yes", "y"]:
+        elif action != "add_entity" and msg_text in ["yes", "y", "confirm", "ok", "yep", "yeah"]:
             is_confirm = True
 
         if is_confirm:
-            reply_msg = "Action confirmed and executed."
-            
-            # Execute actions based on type
-            if action == "claim_live_chat":
-                session_id = args.get("session_id")
-                from database import LiveChatSession
-                lcs = session.exec(select(LiveChatSession).where(LiveChatSession.session_id == session_id)).first()
-                if lcs:
-                    lcs.status = "active"
-                    ws_session.active_live_chat_session = session_id
-                    ws_session.pending_action = None
-                    ws_session.action_data = None
-                    session.commit()
-                    send_whatsapp_message(
-                        "✅ Live chat connected! Anything you type now will be sent to the visitor. Type *END* to disconnect.",
-                        From
-                    )
-                    return EMPTY_TWIML
-                else:
-                    reply_msg = "Live chat session expired or not found."
-                    session.delete(ws_session)
-            # ── Action: add_entity (replaces add_lead and add_client) ────────
-            elif action == "add_entity":
-                name = args.get('name', 'Unknown')
-                email = args.get('email')
-                phone = args.get('phone')
-                website = args.get('website')
-                notes_text = args.get('notes')
+            reply_msg = "✅ Action completed!"
 
-                if msg_text == "1": # Client
+            # ── add_entity ───────────────────────────────────────────────
+            if action == "add_entity":
+                name = args.get("name", "Unknown")
+                email = args.get("email")
+                phone = args.get("phone")
+                website = args.get("website")
+                notes_text = args.get("notes")
+
+                if msg_text == "1":  # Client
                     from database import ClientProfile, ClientNote
                     new_client = ClientProfile(
                         companyName=name,
                         phone=phone,
                         websiteUrl=website,
                         status="Active",
-                        lead_source="WhatsApp Voice",
+                        lead_source="WhatsApp",
+                        tenant_id=tenant_id,
                     )
                     if email:
                         new_client.customFields = {"email": email}
                     session.add(new_client)
                     session.commit()
                     session.refresh(new_client)
-
                     if notes_text:
-                        initial_note = ClientNote(
+                        session.add(ClientNote(
                             client_id=new_client.id,
                             content=notes_text,
                             author_name="WhatsApp Agent",
-                            tags=["voice", "onboarding"]
-                        )
-                        session.add(initial_note)
+                            tags=["whatsapp", "onboarding"],
+                            tenant_id=tenant_id,
+                        ))
                         session.commit()
-                    
                     reply_msg = (
                         f"✅ Client *{name}* added to CRM!\n"
-                        + (f"📧 Email: {email}\n" if email else "")
-                        + (f"📞 Phone: {phone}\n" if phone else "")
-                        + (f"🌐 Website: {website}\n" if website else "")
+                        + (f"📧 {email}\n" if email else "")
+                        + (f"📞 {phone}\n" if phone else "")
+                        + (f"🌐 {website}\n" if website else "")
                     )
 
-                elif msg_text == "2": # Lead
-                    from database import Lead, ClientProfile, ClientResearch
+                elif msg_text == "2":  # Lead
+                    from database import Lead
                     new_lead = Lead(
                         company_name=name,
                         website=website,
+                        email=email,
+                        phone=phone,
                         source="WhatsApp",
-                        status="New"
+                        status="New",
+                        tenant_id=tenant_id,
+                        notes=notes_text,
                     )
                     session.add(new_lead)
-                    
-                    new_client = ClientProfile(
-                        companyName=name,
-                        websiteUrl=website,
-                        status="Pending"
-                    )
-                    if email:
-                        new_client.customFields = {"email": email}
-                    if phone:
-                        new_client.phone = phone
-                    session.add(new_client)
                     session.commit()
                     session.refresh(new_lead)
-                    session.refresh(new_client)
+                    reply_msg = f"✅ Lead *{name}* added! 🎯\nRunning background research..."
 
-                    reply_msg = f"✅ Lead *{name}* added! Starting smart research in the background..."
-                    
-                    async def research_and_save(c_name, c_url, l_id, client_id):
+                    # Background HTTP call to smart-research (avoids asyncio.run in thread)
+                    def _bg_research(lead_id, c_name, c_url, from_number):
+                        import requests as _r
                         try:
-                            res = await smart_research(SmartResearchRequest(company_name=c_name, company_url=c_url))
-                            with Session(engine) as db_session:
-                                cr = ClientResearch(
-                                    lead_id=l_id,
-                                    client_id=client_id,
-                                    email_agent_data=json.dumps(res)
-                                )
-                                db_session.add(cr)
-                                db_session.commit()
-                                from modules.whatsapp import send_whatsapp_message
-                                send_whatsapp_message(f"✅ Research complete for *{c_name}*! AI draft is ready.", From)
-                        except Exception as e:
-                            print("Error in bg research:", e)
+                            base = os.environ.get("BASE_URL", "http://localhost:8000")
+                            resp = _r.post(
+                                f"{base}/smart-research",
+                                json={"company_name": c_name, "company_url": c_url},
+                                timeout=120
+                            )
+                            if resp.ok:
+                                from modules.whatsapp import send_whatsapp_message as _send
+                                _send(f"✅ Research complete for *{c_name}*! AI draft is ready in the CRM.", from_number)
+                        except Exception as ex:
+                            print(f"[WhatsApp BG Research] Error: {ex}")
 
-                    background_tasks.add_task(research_and_save, name, website, new_lead.id, new_client.id)
+                    background_tasks.add_task(_bg_research, new_lead.id, name, website or "", From)
 
-                elif msg_text == "3": # Contact
+                elif msg_text == "3":  # Contact
                     from database import Contact
+                    name_parts = name.split(" ", 1)
                     new_contact = Contact(
-                        first_name=name,
+                        first_name=name_parts[0],
+                        last_name=name_parts[1] if len(name_parts) > 1 else None,
+                        full_name=name,
                         email=email,
-                        mobile_number=phone
+                        mobile_number=phone,
+                        tenant_id=tenant_id,
+                        notes=notes_text,
                     )
                     session.add(new_contact)
                     session.commit()
-                    reply_msg = f"✅ Contact *{name}* added to CRM!"
+                    reply_msg = f"✅ Contact *{name}* added!\n" + (f"📧 {email}\n" if email else "") + (f"📞 {phone}\n" if phone else "")
 
-                session.delete(ws_session)
-
-            # ── Action: schedule_meeting ─────────────────────────────────────
+            # ── schedule_meeting ─────────────────────────────────────────
             elif action == "schedule_meeting":
-                from database import ScheduledCall
-                target_name = args.get('target_name', 'Unknown')
-                time_str    = args.get('time_str', 'TBD')
+                from database import Meeting
+                target_name = args.get("target_name", "Unknown")
+                time_str = args.get("time_str", "TBD")
+                meeting_type = args.get("meeting_type", "Meeting")
+                notes = args.get("notes", "Scheduled via WhatsApp")
 
-                new_call = ScheduledCall(
-                    title=f"Meeting with {target_name}",
-                    entity_name=target_name,
-                    notes=f"Scheduled via WhatsApp voice: {time_str}",
-                    assigned_to="Admin",
-                    status="Scheduled"
-                )
-                session.add(new_call)
-                session.commit()
-
-                reply_msg = f"📅 Meeting with *{target_name}* scheduled for *{time_str}*! Added to your calendar."
-                session.delete(ws_session)
-
-            # ── Action: add_note ─────────────────────────────────────────────
-            elif action == "add_note":
-                from database import ClientNote, ClientProfile
-                target_name = args.get('target_name', '')
-                content     = args.get('content', '')
-
-                # Try to find the client by name (case-insensitive partial match)
-                client = session.exec(
-                    select(ClientProfile).where(
-                        ClientProfile.companyName.ilike(f"%{target_name}%")
-                    )
+                # Try to find linked client or lead
+                from database import ClientProfile, Lead
+                client_match = session.exec(
+                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{target_name}%"))
                 ).first()
+                lead_match = None
+                if not client_match:
+                    lead_match = session.exec(
+                        select(Lead).where(Lead.company_name.ilike(f"%{target_name}%"))
+                    ).first()
+
+                new_meeting = Meeting(
+                    title=f"{meeting_type} with {target_name}",
+                    description=notes,
+                    meeting_type=meeting_type,
+                    status="Scheduled",
+                    notes=f"Scheduled via WhatsApp: {time_str}",
+                    client_id=client_match.id if client_match else None,
+                    lead_id=lead_match.id if lead_match else None,
+                    tenant_id=tenant_id,
+                )
+                session.add(new_meeting)
+                session.commit()
+                reply_msg = f"📅 *{meeting_type}* with *{target_name}* scheduled for *{time_str}*!\nAdded to your calendar. ✅"
+
+            # ── add_note ─────────────────────────────────────────────────
+            elif action == "add_note":
+                from database import ClientNote, ClientProfile, Lead
+                target_name = args.get("target_name", "")
+                content = args.get("content", "")
+
+                # Try client first, then lead
+                client = session.exec(
+                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{target_name}%"))
+                ).first()
+                lead = None
+                if not client:
+                    lead = session.exec(
+                        select(Lead).where(Lead.company_name.ilike(f"%{target_name}%"))
+                    ).first()
 
                 if client:
                     note = ClientNote(
                         client_id=client.id,
                         content=content,
-                        author_name="WhatsApp Agent",
-                        tags=["voice"]
+                        author_name=auth_user.name or "WhatsApp Agent",
+                        tags=["whatsapp"],
+                        tenant_id=tenant_id,
                     )
                     session.add(note)
                     session.commit()
-                    reply_msg = f"📝 Note added to *{client.companyName}*: \"{content[:80]}{'...' if len(content) > 80 else ''}\""
+                    snippet = content[:80] + ("..." if len(content) > 80 else "")
+                    reply_msg = f"📝 Note added to *{client.companyName}*:\n\"{snippet}\""
+                elif lead:
+                    # Append to lead's notes field
+                    from datetime import datetime
+                    lead.notes = f"{lead.notes or ''}\n[{datetime.utcnow().strftime('%Y-%m-%d')} WhatsApp] {content}".strip()
+                    lead.last_activity = f"WhatsApp note: {content[:50]}"
+                    session.commit()
+                    reply_msg = f"📝 Note added to lead *{lead.company_name}*:\n\"{content[:80]}\""
                 else:
                     reply_msg = (
-                        f"⚠️ Couldn't find a client named *{target_name}*. "
-                        f"Please check the name and try again."
+                        f"⚠️ Couldn't find *{target_name}* in clients or leads.\n"
+                        "Check the name and try again."
                     )
-                session.delete(ws_session)
 
-            # ── Action: add_task ─────────────────────────────────────────────
+            # ── add_task ─────────────────────────────────────────────────
             elif action == "add_task":
                 from database import Task, ClientProfile
-                title       = args.get('title', 'Untitled Task')
-                description = args.get('description')
-                due_date    = args.get('due_date')
-                priority    = args.get('priority', 'Medium')
-                client_name = args.get('client_name')
+                title = args.get("title", "Untitled Task")
+                description = args.get("description")
+                due_date = args.get("due_date")
+                priority = args.get("priority", "Medium")
+                client_name = args.get("client_name")
 
-                # Optionally link to a client
                 client_id = None
                 if client_name:
                     client = session.exec(
-                        select(ClientProfile).where(
-                            ClientProfile.companyName.ilike(f"%{client_name}%")
-                        )
+                        select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{client_name}%"))
                     ).first()
                     if client:
                         client_id = client.id
 
                 new_task = Task(
                     title=title,
-                    description=description or f"Created via WhatsApp voice command.",
+                    description=description or "Created via WhatsApp",
                     status="Todo",
                     priority=priority,
                     due_date=due_date,
-                    client_id=client_id
+                    client_id=client_id,
+                    tenant_id=tenant_id,
                 )
                 session.add(new_task)
                 session.commit()
-
                 reply_msg = (
                     f"✅ Task created!\n"
                     f"📌 *{title}*\n"
@@ -11990,59 +12718,469 @@ async def whatsapp_webhook(
                     + (f"🔥 Priority: {priority}\n" if priority else "")
                     + (f"🏢 Client: {client_name}\n" if client_name else "")
                 )
+
+            # ── assign_salesperson ────────────────────────────────────────
+            elif action == "assign_salesperson":
+                from database import ClientProfile, Lead, User as _User
+                entity_name = args.get("entity_name", "")
+                salesperson_name = args.get("salesperson_name", "")
+                entity_type = args.get("entity_type", "client").lower()
+
+                # Find the salesperson/employee by name
+                sales_user = session.exec(
+                    select(_User).where(_User.name.ilike(f"%{salesperson_name}%"))
+                ).first()
+
+                if not sales_user:
+                    reply_msg = f"⚠️ Employee *{salesperson_name}* not found in the system. Check the name and try again."
+                else:
+                    entity_found = False
+                    if entity_type in ("client", "both"):
+                        client = session.exec(
+                            select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{entity_name}%"))
+                        ).first()
+                        if client:
+                            client.assignedEmployeeId = sales_user.id
+                            session.commit()
+                            reply_msg = f"👤 *{salesperson_name}* assigned to client *{client.companyName}*! ✅"
+                            entity_found = True
+
+                    if not entity_found:
+                        lead = session.exec(
+                            select(Lead).where(Lead.company_name.ilike(f"%{entity_name}%"))
+                        ).first()
+                        if lead:
+                            lead.owner_id = sales_user.id
+                            session.commit()
+                            reply_msg = f"👤 *{salesperson_name}* assigned to lead *{lead.company_name}*! ✅"
+                            entity_found = True
+
+                    if not entity_found:
+                        reply_msg = f"⚠️ Couldn't find *{entity_name}* in clients or leads. Check the name and try again."
+
+            # ── update_lead_status ────────────────────────────────────────
+            elif action == "update_lead_status":
+                from database import Lead
+                lead_name = args.get("lead_name", "")
+                new_status = args.get("new_status", "")
+
+                lead = session.exec(
+                    select(Lead).where(Lead.company_name.ilike(f"%{lead_name}%"))
+                ).first()
+                if lead:
+                    old_status = lead.status
+                    lead.status = new_status
+                    from datetime import datetime
+                    lead.last_activity = f"Status changed to {new_status} via WhatsApp"
+                    session.commit()
+                    reply_msg = f"✅ Lead *{lead.company_name}* status updated:\n{old_status} → *{new_status}*"
+                else:
+                    reply_msg = f"⚠️ Lead *{lead_name}* not found. Check the name and try again."
+
+            # ── update_client_status ──────────────────────────────────────
+            elif action == "update_client_status":
+                from database import ClientProfile
+                client_name = args.get("client_name", "")
+                new_status = args.get("new_status", "")
+
+                client = session.exec(
+                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{client_name}%"))
+                ).first()
+                if client:
+                    old_status = client.status
+                    client.status = new_status
+                    session.commit()
+                    reply_msg = f"✅ Client *{client.companyName}* status updated:\n{old_status} → *{new_status}*"
+                else:
+                    reply_msg = f"⚠️ Client *{client_name}* not found."
+
+            # ── generate_email_draft ─────────────────────────────────────
+            elif action == "generate_email_draft":
+                from database import ClientProfile, Lead
+                entity_name = args.get("entity_name", "")
+                context_hint = args.get("context", "")
+
+                client = session.exec(
+                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{entity_name}%"))
+                ).first()
+                lead = None
+                if not client:
+                    lead = session.exec(
+                        select(Lead).where(Lead.company_name.ilike(f"%{entity_name}%"))
+                    ).first()
+
+                entity = client or lead
+                if not entity:
+                    reply_msg = f"⚠️ *{entity_name}* not found in clients or leads."
+                else:
+                    real_name = getattr(entity, "companyName", None) or getattr(entity, "company_name", entity_name)
+                    website = getattr(entity, "websiteUrl", None) or getattr(entity, "website", "")
+                    reply_msg = f"✍️ Generating AI email draft for *{real_name}*... I'll send it back shortly!"
+
+                    def _gen_draft(e_name, e_website, e_context, from_number):
+                        try:
+                            from modules.llm_engine import get_openai_client as _oai, generate_email, analyze_content
+                            analysis = analyze_content(f"Company: {e_name}\nWebsite: {e_website}\nContext: {e_context}")
+                            draft = generate_email(analysis)
+                            subject = draft.get("subject", "")
+                            body = draft.get("english_body", "")[:600]
+                            wa_draft = draft.get("whatsapp_draft", "")
+                            msg = (
+                                f"📧 *Email Draft for {e_name}:*\n\n"
+                                f"*Subject:* {subject}\n\n"
+                                f"{body}{'...' if len(draft.get('english_body','')) > 600 else ''}\n\n"
+                                + (f"💬 *WhatsApp Draft:*\n{wa_draft}" if wa_draft else "")
+                            )
+                            from modules.whatsapp import send_whatsapp_message as _send
+                            _send(msg, from_number)
+                        except Exception as ex:
+                            print(f"[WhatsApp Draft] Error: {ex}")
+                            from modules.whatsapp import send_whatsapp_message as _send
+                            _send(f"❌ Draft generation failed for *{e_name}*. Try again!", from_number)
+
+                    background_tasks.add_task(_gen_draft, real_name, website, context_hint, From)
+
+            # ── send_success_message ──────────────────────────────────────
+            elif action == "send_success_message":
+                from database import ClientProfile, Lead, ClientResearch
+                entity_name = args.get("entity_name", "")
+
+                client = session.exec(
+                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{entity_name}%"))
+                ).first()
+                lead = None
+                if not client:
+                    lead = session.exec(
+                        select(Lead).where(Lead.company_name.ilike(f"%{entity_name}%"))
+                    ).first()
+
+                entity = client or lead
+                if not entity:
+                    reply_msg = f"⚠️ *{entity_name}* not found."
+                else:
+                    real_name = getattr(entity, "companyName", None) or getattr(entity, "company_name", entity_name)
+                    # Look for existing research
+                    research = None
+                    if client:
+                        research = session.exec(
+                            select(ClientResearch).where(ClientResearch.client_id == client.id)
+                        ).first()
+                    elif lead:
+                        research = session.exec(
+                            select(ClientResearch).where(ClientResearch.lead_id == lead.id)
+                        ).first()
+
+                    if research and research.email_agent_data:
+                        try:
+                            res_data = json.loads(research.email_agent_data) if isinstance(research.email_agent_data, str) else research.email_agent_data
+                            verdict = res_data.get("executive_verdict") or res_data.get("company_overview", "")
+                            opportunity = res_data.get("serphawk_opportunity", {})
+                            fit_score = opportunity.get("fit_score", "N/A")
+                            pitch_angle = opportunity.get("pitch_angle", "N/A")
+                            rec_services = opportunity.get("recommended_services", [])
+                            swot = getattr(entity, "swot_analysis", None)
+
+                            success_msg = (
+                                f"🤖 *Agent Report: {real_name}*\n\n"
+                                f"📊 *Fit Score:* {fit_score}/10\n\n"
+                                f"📋 *Overview:*\n{verdict[:300]}{'...' if len(verdict) > 300 else ''}\n\n"
+                                f"🎯 *Pitch Angle:*\n{pitch_angle[:200]}\n\n"
+                                + (f"✨ *Recommended Services:*\n" + "\n".join([f"• {s}" for s in rec_services[:5]]) if rec_services else "")
+                                + (f"\n\n📊 *SWOT:*\n{swot[:300]}" if swot else "")
+                            )
+                            reply_msg = success_msg
+                        except Exception as e:
+                            reply_msg = f"⚠️ Research data found but couldn't parse it for *{real_name}*."
+                    else:
+                        reply_msg = (
+                            f"⏳ No agent research found for *{real_name}* yet.\n"
+                            f"Say _'research {entity_name}'_ to kick off a new analysis!"
+                        )
+
+            # ── quick_followup ────────────────────────────────────────────
+            elif action == "quick_followup":
+                from database import Task, ClientProfile, Lead
+                entity_name = args.get("entity_name", "")
+                time_str = args.get("time_str", "soon")
+                note = args.get("note", "")
+
+                client = session.exec(
+                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{entity_name}%"))
+                ).first()
+                lead = None
+                if not client:
+                    lead = session.exec(
+                        select(Lead).where(Lead.company_name.ilike(f"%{entity_name}%"))
+                    ).first()
+
+                real_name = (client and client.companyName) or (lead and lead.company_name) or entity_name
+                client_id = client.id if client else None
+
+                task = Task(
+                    title=f"Follow up with {real_name}",
+                    description=note or f"Follow up scheduled for {time_str}",
+                    status="Todo",
+                    priority="High",
+                    due_date=time_str,
+                    client_id=client_id,
+                    tenant_id=tenant_id,
+                )
+                session.add(task)
+                session.commit()
+                reply_msg = f"⏰ Follow-up reminder set for *{real_name}* on *{time_str}*! ✅"
+
+            try:
                 session.delete(ws_session)
-            
-            session.commit()
-            print("[WhatsApp Flow] Executed pending action successfully.")
-            # ② Proactively send the action result via WhatsApp API
+                session.commit()
+            except Exception:
+                try:
+                    session.rollback()
+                except Exception:
+                    pass
+
             send_whatsapp_message(reply_msg, From)
             return EMPTY_TWIML
 
-        elif msg_text in ["no", "cancel", "n"]:
-            session.delete(ws_session)
-            session.commit()
-            print("[WhatsApp Flow] Pending action cancelled explicitly by user.")
-            send_whatsapp_message("❌ Action cancelled. Send a new command whenever you're ready.", From)
-            return EMPTY_TWIML
-        else:
-            # They didn't say yes/no/1/2/3, so they are providing a correction.
-            print("[WhatsApp Flow] User provided correction to pending action.")
-            previous_state = {
-                "action": ws_session.pending_action,
-                "parameters": json.loads(ws_session.action_data)
-            }
-            # We explicitly DO NOT delete the ws_session here. 
-            # We pass previous_state to the LLM, and update the session in Step 3.
-            
-    # 3. No pending session (or a correction) — parse via AI
-    print(f"[WhatsApp Flow] Processing command: {Body}")
-    result = process_whatsapp_command(Body, previous_state, image_data)
-    action_name_top = result.get("action", "none")
-    print(f"[WhatsApp Flow] AI Result: action={action_name_top}, params={result.get('parameters')}")
-
-    # ── Instant-execute read-only actions (no YES/NO confirm needed) ──────────
-    INSTANT_ACTIONS = {"radar_search", "get_call_pitch", "research_client"}
-    if action_name_top in INSTANT_ACTIONS:
-        if ws_session:
+        elif msg_text in ("no", "cancel", "n", "nope", "stop"):
             try:
                 session.delete(ws_session)
                 session.commit()
             except Exception:
                 session.rollback()
+            send_whatsapp_message("❌ Action cancelled. Send a new command whenever you're ready.", From)
+            return EMPTY_TWIML
+        else:
+            # User is correcting — pass to AI with previous state
+            print("[WhatsApp] User correcting previous command.")
+            previous_state = {
+                "action": ws_session.pending_action,
+                "parameters": json.loads(ws_session.action_data or "{}")
+            }
 
-    if action_name_top == "radar_search":
-        params_r = result["parameters"]
-        query_r = params_r.get("query", "")
-        location_r = params_r.get("location", "")
+    # 3. Parse via AI
+    print(f"[WhatsApp] Processing command: {Body[:100]}")
+    result = process_whatsapp_command(Body, previous_state, image_data)
+    action_name = result.get("action", "none")
+    params = result.get("parameters", {})
+    print(f"[WhatsApp] AI result: action={action_name}, params={params}")
+
+    # ── INSTANT (read-only) actions — no confirmation needed ─────────────
+    INSTANT_ACTIONS = {
+        "radar_search", "get_call_pitch", "research_client",
+        "list_clients", "list_leads", "list_tasks",
+        "list_upcoming_meetings", "get_client_summary",
+    }
+
+    # Clear any stale session before instant actions
+    if action_name in INSTANT_ACTIONS and ws_session:
+        try:
+            session.delete(ws_session)
+            session.commit()
+            ws_session = None
+        except Exception:
+            session.rollback()
+
+    # ── list_clients ──────────────────────────────────────────────────────
+    if action_name == "list_clients":
+        from database import ClientProfile
+        status_filter = params.get("status_filter")
+        limit = min(int(params.get("limit", 10)), 20)
+        q = select(ClientProfile)
+        if tenant_id:
+            q = q.where(ClientProfile.tenant_id == tenant_id)
+        if status_filter:
+            q = q.where(ClientProfile.status == status_filter)
+        q = q.limit(limit)
+        clients = session.exec(q).all()
+        if clients:
+            lines = [f"📋 *Your Clients ({len(clients)}):*\n"]
+            for c in clients:
+                status_emoji = {"Active": "🟢", "Hold": "🟡", "Pending": "🔵"}.get(c.status, "⚪")
+                lines.append(f"{status_emoji} *{c.companyName or 'Unnamed'}* — {c.status}")
+                if c.websiteUrl:
+                    lines.append(f"   🌐 {c.websiteUrl}")
+            lines.append(f"\n💬 Say _'tell me about [name]'_ for full details.")
+            send_whatsapp_message("\n".join(lines), From)
+        else:
+            send_whatsapp_message("📋 No clients found" + (f" with status *{status_filter}*" if status_filter else "") + ".", From)
+        return EMPTY_TWIML
+
+    # ── list_leads ────────────────────────────────────────────────────────
+    elif action_name == "list_leads":
+        from database import Lead
+        status_filter = params.get("status_filter")
+        limit = min(int(params.get("limit", 10)), 20)
+        q = select(Lead)
+        if tenant_id:
+            q = q.where(Lead.tenant_id == tenant_id)
+        if status_filter:
+            q = q.where(Lead.status == status_filter)
+        q = q.order_by(Lead.created_at.desc()).limit(limit)
+        leads = session.exec(q).all()
+        if leads:
+            status_emojis = {"New": "🆕", "Contacted": "📞", "Qualified": "⭐", "Proposal Sent": "📄", "Closed Won": "🏆", "Closed Lost": "❌"}
+            lines = [f"🎯 *Your Leads ({len(leads)}):*\n"]
+            for l in leads:
+                emoji = status_emojis.get(l.status, "🔵")
+                lines.append(f"{emoji} *{l.company_name}* — {l.status}")
+                if l.website:
+                    lines.append(f"   🌐 {l.website}")
+            lines.append(f"\n💬 Say _'update lead [name] to Qualified'_ to change status.")
+            send_whatsapp_message("\n".join(lines), From)
+        else:
+            send_whatsapp_message("🎯 No leads found" + (f" with status *{status_filter}*" if status_filter else "") + ".", From)
+        return EMPTY_TWIML
+
+    # ── list_tasks ────────────────────────────────────────────────────────
+    elif action_name == "list_tasks":
+        from database import Task
+        status_filter = params.get("status_filter")
+        limit = min(int(params.get("limit", 10)), 20)
+        q = select(Task)
+        if tenant_id:
+            q = q.where(Task.tenant_id == tenant_id)
+        if status_filter:
+            q = q.where(Task.status == status_filter)
+        else:
+            q = q.where(Task.status.in_(["Todo", "In Progress"]))
+        q = q.order_by(Task.created_at.desc()).limit(limit)
+        tasks = session.exec(q).all()
+        if tasks:
+            priority_emojis = {"Urgent": "🚨", "High": "🔴", "Medium": "🟡", "Low": "🟢"}
+            lines = [f"✅ *Your Pending Tasks ({len(tasks)}):*\n"]
+            for t in tasks:
+                p_emoji = priority_emojis.get(t.priority, "⚪")
+                lines.append(f"{p_emoji} *{t.title}*")
+                if t.due_date:
+                    lines.append(f"   📅 Due: {t.due_date}")
+                if t.status:
+                    lines.append(f"   📌 Status: {t.status}")
+            send_whatsapp_message("\n".join(lines), From)
+        else:
+            send_whatsapp_message("✅ No pending tasks! You're all caught up 🎉", From)
+        return EMPTY_TWIML
+
+    # ── list_upcoming_meetings ────────────────────────────────────────────
+    elif action_name == "list_upcoming_meetings":
+        from database import ScheduledCall, Meeting
+        from datetime import datetime as _dt
+        limit = min(int(params.get("limit", 10)), 20)
+        now = _dt.utcnow()
+
+        # Query both Meeting and ScheduledCall tables
+        mtgs = session.exec(
+            select(Meeting)
+            .where(Meeting.status == "Scheduled")
+            .order_by(Meeting.scheduled_at.asc())
+            .limit(limit)
+        ).all()
+
+        sched_calls = session.exec(
+            select(ScheduledCall)
+            .where(ScheduledCall.status == "Scheduled")
+            .order_by(ScheduledCall.created_at.desc())
+            .limit(limit)
+        ).all()
+
+        lines = [f"📅 *Upcoming Meetings & Calls:*\n"]
+        total = 0
+        for m in mtgs:
+            time_str = m.scheduled_at.strftime("%d %b, %I:%M %p") if m.scheduled_at else "Time TBD"
+            lines.append(f"📋 *{m.title}*\n   🕐 {time_str} | 📁 {m.meeting_type}")
+            total += 1
+        for sc in sched_calls:
+            lines.append(f"📞 *{sc.title}*\n   👤 {sc.entity_name or 'Unknown'} | 📁 {sc.status}")
+            total += 1
+
+        if total == 0:
+            send_whatsapp_message("📅 No upcoming meetings or calls scheduled.", From)
+        else:
+            lines.append(f"\n💬 Say _'schedule meeting with [name] tomorrow 5pm'_ to add one.")
+            send_whatsapp_message("\n".join(lines), From)
+        return EMPTY_TWIML
+
+    # ── get_client_summary ────────────────────────────────────────────────
+    elif action_name == "get_client_summary":
+        from database import ClientProfile, Lead, ClientNote, ClientResearch
+        name_q = params.get("name", "")
+
+        client = session.exec(
+            select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{name_q}%"))
+        ).first()
+        lead = None
+        if not client:
+            lead = session.exec(
+                select(Lead).where(Lead.company_name.ilike(f"%{name_q}%"))
+            ).first()
+
+        if client:
+            # Build rich summary
+            notes = session.exec(
+                select(ClientNote).where(ClientNote.client_id == client.id)
+                .order_by(ClientNote.created_at.desc()).limit(3)
+            ).all()
+            research = session.exec(
+                select(ClientResearch).where(ClientResearch.client_id == client.id)
+            ).first()
+
+            status_emoji = {"Active": "🟢", "Hold": "🟡", "Pending": "🔵"}.get(client.status, "⚪")
+            email_val = (client.customFields or {}).get("email", "") if client.customFields else ""
+            assigned_user = None
+            if client.assignedEmployeeId:
+                from database import User as _U
+                assigned_user = session.exec(select(_U).where(_U.id == client.assignedEmployeeId)).first()
+
+            lines = [
+                f"🏢 *{client.companyName}*\n",
+                f"{status_emoji} Status: {client.status}",
+                f"🌐 {client.websiteUrl or 'No website'}",
+                (f"📧 {email_val}" if email_val else ""),
+                (f"📞 {client.phone}" if client.phone else ""),
+                (f"💰 Deal Value: ${client.deal_value:,.0f}" if client.deal_value else ""),
+                (f"🏭 Industry: {client.industry}" if client.industry else ""),
+                (f"👤 Assigned to: {assigned_user.name}" if assigned_user else ""),
+                (f"📊 Lead Score: {client.lead_score}/100" if client.lead_score else ""),
+                "",
+            ]
+            if notes:
+                lines.append("📝 *Recent Notes:*")
+                for n in notes:
+                    snippet = n.content[:100] + ("..." if len(n.content) > 100 else "")
+                    lines.append(f"• {snippet}")
+
+            if research:
+                lines.append("\n🤖 *AI Research:* Available — say _'agent results for {name_q}'_ to view")
+
+            lines.append(f"\n💬 Options:\n• _Note that {name_q} ..._\n• _Assign [person] to {name_q}_\n• _Generate draft for {name_q}_")
+            send_whatsapp_message("\n".join(filter(None, lines)), From)
+        elif lead:
+            lines = [
+                f"🎯 *Lead: {lead.company_name}*\n",
+                f"📊 Status: {lead.status}",
+                (f"🌐 {lead.website}" if lead.website else ""),
+                (f"📧 {lead.email}" if lead.email else ""),
+                (f"📞 {lead.phone}" if lead.phone else ""),
+                (f"🏭 {lead.industry}" if lead.industry else ""),
+                (f"📋 Notes: {lead.notes[:150]}" if lead.notes else ""),
+                "",
+                f"💬 Options:\n• _Update lead {name_q} to Qualified_\n• _Generate draft for {name_q}_\n• _Research {name_q}_"
+            ]
+            send_whatsapp_message("\n".join(filter(None, lines)), From)
+        else:
+            send_whatsapp_message(f"⚠️ *{name_q}* not found in clients or leads. Check the name and try again.", From)
+        return EMPTY_TWIML
+
+    # ── radar_search ──────────────────────────────────────────────────────
+    elif action_name == "radar_search":
+        query_r = params.get("query", "")
+        location_r = params.get("location", "")
         full_query = f"{query_r} {location_r}".strip()
-        print(f"[WhatsApp Radar] Starting research on: {full_query}")
         send_whatsapp_message(f"🔍 Running radar research on *{full_query}*... give me a moment ⏳", From)
         try:
             import asyncio
             from modules.scraper import scrape_website
             from modules.llm_engine import analyze_content
-            # If it looks like a URL, scrape it; otherwise use AI knowledge directly
-            if query_r.startswith("http") or "." in query_r.split()[0]:
+            if query_r.startswith("http") or ("." in query_r.split()[0] if query_r.split() else False):
                 url = query_r if query_r.startswith("http") else f"https://{query_r}"
                 try:
                     scraped = asyncio.run(scrape_website(url))
@@ -12051,8 +13189,7 @@ async def whatsapp_webhook(
                 except Exception:
                     analysis = analyze_content(f"Research this website and business: {url}")
             else:
-                # Keyword/market — use AI knowledge
-                analysis = analyze_content(f"Market/keyword research: {full_query}\nProvide a market analysis, key players, recommended services.")
+                analysis = analyze_content(f"Market/keyword research: {full_query}\nProvide market analysis, key players, recommended services.")
 
             company = analysis.get("company_name", full_query)
             what_they_do = analysis.get("what_they_do", "N/A")
@@ -12064,44 +13201,41 @@ async def whatsapp_webhook(
                 f"📋 *What they do:*\n{what_they_do}\n\n"
             )
             if services:
-                radar_msg += f"💡 *Relevant services for them:*\n" + "\n".join([f"• {s}" for s in services[:5]]) + "\n\n"
+                radar_msg += "💡 *Relevant services for them:*\n" + "\n".join([f"• {s}" for s in services[:5]]) + "\n\n"
             if contacts:
-                radar_msg += f"👥 *Key contacts found:*\n"
+                radar_msg += "👥 *Key contacts found:*\n"
                 for c in contacts[:3]:
-                    name = c.get("name") or "Unknown"
-                    role = c.get("role") or ""
-                    email = c.get("email") or ""
-                    phone = c.get("phone_number") or ""
-                    radar_msg += f"• {name}" + (f" ({role})" if role else "") + (f" — {email}" if email else "") + (f" 📞 {phone}" if phone else "") + "\n"
-            radar_msg += "\n💬 Reply *pitch for [name]* to get a call pitch, or *add [name]* to CRM!"
+                    n = c.get("name") or "Unknown"
+                    r = c.get("role") or ""
+                    e = c.get("email") or ""
+                    p = c.get("phone_number") or ""
+                    radar_msg += f"• {n}" + (f" ({r})" if r else "") + (f" — {e}" if e else "") + (f" 📞{p}" if p else "") + "\n"
+            radar_msg += "\n💬 Reply *pitch for [name]* or *add [name]* to CRM!"
             send_whatsapp_message(radar_msg, From)
-        except Exception as re:
-            print(f"[WhatsApp Radar] Error: {re}")
-            send_whatsapp_message(f"❌ Radar research failed for *{full_query}*. Try again or check the name/URL.", From)
+        except Exception as re_err:
+            print(f"[WhatsApp Radar] Error: {re_err}")
+            send_whatsapp_message(f"❌ Radar research failed for *{full_query}*. Try again!", From)
         return EMPTY_TWIML
 
-    elif action_name_top == "get_call_pitch":
-        params_p = result["parameters"]
-        client_name_p = params_p.get("client_name", "")
-        print(f"[WhatsApp Pitch] Getting pitch for: {client_name_p}")
+    # ── get_call_pitch ────────────────────────────────────────────────────
+    elif action_name == "get_call_pitch":
+        client_name_p = params.get("client_name", "")
         try:
             from database import ClientProfile, Lead
-            from sqlalchemy import or_
-            # Fuzzy search across clients and leads
             search_term = f"%{client_name_p}%"
             client_p = session.exec(
-                select(ClientProfile).where(ClientProfile.company_name.ilike(search_term))
+                select(ClientProfile).where(ClientProfile.companyName.ilike(search_term))
             ).first()
             lead_p = None
             if not client_p:
                 lead_p = session.exec(
-                    select(Lead).where(or_(Lead.name.ilike(search_term), Lead.company.ilike(search_term)))
+                    select(Lead).where(Lead.company_name.ilike(search_term))
                 ).first()
 
             entity_name = None
             pitch_text = None
             if client_p:
-                entity_name = client_p.company_name
+                entity_name = client_p.companyName
                 if client_p.call_pitch_text:
                     pitch_text = client_p.call_pitch_text
                 else:
@@ -12115,7 +13249,7 @@ async def whatsapp_webhook(
                     client_p.call_pitch_text = pitch_text
                     session.commit()
             elif lead_p:
-                entity_name = lead_p.name or lead_p.company or client_name_p
+                entity_name = lead_p.company_name
                 from modules.llm_engine import get_openai_client as _oai
                 _c = _oai()
                 _r = _c.chat.completions.create(
@@ -12125,25 +13259,21 @@ async def whatsapp_webhook(
                 pitch_text = _r.choices[0].message.content
 
             if pitch_text:
-                pitch_msg = f"📞 *Call Pitch for {entity_name}:*\n\n{pitch_text}"
+                send_whatsapp_message(f"📞 *Call Pitch for {entity_name}:*\n\n{pitch_text}", From)
             else:
-                pitch_msg = f"❌ Couldn't find *{client_name_p}* in your CRM. Add them first or try a different name."
-            send_whatsapp_message(pitch_msg, From)
+                send_whatsapp_message(f"❌ Couldn't find *{client_name_p}* in your CRM. Add them first or try a different name.", From)
         except Exception as pe:
             print(f"[WhatsApp Pitch] Error: {pe}")
             send_whatsapp_message(f"❌ Error getting pitch for *{client_name_p}*. Try again!", From)
         return EMPTY_TWIML
 
-    elif action_name_top == "research_client":
-        params_rc = result["parameters"]
-        query_rc = params_rc.get("query", "")
-        print(f"[WhatsApp Research] Researching: {query_rc}")
+    # ── research_client ───────────────────────────────────────────────────
+    elif action_name == "research_client":
+        query_rc = params.get("query", "")
         send_whatsapp_message(f"🔬 Researching *{query_rc}*... give me a moment ⏳", From)
         try:
             from database import ClientProfile, Lead
-            from sqlalchemy import or_
             from modules.llm_engine import analyze_content
-            # Check if it's a URL or a name
             if query_rc.startswith("http") or ("." in query_rc and " " not in query_rc):
                 url = query_rc if query_rc.startswith("http") else f"https://{query_rc}"
                 try:
@@ -12155,13 +13285,12 @@ async def whatsapp_webhook(
                 except Exception:
                     analysis = analyze_content(f"Research this company from their website: {url}")
             else:
-                # Name-based — check DB first for extra context, then AI research
                 search_term = f"%{query_rc}%"
-                client_rc = session.exec(select(ClientProfile).where(ClientProfile.company_name.ilike(search_term))).first()
-                lead_rc = session.exec(select(Lead).where(or_(Lead.name.ilike(search_term), Lead.company.ilike(search_term)))).first()
+                client_rc = session.exec(select(ClientProfile).where(ClientProfile.companyName.ilike(search_term))).first()
+                lead_rc = session.exec(select(Lead).where(Lead.company_name.ilike(search_term))).first()
                 extra_ctx = ""
                 if client_rc:
-                    extra_ctx = f"CRM info — website: {client_rc.website or 'unknown'}, email: {client_rc.email or 'unknown'}, notes: {client_rc.notes or ''}"
+                    extra_ctx = f"CRM info — website: {client_rc.websiteUrl or 'unknown'}, notes: {client_rc.tagline or ''}"
                 elif lead_rc:
                     extra_ctx = f"CRM info — website: {lead_rc.website or 'unknown'}, email: {lead_rc.email or 'unknown'}"
                 analysis = analyze_content(f"Research this company: {query_rc}\n{extra_ctx}")
@@ -12172,10 +13301,7 @@ async def whatsapp_webhook(
             contacts = analysis.get("contacts", [])
             socials = analysis.get("company_social_media", {})
 
-            res_msg = (
-                f"🔬 *Research: {company}*\n\n"
-                f"📋 *About:*\n{what_they_do}\n\n"
-            )
+            res_msg = f"🔬 *Research: {company}*\n\n📋 *About:*\n{what_they_do}\n\n"
             if services:
                 res_msg += "💡 *Best services for them:*\n" + "\n".join([f"• {s}" for s in services[:4]]) + "\n\n"
             if contacts:
@@ -12195,48 +13321,59 @@ async def whatsapp_webhook(
             print(f"[WhatsApp Research] Error: {rce}")
             send_whatsapp_message(f"❌ Research failed for *{query_rc}*. Try again!", From)
         return EMPTY_TWIML
-    
-    # action_name_top was already checked for instant actions above; remaining confirm-flow actions
-    INSTANT_ACTIONS = {"radar_search", "get_call_pitch", "research_client"}
-    if result["action"] not in ["none", "error"] and result["action"] not in INSTANT_ACTIONS:
-        # Save pending session to await YES/NO
+
+    # ── Confirm-flow actions: save session and ask user to confirm ────────
+    CONFIRM_ACTIONS = {
+        "add_entity", "schedule_meeting", "add_note", "add_task",
+        "assign_salesperson", "update_lead_status", "update_client_status",
+        "generate_email_draft", "send_success_message", "quick_followup",
+    }
+
+    if action_name in CONFIRM_ACTIONS:
+        # Save pending session (replace existing if any)
         try:
             if ws_session:
                 session.delete(ws_session)
-                session.flush()  # flush delete before adding new row
+                session.flush()
             new_session = WhatsAppSession(
                 phone_number=From,
-                pending_action=result["action"],
-                action_data=json.dumps(result["parameters"])
+                pending_action=action_name,
+                action_data=json.dumps(params)
             )
             session.add(new_session)
             session.commit()
-            print(f"[WhatsApp Flow] Session saved: action={result['action']}, params={result['parameters']}")
+            print(f"[WhatsApp] Session saved: action={action_name}")
         except Exception as db_err:
-            print(f"[WhatsApp Flow] ERROR saving session: {db_err}")
+            print(f"[WhatsApp] ERROR saving session: {db_err}")
             try:
                 session.rollback()
             except Exception:
                 pass
 
-        # ── Build rich confirmation message ───────────────────────────────
-        action_name = result["action"]
-        params = result["parameters"]
-
+        # Build confirmation message
         action_labels = {
-            "add_entity":       "👤 Add New Entity",
-            "add_note":         "📝 Add Note",
-            "schedule_meeting": "📅 Schedule Meeting",
-            "add_task":         "✅ Create Task",
+            "add_entity":           "👤 Add New Entity",
+            "add_note":             "📝 Add Note",
+            "schedule_meeting":     "📅 Schedule Meeting",
+            "add_task":             "✅ Create Task",
+            "assign_salesperson":   "👤 Assign Salesperson",
+            "update_lead_status":   "📊 Update Lead Status",
+            "update_client_status": "📊 Update Client Status",
+            "generate_email_draft": "📧 Generate Email Draft",
+            "send_success_message": "🤖 Get Agent Results",
+            "quick_followup":       "⏰ Schedule Follow-up",
         }
         label = action_labels.get(action_name, action_name.replace("_", " ").title())
 
         field_icons = {
-            "name":           "👤", "email": "📧", "phone": "📞", 
-            "website":        "🌐", "notes": "📋",
-            "target_name":    "👤", "content":         "📋", "time_str": "🕐",
-            "title":          "📌", "description":     "📋", "due_date": "📅",
-            "priority":       "🔥", "client_name":     "🏢",
+            "name": "👤", "email": "📧", "phone": "📞", "website": "🌐",
+            "notes": "📋", "target_name": "👤", "content": "📋",
+            "time_str": "🕐", "title": "📌", "description": "📋",
+            "due_date": "📅", "priority": "🔥", "client_name": "🏢",
+            "entity_name": "🏢", "salesperson_name": "👤",
+            "lead_name": "🎯", "new_status": "📊",
+            "entity_type": "📁", "context": "💬",
+            "note": "📝", "meeting_type": "📋",
         }
         param_lines = ""
         for k, v in params.items():
@@ -12244,10 +13381,10 @@ async def whatsapp_webhook(
                 icon = field_icons.get(k, "•")
                 param_lines += f"\n{icon} {k.replace('_', ' ').title()}: {v}"
 
-        # Show transcript snippet for voice messages
+        # Voice transcript prefix
         voice_prefix = ""
         if voice_transcript:
-            short_transcript = voice_transcript[:150] + ('...' if len(voice_transcript) > 150 else '')
+            short_transcript = voice_transcript[:150] + ("..." if len(voice_transcript) > 150 else "")
             voice_prefix = f"🎙️ *I heard:* \"{short_transcript}\"\n\n"
 
         if action_name == "add_entity":
@@ -12259,7 +13396,7 @@ async def whatsapp_webhook(
                 f"2️⃣ Lead\n"
                 f"3️⃣ Contact\n\n"
                 f"❌ Reply *NO* to cancel\n"
-                f"✏️ *To edit:* Just reply with your corrections (e.g. 'change name to xyz')"
+                f"✏️ *To edit:* Reply with your corrections"
             )
         else:
             confirm_msg = (
@@ -12267,33 +13404,37 @@ async def whatsapp_webhook(
                 f"📋 *Proposed Action:* {label}{param_lines}\n\n"
                 f"✅ Reply *YES* to confirm\n"
                 f"❌ Reply *NO* to cancel\n"
-                f"✏️ *To edit:* Just reply with your corrections (e.g., 'change time to tomorrow')"
+                f"✏️ *To edit:* Reply with your corrections (e.g., 'change time to tomorrow 3pm')"
             )
 
-        # ③ Proactively push the confirmation — no TwiML reliance
-        print(f"[WhatsApp Flow] Sending confirmation message to user: {confirm_msg[:80]}...")
         send_whatsapp_message(confirm_msg, From)
         return EMPTY_TWIML
 
     else:
         # Conversational reply or unrecognized input
-        print("[WhatsApp Flow] Sending conversational fallback.")
-        if ws_session:
+        if ws_session and ws_session.pending_action not in ("auth", None):
             try:
                 session.delete(ws_session)
                 session.commit()
-                print("[WhatsApp Flow] Cleared stale pending session.")
             except Exception:
                 session.rollback()
 
         reply = result.get(
             "reply",
-            "🤖 I didn't quite understand that.\n\nTry:\n• _Add client Acme Corp_\n• _Schedule meeting with Ravi tomorrow at 3pm_\n• _Note that Blue Barrier is interested in SEO_\n• Or just send a voice note!"
+            "🤖 I didn't quite understand that.\n\nTry:\n"
+            "• _Add client Acme Corp_\n"
+            "• _List my leads_\n"
+            "• _Schedule meeting with Ravi tomorrow at 3pm_\n"
+            "• _Note that Blue Barrier is interested in SEO_\n"
+            "• _Assign Ravi to Acme_\n"
+            "• Or just send a voice note! 🎙️"
         )
         if voice_transcript:
             reply = f"🎙️ *I heard:* \"{voice_transcript[:100]}\"\n\n{reply}"
         send_whatsapp_message(reply, From)
         return EMPTY_TWIML
+
+
 
 # --- Email Tracking Endpoint ---
 
@@ -13647,3 +14788,27 @@ def verify_email_otp(body: VerifyEmailOTPRequest, session: Session = Depends(get
     session.commit()
 
     return {"success": True, "verified": True, "message": "Email verified successfully."}
+
+@app.get("/leads/{lead_id}/research")
+def get_lead_research(lead_id: int, session: Session = Depends(get_session)):
+    research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+    if not research:
+        return {"research": None}
+    return {"research": research}
+
+@app.get("/leads/{lead_id}/sent-emails")
+def get_lead_sent_emails(lead_id: int, session: Session = Depends(get_session)):
+    """Return all sent emails associated with a lead, for the Opportunities tab."""
+    emails = session.exec(
+        select(SentEmail)
+        .where(SentEmail.lead_id == lead_id)
+        .order_by(SentEmail.sent_at.desc())
+    ).all()
+    return {"emails": [e.dict() for e in emails]}
+
+@app.get("/clients/{client_id}/research")
+def get_client_research(client_id: int, session: Session = Depends(get_session)):
+    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+    if not research:
+        return {"research": None}
+    return {"research": research}
