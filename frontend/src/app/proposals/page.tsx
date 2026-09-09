@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
+import { useLanguage } from "@/context/LanguageContext";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface LineItem {
@@ -81,6 +82,7 @@ const STATUS_CFG: Record<string, { icon: any; color: string; dot: string }> = {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ProposalsPage() {
+  const { t } = useLanguage();
   const { role, user } = useRole();
   const isClient = role === "Client";
   const clientId = user?.client_id;
@@ -264,7 +266,7 @@ export default function ProposalsPage() {
   }
 
   async function deleteProposal(id: number) {
-    if (!confirm("Delete this quotation?")) return;
+    if (!confirm(t("proposals.confirm_delete"))) return;
     await fetch(`${API_BASE_URL}/proposals/${id}`, { method: "DELETE" });
     setProposals(prev => prev.filter(p => p.id !== id));
     setSelected(null);
@@ -307,11 +309,11 @@ export default function ProposalsPage() {
       <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-black">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-              Quotations &amp; Proposals
+              <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+              {t("proposals.page_title")}
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-              Create, send and track client quotes
+              {t("proposals.page_subtitle")}
             </p>
           </div>
           <div className="flex gap-2">
@@ -322,7 +324,7 @@ export default function ProposalsPage() {
             {!isClient && (
               <button id="create-quotation-btn" onClick={openWizard}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all hover:shadow-md active:scale-95">
-                <Plus className="w-4 h-4" /> Create Quotation
+                <Plus className="w-4 h-4" /> {t("proposals.create_quotation")}
               </button>
             )}
           </div>
@@ -331,10 +333,10 @@ export default function ProposalsPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
           {[
-            { label: "Total",    value: stats.total,    color: "text-blue-600",    bg: "bg-blue-50 dark:bg-blue-900/20" },
-            { label: "Sent",     value: stats.sent,     color: "text-amber-600",   bg: "bg-amber-50 dark:bg-amber-900/20" },
-            { label: "Accepted", value: stats.accepted, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
-            { label: "Won Value",value: `$${(stats.value/1000).toFixed(1)}k`, color: "text-violet-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
+            { label: t("proposals.stat_total"),    value: stats.total,    color: "text-blue-600",    bg: "bg-blue-50 dark:bg-blue-900/20" },
+            { label: t("proposals.stat_sent"),     value: stats.sent,     color: "text-amber-600",   bg: "bg-amber-50 dark:bg-amber-900/20" },
+            { label: t("proposals.stat_accepted"), value: stats.accepted, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
+            { label: t("proposals.stat_won_value"),value: `$${(stats.value/1000).toFixed(1)}k`, color: "text-violet-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
           ].map(s => (
             <div key={s.label} className={`flex items-center gap-3 px-4 py-3 rounded-xl ${s.bg}`}>
               <p className={`text-xl font-black ${s.color}`}>{loading ? "—" : s.value}</p>
@@ -367,10 +369,10 @@ export default function ProposalsPage() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-center">
             <FileSignature className="w-12 h-12 text-slate-300 mb-3" />
-            <p className="text-slate-500 font-medium">No quotations yet</p>
+            <p className="text-slate-500 font-medium">{t("proposals.empty")}</p>
             {!isClient && (
               <button onClick={openWizard} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors">
-                Create your first quote
+                {t("proposals.create_first")}
               </button>
             )}
           </div>
@@ -440,13 +442,13 @@ export default function ProposalsPage() {
                       <button
                         onClick={e => { e.stopPropagation(); downloadPDF(p.id); }}
                         className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-100 text-slate-500 hover:text-blue-600 dark:bg-slate-800 dark:hover:bg-blue-900/30 dark:text-slate-400 dark:hover:text-blue-400 transition-colors"
-                        title="Download PDF">
+                        title={t("proposals.download_pdf")}>
                         <Download className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={e => { e.stopPropagation(); deleteProposal(p.id); }}
                         className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-500 hover:text-red-500 dark:bg-slate-800 dark:hover:bg-red-900/30 dark:hover:text-red-400 transition-colors"
-                        title="Delete">
+                        title={t("proposals.delete")}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -454,7 +456,7 @@ export default function ProposalsPage() {
 
                   {p.valid_until && (
                     <p className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1">
-                      <Clock className="w-3 h-3" /> Valid until {p.valid_until}
+                      <Clock className="w-3 h-3" /> {t("proposals.valid_until")} {p.valid_until}
                     </p>
                   )}
                 </div>
@@ -492,7 +494,7 @@ export default function ProposalsPage() {
             <div className="p-6 space-y-5">
               {/* Status */}
               <div>
-                <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Update Status</p>
+                <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">{t("proposals.update_status")}</p>
                 <div className="flex flex-wrap gap-2">
                   {Object.keys(STATUS_CFG).map(s => {
                     const cfg = STATUS_CFG[s];
@@ -521,10 +523,10 @@ export default function ProposalsPage() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-900 text-left">
-                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs">Product</th>
-                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">Qty</th>
-                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">Unit Price</th>
-                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">Total</th>
+                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs">{t("proposals.col_product")}</th>
+                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">{t("proposals.col_qty")}</th>
+                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">{t("proposals.col_unit_price")}</th>
+                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">{t("proposals.col_total")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -537,7 +539,7 @@ export default function ProposalsPage() {
                           </tr>
                         ))}
                         <tr className="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
-                          <td colSpan={3} className="px-3 py-2.5 font-bold text-slate-900 dark:text-white text-right">TOTAL</td>
+                          <td colSpan={3} className="px-3 py-2.5 font-bold text-slate-900 dark:text-white text-right">{t("proposals.total")}</td>
                           <td className="px-3 py-2.5 text-right font-bold text-blue-600 text-base">
                             {fmtMoney(selected.total_value || 0, selected.currency)}
                           </td>
@@ -551,7 +553,7 @@ export default function ProposalsPage() {
               {/* Notes */}
               {selected.content && (
                 <div>
-                  <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1.5">Notes</p>
+                  <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1.5">{t("proposals.notes")}</p>
                   <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-900 rounded-xl p-3">{selected.content}</p>
                 </div>
               )}
@@ -559,10 +561,10 @@ export default function ProposalsPage() {
               {/* Meta */}
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { label: "Valid Until",  value: selected.valid_until || "—" },
-                  { label: "Currency",     value: selected.currency || "MXN" },
-                  { label: "Created",      value: new Date(selected.created_at).toLocaleDateString("en-IN") },
-                  { label: "Creator",      value: selected.creator_name || "—" },
+                  { label: t("proposals.meta_valid_until"),  value: selected.valid_until || "—" },
+                  { label: t("proposals.meta_currency"),     value: selected.currency || "MXN" },
+                  { label: t("proposals.meta_created"),      value: new Date(selected.created_at).toLocaleDateString("en-IN") },
+                  { label: t("proposals.meta_creator"),      value: selected.creator_name || "—" },
                 ].map(m => (
                   <div key={m.label} className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl">
                     <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">{m.label}</p>
@@ -578,7 +580,7 @@ export default function ProposalsPage() {
                     <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-2">
                       <FileSignature className="w-6 h-6" />
                     </div>
-                    <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-serif italic">Digitally Signed</p>
+                    <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-serif italic">{t("proposals.digitally_signed")}</p>
                     <p className="text-xs text-slate-500 uppercase tracking-wide">
                       Signed on {new Date(selected.signed_at).toLocaleString("en-IN")}
                     </p>
@@ -588,7 +590,7 @@ export default function ProposalsPage() {
                   </div>
                 ) : isClient ? (
                   <div className="text-center space-y-4 w-full">
-                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">Ready to proceed? Sign below to approve this quotation.</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">{t("proposals.ready_to_sign")}</p>
                     <button onClick={async () => {
                       try {
                         const res = await fetch(`${API_BASE_URL}/proposals/${selected.id}/sign`, { method: "POST" });
@@ -600,14 +602,14 @@ export default function ProposalsPage() {
                       } catch (e) { console.error(e); }
                     }} className="w-full py-3 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-bold shadow-md hover:scale-[1.02] transition-transform flex items-center justify-center gap-2">
                       <FileSignature className="w-5 h-5" />
-                      Approve & Sign Quotation
+                      {t("proposals.approve_sign")}
                     </button>
-                    <p className="text-[10px] text-slate-400">By signing, you agree to the terms specified above.</p>
+                    <p className="text-[10px] text-slate-400">{t("proposals.by_signing")}</p>
                   </div>
                 ) : (
                   <div className="text-center">
                     <FileSignature className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-                    <p className="text-sm font-semibold text-slate-500">Awaiting Client Signature</p>
+                    <p className="text-sm font-semibold text-slate-500">{t("proposals.awaiting_signature")}</p>
                   </div>
                 )}
               </div>
@@ -616,7 +618,7 @@ export default function ProposalsPage() {
               <div className="flex gap-3 pt-2">
                 <button onClick={() => downloadPDF(selected.id)}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition-colors">
-                  <Download className="w-4 h-4" /> Download PDF
+                  <Download className="w-4 h-4" /> {t("proposals.download_pdf")}
                 </button>
                 <button onClick={() => deleteProposal(selected.id)}
                   className="px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-semibold text-sm hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors">
@@ -645,13 +647,13 @@ export default function ProposalsPage() {
                   </button>
                 )}
                 <div>
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white">New Quotation</h2>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white">{t("proposals.wizard_new")}</h2>
                   <div className="flex items-center gap-2 mt-0.5">
                     {(["recipient", "cart", "details"] as WizardStep[]).map((s, i) => (
                       <div key={s} className="flex items-center gap-1.5">
                         {i > 0 && <ChevronRight className="w-3 h-3 text-slate-300" />}
                         <span className={`text-xs font-medium ${step === s ? "text-blue-600" : step > s ? "text-emerald-500" : "text-slate-400"}`}>
-                          {s === "recipient" ? "1. Recipient" : s === "cart" ? "2. Products" : "3. Details"}
+                          {s === "recipient" ? t("proposals.wizard_step_recipient") : s === "cart" ? t("proposals.wizard_step_products") : t("proposals.wizard_step_details")}
                         </span>
                       </div>
                     ))}
@@ -666,7 +668,7 @@ export default function ProposalsPage() {
             {/* ── STEP 1: RECIPIENT ────────────────────────────────────── */}
             {step === "recipient" && (
               <div className="flex-1 overflow-y-auto p-6">
-                <p className="text-sm text-slate-500 mb-5">Who is this quotation for?</p>
+                <p className="text-sm text-slate-500 mb-5">{t("proposals.wizard_who_for")}</p>
 
                 {/* Type toggle */}
                 <div className="flex gap-3 mb-5">
@@ -694,7 +696,7 @@ export default function ProposalsPage() {
                   <input
                     value={recipientSearch}
                     onChange={e => setRecipientSearch(e.target.value)}
-                    placeholder={`Search ${recipientType === "client" ? "clients" : "leads"}…`}
+                    placeholder={`${t("proposals.wizard_search")} ${recipientType === "client" ? t("proposals.wizard_clients") : t("proposals.wizard_leads")}…`}
                     className="w-full pl-9 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
                 </div>
 
@@ -728,7 +730,7 @@ export default function ProposalsPage() {
                     );
                   })}
                   {filteredRecipients.length === 0 && (
-                    <p className="text-center text-slate-400 py-8 text-sm">No {recipientType === "client" ? "clients" : "leads"} found</p>
+                    <p className="text-center text-slate-400 py-8 text-sm">{t("proposals.wizard_no_results")}</p>
                   )}
                 </div>
 
@@ -737,7 +739,7 @@ export default function ProposalsPage() {
                     disabled={recipientType === "client" ? !selectedClientId : !selectedLeadId}
                     onClick={() => setStep("cart")}
                     className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                    Continue → Add Products
+                    {t("proposals.wizard_continue_products")}
                   </button>
                 </div>
               </div>
@@ -750,7 +752,7 @@ export default function ProposalsPage() {
                 <div className="flex-1 overflow-y-auto p-5 border-r border-slate-200 dark:border-slate-800">
                   {/* Currency Toggle */}
                   <div className="flex items-center justify-between mb-4">
-                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Catalog</p>
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t("proposals.wizard_catalog")}</p>
                     <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
                       {CURRENCIES.map(c => (
                         <button key={c.code} onClick={() => switchCurrency(c.code)}
@@ -770,7 +772,7 @@ export default function ProposalsPage() {
                     <div className="relative flex-1">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                       <input value={catalogSearch} onChange={e => setCatalogSearch(e.target.value)}
-                        placeholder="Search products…"
+                        placeholder={t("proposals.wizard_search_products")}
                         className="w-full pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
                     </div>
                     <select value={catalogCategory} onChange={e => setCatalogCategory(e.target.value)}
@@ -783,7 +785,7 @@ export default function ProposalsPage() {
                   {filteredCatalog.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-48 text-slate-400">
                       <Package className="w-10 h-10 mb-2 opacity-40" />
-                      <p className="text-sm">No products found</p>
+                      <p className="text-sm">{t("proposals.wizard_no_products")}</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-2">
@@ -803,7 +805,7 @@ export default function ProposalsPage() {
                               </span>
                             )}
                             {item.photo_url ? (
-                              <img src={item.photo_url} alt={item.name}
+                              <img src={item.photo_url.startsWith('/') ? `${API_BASE_URL}${item.photo_url}` : item.photo_url} alt={item.name}
                                 className="w-full h-20 object-cover rounded-lg mb-2 bg-slate-100" />
                             ) : (
                               <div className="w-full h-20 bg-slate-100 dark:bg-slate-800 rounded-lg mb-2 flex items-center justify-center">
@@ -826,14 +828,14 @@ export default function ProposalsPage() {
                 <div className="w-72 flex flex-col bg-slate-50 dark:bg-[#0a0a0a]">
                   <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
                     <ShoppingCart className="w-4 h-4 text-blue-600" />
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">Cart ({cart.length})</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">{t("proposals.wizard_cart")} ({cart.length})</p>
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-3 space-y-2">
                     {cart.length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-40 text-slate-400">
                         <ShoppingCart className="w-8 h-8 mb-2 opacity-30" />
-                        <p className="text-xs text-center">Click products to add them</p>
+                        <p className="text-xs text-center">{t("proposals.wizard_click_to_add")}</p>
                       </div>
                     ) : cart.map((li, idx) => (
                       <div key={idx} className="bg-white dark:bg-[#111] rounded-xl p-3 border border-slate-100 dark:border-slate-800">
@@ -869,12 +871,12 @@ export default function ProposalsPage() {
                   {/* Cart total */}
                   <div className="p-4 border-t border-slate-200 dark:border-slate-800">
                     <div className="flex items-center justify-between mb-3">
-                      <p className="text-sm text-slate-500">Total</p>
+                      <p className="text-sm text-slate-500">{t("proposals.wizard_total")}</p>
                       <p className="text-xl font-black text-slate-900 dark:text-white">{fmtMoney(cartTotal, currency)}</p>
                     </div>
                     <button disabled={cart.length === 0} onClick={() => setStep("details")}
                       className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                      Continue → Details
+                      {t("proposals.wizard_continue_details")}
                     </button>
                   </div>
                 </div>
@@ -884,7 +886,7 @@ export default function ProposalsPage() {
             {/* ── STEP 3: DETAILS ──────────────────────────────────────── */}
             {step === "details" && (
               <div className="flex-1 overflow-y-auto p-6 max-w-xl mx-auto w-full">
-                <p className="text-sm text-slate-500 mb-6">Final details for the quotation</p>
+                <p className="text-sm text-slate-500 mb-6">{t("proposals.wizard_final_details")}</p>
 
                 {/* Summary card */}
                 <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl p-4 mb-6">
@@ -906,16 +908,16 @@ export default function ProposalsPage() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Quotation Title
+                      {t("proposals.wizard_quotation_title")}
                     </label>
                     <input value={quoteTitle} onChange={e => setQuoteTitle(e.target.value)}
-                      placeholder={`Quotation for ${recipientName()}`}
+                      placeholder={`${t("proposals.wizard_quotation_for")} ${recipientName()}`}
                       className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Valid Until
+                      {t("proposals.wizard_valid_until")}
                     </label>
                     <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)}
                       className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -923,17 +925,17 @@ export default function ProposalsPage() {
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Notes / Terms (optional)
+                      {t("proposals.wizard_notes")}
                     </label>
                     <textarea value={notes} onChange={e => setNotes(e.target.value)}
-                      rows={4} placeholder="Payment terms, delivery notes…"
+                      rows={4} placeholder={t("proposals.wizard_notes_placeholder")}
                       className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
                   </div>
 
                   {/* Save as Draft or Send */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Save As
+                      {t("proposals.wizard_save_as")}
                     </label>
                     <div className="flex gap-2">
                       {(["Draft", "Sent"] as const).map(s => (
@@ -945,7 +947,7 @@ export default function ProposalsPage() {
                                 : "border-slate-400 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
                               : "border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300"
                           }`}>
-                          {s === "Draft" ? "💾 Save Draft" : "📤 Send to Client"}
+                          {s === "Draft" ? t("proposals.wizard_save_draft") : t("proposals.wizard_send_client")}
                         </button>
                       ))}
                     </div>
@@ -955,13 +957,13 @@ export default function ProposalsPage() {
                 <div className="flex gap-3 mt-6">
                   <button onClick={() => setStep("cart")}
                     className="px-6 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                    ← Back
+                    {t("proposals.wizard_back")}
                   </button>
                   <button onClick={submitQuote} disabled={saving}
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors">
                     {saving
-                      ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
-                      : <><FileText className="w-4 h-4" /> {sendStatus === "Draft" ? "Save Quotation" : "Create & Send"}</>}
+                      ? <><Loader2 className="w-4 h-4 animate-spin" /> {t("proposals.wizard_saving")}…</>
+                      : <><FileText className="w-4 h-4" /> {sendStatus === "Draft" ? t("proposals.wizard_save_quotation") : t("proposals.wizard_create_send")}</>}
                   </button>
                 </div>
               </div>

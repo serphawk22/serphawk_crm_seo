@@ -24,15 +24,12 @@ const translations = {
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>("en");
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // Load saved language preference from localStorage
     const savedLanguage = localStorage.getItem("language") || localStorage.getItem("crm-language") as Language | null;
     if (savedLanguage && ["en", "es"].includes(savedLanguage)) {
       setLanguageState(savedLanguage as Language);
     }
-    setMounted(true);
   }, []);
 
   const setLanguage = (lang: Language | string) => {
@@ -56,10 +53,6 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
     return typeof value === "string" ? value : key;
   };
-
-  if (!mounted) {
-    return <>{children}</>;
-  }
 
   return (
     <LanguageContext.Provider value={{ language, activeLang: language, setLanguage, t }}>

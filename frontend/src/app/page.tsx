@@ -202,19 +202,19 @@ export default function HomePage() {
   const { role, email, user, isAuthenticated, loading: authLoading } = useRole();
   const router = useRouter();
 
-  // Show landing page if not authenticated
-  if (!authLoading && !isAuthenticated) {
-    if (typeof window !== "undefined") {
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
       window.location.href = "/showcase/index.html";
+      return;
     }
-    return null;
-  }
-
-  // Redirect Employee to Project Dashboard
-  if (role === "Employee") {
-    if (typeof window !== "undefined") {
+    if (role === "Employee") {
       router.replace("/projects");
     }
+  }, [authLoading, isAuthenticated, role, router]);
+
+  // Show landing page if not authenticated
+  if (!authLoading && !isAuthenticated) {
     return null;
   }
 
@@ -235,12 +235,12 @@ function Dashboard() {
     { href: "/admin/sales-team", icon: UserCheck, gradient: "from-teal-500 to-emerald-500", title: language === 'es' ? "Equipo de Ventas" : "Sales Team", description: language === 'es' ? "Espacio de trabajo del administrador para agregar vendedores, gestionar cuentas y crear acceso de inicio de sesión para los Gerentes de Ventas." : "Admin workspace for adding salespeople, managing accounts, and creating Sales Manager login access.", roles: ["Admin"] },
     { href: "/email-agent", icon: Bot, gradient: "from-violet-500 to-purple-600", title: language === 'es' ? "Agente de Email" : "Email Agent", description: language === 'es' ? "Motor de Crecimiento: Alcance automatizado por IA que analiza prospectos y redacta correos personalizados bilingües para escalar sus ingresos." : "Growth Engine: AI-powered outreach that auto-analyzes leads and drafts personalized bilingual emails to scale your revenue automatically.", roles: ["Admin", "Employee", "SalesManager", "Demo"] },
     { href: "/calls", icon: Phone, gradient: "from-amber-500 to-orange-600", title: language === 'es' ? "Centro de Llamadas" : "Call Center", description: language === 'es' ? "Inteligencia de Puntos de Contacto: Registre cada conversación, haga seguimiento y asegúrese de que ningún prospecto quede sin un próximo paso claro." : "Touchpoint Intelligence: Log every conversation, track follow-ups, and ensure no lead is ever left without a clear next step or work assignment.", roles: ["Admin", "Employee", "SalesManager", "Demo"] },
-    { href: "/projects", icon: FolderKanban, gradient: "from-sky-400 to-cyan-500", title: language === 'es' ? "Tablero de Proyectos" : "Project Board", description: language === 'es' ? "Capa de Ejecución: Supervise flujos de trabajo complejos, asigne miembros del equipo y asegúrese de que cada hito se entregue con precisión." : "Execution Layer: Oversee complex workflows, assign specialized team members, and ensure every milestone is delivered with precision and quality.", roles: ["Admin", "Employee", "Intern", "ProjectMember"] },
-    { href: "/interns", icon: GraduationCap, gradient: "from-rose-400 to-rose-500", title: language === 'es' ? "Grupo de Talentos" : "Talent Pool", description: language === 'es' ? "Soporte de Escala: Administre a sus pasantes, asigne tareas de aprendizaje y monitoree su contribución." : "Scale Support: Manage your interns, assign learning tasks, and monitor their contribution to the core team's productivity and growth.", roles: ["Admin", "Employee"] },
+    { href: "/projects", icon: FolderKanban, gradient: "from-sky-400 to-cyan-500", title: language === 'es' ? "Tablero de Proyectos" : "Project Board", description: language === 'es' ? "Capa de Ejecución: Supervise flujos de trabajo complejos, asigne miembros del equipo y asegúrese de que cada hito se entregue con precisión." : "Execution Layer: Oversee complex workflows, assign specialized team members, and ensure every milestone is delivered with precision and quality.", roles: ["Admin", "Employee", "Intern", "ProjectMember", "Demo"] },
+    { href: "/interns", icon: GraduationCap, gradient: "from-rose-400 to-rose-500", title: language === 'es' ? "Grupo de Talentos" : "Talent Pool", description: language === 'es' ? "Soporte de Escala: Administre a sus pasantes, asigne tareas de aprendizaje y monitoree su contribución." : "Scale Support: Manage your interns, assign learning tasks, and monitor their contribution to the core team's productivity and growth.", roles: ["Admin", "Employee", "Demo"] },
     { href: "/admin/services-overview", icon: Briefcase, gradient: "from-fuchsia-500 to-pink-600", title: language === 'es' ? "Resumen de Servicios" : "Services Overview", description: language === 'es' ? "Tablero Principal: Vista de toda la organización de las líneas de servicio activas, clientes consumidores y equipos de ejecución asignados." : "Master Board: Organization-wide view of all active service lines, client consumers, and assigned execution teams.", roles: ["Admin", "Employee"] },
     { href: "/setup", icon: Globe, gradient: "from-indigo-500 to-indigo-600", title: language === 'es' ? "Configuración Inicial" : "Initial Setup", description: language === 'es' ? "Conecte su sitio web y perfiles de redes sociales para análisis automático multicanal." : "Connect your website and social media profiles for automated cross-channel analysis.", roles: ["Client"] },
-    { href: "/audit", icon: Activity, gradient: "from-emerald-500 to-teal-500", title: language === 'es' ? "Auditoría en 1 Clic" : "One-Click Audit", description: language === 'es' ? "Ejecute escaneos profundos de SEO técnico y compare su rendimiento con el de sus principales competidores." : "Run deep technical SEO scans and compare your performance against top competitors.", roles: ["Client", "Admin", "Employee"] },
-    { href: "/messages", icon: Send, gradient: "from-violet-500 to-purple-600", title: language === 'es' ? "Centro de Comunicación" : "Team Comm Hub", description: language === 'es' ? "Comunicación directa con especialistas SEO, archivos compartidos y colas prioritarias." : "Direct communication with your assigned SEO specialists, shared files, and priority queues.", roles: ["Client", "Admin", "Employee"] },
+    { href: "/audit", icon: Activity, gradient: "from-emerald-500 to-teal-500", title: language === 'es' ? "Auditoría en 1 Clic" : "One-Click Audit", description: language === 'es' ? "Ejecute escaneos profundos de SEO técnico y compare su rendimiento con el de sus principales competidores." : "Run deep technical SEO scans and compare your performance against top competitors.", roles: ["Client", "Admin", "Employee", "Demo"] },
+    { href: "/messages", icon: Send, gradient: "from-violet-500 to-purple-600", title: language === 'es' ? "Centro de Comunicación" : "Team Comm Hub", description: language === 'es' ? "Comunicación directa con especialistas SEO, archivos compartidos y colas prioritarias." : "Direct communication with your assigned SEO specialists, shared files, and priority queues.", roles: ["Client", "Admin", "Employee", "Demo"] },
     { href: "/monitor", icon: Target, gradient: "from-amber-500 to-orange-600", title: language === 'es' ? "Monitor en Vivo" : "Live Monitor", description: language === 'es' ? "Rastreador de clasificación en tiempo real y análisis de rendimiento sincronizado con GA4 y GSC." : "Real-time ranking tracker and performance analytics synced with GA4 and GSC.", roles: ["Client"] },
     { href: "/store", icon: Briefcase, gradient: "from-indigo-500 to-violet-600", title: language === 'es' ? "Servicios de Crecimiento" : "Growth Services", description: language === 'es' ? "Explore nuestro catálogo exclusivo de servicios de crecimiento. Solicite cualquier cosa y reciba una cotización personalizada." : "Explore our exclusive catalog of growth services. Request anything and receive a personalized quote from your dedicated team.", roles: ["Client"] },
     { href: "/pipeline", icon: Kanban, gradient: "from-blue-500 to-indigo-600", title: language === 'es' ? "Pipeline de Ventas" : "Sales Pipeline", description: language === 'es' ? "Pipeline visual Kanban." : "Visual drag-and-drop Kanban board for managing deals.", roles: ["Admin", "Employee", "SalesManager", "Demo"] },
@@ -293,7 +293,7 @@ function Dashboard() {
               SERP Hawk{" "}<span style={{ background: "linear-gradient(90deg,#2563eb,#6366f1)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>CRM</span>
             </motion.span>
             <motion.p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }} animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}>
-              Loading your dashboard…
+              {t("dashboard.loading")}
             </motion.p>
           </div>
           <div className="w-52">
@@ -311,9 +311,9 @@ function Dashboard() {
     return (
       <motion.div initial="hidden" animate="show" variants={containerVariants}>
         <motion.div variants={itemVariants} className="glass-card p-10 text-center">
-          <span className="text-[10px] tracking-widest font-black text-amber-600 uppercase">Warning</span>
-          <h1 className="text-3xl font-black text-slate-800 dark:text-zinc-100 mt-1 mb-3">Session Error</h1>
-          <p className="text-slate-400 font-medium">Unable to load your profile. Please refresh or log in again.</p>
+          <span className="text-[10px] tracking-widest font-black text-amber-600 uppercase">{t("dashboard.warning")}</span>
+          <h1 className="text-3xl font-black text-slate-800 dark:text-zinc-100 mt-1 mb-3">{t("dashboard.session_error")}</h1>
+          <p className="text-slate-400 font-medium">{t("dashboard.session_error_desc")}</p>
         </motion.div>
       </motion.div>
     );
@@ -347,13 +347,13 @@ function Dashboard() {
             <div className="p-4 rounded-full bg-amber-500/15 border border-amber-500/20">
               <Sparkles className="w-8 h-8 text-amber-400" />
             </div>
-            <h3 className="font-bold text-white/80 text-lg">Dashboard Loading</h3>
-            <p className="text-white/40 text-sm max-w-md">Your dashboard data is being prepared. Please refresh if this persists.</p>
+            <h3 className="font-bold text-white/80 text-lg">{t("dashboard.loading_title")}</h3>
+            <p className="text-white/40 text-sm max-w-md">{t("dashboard.loading_desc")}</p>
             <button
               onClick={() => window.location.reload()}
               className="mt-4 btn-glow-indigo px-6 py-2.5 rounded-xl font-bold text-sm text-white"
             >
-              Refresh Page
+              {t("dashboard.refresh_page")}
             </button>
           </div>
         </motion.div>

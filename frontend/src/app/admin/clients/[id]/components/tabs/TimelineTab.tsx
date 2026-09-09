@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
+import { History } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 
 interface TimelineTabProps {
@@ -76,9 +77,10 @@ export default function TimelineTab({ timeline, timelineFilter, onFilterChange }
 
       {/* Timeline */}
       {Object.keys(grouped).length === 0 ? (
-        <div className="text-center py-16 rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-700 dark:border-slate-700">
-          <p className="text-sm font-semibold text-slate-400 dark:text-slate-500 dark:text-zinc-400">{t('timeline.no_events')}</p>
-          <p className="text-xs text-slate-300 dark:text-slate-600 dark:text-zinc-300 mt-1">{t('timeline.no_events_desc')}</p>
+        <div className="flex flex-col items-center text-center py-16 px-6 rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-700 dark:border-slate-700">
+          <History size={32} className="text-slate-300 dark:text-slate-600 dark:text-zinc-300 mb-3" />
+          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 dark:text-zinc-400">{t('timeline.no_events')}</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-zinc-300 mt-1">{t('timeline.no_events_desc')}</p>
         </div>
       ) : (
         <div className="space-y-6">

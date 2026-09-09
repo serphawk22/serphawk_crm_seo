@@ -19,34 +19,36 @@ import {
   Settings
 } from 'lucide-react';
 import { useRole } from '@/context/RoleContext';
+import { useLanguage } from "@/context/LanguageContext";
 import { cn } from '@/lib/utils';
 
 export function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { role, logout, user } = useRole();
+  const { t } = useLanguage();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   const mainItems = [
-    { name: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['Admin', 'Employee', 'Client', 'Intern'] },
-    { name: 'Projects', icon: StickyNote, href: '/projects', roles: ['Admin', 'Employee', 'Intern'] },
-    { name: 'Clients', icon: Users, href: '/clients', roles: ['Admin', 'Employee', 'SalesManager'] },
-    { name: 'Sales Manager', icon: UserCheck, href: '/sales-manager', roles: ['Admin', 'Employee', 'SalesManager'] },
-    { name: 'Email Agent', icon: Bot, href: '/email-agent', roles: ['Admin', 'Employee', 'SalesManager'] },
-    { name: 'Calls', icon: Phone, href: '/calls', roles: ['Admin', 'Employee', 'SalesManager'] },
-    { name: 'Services', icon: Menu, href: '/store', roles: ['Client'] },
-    { name: 'Messages', icon: MessageCircle, href: '/messages', roles: ['Client', 'Admin', 'Employee'] },
+    { name: t('bottom_nav.dashboard'), icon: LayoutDashboard, href: '/', roles: ['Admin', 'Employee', 'Client', 'Intern'] },
+    { name: t('bottom_nav.projects'), icon: StickyNote, href: '/projects', roles: ['Admin', 'Employee', 'Intern'] },
+    { name: t('bottom_nav.clients'), icon: Users, href: '/clients', roles: ['Admin', 'Employee', 'SalesManager'] },
+    { name: t('bottom_nav.sales_manager'), icon: UserCheck, href: '/sales-manager', roles: ['Admin', 'Employee', 'SalesManager'] },
+    { name: t('bottom_nav.email_agent'), icon: Bot, href: '/email-agent', roles: ['Admin', 'Employee', 'SalesManager'] },
+    { name: t('bottom_nav.calls'), icon: Phone, href: '/calls', roles: ['Admin', 'Employee', 'SalesManager'] },
+    { name: t('bottom_nav.services'), icon: Menu, href: '/store', roles: ['Client'] },
+    { name: t('bottom_nav.messages'), icon: MessageCircle, href: '/messages', roles: ['Client', 'Admin', 'Employee'] },
   ];
 
   const moreItems = [
-    { name: 'Services Overview', href: '/admin/services-overview', roles: ['Admin', 'Employee'] },
-    { name: 'Request Board', href: '/admin/requests', roles: ['Admin', 'Employee'] },
-    { name: 'Interns', href: '/interns', roles: ['Admin', 'Employee'] },
-    { name: 'Sales Team', href: '/admin/sales-team', roles: ['Admin'] },
-    { name: 'Employees', href: '/employees', roles: ['Admin'] },
-    { name: 'Audit', href: '/audit', roles: ['Client', 'Admin', 'Employee'] },
-    { name: 'Monitor', href: '/monitor', roles: ['Client'] },
+    { name: t('bottom_nav.services_overview'), href: '/admin/services-overview', roles: ['Admin', 'Employee'] },
+    { name: t('bottom_nav.request_board'), href: '/admin/requests', roles: ['Admin', 'Employee'] },
+    { name: t('bottom_nav.interns'), href: '/interns', roles: ['Admin', 'Employee'] },
+    { name: t('bottom_nav.sales_team'), href: '/admin/sales-team', roles: ['Admin'] },
+    { name: t('bottom_nav.employees'), href: '/employees', roles: ['Admin'] },
+    { name: t('bottom_nav.audit'), href: '/audit', roles: ['Client', 'Admin', 'Employee'] },
+    { name: t('bottom_nav.monitor'), href: '/monitor', roles: ['Client'] },
   ];
 
   const filteredMainItems = mainItems.filter(item => item.roles.includes(role));
@@ -77,7 +79,7 @@ export function BottomNav() {
           >
             <Grid3x3 className="w-6 h-6" />
             <span className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl">
-              Apps Menu
+              {t('bottom_nav.apps_menu')}
             </span>
           </button>
 
@@ -122,7 +124,7 @@ export function BottomNav() {
             >
               <Menu className="w-5 h-5" />
               <span className="absolute -top-12 left-1/2 -translate-x-1/2 px-2 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl">
-                More
+                {t('bottom_nav.more')}
               </span>
             </button>
           </div>
@@ -161,7 +163,7 @@ export function BottomNav() {
               {filteredMoreItems.length > 0 && (
                 <>
                   <div className="border-t border-slate-200 dark:border-zinc-700/50 py-3">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-3 px-1">More Options</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-3 px-1">{t('bottom_nav.more_options')}</p>
                     <div className="space-y-2">
                       {filteredMoreItems.map((item) => (
                         <Link
@@ -214,8 +216,8 @@ export function BottomNav() {
                 <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">{role}</p>
               </div>
               <div className="py-2">
-                <button className="w-full px-4 py-2.5 text-left text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:bg-zinc-800 flex items-center gap-2 transition-colors font-medium">
-                  <Settings className="w-4 h-4" /> Settings
+                  <button className="w-full px-4 py-2.5 text-left text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:bg-zinc-800 flex items-center gap-2 transition-colors font-medium">
+                  <Settings className="w-4 h-4" /> {t('bottom_nav.settings')}
                 </button>
                 <button
                   onClick={(e) => {
@@ -224,7 +226,7 @@ export function BottomNav() {
                   }}
                   className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors font-medium border-t border-slate-200 dark:border-zinc-700/50"
                 >
-                  <LogOut className="w-4 h-4" /> Logout
+                  <LogOut className="w-4 h-4" /> {t('bottom_nav.logout')}
                 </button>
               </div>
             </motion.div>
@@ -241,7 +243,7 @@ export function BottomNav() {
       >
         <MessageCircle className="w-6 h-6" />
         <span className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl">
-          Messages
+          {t('bottom_nav.messages_tooltip')}
         </span>
       </motion.button>
     </>

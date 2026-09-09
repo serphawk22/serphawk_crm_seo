@@ -9,6 +9,7 @@ import { API_BASE_URL } from "@/config";
 import { cn } from "@/lib/utils";
 import { useRole } from "@/context/RoleContext";
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from "@/context/LanguageContext";
 
 interface RankEntry {
   id: number;
@@ -32,6 +33,7 @@ function positionBadge(pos?: number) {
 }
 
 export default function RankingsPage() {
+  const { t } = useLanguage();
   const { role, user } = useRole();
   const isClient = role === "Client";
   const clientId = user?.client_id;
@@ -100,7 +102,6 @@ export default function RankingsPage() {
     (!searchKw || r.keyword.toLowerCase().includes(searchKw.toLowerCase()))
   );
 
-  // Group by keyword for the summary section (latest entry per keyword per client)
   const latestByKey: Record<string, RankEntry> = {};
   [...rankings].reverse().forEach(r => {
     const k = `${r.client_id}::${r.keyword}`;
@@ -112,46 +113,49 @@ export default function RankingsPage() {
   const avgPos = Object.values(latestByKey).filter(r => r.position).reduce((s, r) => s + (r.position || 0), 0) /
     (Object.values(latestByKey).filter(r => r.position).length || 1);
 
+  const stats = [
+    { label: t("rankings.stat_keywords"), value: Object.keys(latestByKey).length, icon: Target, color: "text-indigo-600", bg: "bg-indigo-50" },
+    { label: t("rankings.stat_top3"), value: top3, icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50" },
+    { label: t("rankings.stat_top10"), value: top10, icon: BarChart2, color: "text-blue-600", bg: "bg-blue-50" },
+    { label: t("rankings.stat_avg"), value: isNaN(avgPos) ? "—" : avgPos.toFixed(1), icon: Minus, color: "text-amber-600", bg: "bg-amber-50" },
+  ];
+
+  const tableHeaders = ["Keyword", "Client", "Position", "Search Engine", "URL", "Date", ""];
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">{isClient ? "My SEO Rankings" : "Keyword Rankings"}</h1>
-          <p className="text-gray-500 dark:text-zinc-400 font-medium">{isClient ? "Track your keyword positions and search visibility." : "Track keyword positions and monitor SEO performance."}</p>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">{isClient ? t("rankings.title_client") : t("rankings.title_staff")}</h1>
+          <p className="text-gray-500 dark:text-zinc-400 font-medium">{isClient ? t("rankings.subtitle_client") : t("rankings.subtitle_staff")}</p>
         </div>
         {!isClient && (
           <button onClick={() => setShowModal(true)}
             className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-2xl font-bold text-sm hover:bg-black shadow-lg transition-all active:scale-95">
-            <Plus className="w-4 h-4" /> Log Ranking
+            <Plus className="w-4 h-4" /> {t("rankings.log_ranking")}
           </button>
         )}
       </div>
 
       <PageGuide
         pageKey="rankings"
-        title={isClient ? 'Understanding Your SEO Rankings' : 'How Keyword Rankings work'}
-        description={isClient ? 'Track how your keywords rank across search engines over time.' : 'Log and monitor keyword positions across clients and search engines.'}
+        title={isClient ? t("rankings.guide_title_client") : t("rankings.guide_title_staff")}
+        description={isClient ? t("rankings.guide_desc_client") : t("rankings.guide_desc_staff")}
         steps={isClient ? [
-          { icon: '📍', text: 'Each row shows a keyword, its current position, and which search engine it was tracked on.' },
-          { icon: '🟢', text: 'Green badges (positions 1–3) mean your keyword is ranking excellently.' },
-          { icon: '🟡', text: 'Amber badges (positions 4–20) mean there\'s room for improvement.' },
-          { icon: '📈', text: 'Rankings are updated regularly by your SEO team to reflect current performance.' },
+          { icon: '📍', text: t("rankings.guide_cs1") },
+          { icon: '🟢', text: t("rankings.guide_cs2") },
+          { icon: '🟡', text: t("rankings.guide_cs3") },
+          { icon: '📈', text: t("rankings.guide_cs4") },
         ] : [
-          { icon: '➕', text: 'Click \"Log Ranking\" to record a keyword position for a client and search engine.' },
-          { icon: '📊', text: 'The stats bar shows total keywords, top 3, top 10, and average position.' },
-          { icon: '🔍', text: 'Use the search and filter options to find specific keywords or clients.' },
-          { icon: '📈', text: 'Position badges are color-coded: green (1–3), blue (4–10), amber (11–20), red (20+).' },
+          { icon: '➕', text: t("rankings.guide_s1") },
+          { icon: '📊', text: t("rankings.guide_s2") },
+          { icon: '🔍', text: t("rankings.guide_s3") },
+          { icon: '📈', text: t("rankings.guide_s4") },
         ]}
       />
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Keywords Tracked", value: Object.keys(latestByKey).length, icon: Target, color: "text-indigo-600", bg: "bg-indigo-50" },
-          { label: "Top 3 Positions", value: top3, icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50" },
-          { label: "Top 10 Positions", value: top10, icon: BarChart2, color: "text-blue-600", bg: "bg-blue-50" },
-          { label: "Avg Position", value: isNaN(avgPos) ? "—" : avgPos.toFixed(1), icon: Minus, color: "text-amber-600", bg: "bg-amber-50" },
-        ].map(s => (
+        {stats.map(s => (
           <div key={s.label} className={cn("rounded-2xl p-4 flex items-center gap-3", s.bg)}>
             <s.icon className={cn("w-6 h-6", s.color)} />
             <div>
@@ -162,24 +166,22 @@ export default function RankingsPage() {
         ))}
       </div>
 
-      {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={searchKw} onChange={e => setSearchKw(e.target.value)}
             className="pl-9 pr-4 py-2 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="Search keywords..." />
+            placeholder={t("rankings.search_ph")} />
         </div>
         {!isClient && (
           <select value={filterClient} onChange={e => setFilterClient(e.target.value)}
             className="border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option value="all">All Clients</option>
+            <option value="all">{t("rankings.all_clients")}</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.companyName || c.name || `Client #${c.id}`}</option>)}
           </select>
         )}
       </div>
 
-      {/* Rankings Table */}
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
       ) : (
@@ -187,14 +189,14 @@ export default function RankingsPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 dark:bg-zinc-950 border-b">
               <tr>
-                {["Keyword", "Client", "Position", "Search Engine", "URL", "Date", ""].map(h => (
+                {tableHeaders.map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-16 text-gray-400">No rankings logged yet</td></tr>
+                <tr><td colSpan={7} className="text-center py-16 text-gray-400">{t("rankings.empty")}</td></tr>
               ) : filtered.map(r => (
                 <tr key={r.id} className="hover:bg-gray-50 dark:bg-zinc-950 transition-colors">
                   <td className="px-4 py-4 font-semibold text-gray-900 dark:text-zinc-50">{r.keyword}</td>
@@ -224,63 +226,62 @@ export default function RankingsPage() {
         </div>
       )}
 
-      {/* Add Ranking Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-md p-8">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-black">Log Keyword Ranking</h2>
+              <h2 className="text-xl font-black">{t("rankings.modal_title")}</h2>
               <button onClick={() => setShowModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <form onSubmit={addRanking} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Client *</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("rankings.field_client")}</label>
                 <select required value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}
                   className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="">Select client...</option>
+                  <option value="">{t("rankings.select_client")}</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.companyName || c.name || `Client #${c.id}`}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Keyword *</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("rankings.field_keyword")}</label>
                   <input required value={form.keyword} onChange={e => setForm(p => ({ ...p, keyword: e.target.value }))}
                     className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="e.g. plumber near me" />
+                    placeholder={t("rankings.keyword_ph")} />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Position #</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("rankings.field_position")}</label>
                   <input type="number" min="1" max="200" value={form.position}
                     onChange={e => setForm(p => ({ ...p, position: e.target.value }))}
                     className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="e.g. 5" />
+                    placeholder={t("rankings.position_ph")} />
                 </div>
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Ranking URL</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("rankings.field_url")}</label>
                 <input value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))}
                   className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="https://clientsite.com/page" />
+                  placeholder={t("rankings.url_ph")} />
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Search Engine</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("rankings.field_engine")}</label>
                 <select value={form.search_engine} onChange={e => setForm(p => ({ ...p, search_engine: e.target.value }))}
                   className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                   {["Google", "Bing", "Yahoo", "DuckDuckGo"].map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Notes</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("rankings.field_notes")}</label>
                 <input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
                   className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Optional notes..." />
+                  placeholder={t("rankings.notes_ph")} />
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
-                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600 dark:text-zinc-300">Cancel</button>
+                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600 dark:text-zinc-300">{t("rankings.cancel")}</button>
                 <button type="submit" disabled={submitting}
                   className="flex-1 py-2.5 bg-gray-900 text-white rounded-xl font-bold text-sm hover:bg-black flex items-center justify-center gap-2">
-                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : t("rankings.save")}
                 </button>
               </div>
             </form>

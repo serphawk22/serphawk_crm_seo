@@ -11,9 +11,9 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useRole } from "@/context/RoleContext";
 
 export default function WorkQueuePage() {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const { role, user } = useRole();
-  const [dateFilter, setDateFilter] = useState("today"); // yesterday, today, tomorrow
+  const [dateFilter, setDateFilter] = useState("today");
   const [activeTab, setActiveTab] = useState("combined");
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>({
@@ -43,14 +43,20 @@ export default function WorkQueuePage() {
   };
 
   const TABS = [
-    { id: "combined", label: "Combined Queue", icon: Target, color: "text-indigo-500", bg: "bg-indigo-100" },
-    { id: "tasks", label: "Tasks", icon: CheckSquare, color: "text-blue-500", bg: "bg-blue-100" },
-    { id: "meetings", label: "Meetings", icon: Calendar, color: "text-purple-500", bg: "bg-purple-100" },
-    { id: "calls", label: "Calls", icon: PhoneCall, color: "text-green-500", bg: "bg-green-100" },
-    { id: "leads", label: "Leads", icon: Radar, color: "text-amber-500", bg: "bg-amber-100" },
-    { id: "contacts", label: "Contacts", icon: Users, color: "text-pink-500", bg: "bg-pink-100" },
-    { id: "deals", label: "Deals", icon: Briefcase, color: "text-emerald-500", bg: "bg-emerald-100" },
+    { id: "combined", label: t("work_queue.tab_combined"), icon: Target, color: "text-indigo-500", bg: "bg-indigo-100" },
+    { id: "tasks", label: t("work_queue.tab_tasks"), icon: CheckSquare, color: "text-blue-500", bg: "bg-blue-100" },
+    { id: "meetings", label: t("work_queue.tab_meetings"), icon: Calendar, color: "text-purple-500", bg: "bg-purple-100" },
+    { id: "calls", label: t("work_queue.tab_calls"), icon: PhoneCall, color: "text-green-500", bg: "bg-green-100" },
+    { id: "leads", label: t("work_queue.tab_leads"), icon: Radar, color: "text-amber-500", bg: "bg-amber-100" },
+    { id: "contacts", label: t("work_queue.tab_contacts"), icon: Users, color: "text-pink-500", bg: "bg-pink-100" },
+    { id: "deals", label: t("work_queue.tab_deals"), icon: Briefcase, color: "text-emerald-500", bg: "bg-emerald-100" },
   ];
+
+  const dateLabels: Record<string, string> = {
+    yesterday: "yesterday",
+    today: "today",
+    tomorrow: "tomorrow",
+  };
 
   const renderItemCard = (item: any, type: string) => {
     let title = "";
@@ -63,7 +69,7 @@ export default function WorkQueuePage() {
     switch(type) {
       case "task":
         title = item.title;
-        sub = item.description || "No description";
+        sub = item.description || t("work_queue.no_description");
         time = item.due_date ? new Date(item.due_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
         status = item.status;
         Icon = CheckSquare;
@@ -71,15 +77,15 @@ export default function WorkQueuePage() {
         break;
       case "meeting":
         title = item.title;
-        sub = item.meeting_type || "Meeting";
+        sub = item.meeting_type || t("work_queue.meeting");
         time = item.scheduled_at ? new Date(item.scheduled_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
         status = item.status;
         Icon = Calendar;
         badgeColor = "bg-purple-100 text-purple-700";
         break;
       case "call":
-        title = item.title || "Scheduled Call";
-        sub = item.purpose || "Follow up";
+        title = item.title || t("work_queue.scheduled_call");
+        sub = item.purpose || t("work_queue.follow_up");
         time = item.scheduled_at ? new Date(item.scheduled_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
         status = item.status;
         Icon = PhoneCall;
@@ -87,7 +93,7 @@ export default function WorkQueuePage() {
         break;
       case "lead":
         title = item.company_name;
-        sub = item.email || item.phone || "No contact info";
+        sub = item.email || item.phone || t("work_queue.no_contact_info");
         time = item.created_at ? new Date(item.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
         status = item.status;
         Icon = Radar;
@@ -95,7 +101,7 @@ export default function WorkQueuePage() {
         break;
       case "contact":
         title = `${item.first_name} ${item.last_name || ""}`;
-        sub = item.designation || item.email || "Contact";
+        sub = item.designation || item.email || t("work_queue.contact");
         time = item.created_at ? new Date(item.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
         status = "Active";
         Icon = Users;
@@ -103,7 +109,7 @@ export default function WorkQueuePage() {
         break;
       case "deal":
         title = item.title || item.deal_name;
-        sub = item.value ? `$${item.value}` : "Deal";
+        sub = item.value ? `$${item.value}` : t("work_queue.deal");
         time = item.created_at ? new Date(item.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
         status = item.stage || item.status;
         Icon = Briefcase;
@@ -157,35 +163,34 @@ export default function WorkQueuePage() {
         ...(data.contacts || []).map((i:any) => ({...i, _type: 'contact'})),
         ...(data.deals || []).map((i:any) => ({...i, _type: 'deal'}))
       ].sort((a, b) => {
-        // basic sort by some date field
         const d1 = new Date(a.due_date || a.scheduled_at || a.created_at || 0).getTime();
         const d2 = new Date(b.due_date || b.scheduled_at || b.created_at || 0).getTime();
         return d1 - d2;
       });
     }
-    return (data[activeTab] || []).map((i:any) => ({...i, _type: activeTab.slice(0, -1)})); // e.g. 'tasks' -> 'task'
+    return (data[activeTab] || []).map((i:any) => ({...i, _type: activeTab.slice(0, -1)}));
   };
 
   const filteredItems = getFilteredItems();
+  const emptyTabLabel = activeTab === 'combined' ? t("work_queue.empty_items_plural") : TABS.find(tab => tab.id === activeTab)?.label || activeTab;
 
   return (
     <>
       <div className="p-6 max-w-7xl mx-auto min-h-screen">
         
-        {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
           <div>
             <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
               <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none"><Target size={24} /></div>
-              My Work Queue
+              {t("work_queue.title")}
             </h1>
             <p className="text-slate-500 dark:text-zinc-400 mt-2 font-medium">
-              Manage your tasks, meetings, calls, and follow-ups for the selected day.
+              {t("work_queue.subtitle")}
             </p>
           </div>
 
           <div className="bg-slate-100 dark:bg-zinc-900 p-1 rounded-xl flex items-center shadow-inner">
-            {["yesterday", "today", "tomorrow"].map(d => (
+            {(["yesterday", "today", "tomorrow"] as const).map(d => (
               <button
                 key={d}
                 onClick={() => setDateFilter(d)}
@@ -201,7 +206,6 @@ export default function WorkQueuePage() {
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex overflow-x-auto gap-2 pb-4 mb-4 hide-scrollbar">
           {TABS.map(tab => (
             <button
@@ -228,13 +232,12 @@ export default function WorkQueuePage() {
           ))}
         </div>
 
-        {/* Content */}
         <div className="relative min-h-[400px]">
           {loading ? (
             <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-zinc-950/50 backdrop-blur-sm z-10 rounded-3xl border border-slate-200 dark:border-zinc-800">
               <div className="flex flex-col items-center gap-4">
                 <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
-                <p className="text-sm font-bold text-slate-500">Loading your queue...</p>
+                <p className="text-sm font-bold text-slate-500">{t("work_queue.loading_queue")}</p>
               </div>
             </div>
           ) : (
@@ -244,9 +247,9 @@ export default function WorkQueuePage() {
                   <div className="w-20 h-20 bg-slate-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mb-4">
                     <CheckCircle className="w-10 h-10 text-slate-300 dark:text-zinc-600" />
                   </div>
-                  <h3 className="text-xl font-black text-slate-800 dark:text-zinc-200 mb-2">All Caught Up!</h3>
+                  <h3 className="text-xl font-black text-slate-800 dark:text-zinc-200 mb-2">{t("work_queue.empty_title")}</h3>
                   <p className="text-slate-500 dark:text-zinc-400 font-medium max-w-sm">
-                    You have no {activeTab === 'combined' ? 'items' : activeTab} in your queue for {dateFilter}.
+                    {t("work_queue.empty_items")} {emptyTabLabel} {t("work_queue.empty_items_end")} {dateFilter}.
                   </p>
                 </div>
               ) : (

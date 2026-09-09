@@ -4,24 +4,26 @@ import { motion } from 'framer-motion';
 import { ShieldCheck, Zap, BarChart, Rocket, CheckCircle2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function PricingPage() {
+  const { t } = useLanguage();
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
 
   const packages = [
     {
       id: 'starter',
-      name: 'Starter SEO',
+      name: t('pricing.plan_starter_name'),
       price: '$499',
       period: '/month',
-      description: 'Perfect for local businesses looking to establish their online presence.',
+      description: t('pricing.plan_starter_desc'),
       features: [
-        'Initial SEO Audit',
-        'Google Business Profile Setup',
-        'Basic On-Page SEO',
-        'Monthly Performance Report',
-        'Email Support'
+        t('pricing.plan_starter_f1'),
+        t('pricing.plan_starter_f2'),
+        t('pricing.plan_starter_f3'),
+        t('pricing.plan_starter_f4'),
+        t('pricing.plan_starter_f5')
       ],
       icon: <Zap className="w-8 h-8 text-blue-400" />,
       popular: false,
@@ -29,17 +31,17 @@ export default function PricingPage() {
     },
     {
       id: 'growth',
-      name: 'Growth SEO',
+      name: t('pricing.plan_growth_name'),
       price: '$999',
       period: '/month',
-      description: 'Comprehensive SEO strategy for businesses ready to dominate their market.',
+      description: t('pricing.plan_growth_desc'),
       features: [
-        'Advanced Technical SEO',
-        'Competitor Analysis',
-        'Content Strategy Formulation',
-        'Link Building (5 high-quality links)',
-        'Bi-weekly Strategy Calls',
-        'Custom Analytics Dashboard'
+        t('pricing.plan_growth_f1'),
+        t('pricing.plan_growth_f2'),
+        t('pricing.plan_growth_f3'),
+        t('pricing.plan_growth_f4'),
+        t('pricing.plan_growth_f5'),
+        t('pricing.plan_growth_f6')
       ],
       icon: <Rocket className="w-8 h-8 text-fuchsia-400" />,
       popular: true,
@@ -47,17 +49,17 @@ export default function PricingPage() {
     },
     {
       id: 'enterprise',
-      name: 'Enterprise SEO',
+      name: t('pricing.plan_enterprise_name'),
       price: '$2,499',
       period: '/month',
-      description: 'Full-scale SEO takeover with dedicated account management and aggressive growth goals.',
+      description: t('pricing.plan_enterprise_desc'),
       features: [
-        'Nationwide Keyword Targeting',
-        'Extensive Content Creation',
-        'Aggressive Link Building',
-        'Cro & UX Audits',
-        'Dedicated Slack Channel',
-        'Weekly Performance Reviews'
+        t('pricing.plan_enterprise_f1'),
+        t('pricing.plan_enterprise_f2'),
+        t('pricing.plan_enterprise_f3'),
+        t('pricing.plan_enterprise_f4'),
+        t('pricing.plan_enterprise_f5'),
+        t('pricing.plan_enterprise_f6')
       ],
       icon: <BarChart className="w-8 h-8 text-emerald-400" />,
       popular: false,
@@ -67,9 +69,8 @@ export default function PricingPage() {
 
   const handlePurchase = (pkgId: string) => {
     setLoading(pkgId);
-    // Mocking Stripe/Payment Gateway Redirect
     setTimeout(() => {
-      alert(`Payment for ${pkgId} package successful! Credentials will be emailed to you.`);
+      alert(`${t("pricing.payment_prefix")}${pkgId}${t("pricing.payment_suffix")}`);
       router.push('/login');
     }, 1500);
   };
@@ -88,7 +89,7 @@ export default function PricingPage() {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white dark:bg-zinc-900/5 border border-white/10 mb-6 backdrop-blur-sm"
           >
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span className="text-sm font-medium text-gray-300">Secure Payment Gateway</span>
+            <span className="text-sm font-medium text-gray-300">{t("pricing.secure_payment")}</span>
           </motion.div>
           <motion.h1 
             initial={{ opacity: 0, y: 20 }}
@@ -96,7 +97,7 @@ export default function PricingPage() {
             transition={{ delay: 0.1 }}
             className="text-4xl md:text-6xl font-bold tracking-tight mb-6"
           >
-            Choose your <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-fuchsia-400">SEO growth</span> plan
+            {t("pricing.heading")} <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-fuchsia-400">{t("pricing.heading_highlight")}</span>
           </motion.h1>
           <motion.p 
              initial={{ opacity: 0, y: 20 }}
@@ -104,7 +105,7 @@ export default function PricingPage() {
              transition={{ delay: 0.2 }}
             className="text-lg text-gray-400 max-w-2xl mx-auto"
           >
-            Start crushing your competitors with our data-driven SEO packages. End-to-end management, fully transparent reporting.
+            {t("pricing.subtitle")}
           </motion.p>
         </div>
 
@@ -112,13 +113,13 @@ export default function PricingPage() {
           <PageGuide
             pageKey="pricing"
             variant="dark"
-            title="How Pricing & Plans work"
-            description="Browse our SEO growth plans, pick one that fits your budget, and get started instantly."
+            title={t("pricing.guide_title")}
+            description={t("pricing.guide_desc")}
             steps={[
-              { icon: '💰', text: 'Each plan shows the monthly cost, list of included features, and a \"Get Started\" button.' },
-              { icon: '⭐', text: 'The \"Growth\" plan is our most popular — look for the highlighted card in the center.' },
-              { icon: '🚀', text: 'Click \"Get Started\" to begin your SEO campaign — you\'ll be guided through setup.' },
-              { icon: '📞', text: 'Need a custom plan? Contact us directly for Enterprise-level customization.' },
+              { icon: '💰', text: t("pricing.guide_s1") },
+              { icon: '⭐', text: t("pricing.guide_s2") },
+              { icon: '🚀', text: t("pricing.guide_s3") },
+              { icon: '📞', text: t("pricing.guide_s4") },
             ]}
           />
         </div>
@@ -138,7 +139,7 @@ export default function PricingPage() {
               {pkg.popular && (
                 <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
                   <span className="bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white px-4 py-1 rounded-full text-xs font-bold tracking-wider uppercase shadow-lg">
-                    Most Popular
+                    {t("pricing.most_popular")}
                   </span>
                 </div>
               )}
@@ -186,7 +187,7 @@ export default function PricingPage() {
                     className="w-5 h-5 border-2 border-current border-t-transparent rounded-full"
                   />
                 ) : (
-                  'Get Started Now'
+                  t("pricing.get_started")
                 )}
               </button>
             </motion.div>

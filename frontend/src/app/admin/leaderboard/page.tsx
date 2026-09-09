@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Trophy, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/config";
+import { useLanguage } from "@/context/LanguageContext";
 
 
 interface LeaderboardEntry {
@@ -17,6 +18,7 @@ interface LeaderboardEntry {
 }
 
 export default function LeaderboardPage() {
+  const { t } = useLanguage();
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -57,9 +59,9 @@ export default function LeaderboardPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent flex items-center gap-3">
             <Trophy className="w-8 h-8 text-indigo-600" />
-            Sales Leaderboard
+            {t("leaderboard.title")}
           </h1>
-          <p className="text-sm text-slate-500 mt-1 dark:text-zinc-400">Live rankings and performance gamification for the sales floor.</p>
+          <p className="text-sm text-slate-500 mt-1 dark:text-zinc-400">{t("leaderboard.subtitle")}</p>
         </div>
       </div>
 
@@ -77,7 +79,7 @@ export default function LeaderboardPage() {
                 <div className="w-full h-40 bg-gradient-to-t from-slate-200 to-slate-100 dark:from-zinc-800 dark:to-zinc-800/50 rounded-t-xl border border-b-0 border-slate-200 dark:border-zinc-700 flex flex-col items-center pt-8 px-4 transition-all group-hover:h-44">
                   <span className="font-bold text-slate-800 dark:text-zinc-200 truncate w-full text-center">{top3[1].name}</span>
                   <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-2">${top3[1].revenue_closed.toLocaleString()}</span>
-                  <span className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">{top3[1].deals_closed} Deals</span>
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">{top3[1].deals_closed} {t("leaderboard.deals")}</span>
                 </div>
               </div>
             )}
@@ -96,7 +98,7 @@ export default function LeaderboardPage() {
                 <div className="w-full h-52 bg-gradient-to-t from-yellow-200 via-yellow-100 to-yellow-50 dark:from-yellow-900/40 dark:via-yellow-900/20 dark:to-transparent rounded-t-xl border border-b-0 border-yellow-300 dark:border-yellow-700/50 flex flex-col items-center pt-10 px-4 transition-all group-hover:h-56 shadow-[0_0_30px_rgba(250,204,21,0.2)]">
                   <span className="font-black text-lg text-yellow-900 dark:text-yellow-500 truncate w-full text-center">{top3[0].name}</span>
                   <span className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-2">${top3[0].revenue_closed.toLocaleString()}</span>
-                  <span className="text-xs text-yellow-700 dark:text-yellow-600 uppercase tracking-wider mt-1 font-bold">{top3[0].deals_closed} Deals Won</span>
+                  <span className="text-xs text-yellow-700 dark:text-yellow-600 uppercase tracking-wider mt-1 font-bold">{top3[0].deals_closed} {t("leaderboard.deals_won")}</span>
                 </div>
               </div>
             )}
@@ -110,7 +112,7 @@ export default function LeaderboardPage() {
                 <div className="w-full h-32 bg-gradient-to-t from-orange-100 to-orange-50 dark:from-orange-900/30 dark:to-transparent rounded-t-xl border border-b-0 border-orange-200 dark:border-orange-800/50 flex flex-col items-center pt-8 px-4 transition-all group-hover:h-36">
                   <span className="font-bold text-slate-800 dark:text-zinc-200 truncate w-full text-center">{top3[2].name}</span>
                   <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-2">${top3[2].revenue_closed.toLocaleString()}</span>
-                  <span className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">{top3[2].deals_closed} Deals</span>
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">{top3[2].deals_closed} {t("leaderboard.deals")}</span>
                 </div>
               </div>
             )}
@@ -124,12 +126,12 @@ export default function LeaderboardPage() {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50/50 dark:bg-zinc-800/50 text-slate-500 dark:text-zinc-400">
               <tr>
-                <th className="px-6 py-4 font-medium">Rank</th>
-                <th className="px-6 py-4 font-medium">Employee</th>
-                <th className="px-6 py-4 font-medium text-right">Revenue Closed</th>
-                <th className="px-6 py-4 font-medium text-center">Deals Won</th>
-                <th className="px-6 py-4 font-medium text-center">Meetings Booked</th>
-                <th className="px-6 py-4 font-medium text-center">Calls Made</th>
+                <th className="px-6 py-4 font-medium">{t("leaderboard.rank")}</th>
+                <th className="px-6 py-4 font-medium">{t("leaderboard.employee")}</th>
+                <th className="px-6 py-4 font-medium text-right">{t("leaderboard.revenue_closed")}</th>
+                <th className="px-6 py-4 font-medium text-center">{t("leaderboard.deals_won")}</th>
+                <th className="px-6 py-4 font-medium text-center">{t("leaderboard.meetings_booked")}</th>
+                <th className="px-6 py-4 font-medium text-center">{t("leaderboard.calls_made")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">

@@ -23,14 +23,17 @@ import {
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import EmailTrackerTab from "./components/EmailTrackerTab";
+import SMTPSettingsTab from "./components/SMTPSettingsTab";
+import { useLanguage } from "@/context/LanguageContext";
 
-type Tab = "profile" | "security" | "notifications" | "appearance" | "integrations";
+type Tab = "profile" | "security" | "notifications" | "appearance" | "smtp" | "integrations";
 
 const TABS: { id: Tab; label: string; icon: typeof User }[] = [
   { id: "profile", label: "Profile", icon: User },
   { id: "security", label: "Security", icon: Shield },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "smtp", label: "SMTP Settings", icon: Mail },
   { id: "integrations", label: "Email Integrations", icon: Mail },
 ];
 
@@ -43,6 +46,7 @@ function SaveButton({
   saved: boolean;
   onClick: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <motion.button
       onClick={onClick}
@@ -58,11 +62,11 @@ function SaveButton({
       }}
     >
       {saving ? (
-        <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+        <><Loader2 className="w-4 h-4 animate-spin" /> {t("settings.saving")}…</>
       ) : saved ? (
-        <><Check className="w-4 h-4" /> Saved!</>
+        <><Check className="w-4 h-4" /> {t("settings.saved")}!</>
       ) : (
-        "Save Changes"
+        t("settings.save_changes")
       )}
     </motion.button>
   );
@@ -121,6 +125,16 @@ function Field({
 
 export default function SettingsPage() {
   const { user, logout } = useRole();
+  const { t } = useLanguage();
+
+  const TABS: { id: Tab; label: string; icon: typeof User }[] = [
+    { id: "profile", label: t("settings.tab_profile"), icon: User },
+    { id: "security", label: t("settings.tab_security"), icon: Shield },
+    { id: "notifications", label: t("settings.tab_notifications"), icon: Bell },
+    { id: "appearance", label: t("settings.tab_appearance"), icon: Palette },
+    { id: "smtp", label: t("settings.tab_smtp"), icon: Mail },
+    { id: "integrations", label: t("settings.tab_integrations"), icon: Mail },
+  ];
 
   // Profile
   const [name, setName] = useState(user?.name || "");
@@ -176,9 +190,9 @@ export default function SettingsPage() {
 
   const savePassword = async () => {
     setPwError("");
-    if (!currentPw) { setPwError("Please enter your current password"); return; }
-    if (newPw.length < 8) { setPwError("New password must be at least 8 characters"); return; }
-    if (newPw !== confirmPw) { setPwError("Passwords do not match"); return; }
+    if (!currentPw) { setPwError(t("settings.err_current_pw")); return; }
+    if (newPw.length < 8) { setPwError(t("settings.err_pw_length")); return; }
+    if (newPw !== confirmPw) { setPwError(t("settings.err_pw_mismatch")); return; }
     setPwSaving(true);
     await new Promise((r) => setTimeout(r, 1400));
     setPwSaving(false);
@@ -189,11 +203,11 @@ export default function SettingsPage() {
 
   const pwStrength = useCallback(() => {
     if (!newPw) return null;
-    if (newPw.length < 6) return { level: 1, label: "Weak", color: "#ef4444" };
+    if (newPw.length < 6) return { level: 1, label: t("settings.pw_weak"), color: "#ef4444" };
     if (newPw.length < 10 || !/[A-Z]/.test(newPw) || !/[0-9]/.test(newPw))
-      return { level: 2, label: "Fair", color: "#f59e0b" };
-    return { level: 3, label: "Strong", color: "#10b981" };
-  }, [newPw]);
+      return { level: 2, label: t("settings.pw_fair"), color: "#f59e0b" };
+    return { level: 3, label: t("settings.pw_strong"), color: "#10b981" };
+  }, [newPw, t]);
 
   const strength = pwStrength();
 
@@ -206,10 +220,10 @@ export default function SettingsPage() {
         className="mb-8"
       >
         <h1 className="text-2xl font-extrabold tracking-tight" style={{ color: "var(--text-primary)" }}>
-          Settings
+          {t("settings.title")}
         </h1>
         <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-          Manage your profile, security, and preferences
+          {t("settings.subtitle")}
         </p>
       </motion.div>
 
@@ -243,7 +257,7 @@ export default function SettingsPage() {
               className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-semibold w-full text-left transition-all text-red-500 hover:bg-red-50"
             >
               <LogOut className="w-4 h-4 shrink-0" />
-              Sign Out
+              {t("settings.sign_out")}
             </button>
           </div>
         </motion.nav>
@@ -262,7 +276,7 @@ export default function SettingsPage() {
               style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
             >
               <h2 className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>
-                Personal Information
+                {t("settings.personal_info")}
               </h2>
 
               {/* Avatar */}
@@ -271,7 +285,7 @@ export default function SettingsPage() {
                   {avatar ? (
                     <img
                       src={avatar}
-                      alt="Avatar"
+                      alt={t("settings.avatar")}
                       className="w-20 h-20 rounded-2xl object-cover ring-2 ring-blue-200"
                     />
                   ) : (
@@ -286,7 +300,7 @@ export default function SettingsPage() {
                     onClick={() => fileRef.current?.click()}
                     className="absolute -bottom-1.5 -right-1.5 w-7 h-7 rounded-xl flex items-center justify-center shadow-md transition-transform hover:scale-110"
                     style={{ background: "#2563eb" }}
-                    title="Change photo"
+                    title={t("settings.change_photo")}
                   >
                     <Camera className="w-3.5 h-3.5 text-white" />
                   </button>
@@ -305,18 +319,18 @@ export default function SettingsPage() {
                     onClick={() => fileRef.current?.click()}
                     className="mt-1.5 text-[12px] font-semibold text-blue-600 hover:underline"
                   >
-                    Change photo
+                    {t("settings.change_photo")}
                   </button>
                 </div>
               </div>
 
               {/* Fields */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field icon={User} label="Full Name" value={name} onChange={setName} placeholder="Your full name" />
-                <Field icon={Mail} label="Email Address" value={email} onChange={() => {}} disabled placeholder="email@example.com" />
-                <Field icon={Phone} label="Phone" value={phone} onChange={setPhone} type="tel" placeholder="+1 234 567 8900" />
-                <Field icon={MapPin} label="Location" value={location} onChange={setLocation} placeholder="City, Country" />
-                <Field icon={Building2} label="Company" value={company} onChange={setCompany} placeholder="Company name" />
+                <Field icon={User} label={t("settings.full_name")} value={name} onChange={setName} placeholder={t("settings.ph_full_name")} />
+                <Field icon={Mail} label={t("settings.email")} value={email} onChange={() => {}} disabled placeholder={t("settings.ph_email")} />
+                <Field icon={Phone} label={t("settings.phone")} value={phone} onChange={setPhone} type="tel" placeholder={t("settings.ph_phone")} />
+                <Field icon={MapPin} label={t("settings.location")} value={location} onChange={setLocation} placeholder={t("settings.ph_location")} />
+                <Field icon={Building2} label={t("settings.company")} value={company} onChange={setCompany} placeholder={t("settings.ph_company")} />
               </div>
 
               {/* Bio */}
@@ -325,13 +339,13 @@ export default function SettingsPage() {
                   className="block text-[11px] font-bold uppercase tracking-widest mb-1.5"
                   style={{ color: "var(--text-secondary)" }}
                 >
-                  Bio
+                  {t("settings.bio")}
                 </label>
                 <textarea
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
                   rows={3}
-                  placeholder="Tell us about yourself..."
+                  placeholder={t("settings.ph_bio")}
                   className="w-full px-3.5 py-3 rounded-xl border text-[13.5px] outline-none resize-none transition-all"
                   style={{
                     borderColor: "var(--border)",
@@ -356,13 +370,13 @@ export default function SettingsPage() {
                 style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
               >
                 <h2 className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>
-                  Change Password
+                  {t("settings.change_password")}
                 </h2>
 
                 {/* Current password */}
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-secondary)" }}>
-                    Current Password
+                    {t("settings.current_password")}
                   </label>
                   <div
                     className="flex items-center gap-3 px-3.5 py-3 rounded-xl border"
@@ -373,7 +387,7 @@ export default function SettingsPage() {
                       type={showCurrent ? "text" : "password"}
                       value={currentPw}
                       onChange={(e) => setCurrentPw(e.target.value)}
-                      placeholder="Enter current password"
+                      placeholder={t("settings.ph_current_pw")}
                       className="flex-1 bg-transparent text-[13.5px] outline-none"
                       style={{ color: "var(--text-primary)" }}
                     />
@@ -386,7 +400,7 @@ export default function SettingsPage() {
                 {/* New password */}
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-secondary)" }}>
-                    New Password
+                    {t("settings.new_password")}
                   </label>
                   <div
                     className="flex items-center gap-3 px-3.5 py-3 rounded-xl border"
@@ -397,7 +411,7 @@ export default function SettingsPage() {
                       type={showNew ? "text" : "password"}
                       value={newPw}
                       onChange={(e) => setNewPw(e.target.value)}
-                      placeholder="Enter new password"
+                      placeholder={t("settings.ph_new_pw")}
                       className="flex-1 bg-transparent text-[13.5px] outline-none"
                       style={{ color: "var(--text-primary)" }}
                     />
@@ -427,7 +441,7 @@ export default function SettingsPage() {
                 {/* Confirm password */}
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-secondary)" }}>
-                    Confirm Password
+                    {t("settings.confirm_password")}
                   </label>
                   <div
                     className="flex items-center gap-3 px-3.5 py-3 rounded-xl border"
@@ -441,7 +455,7 @@ export default function SettingsPage() {
                       type="password"
                       value={confirmPw}
                       onChange={(e) => setConfirmPw(e.target.value)}
-                      placeholder="Confirm new password"
+                      placeholder={t("settings.ph_confirm_pw")}
                       className="flex-1 bg-transparent text-[13.5px] outline-none"
                       style={{ color: "var(--text-primary)" }}
                     />
@@ -478,9 +492,9 @@ export default function SettingsPage() {
                 style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.15)" }}
               >
                 <div>
-                  <p className="font-bold text-[14px] text-red-600">Sign Out</p>
+                  <p className="font-bold text-[14px] text-red-600">{t("settings.sign_out")}</p>
                   <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                    You will be redirected to the login page
+                    {t("settings.sign_out_desc")}
                   </p>
                 </div>
                 <button
@@ -488,7 +502,7 @@ export default function SettingsPage() {
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-[13px] text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
-                  Sign Out
+                  {t("settings.sign_out")}
                 </button>
               </div>
             </div>
@@ -501,14 +515,14 @@ export default function SettingsPage() {
               style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
             >
               <h2 className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>
-                Notification Preferences
+                {t("settings.notification_prefs")}
               </h2>
               {(
                 [
-                  { key: "emailAlerts", label: "Email Alerts", desc: "Get notified via email for critical events" },
-                  { key: "taskReminders", label: "Task Reminders", desc: "Daily digest of upcoming and overdue tasks" },
-                  { key: "clientUpdates", label: "Client Updates", desc: "Notify when client status changes" },
-                  { key: "weeklyReport", label: "Weekly Report", desc: "Get a weekly performance summary every Monday" },
+                  { key: "emailAlerts", label: t("settings.notif_email"), desc: t("settings.notif_email_desc") },
+                  { key: "taskReminders", label: t("settings.notif_tasks"), desc: t("settings.notif_tasks_desc") },
+                  { key: "clientUpdates", label: t("settings.notif_client"), desc: t("settings.notif_client_desc") },
+                  { key: "weeklyReport", label: t("settings.notif_weekly"), desc: t("settings.notif_weekly_desc") },
                 ] as const
               ).map(({ key, label, desc }) => (
                 <div key={key} className="flex items-center justify-between gap-4 py-2">
@@ -540,27 +554,27 @@ export default function SettingsPage() {
               style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
             >
               <h2 className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>
-                Appearance
+                {t("settings.appearance")}
               </h2>
               <div>
-                <p className="text-[13px] font-semibold mb-3" style={{ color: "var(--text-primary)" }}>Theme</p>
+                <p className="text-[13px] font-semibold mb-3" style={{ color: "var(--text-primary)" }}>{t("settings.theme")}</p>
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { value: "light", label: "Light", preview: "#ffffff", border: "#e5e7eb" },
-                    { value: "dark", label: "Dark", preview: "#111827", border: "#374151" },
-                    { value: "system", label: "System", preview: "linear-gradient(135deg, #ffffff 50%, #111827 50%)", border: "#6366f1" },
-                  ].map((t) => (
+                    { value: "light", label: t("settings.theme_light"), preview: "#ffffff", border: "#e5e7eb" },
+                    { value: "dark", label: t("settings.theme_dark"), preview: "#111827", border: "#374151" },
+                    { value: "system", label: t("settings.theme_system"), preview: "linear-gradient(135deg, #ffffff 50%, #111827 50%)", border: "#6366f1" },
+                  ].map((th) => (
                     <button
-                      key={t.value}
+                      key={th.value}
                       className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all hover:border-blue-400"
                       style={{ borderColor: "var(--border)", background: "var(--background)" }}
                     >
                       <div
                         className="w-12 h-8 rounded-lg border"
-                        style={{ background: t.preview, borderColor: t.border }}
+                        style={{ background: th.preview, borderColor: th.border }}
                       />
                       <span className="text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
-                        {t.label}
+                        {th.label}
                       </span>
                     </button>
                   ))}
@@ -568,7 +582,7 @@ export default function SettingsPage() {
               </div>
 
               <div>
-                <p className="text-[13px] font-semibold mb-3" style={{ color: "var(--text-primary)" }}>Accent Color</p>
+                <p className="text-[13px] font-semibold mb-3" style={{ color: "var(--text-primary)" }}>{t("settings.accent_color")}</p>
                 <div className="flex gap-3">
                   {[
                     "#2563eb", "#7c3aed", "#0891b2", "#10b981", "#f59e0b", "#ef4444",
@@ -585,6 +599,9 @@ export default function SettingsPage() {
             </div>
           )}
           
+          {/* ── SMTP SETTINGS TAB ── */}
+          {tab === "smtp" && <SMTPSettingsTab />}
+
           {/* ── EMAIL INTEGRATIONS TAB ── */}
           {tab === "integrations" && <EmailTrackerTab />}
         </motion.div>
@@ -612,10 +629,10 @@ export default function SettingsPage() {
                 <LogOut className="w-7 h-7 text-red-500" />
               </div>
               <h3 className="text-[17px] font-bold mb-2" style={{ color: "var(--text-primary)" }}>
-                Sign out?
+                {t("settings.sign_out_confirm")}
               </h3>
               <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
-                You will be taken back to the login screen. All unsaved changes will be lost.
+                {t("settings.sign_out_confirm_desc")}
               </p>
               <div className="flex gap-3">
                 <button
@@ -623,13 +640,13 @@ export default function SettingsPage() {
                   className="flex-1 py-2.5 rounded-xl font-bold text-[13px] border transition-colors hover:bg-gray-50"
                   style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
                 >
-                  Cancel
+                  {t("settings.cancel")}
                 </button>
                 <button
                   onClick={logout}
                   className="flex-1 py-2.5 rounded-xl font-bold text-[13px] text-white bg-red-500 hover:bg-red-600 transition-colors"
                 >
-                  Sign Out
+                  {t("settings.sign_out")}
                 </button>
               </div>
             </motion.div>

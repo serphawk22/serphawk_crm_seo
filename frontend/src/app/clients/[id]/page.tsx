@@ -41,6 +41,7 @@ import { cn } from '@/lib/utils';
 import PageGuide from '@/components/PageGuide';
 import axios from 'axios';
 import { DollarSign, XCircle, Radar, Navigation } from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
 
 // Framer Motion Variants
 const containerVariants = {
@@ -78,7 +79,7 @@ const ActivitySkeletonTab = () => (
   </div>
 );
 
-// Payment Status Widget
+// Payment Status Widget (labels are backend data values, kept as-is)
 const paymentStatusColors = {
   Paid: {
     bg: 'bg-emerald-100',
@@ -117,7 +118,8 @@ function PaymentStatusWidget({ status }: { status: string }) {
 }
 
 export default function ClientDetailPage() {
-  const { id } = useParams();
+  const { t } = useLanguage();
+  const { id } = useParams() as { id: string };
   const router = useRouter();
   const [client, setClient] = useState<any>(null);
   const [remarks, setRemarks] = useState<any[]>([]);
@@ -330,14 +332,14 @@ export default function ClientDetailPage() {
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to add keyword");
+      alert(t("client_detail.failed_add_keyword"));
     } finally {
       setLoading(false);
     }
   };
 
   const handleRemoveKeyword = async (keyword: string) => {
-    if (!confirm(`Remove keyword "${keyword}"?`)) return;
+    if (!confirm(t("client_detail.remove_keyword_confirm").replace("{keyword}", keyword))) return;
     try {
       const res = await fetch(`${API_BASE_URL}/clients/${id}/keywords`, {
         method: 'DELETE',
@@ -389,7 +391,7 @@ export default function ClientDetailPage() {
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to add activity");
+      alert(t("client_detail.failed_add_activity"));
     } finally {
       setLoading(false);
     }
@@ -416,14 +418,24 @@ export default function ClientDetailPage() {
       const res = await fetch(`${API_BASE_URL}/clients/${id}/simulate-call`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        alert(`AI Pitch Generated:\n\n${data.pitch}`);
+        alert(`${t("client_detail.ai_pitch_generated")}\n\n${data.pitch}`);
         fetchActivities();
       } else {
-        alert('Failed to generate simulation');
+        alert(t("client_detail.failed_generate_simulation"));
       }
     } catch (err) {
       console.error(err);
-      alert('Error connecting to AI');
+      alert(t("client_detail.error_connecting_ai"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+const handleSaveMetrics = async () => {
+    setLoading(true);
+    try {
+      await updateProfile({ customFields: metricsForm });
+      setIsEditingMetrics(false);
     } finally {
       setLoading(false);
     }
@@ -448,16 +460,6 @@ export default function ClientDetailPage() {
     }
   };
 
-  const handleSaveMetrics = async () => {
-    setLoading(true);
-    try {
-      await updateProfile({ customFields: metricsForm });
-      setIsEditingMetrics(false);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleUpdateMilestone = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -476,11 +478,11 @@ export default function ClientDetailPage() {
           <div className="absolute inset-0 border-4 border-indigo-100 rounded-full"></div>
           <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
         </div>
-        <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100 animate-pulse mt-4">Pulling Intelligence Data...</h2>
+        <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100 animate-pulse mt-4">{t("client_detail.pulling_intelligence")}</h2>
       </div>
     );
   }
-  if (!client) return <div className="p-8 text-red-500 font-bold text-center">Neural link failed. Client not found.</div>;
+  if (!client) return <div className="p-8 text-red-500 font-bold text-center">{t("client_detail.not_found_error")}</div>;
 
   // --- INTERACTIVE STORYTELLING DASHBOARD ---
   return (
@@ -514,20 +516,20 @@ export default function ClientDetailPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2, duration: 0.6 }}
             >
-              <p className="text-cyan-200 font-bold text-sm uppercase tracking-widest mb-3">Welcome Back To Your Growth Hub</p>
+              <p className="text-cyan-200 font-bold text-sm uppercase tracking-widest mb-3">{t("client_detail.welcome_back")}</p>
               <h1 className="text-6xl md:text-7xl font-black mb-4 leading-tight">
                 {client.companyName}
               </h1>
               <p className="text-xl text-white/90 font-medium max-w-2xl mb-6">
-                Your intelligent growth partner is ready to scale your business to new heights. Let's unlock extraordinary results together.
+                {t("client_detail.your_growth_partner")}
               </p>
               <div className="flex gap-4 mt-6">
                 <button onClick={() => router.push(`/clients/${client.id}/competitors`)} className="px-6 py-3 bg-white text-blue-600 font-bold rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2">
-                  <Navigation className="w-5 h-5" /> Radar Scan
+                  <Navigation className="w-5 h-5" /> {t("client_detail.radar_scan")}
                 </button>
                 {client?.websiteUrl && (
                   <a href={client.websiteUrl.startsWith('http') ? client.websiteUrl : `https://${client.websiteUrl}`} target="_blank" rel="noreferrer" className="px-6 py-3 bg-blue-600/50 border border-blue-400/30 text-white font-bold rounded-xl shadow-lg hover:bg-blue-600 transition-all flex items-center gap-2">
-                    <Globe className="w-5 h-5" /> Visit Site
+                    <Globe className="w-5 h-5" /> {t("client_detail.visit_site")}
                   </a>
                 )}
               </div>
@@ -541,15 +543,15 @@ export default function ClientDetailPage() {
               className="grid grid-cols-3 gap-6 mt-8"
             >
               <div className="bg-white dark:bg-zinc-900/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-                <p className="text-white/70 text-sm font-bold uppercase tracking-wider mb-2">Active Services</p>
+                <p className="text-white/70 text-sm font-bold uppercase tracking-wider mb-2">{t("client_detail.active_services_label")}</p>
                 <p className="text-3xl font-black text-cyan-200">{serviceRequests.filter(r => r.status !== 'Pending').length || 0}</p>
               </div>
               <div className="bg-white dark:bg-zinc-900/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-                <p className="text-white/70 text-sm font-bold uppercase tracking-wider mb-2">Total Revenue</p>
+                <p className="text-white/70 text-sm font-bold uppercase tracking-wider mb-2">{t("client_detail.total_revenue_label")}</p>
                 <p className="text-3xl font-black text-cyan-200">{client.customFields?.total_revenue || '—'}</p>
               </div>
               <div className="bg-white dark:bg-zinc-900/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-                <p className="text-white/70 text-sm font-bold uppercase tracking-wider mb-2">Growth Rate</p>
+                <p className="text-white/70 text-sm font-bold uppercase tracking-wider mb-2">{t("client_detail.growth_rate_label")}</p>
                 <p className="text-3xl font-black text-cyan-200">{client.customFields?.growth_rate || '—'}</p>
               </div>
             </motion.div>
@@ -565,7 +567,7 @@ export default function ClientDetailPage() {
           steps={[
             { icon: '📊', text: 'Performance Story section shows growth metrics like traffic, revenue, and rankings over time.' },
             { icon: '💼', text: 'Scroll down to see active services, recent activity, communications, and project timeline.' },
-            { icon: '✏️', text: 'Admins can click \"Edit Metrics\" to update this client\'s financial and performance data.' },
+            { icon: '✏️', text: 'Admins can click "Edit Metrics" to update this client\'s financial and performance data.' },
             { icon: '💬', text: 'The comments section lets you add internal notes and track all communication history.' },
           ]}
         />
@@ -578,10 +580,10 @@ export default function ClientDetailPage() {
         >
           <div className="flex items-center gap-3 mb-8">
             <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
-            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">Your Performance Story</h2>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">{t("client_detail.performance_story")}</h2>
             {(role === 'Admin' || role === 'Employee') && (
               <button onClick={() => setIsEditingMetrics(true)} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:bg-zinc-700 border border-slate-300 dark:border-zinc-600 text-slate-700 dark:text-zinc-200 text-xs font-bold rounded-lg transition-all">
-                <Edit2 size={12} /> Edit Metrics
+                <Edit2 size={12} /> {t("client_detail.edit_metrics")}
               </button>
             )}
           </div>
@@ -599,12 +601,12 @@ export default function ClientDetailPage() {
               <div className="relative z-10">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-green-100 text-green-600 rounded-xl"><TrendingUp size={24} /></div>
-                  <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100">Growth Momentum</h3>
+                  <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100">{t("client_detail.growth_momentum")}</h3>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold mb-2">This Month's Revenue</p>
+                  <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold mb-2">{t("client_detail.this_months_revenue")}</p>
                   <p className="text-4xl font-black text-green-600">{client.customFields?.monthly_revenue || '—'}</p>
-                  <p className="text-sm text-green-700 mt-2 font-bold">{client.customFields?.revenue_growth_pct || 'No data yet'}</p>
+                  <p className="text-sm text-green-700 mt-2 font-bold">{client.customFields?.revenue_growth_pct || t("client_detail.no_data_yet")}</p>
                 </div>
               </div>
             </motion.div>
@@ -621,12 +623,12 @@ export default function ClientDetailPage() {
               <div className="relative z-10">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-blue-100 text-blue-600 rounded-xl"><Zap size={24} /></div>
-                  <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100">Conversion Power</h3>
+                  <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100">{t("client_detail.conversion_power")}</h3>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold mb-2">Total Conversions</p>
+                  <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold mb-2">{t("client_detail.total_conversions")}</p>
                   <p className="text-4xl font-black text-blue-600">{client.customFields?.total_conversions || '—'}</p>
-                  <p className="text-sm text-blue-700 mt-2 font-bold">{client.customFields?.avg_conversion_value || 'No data yet'}</p>
+                  <p className="text-sm text-blue-700 mt-2 font-bold">{client.customFields?.avg_conversion_value || t("client_detail.no_data_yet")}</p>
                 </div>
               </div>
             </motion.div>
@@ -643,12 +645,12 @@ export default function ClientDetailPage() {
               <div className="relative z-10">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-purple-100 text-purple-600 rounded-xl"><DollarSign size={24} /></div>
-                  <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100">ROI Victory</h3>
+                  <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100">{t("client_detail.roi_victory")}</h3>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold mb-2">Return on Investment</p>
+                  <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold mb-2">{t("client_detail.return_on_investment")}</p>
                   <p className="text-4xl font-black text-purple-600">{client.customFields?.roi_multiple || '—'}</p>
-                  <p className="text-sm text-purple-700 mt-2 font-bold">{client.customFields?.roi_detail || 'No data yet'}</p>
+                  <p className="text-sm text-purple-700 mt-2 font-bold">{client.customFields?.roi_detail || t("client_detail.no_data_yet")}</p>
                 </div>
               </div>
             </motion.div>
@@ -664,7 +666,7 @@ export default function ClientDetailPage() {
         >
           <div className="flex items-center gap-3 mb-8">
             <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
-            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">Your Partnership</h2>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">{t("client_detail.your_partnership")}</h2>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -690,8 +692,8 @@ export default function ClientDetailPage() {
                     <Briefcase size={32} className="text-white" />
                   </motion.div>
                   <div>
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-zinc-100">Company Profile</h3>
-                    <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold">Your business details</p>
+                    <h3 className="text-2xl font-black text-slate-800 dark:text-zinc-100">{t("client_detail.company_profile")}</h3>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold">{t("client_detail.your_business_details")}</p>
                   </div>
                 </div>
 
@@ -700,42 +702,42 @@ export default function ClientDetailPage() {
                   {isEditingProfile ? (
                     <form onSubmit={handleSaveProfile} className="space-y-4">
                       <motion.div className="p-4 bg-cyan-50 border border-cyan-200 rounded-2xl">
-                        <label className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2 block">Company Name</label>
+                        <label className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2 block">{t("client_detail.company_name")}</label>
                         <input className="w-full px-3 py-2 rounded-xl border border-cyan-200 font-black text-cyan-700 bg-white dark:bg-zinc-900" value={profileForm.companyName} onChange={e => setProfileForm({ ...profileForm, companyName: e.target.value })} />
                       </motion.div>
                       <motion.div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl">
-                        <label className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2 block">Project Name</label>
+                        <label className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2 block">{t("client_detail.project_name")}</label>
                         <input className="w-full px-3 py-2 rounded-xl border border-blue-200 font-black text-blue-700 bg-white dark:bg-zinc-900" value={profileForm.projectName} onChange={e => setProfileForm({ ...profileForm, projectName: e.target.value })} />
                       </motion.div>
                       <motion.div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl">
-                        <label className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2 block">Website</label>
+                        <label className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2 block">{t("client_detail.website")}</label>
                         <input className="w-full px-3 py-2 rounded-xl border border-purple-200 font-black text-purple-700 bg-white dark:bg-zinc-900" value={profileForm.websiteUrl} onChange={e => setProfileForm({ ...profileForm, websiteUrl: e.target.value })} />
                       </motion.div>
                       <div className="flex gap-2 pt-2">
-                        <button type="button" onClick={() => setIsEditingProfile(false)} className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-zinc-700 text-slate-700 dark:text-zinc-200 font-bold">Cancel</button>
-                        <button type="submit" className="px-6 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 text-white font-bold">Save</button>
+                        <button type="button" onClick={() => setIsEditingProfile(false)} className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-zinc-700 text-slate-700 dark:text-zinc-200 font-bold">{t("client_detail.cancel")}</button>
+                        <button type="submit" className="px-6 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 text-white font-bold">{t("client_detail.save")}</button>
                       </div>
                     </form>
                   ) : (
                     <>
                       <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.4 }} className="p-4 bg-cyan-50 border border-cyan-200 rounded-2xl hover:bg-cyan-100 transition-all flex justify-between items-center">
                         <div>
-                          <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2">Company Name</p>
+                          <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2">{t("client_detail.company_name")}</p>
                           <p className="text-xl font-black text-cyan-700">{client.companyName}</p>
                         </div>
                         <button onClick={() => { setIsEditingProfile(true); setProfileForm({ companyName: client.companyName || '', projectName: client.projectName || '', websiteUrl: client.website || client.websiteUrl || '' }); }} className="ml-4 p-2 rounded-full bg-cyan-100 hover:bg-cyan-200"><Edit2 className="w-4 h-4 text-cyan-700" /></button>
                       </motion.div>
                       <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.45 }} className="p-4 bg-blue-50 border border-blue-200 rounded-2xl hover:bg-blue-100 transition-all flex justify-between items-center">
                         <div>
-                          <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2">Project Name</p>
-                          <p className="text-xl font-black text-blue-700">{client.projectName || 'Active Project'}</p>
+                          <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2">{t("client_detail.project_name")}</p>
+                          <p className="text-xl font-black text-blue-700">{client.projectName || t('client_detail.active_project')}</p>
                         </div>
                         <button onClick={() => { setIsEditingProfile(true); setProfileForm({ companyName: client.companyName || '', projectName: client.projectName || '', websiteUrl: client.website || client.websiteUrl || '' }); }} className="ml-4 p-2 rounded-full bg-blue-100 hover:bg-blue-200"><Edit2 className="w-4 h-4 text-blue-700" /></button>
                       </motion.div>
                       <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.5 }} className="p-4 bg-purple-50 border border-purple-200 rounded-2xl hover:bg-purple-100 transition-all flex justify-between items-center">
                         <div>
-                          <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2">Website</p>
-                          <p className="text-lg font-black text-purple-700 truncate">{client.website || client.websiteUrl || 'www.yourwebsite.com'}</p>
+                          <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider mb-2">{t("client_detail.website")}</p>
+                          <p className="text-lg font-black text-purple-700 truncate">{client.website || client.websiteUrl || t('client_detail.default_website')}</p>
                         </div>
                         <button onClick={() => { setIsEditingProfile(true); setProfileForm({ companyName: client.companyName || '', projectName: client.projectName || '', websiteUrl: client.website || client.websiteUrl || '' }); }} className="ml-4 p-2 rounded-full bg-purple-100 hover:bg-purple-200"><Edit2 className="w-4 h-4 text-purple-700" /></button>
                       </motion.div>
@@ -768,14 +770,14 @@ export default function ClientDetailPage() {
                     <Users size={32} className="text-white" />
                   </motion.div>
                   <div>
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-zinc-100">Active Services</h3>
-                    <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold">What we're doing for you</p>
+                    <h3 className="text-2xl font-black text-slate-800 dark:text-zinc-100">{t("client_detail.active_services_title")}</h3>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 font-bold">{t("client_detail.what_we_do_for_you")}</p>
                   </div>
                 </div>
 
                 <div className="space-y-3 mb-6">
                   {serviceRequests.length === 0 ? (
-                    <p className="text-sm text-slate-500 dark:text-zinc-400 italic py-2">No active services yet.</p>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 italic py-2">{t("client_detail.no_active_services")}</p>
                   ) : (
                     serviceRequests.map((svc: any, idx: number) => (
                       <motion.div
@@ -803,7 +805,7 @@ export default function ClientDetailPage() {
                   whileTap={{ scale: 0.95 }}
                   className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-black rounded-xl shadow-lg hover:shadow-purple-500/30 transition-all"
                 >
-                  Connect With Your Team
+                  {t("client_detail.connect_with_team")}
                 </motion.button>
               </div>
             </motion.div>
@@ -818,7 +820,7 @@ export default function ClientDetailPage() {
         >
           <div className="flex items-center gap-3 mb-8">
             <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
-            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">Next Steps Forward</h2>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">{t("client_detail.next_steps_forward")}</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -834,8 +836,8 @@ export default function ClientDetailPage() {
               <div className="relative z-10">
                 <div className="flex items-start justify-between mb-6">
                   <div>
-                    <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">{client.nextMilestone || 'Next Campaign Phase'}</h3>
-                    <p className="text-sm text-slate-500 dark:text-zinc-400">{client.nextMilestoneDate || 'No deadline set'}</p>
+                    <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">{client.nextMilestone || t('client_detail.next_campaign_phase')}</h3>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400">{client.nextMilestoneDate || t('client_detail.no_deadline_set')}</p>
                   </div>
                   <div className="p-3 bg-green-100 text-green-600 rounded-xl"><Zap size={24} /></div>
                 </div>
@@ -846,7 +848,7 @@ export default function ClientDetailPage() {
                   className="h-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full mb-3"
                 />
                 <p className="text-sm font-bold text-slate-600 dark:text-zinc-300">
-                  {client.customFields?.campaign_phase_note || (client.nextMilestone ? `${client.customFields?.campaign_progress || 0}% Complete` : 'Not yet configured')}
+                  {client.customFields?.campaign_phase_note || (client.nextMilestone ? `${client.customFields?.campaign_progress || 0}% ${t('client_detail.complete')}` : t('client_detail.not_yet_configured'))}
                 </p>
               </div>
             </motion.div>
@@ -864,21 +866,21 @@ export default function ClientDetailPage() {
                 <div>
                   <div className="flex items-start justify-between mb-6">
                     <div>
-                      <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">Untapped Revenue</h3>
-                      <p className="text-sm text-slate-500 dark:text-zinc-400">Growth opportunities ahead</p>
+                      <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">{t("client_detail.untapped_revenue")}</h3>
+                      <p className="text-sm text-slate-500 dark:text-zinc-400">{t("client_detail.growth_opportunities_ahead")}</p>
                     </div>
                     <div className="p-3 bg-orange-100 text-orange-600 rounded-xl"><TrendingUp size={24} /></div>
                   </div>
                   <p className="text-lg font-bold text-slate-600 dark:text-zinc-300 mb-6">
-                    {client.customFields?.untapped_revenue_note || 'No data yet — admin can set this'}
+                    {client.customFields?.untapped_revenue_note || t('client_detail.no_data_admin_can_set')}
                   </p>
                 </div>
                 <div className="flex gap-3">
                   <Link href="/store" className="flex-1 py-3 text-center bg-orange-600/10 hover:bg-orange-600/20 text-orange-600 rounded-xl font-bold text-sm transition-all border border-orange-200">
-                    See Opportunities
+                    {t("client_detail.see_opportunities")}
                   </Link>
                   <button onClick={handleSimulateCall} disabled={loading} className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-orange-500/20 transition-all disabled:opacity-50">
-                    {loading ? 'Thinking...' : 'AI Call Simulation'}
+                    {loading ? t('client_detail.thinking') : t('client_detail.ai_call_simulation')}
                   </button>
                 </div>
               </div>
@@ -895,7 +897,7 @@ export default function ClientDetailPage() {
         >
           <div className="flex items-center gap-3 mb-8">
             <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
-            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">Detailed Insights</h2>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">{t("client_detail.detailed_insights")}</h2>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -911,19 +913,19 @@ export default function ClientDetailPage() {
               <div className="relative z-10">
                 <h3 className="text-lg font-black text-slate-800 dark:text-zinc-100 mb-6 flex items-center gap-2">
                   <Eye size={24} className="text-blue-600" />
-                  Performance Overview
+                  {t("client_detail.performance_overview")}
                 </h3>
                 <div className="space-y-3">
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-1">Total Visitors</p>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-1">{t("client_detail.total_visitors")}</p>
                     <p className="text-2xl font-black text-blue-700">{client.customFields?.total_visitors || '—'}</p>
                   </div>
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-1">Engagement Rate</p>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-1">{t("client_detail.engagement_rate")}</p>
                     <p className="text-2xl font-black text-blue-700">{client.customFields?.engagement_rate || '—'}</p>
                   </div>
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-1">Avg Time on Site</p>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-1">{t("client_detail.avg_time_on_site")}</p>
                     <p className="text-2xl font-black text-blue-700">{client.customFields?.avg_time_on_site || '—'}</p>
                   </div>
                 </div>
@@ -942,11 +944,11 @@ export default function ClientDetailPage() {
               <div className="relative z-10">
                 <h3 className="text-lg font-black text-slate-800 dark:text-zinc-100 mb-6 flex items-center gap-2">
                   <Activity size={24} className="text-purple-600" />
-                  Recent Activity
+                  {t("client_detail.recent_activity")}
                 </h3>
                 <div className="space-y-3">
                   {activities.length === 0 ? (
-                    <p className="text-sm text-slate-500 dark:text-zinc-400 italic">No activities recorded yet.</p>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 italic">{t("client_detail.no_activities_recorded")}</p>
                   ) : (
                     activities.slice(0, 3).map((item: any, idx: number) => (
                       <motion.div
@@ -981,21 +983,21 @@ export default function ClientDetailPage() {
               <div className="relative z-10">
                 <h3 className="text-lg font-black text-slate-800 dark:text-zinc-100 mb-6 flex items-center gap-2">
                   <Users size={24} className="text-pink-600" />
-                  Your Team
+                  {t("client_detail.your_team")}
                 </h3>
                 <div className="space-y-3">
                   {(() => {
                     const assignedEmp = employees.find((e: any) => e.id === client.assignedEmployeeId);
                     return assignedEmp ? (
                       <div className="p-4 bg-pink-50 border border-pink-200 rounded-xl">
-                        <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-2">Account Manager</p>
+                        <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-2">{t("client_detail.account_manager")}</p>
                         <p className="text-sm font-black text-pink-700">{assignedEmp.name}</p>
                         <p className="text-xs text-slate-400 mt-1">{assignedEmp.email}</p>
                       </div>
                     ) : (
                       <div className="p-4 bg-pink-50 border border-pink-200 rounded-xl">
-                        <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-2">Account Manager</p>
-                        <p className="text-sm font-medium text-slate-400 italic">Not assigned yet</p>
+                        <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mb-2">{t("client_detail.account_manager")}</p>
+                        <p className="text-sm font-medium text-slate-400 italic">{t("client_detail.not_assigned_yet")}</p>
                       </div>
                     );
                   })()}
@@ -1003,11 +1005,11 @@ export default function ClientDetailPage() {
                     whileHover={{ scale: 1.05 }}
                     className="w-full py-3 bg-gradient-to-r from-pink-600 to-rose-600 text-white rounded-xl font-bold text-sm shadow-lg hover:shadow-pink-500/30 transition-all"
                   >
-                    Message Your Team
+                    {t("client_detail.message_your_team")}
                   </motion.button>
                 </div>
               </div>
-            </motion.div>
+</motion.div>
           </div>
         </motion.div>
 
@@ -1016,7 +1018,7 @@ export default function ClientDetailPage() {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <div className="h-1 w-12 bg-gradient-to-r from-orange-400 to-red-500 rounded-full"></div>
-              <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">SWOT Analysis</h2>
+              <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">{t("client_detail.swot_analysis")}</h2>
             </div>
             {client.swot_analysis && (
               <button
@@ -1025,7 +1027,7 @@ export default function ClientDetailPage() {
                 className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-red-500/30 transition-all disabled:opacity-50"
               >
                 {isSwotLoading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-                {isSwotLoading ? 'Analyzing...' : 'Refresh SWOT'}
+                {isSwotLoading ? t("client_detail.analyzing") : t("client_detail.refresh_swot")}
               </button>
             )}
           </div>
@@ -1038,7 +1040,7 @@ export default function ClientDetailPage() {
                   swot = JSON.parse(client.swot_analysis);
                 } catch (e) {}
 
-                if (!swot) return <div className="col-span-2 text-slate-500 italic p-6 bg-slate-50 rounded-2xl">Invalid SWOT data. Please regenerate.</div>;
+                if (!swot) return <div className="col-span-2 text-slate-500 italic p-6 bg-slate-50 rounded-2xl">{t("client_detail.invalid_swot")}</div>;
 
                 return (
                   <>
@@ -1050,7 +1052,7 @@ export default function ClientDetailPage() {
 
                     <div className="p-6 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-3xl">
                       <h3 className="text-lg font-black text-emerald-800 dark:text-emerald-400 mb-4 flex items-center gap-2">
-                        <TrendingUp size={20} /> Strengths
+                        <TrendingUp size={20} /> {t("client_detail.swot_strengths")}
                       </h3>
                       <ul className="space-y-3">
                         {swot.strengths?.map((s: string, i: number) => (
@@ -1063,7 +1065,7 @@ export default function ClientDetailPage() {
 
                     <div className="p-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-3xl">
                       <h3 className="text-lg font-black text-red-800 dark:text-red-400 mb-4 flex items-center gap-2">
-                        <TrendingDown size={20} /> Weaknesses
+                        <TrendingDown size={20} /> {t("client_detail.swot_weaknesses")}
                       </h3>
                       <ul className="space-y-3">
                         {swot.weaknesses?.map((w: string, i: number) => (
@@ -1076,7 +1078,7 @@ export default function ClientDetailPage() {
 
                     <div className="p-6 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-3xl">
                       <h3 className="text-lg font-black text-blue-800 dark:text-blue-400 mb-4 flex items-center gap-2">
-                        <Lightbulb size={20} /> Opportunities
+                        <Lightbulb size={20} /> {t("client_detail.swot_opportunities")}
                       </h3>
                       <ul className="space-y-3">
                         {swot.opportunities?.map((o: string, i: number) => (
@@ -1089,12 +1091,12 @@ export default function ClientDetailPage() {
 
                     <div className="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-3xl">
                       <h3 className="text-lg font-black text-amber-800 dark:text-amber-400 mb-4 flex items-center gap-2">
-                        <ShieldAlert size={20} /> Threats
+                        <ShieldAlert size={20} /> {t("client_detail.swot_threats")}
                       </h3>
                       <ul className="space-y-3">
-                        {swot.threats?.map((t: string, i: number) => (
+                        {swot.threats?.map((th: string, i: number) => (
                           <li key={i} className="flex gap-2 text-sm text-amber-700 dark:text-amber-300">
-                            <span className="font-bold shrink-0 mt-0.5">•</span> <span>{t}</span>
+                            <span className="font-bold shrink-0 mt-0.5">•</span> <span>{th}</span>
                           </li>
                         ))}
                       </ul>
@@ -1108,15 +1110,15 @@ export default function ClientDetailPage() {
               <div className="w-16 h-16 bg-white dark:bg-zinc-800 rounded-full flex items-center justify-center shadow-sm mb-4">
                 <Radar size={28} className="text-slate-400" />
               </div>
-              <h3 className="text-lg font-bold text-slate-700 dark:text-zinc-300 mb-2">No SWOT Analysis yet</h3>
-              <p className="text-sm text-slate-500 text-center max-w-md mb-6">Run a deep AI analysis of this client's website to identify their Strengths, Weaknesses, Opportunities, and Threats.</p>
+              <h3 className="text-lg font-bold text-slate-700 dark:text-zinc-300 mb-2">{t("client_detail.no_swot_yet")}</h3>
+              <p className="text-sm text-slate-500 text-center max-w-md mb-6">{t("client_detail.no_swot_desc")}</p>
               <button
                 onClick={handleGenerateSwot}
                 disabled={isSwotLoading || !client.websiteUrl}
                 className="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 dark:bg-white dark:hover:bg-slate-200 dark:text-slate-900 text-white rounded-xl font-bold text-sm shadow-sm transition-all disabled:opacity-50 flex items-center gap-2"
               >
                 {isSwotLoading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-                {isSwotLoading ? 'Analyzing...' : (client.websiteUrl ? 'Perform SWOT Analysis' : 'Add Website URL first')}
+                {isSwotLoading ? t("client_detail.analyzing") : (client.websiteUrl ? t("client_detail.perform_swot") : t("client_detail.add_website_first"))}
               </button>
             </div>
           )}
@@ -1126,18 +1128,18 @@ export default function ClientDetailPage() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.9 }} className="mb-16">
           <div className="flex items-center gap-3 mb-6">
             <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
-            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">Activity Timeline</h2>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">{t("client_detail.activity_timeline")}</h2>
           </div>
           {/* Filters */}
           <div className="flex flex-wrap gap-2 mb-6">
             {[
-              { key: 'all', label: 'All' },
-              { key: 'email', label: 'Emails' },
-              { key: 'call', label: 'Calls' },
-              { key: 'invoice', label: 'Invoices' },
-              { key: 'milestone', label: 'Milestones' },
-              { key: 'file', label: 'Files' },
-              { key: 'activity', label: 'Activities' },
+              { key: 'all', label: t('client_detail.filter_all') },
+              { key: 'email', label: t('client_detail.filter_emails') },
+              { key: 'call', label: t('client_detail.filter_calls') },
+              { key: 'invoice', label: t('client_detail.filter_invoices') },
+              { key: 'milestone', label: t('client_detail.filter_milestones') },
+              { key: 'file', label: t('client_detail.filter_files') },
+              { key: 'activity', label: t('client_detail.filter_activities') },
             ].map(f => (
               <button key={f.key} onClick={() => setTimelineFilter(f.key)}
                 className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${timelineFilter === f.key ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 hover:bg-slate-50 dark:bg-zinc-950'}`}>
@@ -1150,7 +1152,11 @@ export default function ClientDetailPage() {
             <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-indigo-300 via-purple-300 to-transparent"></div>
             <div className="space-y-4">
               {timeline.filter(e => timelineFilter === 'all' || e.type === timelineFilter).length === 0 ? (
-                <p className="text-sm text-slate-400 italic pl-14">No events found.</p>
+                <div className="flex flex-col items-center text-center py-12 px-6 rounded-2xl border-2 border-dashed border-slate-200 dark:border-zinc-700 bg-white/50 dark:bg-zinc-900/40">
+                  <Activity size={30} className="text-slate-300 dark:text-zinc-600 mb-3" />
+                  <p className="text-sm font-semibold text-slate-500 dark:text-zinc-300">{t("client_detail.no_timeline_activity")}</p>
+                  <p className="text-xs text-slate-400 dark:text-zinc-400 mt-1">{t("client_detail.timeline_activity_desc")}</p>
+                </div>
               ) : (
                 timeline.filter(e => timelineFilter === 'all' || e.type === timelineFilter).slice(0, 30).map((ev: any, idx: number) => {
                   const colors: Record<string, { bg: string; ring: string; icon: string }> = {
@@ -1228,7 +1234,7 @@ export default function ClientDetailPage() {
                 
                 {(selectedActivity.detail || selectedActivity.content) && (
                   <div style={{ marginBottom: 20 }}>
-                    <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 m-0 mb-2">Summary</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 m-0 mb-2">{t("client_detail.summary")}</p>
                     <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-xl text-sm text-slate-600 dark:text-zinc-300">
                       {selectedActivity.content || selectedActivity.detail}
                     </div>
@@ -1237,7 +1243,7 @@ export default function ClientDetailPage() {
 
                 {selectedActivity.details && (
                   <div>
-                    <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 m-0 mb-2">Details</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 m-0 mb-2">{t("client_detail.details")}</p>
                     <div className="bg-slate-100 dark:bg-zinc-950 p-4 rounded-xl text-sm text-slate-800 dark:text-zinc-200 whitespace-pre-wrap font-mono border border-slate-200 dark:border-zinc-800">
                       {selectedActivity.details}
                     </div>
@@ -1245,7 +1251,7 @@ export default function ClientDetailPage() {
                 )}
                 
                 {!selectedActivity.detail && !selectedActivity.content && !selectedActivity.details && (
-                  <p className="text-center text-slate-400 italic p-5">No additional details available.</p>
+                  <p className="text-center text-slate-400 italic p-5">{t("client_detail.no_additional_details")}</p>
                 )}
               </motion.div>
             </motion.div>
@@ -1264,16 +1270,16 @@ export default function ClientDetailPage() {
           className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl"
         >
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100">Edit Performance Metrics</h3>
+            <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100">{t("client_detail.edit_performance_metrics")}</h3>
             <button onClick={() => setIsEditingMetrics(false)} className="p-2 text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:text-zinc-100 transition-colors">
               <X size={20} />
             </button>
           </div>
 
           {/* Hero Stats */}
-          <p className="text-xs font-black text-cyan-400 uppercase tracking-widest mb-3">Hero Stats</p>
+          <p className="text-xs font-black text-cyan-400 uppercase tracking-widest mb-3">{t("client_detail.hero_stats")}</p>
           <div className="grid grid-cols-2 gap-3 mb-6">
-            {([['total_revenue', 'Total Revenue (e.g. $152K)'], ['growth_rate', 'Growth Rate (e.g. +34%)']] as [string, string][]).map(([key, label]) => (
+            {([['total_revenue', t('client_detail.total_revenue_label')], ['growth_rate', t('client_detail.growth_rate_label')]] as [string, string][]).map(([key, label]) => (
               <div key={key}>
                 <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">{label}</label>
                 <input
@@ -1286,12 +1292,12 @@ export default function ClientDetailPage() {
           </div>
 
           {/* Performance Story */}
-          <p className="text-xs font-black text-green-400 uppercase tracking-widest mb-3">Performance Story</p>
+          <p className="text-xs font-black text-green-400 uppercase tracking-widest mb-3">{t("client_detail.performance_story_section")}</p>
           <div className="grid grid-cols-2 gap-3 mb-6">
             {([
-              ['monthly_revenue', 'Monthly Revenue (e.g. $34,560)'],
+              ['monthly_revenue', t('client_detail.this_months_revenue')],
               ['revenue_growth_pct', 'Revenue Growth % (e.g. +28%)'],
-              ['total_conversions', 'Total Conversions (e.g. 1,247)'],
+              ['total_conversions', t('client_detail.total_conversions')],
               ['avg_conversion_value', 'Avg Conversion Value (e.g. $27.66)'],
               ['roi_multiple', 'ROI Multiple (e.g. 7.2x)'],
               ['roi_detail', 'ROI Detail (e.g. $720 back per $100)'],
@@ -1308,10 +1314,10 @@ export default function ClientDetailPage() {
           </div>
 
           {/* Next Steps */}
-          <p className="text-xs font-black text-orange-400 uppercase tracking-widest mb-3">Next Steps Forward</p>
+          <p className="text-xs font-black text-orange-400 uppercase tracking-widest mb-3">{t("client_detail.next_steps_forward")}</p>
           <div className="grid grid-cols-2 gap-3 mb-6">
             <div>
-              <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">Campaign Progress (0–100)</label>
+              <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">{t("client_detail.campaign_progress_0_100")}</label>
               <input
                 type="number" min="0" max="100"
                 value={metricsForm.campaign_progress || ''}
@@ -1320,7 +1326,7 @@ export default function ClientDetailPage() {
               />
             </div>
             <div>
-              <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">Phase Note (e.g. Expansion Phase Ready)</label>
+              <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">{t("client_detail.phase_note")}</label>
               <input
                 value={metricsForm.campaign_phase_note || ''}
                 onChange={e => setMetricsForm(p => ({ ...p, campaign_phase_note: e.target.value }))}
@@ -1328,7 +1334,7 @@ export default function ClientDetailPage() {
               />
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">Untapped Revenue Note (e.g. Potential +$84K annually)</label>
+              <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">{t("client_detail.untapped_revenue_note")}</label>
               <input
                 value={metricsForm.untapped_revenue_note || ''}
                 onChange={e => setMetricsForm(p => ({ ...p, untapped_revenue_note: e.target.value }))}
@@ -1338,12 +1344,12 @@ export default function ClientDetailPage() {
           </div>
 
           {/* Detailed Insights */}
-          <p className="text-xs font-black text-purple-400 uppercase tracking-widest mb-3">Detailed Insights</p>
+          <p className="text-xs font-black text-purple-400 uppercase tracking-widest mb-3">{t("client_detail.detailed_insights_section")}</p>
           <div className="grid grid-cols-3 gap-3 mb-8">
             {([
-              ['total_visitors', 'Total Visitors (e.g. 24.5K)'],
-              ['engagement_rate', 'Engagement Rate (e.g. 68%)'],
-              ['avg_time_on_site', 'Avg Time on Site (e.g. 4m 28s)'],
+              ['total_visitors', t('client_detail.total_visitors')],
+              ['engagement_rate', t('client_detail.engagement_rate')],
+              ['avg_time_on_site', t('client_detail.avg_time_on_site')],
             ] as [string, string][]).map(([key, label]) => (
               <div key={key}>
                 <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">{label}</label>
@@ -1361,14 +1367,14 @@ export default function ClientDetailPage() {
               onClick={() => setIsEditingMetrics(false)}
               className="flex-1 py-3 border border-slate-300 dark:border-zinc-600 text-slate-600 dark:text-zinc-300 rounded-xl font-bold text-sm hover:bg-slate-100 dark:bg-zinc-800 transition-all"
             >
-              Cancel
+              {t("client_detail.cancel")}
             </button>
             <button
               onClick={handleSaveMetrics}
               disabled={loading}
               className="flex-1 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50"
             >
-              {loading ? 'Saving…' : 'Save Metrics'}
+              {loading ? t('client_detail.saving') : t('client_detail.save_metrics')}
             </button>
           </div>
         </motion.div>

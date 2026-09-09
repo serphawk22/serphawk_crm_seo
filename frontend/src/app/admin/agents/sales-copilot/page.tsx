@@ -3,18 +3,12 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bot, Send, Loader2, Sparkles, RefreshCw, Copy, Check } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
-
-const SUGGESTIONS = [
-  "Write a cold outreach email for a local dentist clinic",
-  "Generate a follow-up sequence for a SaaS demo no-show",
-  "Create a proposal intro for an e-commerce SEO project",
-  "Help me handle a price objection on a $2k/mo SEO retainer",
-];
 
 const MOCK_RESPONSES: Record<string, string> = {
   default: `**Great question!** Here's a tailored approach based on your request:
@@ -40,7 +34,15 @@ Best,
 };
 
 export default function SalesCopilotPage() {
+  const { t } = useLanguage();
   const [messages, setMessages] = useState<Message[]>([]);
+
+  const SUGGESTIONS = [
+    t("agents_copilot.suggestion_1"),
+    t("agents_copilot.suggestion_2"),
+    t("agents_copilot.suggestion_3"),
+    t("agents_copilot.suggestion_4"),
+  ];
 
   useEffect(() => {
     const saved = localStorage.getItem("salesCopilotMessages");
@@ -105,10 +107,10 @@ export default function SalesCopilotPage() {
         </div>
         <div>
           <h1 className="text-xl font-extrabold" style={{ color: "var(--text-primary)" }}>
-            Sales Copilot
+            {t("agents_copilot.title")}
           </h1>
           <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-            AI-powered sales writing & coaching
+            {t("agents_copilot.subtitle")}
           </p>
         </div>
         <button
@@ -124,7 +126,7 @@ export default function SalesCopilotPage() {
           className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors hover:bg-gray-100"
           style={{ color: "var(--text-secondary)" }}
         >
-          <RefreshCw className="w-3.5 h-3.5" /> New Chat
+          <RefreshCw className="w-3.5 h-3.5" /> {t("agents_copilot.new_chat")}
         </button>
       </motion.div>
 
@@ -202,9 +204,9 @@ export default function SalesCopilotPage() {
                   style={{ color: "var(--text-secondary)" }}
                 >
                   {copied === idx ? (
-                    <><Check className="w-3 h-3 text-green-500" /> Copied</>
+                    <><Check className="w-3 h-3 text-green-500" /> {t("agents_copilot.copied")}</>
                   ) : (
-                    <><Copy className="w-3 h-3" /> Copy</>
+                    <><Copy className="w-3 h-3" /> {t("agents_copilot.copy")}</>
                   )}
                 </button>
               )}
@@ -225,7 +227,7 @@ export default function SalesCopilotPage() {
             >
               <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#7c3aed" }} />
               <span className="text-[13px]" style={{ color: "var(--text-secondary)" }}>
-                Writing for you…
+                {t("agents_copilot.writing")}
               </span>
             </div>
           </motion.div>
@@ -246,7 +248,7 @@ export default function SalesCopilotPage() {
               sendMessage();
             }
           }}
-          placeholder="Ask me to write an email, handle an objection, draft a proposal…"
+          placeholder={t("agents_copilot.placeholder")}
           rows={2}
           className="flex-1 bg-transparent text-[13.5px] outline-none resize-none"
           style={{ color: "var(--text-primary)" }}

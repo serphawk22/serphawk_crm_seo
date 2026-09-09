@@ -97,36 +97,54 @@ const defaultSidebarSections = [
     id: "section-inventory",
     heading: "INVENTORY",
     items: [
-      { id: "item-inventory", name: "Inventory", icon: "Package", href: "/inventory", roles: ["Admin", "SalesManager"] },
-      { id: "item-products", name: "Products Catalog", icon: "Package", href: "/products", roles: ["Admin", "SalesManager"] },
-      { id: "item-orders", name: "Orders", icon: "ShoppingCart", href: "/orders", roles: ["Admin", "SalesManager"] },
-      { id: "item-billing", name: "Billing", icon: "FileText", href: "/billing", roles: ["Admin", "SalesManager"] },
-      { id: "item-proposals", name: "Proposals", icon: "FileEdit", href: "/proposals", roles: ["Admin", "SalesManager"] },
-      { id: "item-marketplace", name: "Marketplace", icon: "ShoppingBag", href: "/admin/marketplace", roles: ["Admin", "SalesManager"] },
+      { id: "item-inventory", name: "Inventory", icon: "Package", href: "/inventory", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-products", name: "Products Catalog", icon: "Package", href: "/products", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-orders", name: "Orders", icon: "ShoppingCart", href: "/orders", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-billing", name: "Billing", icon: "FileText", href: "/billing", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-proposals", name: "Proposals", icon: "FileEdit", href: "/proposals", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-marketplace", name: "Marketplace", icon: "ShoppingBag", href: "/admin/marketplace", roles: ["Admin", "SalesManager", "Demo"] },
     ],
   },
   {
     id: "section-support",
     heading: "SUPPORT",
     items: [
-      { id: "item-cases", name: "Cases", icon: "HeadphonesIcon", href: "/support/cases", roles: ["Admin", "SalesManager"] },
-      { id: "item-solutions", name: "Solutions", icon: "BookOpen", href: "/support/solutions", roles: ["Admin", "SalesManager"] },
+      { id: "item-cases", name: "Cases", icon: "HeadphonesIcon", href: "/support/cases", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-solutions", name: "Solutions", icon: "BookOpen", href: "/support/solutions", roles: ["Admin", "SalesManager", "Demo"] },
     ],
   },
   {
     id: "section-system",
     heading: "SYSTEM",
     items: [
-      { id: "item-automations", name: "Automations", icon: "Zap", href: "/admin/automations", roles: ["Admin", "SalesManager"] },
-      { id: "item-import", name: "Import Data", icon: "FileBarChart2", href: "/import", roles: ["Admin", "SalesManager"] },
+      { id: "item-import", name: "Import Data", icon: "FileBarChart2", href: "/import", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-demo-accounts", name: "Demo Account Data", icon: "Users", href: "/admin/telemetry", roles: ["Admin", "SuperAdmin"] },
     ],
   },
 ];
 
 // --- Sortable Section Component ---
-function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection, unreadCount, favourites, onToggleFavourite, searchQuery }: any) {
+const DEFAULT_HEADINGS = ["CRM", "PROJECTS & ACTIVITIES", "TEAMS", "AI AGENTS", "INVENTORY", "SUPPORT", "SYSTEM"];
+const ITEM_KEY_OVERRIDES: Record<string, string> = {
+  "item-teams": "team_directory",
+  "item-products": "catalog",
+  "item-import": "import_data",
+};
+function sidebarItemKey(id: string): string {
+  return ITEM_KEY_OVERRIDES[id] || String(id).replace("item-", "").replace(/-/g, "_");
+}
+function sidebarSectionKey(id: string): string {
+  return String(id).replace("section-", "").replace(/-/g, "_");
+}
+
+function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection, unreadCount, favourites, onToggleFavourite, searchQuery, isOpen, onToggleSection }: any) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
+  const { t } = useLanguage();
+  const itemLabel = (item: any) => {
+    const k = `sidebar.${sidebarItemKey(item.id)}`;
+    const v = t(k);
+    return v === k ? item.name : v;
+  };
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -149,10 +167,13 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
 
   if (visibleItems.length === 0) return null;
 
+  const hasHeading = section.heading !== null;
+  const chevronVisible = hasHeading && !collapsed;
+
   return (
     <div ref={setNodeRef} style={style} className={cn("flex flex-col mt-2")}>
       <AnimatePresence>
-        {!collapsed && section.heading !== null && (
+        {chevronVisible && (
           <div className="flex items-center group px-2 pt-1 pb-1 gap-1">
             {isEditMode && (
               <div {...attributes} {...listeners} className="cursor-grab hover:bg-slate-200 dark:hover:bg-slate-700 p-0.5 rounded">
@@ -173,91 +194,112 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                 <Check onClick={handleSave} className="w-3 h-3 text-green-500 cursor-pointer" />
               </div>
             ) : (
-              <motion.div
+              <motion.button
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="flex-1 text-[9px] font-bold tracking-[0.1em] uppercase flex justify-between items-center"
+                onClick={() => onToggleSection(section.id)}
+                className="flex-1 text-[9px] font-bold tracking-[0.1em] uppercase flex justify-between items-center cursor-pointer select-none hover:opacity-80 transition-opacity"
                 style={{ color: "var(--text-secondary)" }}
               >
-                <span>{section.heading}</span>
-                {isEditMode && (
-                  <Edit2 onClick={() => setIsEditing(true)} className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity" />
-                )}
-              </motion.div>
+                <span>{DEFAULT_HEADINGS.includes(section.heading || "") ? t(`sidebar.section_${sidebarSectionKey(section.id)}`) : section.heading}</span>
+                <div className="flex items-center gap-1">
+                  {isEditMode && (
+                    <Edit2 onClick={(e) => { e.stopPropagation(); setIsEditing(true); }} className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  )}
+                  <motion.div
+                    animate={{ rotate: isOpen ? 180 : 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <ChevronDown className="w-3 h-3" style={{ color: "var(--text-secondary)" }} />
+                  </motion.div>
+                </div>
+              </motion.button>
             )}
           </div>
         )}
       </AnimatePresence>
 
-      <div className="flex flex-col gap-[1px]">
-        {visibleItems.map((item: any) => {
-          const isActive = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href));
-          const IconComp = iconMap[item.icon] || LayoutDashboard;
-          const isFav = favourites?.includes(item.id);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "relative group flex items-center gap-2 rounded-[8px] transition-all duration-150 select-none shrink-0",
-                collapsed ? "w-9 h-9 justify-center mx-auto" : "py-[4px] px-2 h-[28px]",
-                !isActive && "hover:bg-gray-50 dark:hover:bg-slate-800/50"
-              )}
-              style={isActive ? { background: "rgba(37,99,235,0.08)", color: "#2563eb" } : { color: "var(--sidebar-text)" }}
-            >
-              {isActive && !collapsed && (
-                <motion.span layoutId="sidebar-active-indicator" className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-[18px] rounded-full bg-blue-600" />
-              )}
-              <IconComp className={cn("w-[16px] h-[16px] shrink-0 transition-colors", isActive ? "text-blue-600" : "group-hover:text-blue-500")} />
-              <AnimatePresence>
-                {!collapsed && (
-                  <motion.span
-                    initial={{ opacity: 0, x: -6 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -6 }}
-                    transition={{ duration: 0.14 }}
-                    className={cn("flex-1 text-[13px] font-medium truncate", isActive && "font-semibold")}
-                  >
-                    {item.name}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-              {(item.id === "item-notifications" ? unreadCount : item.badge) > 0 && !collapsed && (
-                <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center">
-                  {item.id === "item-notifications" ? unreadCount : item.badge}
-                </span>
-              )}
-              {!collapsed && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onToggleFavourite(item.id);
-                  }}
-                  title={isFav ? "Remove from favourites" : "Add to favourites"}
-                  className={cn(
-                    "p-0.5 rounded transition-all shrink-0 hover:scale-110",
-                    isFav 
-                      ? "opacity-100" 
-                      : "opacity-0 group-hover:opacity-40 hover:!opacity-100"
-                  )}
-                >
-                  <Star 
+      <AnimatePresence initial={false}>
+        {(isOpen || collapsed) && (
+          <motion.div
+            initial={collapsed ? false : { height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeInOut" }}
+            className="overflow-hidden"
+          >
+            <div className="flex flex-col gap-[1px]">
+              {visibleItems.map((item: any) => {
+                const isActive = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href));
+                const IconComp = iconMap[item.icon] || LayoutDashboard;
+                const isFav = favourites?.includes(item.id);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
                     className={cn(
-                      "w-3.5 h-3.5 transition-colors",
-                      isFav 
-                        ? "fill-amber-400 text-amber-400" 
-                        : "text-slate-400 dark:text-slate-500 hover:text-amber-400"
-                    )} 
-                  />
-                </button>
-              )}
-            </Link>
-          );
-        })}
-      </div>
+                      "relative group flex items-center gap-2 rounded-[8px] transition-all duration-150 select-none shrink-0",
+                      collapsed ? "w-9 h-9 justify-center mx-auto" : "py-[4px] px-2 h-[28px]",
+                      !isActive && "hover:bg-gray-50 dark:hover:bg-slate-800/50"
+                    )}
+                    style={isActive ? { background: "rgba(37,99,235,0.08)", color: "#2563eb" } : { color: "var(--sidebar-text)" }}
+                  >
+                    {isActive && !collapsed && (
+                      <motion.span layoutId="sidebar-active-indicator" className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-[18px] rounded-full bg-blue-600" />
+                    )}
+                    <IconComp className={cn("w-[16px] h-[16px] shrink-0 transition-colors", isActive ? "text-blue-600" : "group-hover:text-blue-500")} />
+                    <AnimatePresence>
+                      {!collapsed && (
+                        <motion.span
+                          initial={{ opacity: 0, x: -6 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: -6 }}
+                          transition={{ duration: 0.14 }}
+                          className={cn("flex-1 text-[13px] font-medium truncate", isActive && "font-semibold")}
+                        >
+                          {itemLabel(item)}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                    {(item.id === "item-notifications" ? unreadCount : item.badge) > 0 && !collapsed && (
+                      <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center">
+                        {item.id === "item-notifications" ? unreadCount : item.badge}
+                      </span>
+                    )}
+                    {!collapsed && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onToggleFavourite(item.id);
+                        }}
+                        title={isFav ? t("sidebar.remove_favourite") : t("sidebar.add_favourite")}
+                        className={cn(
+                          "p-0.5 rounded transition-all shrink-0 hover:scale-110",
+                          isFav 
+                            ? "opacity-100" 
+                            : "opacity-0 group-hover:opacity-40 hover:!opacity-100"
+                        )}
+                      >
+                        <Star 
+                          className={cn(
+                            "w-3.5 h-3.5 transition-colors",
+                            isFav 
+                              ? "fill-amber-400 text-amber-400" 
+                              : "text-slate-400 dark:text-slate-500 hover:text-amber-400"
+                          )} 
+                        />
+                      </button>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -273,6 +315,53 @@ export function Sidebar({ role }: SidebarProps) {
   const [favourites, setFavourites] = useState<string[]>([]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
+    // Default: all sections with headings start open
+    const initial: Record<string, boolean> = {};
+    for (const sec of defaultSidebarSections) {
+      if (sec.heading !== null) initial[sec.id] = true;
+    }
+    return initial;
+  });
+
+  // Auto-expand the section containing the current route
+  useEffect(() => {
+    if (!pathname) return;
+    setOpenSections(prev => {
+      const next = { ...prev };
+      let changed = false;
+      for (const sec of sections) {
+        if (sec.heading === null) continue;
+        const hasActive = sec.items?.some((item: any) =>
+          pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href))
+        );
+        if (hasActive && !next[sec.id]) {
+          next[sec.id] = true;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [pathname, sections]);
+
+  const toggleSection = (sectionId: string) => {
+    setOpenSections(prev => {
+      const next = { ...prev, [sectionId]: !prev[sectionId] };
+      try { localStorage.setItem(`crm_sections_open_${user?.id || 'default'}`, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  // Load saved section open state on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`crm_sections_open_${user?.id || 'default'}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setOpenSections(prev => ({ ...prev, ...parsed }));
+      }
+    } catch {}
+  }, [user?.id]);
 
   const fetchSidebarPrefs = useCallback(async () => {
     const localFavKey = `crm_favourites_${user?.id || 'default'}`;
@@ -432,9 +521,15 @@ export function Sidebar({ role }: SidebarProps) {
     .filter(item => role === 'SuperAdmin' || item.roles?.includes(role))
     .filter(item => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
+  const labelFor = (item: any) => {
+    const k = `sidebar.${sidebarItemKey(item.id)}`;
+    const v = t(k);
+    return v === k ? item.name : v;
+  };
+
   // ── Language Toggle ──
   const { i18n } = useTranslation();
-  const { setLanguage } = useLanguage();
+  const { t, setLanguage } = useLanguage();
   const [activeLang, setActiveLang] = useState<"en" | "es">("en");
 
   const switchLanguage = useCallback((lang: "en" | "es") => {
@@ -505,12 +600,12 @@ export function Sidebar({ role }: SidebarProps) {
               >
                 <div>
                   <span className="block font-bold text-[14px] leading-tight tracking-tight truncate" style={{ color: "var(--text-primary)" }}>SERP Hawk</span>
-                  <span className="block text-[10px] font-medium truncate" style={{ color: "var(--text-secondary)" }}>Corporate HQ</span>
+                  <span className="block text-[10px] font-medium truncate" style={{ color: "var(--text-secondary)" }}>{t("sidebar.corporate_hq")}</span>
                 </div>
                 <button 
                   onClick={() => setIsEditMode(!isEditMode)} 
                   className={cn("p-1.5 rounded-lg transition-colors", isEditMode ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800")}
-                  title="Customize Sidebar"
+                  title={t("sidebar.customize_sidebar")}
                 >
                   <Edit2 className="w-3.5 h-3.5" />
                 </button>
@@ -523,9 +618,9 @@ export function Sidebar({ role }: SidebarProps) {
         <div className={cn("shrink-0 pb-1.5", collapsed ? "flex justify-center px-2" : "px-3")}>
           {collapsed ? (
             // Collapsed: single flag, click cycles EN ↔ ES
-            <button
-              onClick={() => switchLanguage(activeLang === "en" ? "es" : "en")}
-              title={activeLang === "en" ? "Switch to Español" : "Switch to English"}
+<button
+                  onClick={() => switchLanguage(activeLang === "en" ? "es" : "en")}
+                  title={activeLang === "en" ? t("sidebar.switch_es") : t("sidebar.switch_en")}
               className="w-8 h-8 rounded-xl flex items-center justify-center text-lg hover:bg-white/10 transition-all"
             >
               {activeLang === "en" ? "🇺🇸" : "🇪🇸"}
@@ -538,7 +633,7 @@ export function Sidebar({ role }: SidebarProps) {
             >
               <button
                 onClick={() => switchLanguage("en")}
-                title="Switch to English"
+                title={t("sidebar.switch_en")}
                 className={cn(
                   "flex-1 flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-black transition-all duration-200",
                   activeLang === "en" ? "bg-white shadow-sm" : "hover:opacity-70"
@@ -551,7 +646,7 @@ export function Sidebar({ role }: SidebarProps) {
 
               <button
                 onClick={() => switchLanguage("es")}
-                title="Cambiar a Español"
+                title={t("sidebar.switch_es")}
                 className={cn(
                   "flex-1 flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-black transition-all duration-200",
                   activeLang === "es" ? "bg-white shadow-sm" : "hover:opacity-70"
@@ -581,7 +676,7 @@ export function Sidebar({ role }: SidebarProps) {
                 <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-secondary)" }} />
                 <input
                   type="text"
-                  placeholder="Search..."
+                  placeholder={t("sidebar.search")}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="flex-1 bg-transparent text-[12px] outline-none placeholder-gray-400"
@@ -608,7 +703,7 @@ export function Sidebar({ role }: SidebarProps) {
                     style={{ color: "var(--text-secondary)" }}
                   >
                     <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
-                    <span>FAVOURITES</span>
+                    {t("sidebar.favourites")}
                   </span>
                   <span className="text-[9px] text-slate-400 font-medium px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800">
                     {favouriteItems.length}
@@ -643,7 +738,7 @@ export function Sidebar({ role }: SidebarProps) {
                             transition={{ duration: 0.14 }}
                             className={cn("flex-1 text-[13px] font-medium truncate", isActive && "font-semibold")}
                           >
-                            {item.name}
+                            {labelFor(item)}
                           </motion.span>
                         )}
                       </AnimatePresence>
@@ -660,7 +755,7 @@ export function Sidebar({ role }: SidebarProps) {
                             e.stopPropagation();
                             handleToggleFavourite(item.id);
                           }}
-                          title="Remove from favourites"
+                          title={t("sidebar.remove_favourite")}
                           className="p-0.5 rounded transition-all shrink-0 hover:scale-110 opacity-100"
                         >
                           <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 transition-colors" />
@@ -688,6 +783,8 @@ export function Sidebar({ role }: SidebarProps) {
                   favourites={favourites}
                   onToggleFavourite={handleToggleFavourite}
                   searchQuery={searchQuery}
+                  isOpen={section.heading === null ? true : (openSections[section.id] ?? false)}
+                  onToggleSection={toggleSection}
                 />
               ))}
             </SortableContext>
@@ -703,7 +800,7 @@ export function Sidebar({ role }: SidebarProps) {
         onClick={() => setCollapsed(!collapsed)}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.92 }}
-        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        title={collapsed ? t("sidebar.expand_sidebar") : t("sidebar.collapse_sidebar")}
         className="fixed top-[52px] z-[60] -translate-x-1/2 flex items-center justify-center w-7 h-7 rounded-full border-2 shadow-md transition-colors"
         style={{
           background: "var(--sidebar-bg)",

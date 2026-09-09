@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { Users, UserPlus, Search, MoreVertical, Mail, Trash2, ShieldCheck, Briefcase, X, Check, Loader2, Key, Star } from "lucide-react";
 import { API_BASE_URL } from '@/config';
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/context/LanguageContext";
 import PageGuide from '@/components/PageGuide';
 
 export default function EmployeesPage() {
+  const { t } = useLanguage();
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -52,7 +54,7 @@ export default function EmployeesPage() {
         setRole("Employee");
       } else {
         const err = await res.json();
-        alert(err.detail || "Failed to create team member");
+        alert(err.detail || t("employees.failed_create"));
       }
     } catch (error) {
       console.error("Failed to add employee:", error);
@@ -62,7 +64,7 @@ export default function EmployeesPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Are you sure you want to remove this employee account?")) return;
+    if (!confirm(t("employees.confirm_delete"))) return;
     try {
       const res = await fetch(`${API_BASE_URL}/users/${id}`, { method: 'DELETE' });
       if (res.ok) fetchEmployees();
@@ -75,26 +77,26 @@ export default function EmployeesPage() {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight uppercase tracking-tighter">Core Team</h1>
-          <p className="text-gray-500 dark:text-zinc-400 font-medium font-poppins">Manage administrators and project managers.</p>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight uppercase tracking-tighter">{t("employees.title")}</h1>
+          <p className="text-gray-500 dark:text-zinc-400 font-medium font-poppins">{t("employees.subtitle")}</p>
         </div>
         <button 
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2 px-6 py-4 bg-gray-900 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-black shadow-xl shadow-gray-900/20 transition-all active:scale-95"
         >
-          <UserPlus className="w-4 h-4" /> Add Team Member
+          <UserPlus className="w-4 h-4" /> {t("employees.add_member")}
         </button>
       </div>
 
       <PageGuide
         pageKey="employees"
-        title="How the Core Team page works"
-        description="This is where you manage all administrators and project managers who operate the CRM."
+        title={t("employees.guide_title")}
+        description={t("employees.guide_desc")}
         steps={[
-          { icon: '👤', text: 'Click \"Add Team Member\" to create a new admin or project manager account with login credentials.' },
-          { icon: '🔑', text: 'Each team member gets a role (Admin or PM) that controls what they can access in the system.' },
-          { icon: '✏️', text: 'Use the action menu on each row to reset passwords, change roles, or remove a member.' },
-          { icon: '📧', text: 'Team members will use their email and password to log into the CRM dashboard.' },
+          { icon: '👤', text: t("employees.guide_s1") },
+          { icon: '🔑', text: t("employees.guide_s2") },
+          { icon: '✏️', text: t("employees.guide_s3") },
+          { icon: '📧', text: t("employees.guide_s4") },
         ]}
       />
 
@@ -102,11 +104,11 @@ export default function EmployeesPage() {
         <div className="p-8 border-b border-gray-100 dark:border-zinc-800 flex flex-col md:flex-row justify-between items-center bg-gray-50 dark:bg-zinc-950/50 gap-4">
            <div className="relative w-full md:w-72">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input type="text" placeholder="Search team..." className="w-full pl-11 pr-4 py-3 bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm" />
+              <input type="text" placeholder={t("employees.search_placeholder")} className="w-full pl-11 pr-4 py-3 bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm" />
            </div>
            <div className="flex gap-2">
               <span className="flex items-center gap-2 px-6 py-2 bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase rounded-full border border-indigo-100 shadow-sm">
-                 <ShieldCheck className="w-4 h-4" /> System Control Active
+                 <ShieldCheck className="w-4 h-4" /> {t("employees.system_control")}
               </span>
            </div>
         </div>
@@ -115,10 +117,10 @@ export default function EmployeesPage() {
            <table className="w-full min-w-[600px]">
               <thead>
                  <tr className="text-left">
-                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Team Identity</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Digital ID</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Privileges</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Vault Actions</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{t("employees.col_identity")}</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{t("employees.col_digital")}</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{t("employees.col_privileges")}</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">{t("employees.col_actions")}</th>
                  </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -138,7 +140,7 @@ export default function EmployeesPage() {
                               </div>
                               <div>
                                  <p className="font-black text-gray-900 dark:text-zinc-50 uppercase tracking-tight text-sm">{member.name}</p>
-                                 <p className="text-[10px] text-gray-300 font-black uppercase tracking-widest">Member Since {new Date().getFullYear()}</p>
+                                 <p className="text-[10px] text-gray-300 font-black uppercase tracking-widest">{t("employees.member_since")} {new Date().getFullYear()}</p>
                               </div>
                            </div>
                         </td>
@@ -173,7 +175,7 @@ export default function EmployeesPage() {
                          <div className="w-20 h-20 bg-gray-50 dark:bg-zinc-950 rounded-3xl flex items-center justify-center mx-auto mb-6 border-2 border-dashed border-gray-100 dark:border-zinc-800">
                             <Users className="w-10 h-10 text-gray-200" />
                          </div>
-                         <p className="text-gray-400 font-black uppercase tracking-widest text-xs">Awaiting team mobilization...</p>
+                         <p className="text-gray-400 font-black uppercase tracking-widest text-xs">{t("employees.empty")}</p>
                       </td>
                    </tr>
                  )}
@@ -188,8 +190,8 @@ export default function EmployeesPage() {
           <div className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-[3.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-10 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50 dark:bg-zinc-950/50">
               <div>
-                <h2 className="text-2xl font-black text-gray-900 dark:text-zinc-50 tracking-tighter uppercase">Team Onboarding</h2>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-1">Configure security credentials</p>
+                <h2 className="text-2xl font-black text-gray-900 dark:text-zinc-50 tracking-tighter uppercase">{t("employees.onboarding")}</h2>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-1">{t("employees.onboarding_sub")}</p>
               </div>
               <button onClick={() => setShowAddModal(false)} className="p-4 hover:bg-white dark:bg-zinc-900 border rounded-[1.5rem] transition-all shadow-sm">
                 <X className="w-6 h-6 text-gray-400" />
@@ -199,17 +201,17 @@ export default function EmployeesPage() {
             <form onSubmit={handleAddEmployee} className="p-10 space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-3">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Member Name</label>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("employees.field_name")}</label>
                   <input 
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Official Name" 
+                    placeholder={t("employees.ph_name")} 
                     className="w-full px-6 py-5 bg-gray-50 dark:bg-zinc-950 border-none rounded-[1.5rem] text-sm font-black focus:ring-2 focus:ring-indigo-500 transition-all outline-none shadow-inner"
                   />
                 </div>
                 <div className="space-y-3">
-                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 text-gray-800 dark:text-zinc-100">Assign Privilege</label>
+                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 text-gray-800 dark:text-zinc-100">{t("employees.field_privilege")}</label>
                    <select 
                      value={role}
                      onChange={(e) => setRole(e.target.value)}
@@ -222,7 +224,7 @@ export default function EmployeesPage() {
               </div>
 
               <div className="space-y-3">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Digital Identity (Email)</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("employees.field_email")}</label>
                 <input 
                   required
                   type="email"
@@ -235,14 +237,14 @@ export default function EmployeesPage() {
 
               <div className="space-y-3">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-2">
-                   <Key className="w-3 h-3 text-indigo-500" /> Create Member Password
+                   <Key className="w-3 h-3 text-indigo-500" /> {t("employees.field_password")}
                 </label>
                 <input 
                   required
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Set initial access password" 
+                  placeholder={t("employees.ph_password")} 
                   className="w-full px-6 py-5 bg-gray-50 dark:bg-zinc-950 border-none rounded-[1.5rem] text-sm font-black focus:ring-2 focus:ring-indigo-500 transition-all outline-none shadow-inner"
                 />
               </div>
@@ -253,7 +255,7 @@ export default function EmployeesPage() {
                   onClick={() => setShowAddModal(false)}
                   className="flex-1 px-8 py-5 bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-zinc-400 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-gray-200 transition-all"
                 >
-                  Cancel
+                  {t("employees.cancel")}
                 </button>
                 <button 
                   type="submit"
@@ -261,7 +263,7 @@ export default function EmployeesPage() {
                   className="flex-1 px-8 py-5 bg-gray-900 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-black shadow-2xl shadow-gray-900/30 transition-all flex items-center justify-center gap-3 active:scale-95"
                 >
                   {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5 text-green-400" />}
-                  Deploy Credentials
+                  {t("employees.deploy")}
                 </button>
               </div>
             </form>

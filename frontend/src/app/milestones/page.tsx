@@ -8,6 +8,7 @@ import { API_BASE_URL } from "@/config";
 import { cn } from "@/lib/utils";
 import { useRole } from "@/context/RoleContext";
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from "@/context/LanguageContext";
 
 interface Milestone {
   id: number;
@@ -28,6 +29,7 @@ const STATUS_CONFIG: Record<string, { icon: any; color: string; bg: string }> = 
 };
 
 export default function MilestonesPage() {
+  const { t } = useLanguage();
   const { user, role } = useRole();
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [clients, setClients] = useState<any[]>([]);
@@ -114,34 +116,34 @@ export default function MilestonesPage() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">Milestones</h1>
-          <p className="text-gray-500 font-medium">Track project deliverables and achievements.</p>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">{t("milestones.title")}</h1>
+          <p className="text-gray-500 font-medium">{t("milestones.subtitle")}</p>
         </div>
         {!isClient && (
           <button onClick={() => setShowModal(true)}
             className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-2xl font-bold text-sm hover:bg-black shadow-lg transition-all active:scale-95">
-            <Plus className="w-4 h-4" /> New Milestone
+            <Plus className="w-4 h-4" /> {t("milestones.new_milestone")}
           </button>
         )}
       </div>
 
       <PageGuide
         pageKey="milestones"
-        title="How Milestones work"
-        description="Track key deliverables and achievements across your projects and services."
+        title={t("milestones.guide_title")}
+        description={t("milestones.guide_desc")}
         steps={[
-          { icon: '🎯', text: 'Each milestone represents a key deliverable with a due date and completion status.' },
-          { icon: '🟢', text: 'Status indicators show Pending (waiting), In Progress (active), or Achieved (done).' },
-          { icon: '📊', text: 'The progress bar at the top shows overall completion across all milestones.' },
-          { icon: '📅', text: 'Due dates help you and your team stay on track with project timelines.' },
+          { icon: '🎯', text: t("milestones.guide_s1") },
+          { icon: '🟢', text: t("milestones.guide_s2") },
+          { icon: '📊', text: t("milestones.guide_s3") },
+          { icon: '📅', text: t("milestones.guide_s4") },
         ]}
       />
 
       {/* Progress Bar */}
       <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-700 shadow-sm p-6">
         <div className="flex items-center justify-between mb-3">
-          <span className="font-bold text-gray-900 dark:text-zinc-50">Overall Progress</span>
-          <span className="text-sm font-bold text-gray-500">{achieved}/{total} completed</span>
+          <span className="font-bold text-gray-900 dark:text-zinc-50">{t("milestones.overall_progress")}</span>
+          <span className="text-sm font-bold text-gray-500">{t("milestones.completed_count").replace("{achieved}", String(achieved)).replace("{total}", String(total))}</span>
         </div>
         <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
           <div
@@ -150,9 +152,9 @@ export default function MilestonesPage() {
           />
         </div>
         <div className="flex gap-6 mt-3 text-sm">
-          <span className="text-emerald-600 font-semibold">{achieved} achieved</span>
-          <span className="text-blue-600 font-semibold">{inProgress} in progress</span>
-          <span className="text-slate-500 dark:text-zinc-400 font-semibold">{total - achieved - inProgress} pending</span>
+          <span className="text-emerald-600 font-semibold">{t("milestones.achieved").replace("{count}", String(achieved))}</span>
+          <span className="text-blue-600 font-semibold">{t("milestones.in_progress_count").replace("{count}", String(inProgress))}</span>
+          <span className="text-slate-500 dark:text-zinc-400 font-semibold">{t("milestones.pending_count").replace("{count}", String(total - achieved - inProgress))}</span>
         </div>
       </div>
 
@@ -162,7 +164,7 @@ export default function MilestonesPage() {
           <button key={f} onClick={() => setFilterStatus(f)}
             className={cn("px-4 py-1.5 rounded-full text-sm font-bold border transition-all",
               filterStatus === f ? "bg-gray-900 text-white border-gray-900" : "bg-white dark:bg-zinc-900 text-gray-600 border-gray-200 dark:border-zinc-700 hover:border-gray-400")}>
-            {f === "InProgress" ? "In Progress" : f}
+            {f === "InProgress" ? t("milestones.in_progress") : f}
           </button>
         ))}
       </div>
@@ -172,7 +174,7 @@ export default function MilestonesPage() {
         <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>
       ) : (
         <div className="space-y-3">
-          {filtered.length === 0 && <div className="text-center py-16 text-gray-400">No milestones yet</div>}
+          {filtered.length === 0 && <div className="text-center py-16 text-gray-400">{t("milestones.no_milestones")}</div>}
           {filtered.map(m => {
             const cfg = STATUS_CONFIG[m.status] || STATUS_CONFIG.Pending;
             return (
@@ -184,13 +186,13 @@ export default function MilestonesPage() {
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="font-bold text-gray-900 dark:text-zinc-50">{m.title}</h3>
                     <span className={cn("text-xs px-2 py-0.5 rounded-full font-bold shrink-0", cfg.bg, cfg.color)}>
-                      {m.status === "InProgress" ? "In Progress" : m.status}
+                      {m.status === "InProgress" ? t("milestones.in_progress") : m.status}
                     </span>
                   </div>
                   {m.description && <p className="text-sm text-gray-500 mt-1">{m.description}</p>}
                   <div className="flex gap-4 mt-2 text-xs text-gray-400">
-                    {m.due_date && <span>Due: {m.due_date}</span>}
-                    {clientName(m.client_id) && <span>Client: {clientName(m.client_id)}</span>}
+                    {m.due_date && <span>{t("milestones.due_label")} {m.due_date}</span>}
+                    {clientName(m.client_id) && <span>{t("milestones.client_label")} {clientName(m.client_id)}</span>}
                   </div>
                 </div>
                 {!isClient && (
@@ -198,7 +200,7 @@ export default function MilestonesPage() {
                     {Object.keys(STATUS_CONFIG).filter(s => s !== m.status).map(s => (
                       <button key={s} onClick={() => updateStatus(m.id, s)}
                         className="text-xs px-2 py-1 rounded-lg border font-semibold text-gray-600 hover:bg-gray-50 dark:bg-zinc-950">
-                        → {s === "InProgress" ? "In Progress" : s}
+                        → {s === "InProgress" ? t("milestones.in_progress") : s}
                       </button>
                     ))}
                     <button onClick={() => deleteMilestone(m.id)} className="text-red-400 hover:text-red-600 p-1">
@@ -217,42 +219,42 @@ export default function MilestonesPage() {
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-md p-8">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-black">New Milestone</h2>
+              <h2 className="text-xl font-black">{t("milestones.new_milestone_title")}</h2>
               <button onClick={() => setShowModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <form onSubmit={createMilestone} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Title *</label>
+                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">{t("milestones.title_field")}</label>
                 <input required value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
                   className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Milestone title..." />
+                  placeholder={t("milestones.title_placeholder")} />
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Description</label>
+                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">{t("milestones.description")}</label>
                 <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} rows={2}
                   className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Client</label>
+                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">{t("milestones.client")}</label>
                   <select value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}
                     className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="">No client</option>
+                    <option value="">{t("milestones.no_client")}</option>
                     {clients.map((c: any) => <option key={c.id} value={c.id}>{c.companyName || c.name || `#${c.id}`}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Due Date</label>
+                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">{t("milestones.due_date")}</label>
                   <input type="date" value={form.due_date} onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))}
                     className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
-                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600">Cancel</button>
+                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600">{t("milestones.cancel")}</button>
                 <button type="submit" disabled={submitting}
                   className="flex-1 py-2.5 bg-gray-900 text-white rounded-xl font-bold text-sm hover:bg-black flex items-center justify-center gap-2">
-                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create"}
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : t("milestones.create")}
                 </button>
               </div>
             </form>

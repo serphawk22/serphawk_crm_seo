@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { ShieldAlert, LockKeyhole } from "lucide-react";
 
 // ─── Agent Data Pretty Viewer ──────────────────────────────────────────────────
@@ -129,6 +130,7 @@ const itemVariants = {
 
 export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any) {
   const { role, user } = useRole();
+  const { t } = useLanguage();
   const [users, setUsers] = useState<any[]>([]);
   const [myClients, setMyClients] = useState<any[]>([]);
   const [myLeads, setMyLeads] = useState<any[]>([]);
@@ -176,8 +178,8 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
               <ShieldAlert className="w-6 h-6 text-amber-600 dark:text-amber-500" />
             </div>
             <div>
-              <h3 className="font-bold text-amber-800 dark:text-amber-500 text-sm tracking-wide uppercase">Demo Account — Sandbox</h3>
-              <p className="text-sm font-medium text-amber-700/80 dark:text-amber-500/80">You have limited access. Some features are restricted. Data may be cleared periodically.</p>
+              <h3 className="font-bold text-amber-800 dark:text-amber-500 text-sm tracking-wide uppercase">{t("admin_dashboard.demo_banner_title")}</h3>
+              <p className="text-sm font-medium text-amber-700/80 dark:text-amber-500/80">{t("admin_dashboard.demo_banner_desc")}</p>
             </div>
           </div>
           {!upgradeRequested ? (
@@ -186,12 +188,12 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
               disabled={upgrading}
               className="shrink-0 px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-lg transition-all text-sm flex items-center gap-2"
             >
-              {upgrading ? "Sending..." : "Request Full Access"}
+              {upgrading ? t("admin_dashboard.sending") : t("admin_dashboard.request_full_access")}
               {!upgrading && <LockKeyhole className="w-4 h-4" />}
             </button>
           ) : (
             <div className="shrink-0 px-6 py-2.5 bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold rounded-xl text-sm">
-              ✓ Upgrade request sent to admin!
+              ✓ {t("admin_dashboard.upgrade_sent")}
             </div>
           )}
         </motion.div>
@@ -200,17 +202,14 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
       {/* HEADER SECTION */}
       <motion.div variants={itemVariants} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Operations Dashboard</h1>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">{t("admin_dashboard.title")}</h1>
           <p className="text-sm font-medium text-[var(--text-secondary)] mt-1">
-            Overview of revenue, pipeline, and team performance.
+            {t("admin_dashboard.subtitle")}
           </p>
         </div>
         <div className="flex gap-3">
-          <button onClick={() => window.print()} className="px-4 py-2 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 rounded-xl shadow-sm text-sm font-bold hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all flex items-center gap-2">
-            <Printer className="w-4 h-4" /> Print / Save PDF
-          </button>
           <Link href="/clients" className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-sm text-sm font-bold hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Add New Client
+            <Plus className="w-4 h-4" /> {t("admin_dashboard.add_new_client")}
           </Link>
         </div>
       </motion.div>
@@ -218,10 +217,10 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
       {/* KPI METRICS ROW */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { title: "Total Revenue", value: adminStats?.revenue != null ? `$${adminStats.revenue.toLocaleString()}` : "$0", trend: "+20.1% from last month", icon: DollarSign, color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-500/10" },
-          { title: "Active Clients", value: adminStats?.total || 0, trend: "+4 new this week", icon: Users, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-500/10" },
-          { title: "Pipeline Value", value: adminStats?.pipelineValue != null ? `$${adminStats.pipelineValue.toLocaleString()}` : "$0", trend: "12 active deals", icon: Target, color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-500/10" },
-          { title: "Pending Tasks", value: adminStats?.pending || 0, trend: "Requires attention", icon: Timer, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-500/10" },
+          { title: t("admin_dashboard.kpi_total_revenue"), value: adminStats?.revenue != null ? `$${adminStats.revenue.toLocaleString()}` : "$0", trend: t("admin_dashboard.kpi_trend_revenue"), icon: DollarSign, color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-500/10" },
+          { title: t("admin_dashboard.kpi_active_clients"), value: adminStats?.total || 0, trend: t("admin_dashboard.kpi_trend_clients"), icon: Users, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-500/10" },
+          { title: t("admin_dashboard.kpi_pipeline_value"), value: adminStats?.pipelineValue != null ? `$${adminStats.pipelineValue.toLocaleString()}` : "$0", trend: t("admin_dashboard.kpi_trend_pipeline"), icon: Target, color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-500/10" },
+          { title: t("admin_dashboard.kpi_pending_tasks"), value: adminStats?.pending || 0, trend: t("admin_dashboard.kpi_trend_pending"), icon: Timer, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-500/10" },
         ].map((kpi, idx) => (
           <motion.div key={idx} variants={itemVariants} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm flex items-center gap-4">
             <div className={`p-3 rounded-xl ${kpi.bg}`}>
@@ -242,7 +241,7 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
       {/* QUICK LINKS GRID */}
       <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm h-max">
         <div className="p-5 border-b border-[var(--border)]">
-          <h3 className="font-bold text-[var(--text-primary)]">Quick Links</h3>
+          <h3 className="font-bold text-[var(--text-primary)]">{t("admin_dashboard.quick_links")}</h3>
         </div>
         <div className="p-5 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {NAV_CARDS.filter((c: any) => c.roles.includes(role || "Admin") && !c.title.includes("Pipeline")).map((card: any) => (
@@ -254,16 +253,15 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
         </div>
       </motion.div>
 
-      {/* FINANCIAL & PIPELINE CHARTS — hidden for Demo */}
-      {!isDemo && (
+      {/* FINANCIAL & PIPELINE CHARTS */}
       <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* REVENUE CHART */}
         <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden flex flex-col h-[400px]">
           <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
             <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-emerald-500"/> Financial Overview
+              <TrendingUp className="w-5 h-5 text-emerald-500"/> {t("admin_dashboard.financial_overview")}
             </h3>
-            <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-500/10 text-emerald-600 rounded-md">Last 6 Months</span>
+            <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-500/10 text-emerald-600 rounded-md">{t("admin_dashboard.last_6_months")}</span>
           </div>
           <div className="p-5 flex-1 w-full h-full min-h-0">
             {adminStats?.revenueData?.length ? (
@@ -288,14 +286,14 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
                     formatter={(value: any) => [`$${value.toLocaleString()}`, '']}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
-                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
-                  <Area type="monotone" dataKey="expenses" name="Expenses" stroke="#ef4444" strokeWidth={3} fillOpacity={1} fill="url(#colorExp)" />
+                  <Area type="monotone" dataKey="revenue" name={t("admin_dashboard.revenue")} stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
+                  <Area type="monotone" dataKey="expenses" name={t("admin_dashboard.expenses")} stroke="#ef4444" strokeWidth={3} fillOpacity={1} fill="url(#colorExp)" />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-secondary)]">
                 <AlertTriangle className="w-8 h-8 mb-2 opacity-50" />
-                <p className="text-sm font-medium">No financial data available</p>
+                <p className="text-sm font-medium">{t("admin_dashboard.no_financial_data")}</p>
               </div>
             )}
           </div>
@@ -305,9 +303,9 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
         <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden flex flex-col h-[400px]">
           <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
             <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <Target className="w-5 h-5 text-indigo-500"/> Sales Pipeline
+              <Target className="w-5 h-5 text-indigo-500"/> {t("admin_dashboard.sales_pipeline")}
             </h3>
-            <span className="text-xs font-semibold px-2.5 py-1 bg-indigo-500/10 text-indigo-600 rounded-md">Active Deals</span>
+            <span className="text-xs font-semibold px-2.5 py-1 bg-indigo-500/10 text-indigo-600 rounded-md">{t("admin_dashboard.active_deals")}</span>
           </div>
           <div className="p-5 flex-1 w-full h-full min-h-0">
             {adminStats?.pipelineData?.length ? (
@@ -320,31 +318,29 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
                     cursor={{ fill: 'var(--sidebar-hover)' }}
                     contentStyle={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 'bold' }} 
                   />
-                  <Bar dataKey="count" name="Deals" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={24} />
+                  <Bar dataKey="count" name={t("admin_dashboard.deals")} fill="#6366f1" radius={[0, 4, 4, 0]} barSize={24} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-secondary)]">
                 <AlertTriangle className="w-8 h-8 mb-2 opacity-50" />
-                <p className="text-sm font-medium">No pipeline data available</p>
+                <p className="text-sm font-medium">{t("admin_dashboard.no_pipeline_data")}</p>
               </div>
             )}
           </div>
         </div>
       </motion.div>
-      )}
 
-      {/* TEAM ENGAGEMENT & ACTIVITY — hidden for Demo */}
-      {!isDemo && (
+      {/* TEAM ENGAGEMENT & ACTIVITY */}
       <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* ENGAGEMENT CHART (Takes 2 columns) */}
         <div className="lg:col-span-2 bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden flex flex-col h-[350px]">
           <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
             <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <Activity className="w-5 h-5 text-blue-500"/> Team Engagement Trends
+              <Activity className="w-5 h-5 text-blue-500"/> {t("admin_dashboard.team_engagement")}
             </h3>
-            <span className="text-xs font-semibold px-2.5 py-1 bg-blue-500/10 text-blue-600 rounded-md">Last 7 Days</span>
+            <span className="text-xs font-semibold px-2.5 py-1 bg-blue-500/10 text-blue-600 rounded-md">{t("admin_dashboard.last_7_days")}</span>
           </div>
           <div className="p-5 flex-1 w-full h-full min-h-0">
             {adminStats?.chartLabels?.length ? (
@@ -368,15 +364,15 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
                     contentStyle={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 'bold' }} 
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                  <Area type="monotone" dataKey="activities" name="Total Activities" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorAct)" />
-                  <Area type="step" dataKey="emails" name="Emails Sent" stroke="#f59e0b" strokeWidth={2} fill="transparent" strokeDasharray="4 4" />
-                  <Area type="step" dataKey="calls" name="Calls Made" stroke="#8b5cf6" strokeWidth={2} fill="transparent" />
+                  <Area type="monotone" dataKey="activities" name={t("admin_dashboard.total_activities")} stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorAct)" />
+                  <Area type="step" dataKey="emails" name={t("admin_dashboard.emails_sent")} stroke="#f59e0b" strokeWidth={2} fill="transparent" strokeDasharray="4 4" />
+                  <Area type="step" dataKey="calls" name={t("admin_dashboard.calls_made")} stroke="#8b5cf6" strokeWidth={2} fill="transparent" />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-secondary)]">
                 <AlertTriangle className="w-8 h-8 mb-2 opacity-50" />
-                <p className="text-sm font-medium">No activity data available</p>
+                <p className="text-sm font-medium">{t("admin_dashboard.no_activity_data")}</p>
               </div>
             )}
           </div>
@@ -385,14 +381,14 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
         {/* RECENT ACTIVITY LIST (Takes 1 column) */}
         <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm flex flex-col h-[350px] overflow-hidden">
           <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30 shrink-0">
-            <h3 className="font-bold text-[var(--text-primary)]">Recent Activity</h3>
-            <Link href="/email-agent" className="text-xs font-semibold text-[var(--primary)] hover:underline">View All</Link>
+            <h3 className="font-bold text-[var(--text-primary)]">{t("admin_dashboard.recent_activity")}</h3>
+            <Link href="/email-agent" className="text-xs font-semibold text-[var(--primary)] hover:underline">{t("admin_dashboard.view_all")}</Link>
           </div>
           <div className="overflow-y-auto flex-1">
             {(adminStats?.recentActivities?.length ?? 0) === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] opacity-60 p-8 text-center">
                 <Timer className="w-8 h-8 mb-2" />
-                <p className="text-sm">No activities recorded yet.</p>
+                <p className="text-sm">{t("admin_dashboard.no_activities")}</p>
               </div>
             ) : (
               <div className="divide-y divide-[var(--border)]">
@@ -413,7 +409,6 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
           </div>
         </div>
       </motion.div>
-      )}
     </div>
   );
 }
@@ -423,6 +418,7 @@ function CallPitchWidget() {
   const [pitchData, setPitchData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [markingDone, setMarkingDone] = useState(false);
+  const { t } = useLanguage();
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [isAgentDataExpanded, setIsAgentDataExpanded] = useState(false);
@@ -493,10 +489,10 @@ function CallPitchWidget() {
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-3">
             <span className="px-2.5 py-1 bg-indigo-500/20 text-indigo-500 dark:text-indigo-400 text-[10px] uppercase tracking-wider font-bold rounded-md flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3" /> AI Call Pitch
+              <Sparkles className="w-3 h-3" /> {t("admin_dashboard.ai_call_pitch")}
             </span>
             <h3 className="font-bold text-lg text-[var(--text-primary)]">
-              {pitchData.client.companyName || pitchData.client.name || "Unknown Client"}
+              {pitchData.client.companyName || pitchData.client.name || t("admin_dashboard.unknown_client")}
             </h3>
           </div>
           
@@ -506,10 +502,10 @@ function CallPitchWidget() {
           
           <div className="flex gap-4 text-xs font-semibold text-[var(--text-secondary)]">
             <span className="bg-[var(--surface)] px-2 py-1 rounded-md border border-[var(--border)]">
-              Industry: {pitchData.client.industry || "N/A"}
+              {t("admin_dashboard.industry")} {pitchData.client.industry || t("admin_dashboard.na")}
             </span>
             <span className="bg-[var(--surface)] px-2 py-1 rounded-md border border-[var(--border)]">
-              Phone: {pitchData.client.phone || "N/A"}
+              {t("admin_dashboard.phone")} {pitchData.client.phone || t("admin_dashboard.na")}
             </span>
           </div>
           <button 

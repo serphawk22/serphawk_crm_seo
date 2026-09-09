@@ -8,6 +8,7 @@ import {
   TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign, MessageCircle, Trash2, Youtube
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
+import { useLanguage } from "@/context/LanguageContext";
 import PageGuide from "@/components/PageGuide";
 import { ResultCard, ResearchResultData, SendEmailResult, CopyButton } from "@/components/email-agent/ResultCard";
 import GmailAgentLoop from "./GmailAgentLoop";
@@ -24,7 +25,9 @@ interface ResearchResult {
 }
 
 
+
 function BottomUpFillMail() {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-col items-center gap-4 py-6">
       <div className="relative w-12 h-12">
@@ -40,14 +43,14 @@ function BottomUpFillMail() {
           </div>
         </motion.div>
       </div>
-      <p className="text-xs font-bold text-slate-500 dark:text-zinc-400 animate-pulse">Researching & drafting...</p>
+      <p className="text-xs font-bold text-slate-500 dark:text-zinc-400 animate-pulse">{t('email_agent.researching')}</p>
     </div>
   );
 }
 
 
-
 export default function EmailAgentPage() {
+  const { t } = useLanguage();
   const [mode, setMode] = useState<"single" | "bulk">("single");
   const [companyName, setCompanyName] = useState("");
   const [inputValue, setInputValue] = useState("");
@@ -55,7 +58,7 @@ export default function EmailAgentPage() {
   const [chatStep, setChatStep] = useState<"website_url" | "loading" | "idle">("website_url");
   
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: "msg-1", role: "ai", type: "text", content: "Hello! Enter a company website URL to generate an outreach strategy and email draft." }
+    { id: "msg-1", role: "ai", type: "text", content: t("email_agent.chat_greeting") }
   ]);
   
   const [resultsHistory, setResultsHistory] = useState<ResearchResult[]>([]);
@@ -228,7 +231,7 @@ export default function EmailAgentPage() {
         const filtered = prev.filter(m => m.type !== "loading");
         return [
           ...filtered,
-          { id: `msg-${Date.now()}`, role: "ai", type: "text", content: `Research for ${name} complete! I've placed the results in the section below.` }
+          { id: `msg-${Date.now()}`, role: "ai", type: "text", content: `${t('email_agent.research_complete_prefix')} ${name} ${t('email_agent.research_complete_suffix')}` }
         ];
       });
       
@@ -242,7 +245,7 @@ export default function EmailAgentPage() {
       setTimeout(() => {
         setMessages(prev => [
           ...prev,
-          { id: `msg-${Date.now()+2}`, role: "ai", type: "text", content: "What other company would you like to research next?" }
+          { id: `msg-${Date.now()+2}`, role: "ai", type: "text", content: t("email_agent.research_next") }
         ]);
       }, 1000);
 
@@ -251,7 +254,7 @@ export default function EmailAgentPage() {
         const filtered = prev.filter(m => m.type !== "loading");
         return [
           ...filtered,
-          { id: `msg-${Date.now()}`, role: "ai", type: "text", content: `Error: Something went wrong. Please try again.` }
+          { id: `msg-${Date.now()}`, role: "ai", type: "text", content: t("email_agent.research_error") }
         ];
       });
       setChatStep("website_url");
@@ -393,29 +396,29 @@ export default function EmailAgentPage() {
               <Bot className="w-5 h-5 text-slate-800 dark:text-zinc-100" />
             </div>
             <div>
-              <h1 className="text-xl font-black text-slate-800 dark:text-zinc-100">Email Agent</h1>
-              <p className="text-slate-500 dark:text-zinc-400 text-xs font-medium">Research • Match • Draft</p>
+              <h1 className="text-xl font-black text-slate-800 dark:text-zinc-100">{t('email_agent.title')}</h1>
+              <p className="text-slate-500 dark:text-zinc-400 text-xs font-medium">{t('email_agent.subtitle')}</p>
             </div>
             <div className="flex bg-slate-200 dark:bg-zinc-800 p-1 rounded-lg ml-4">
               <button
                 onClick={() => setMode("single")}
                 className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${mode === "single" ? "bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700"}`}
               >
-                Single
+                {t('email_agent.mode_single')}
               </button>
               <button
                 onClick={() => setMode("bulk")}
                 className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${mode === "bulk" ? "bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700"}`}
               >
-                Bulk
+                {t('email_agent.mode_bulk')}
               </button>
             </div>
           </div>
           <div className="flex gap-4 hidden sm:flex">
             {[
-              { label: "Total Sent", value: totalSent },
-              { label: "Auto", value: autoCount },
-              { label: "Manual", value: manualCount },
+              { label: t('email_agent.stat_total_sent'), value: totalSent },
+              { label: t('email_agent.stat_auto'), value: autoCount },
+              { label: t('email_agent.stat_manual'), value: manualCount },
             ].map((s) => (
               <div key={s.label} className="px-4 py-2 rounded-xl bg-slate-50 dark:bg-zinc-950 text-slate-800 dark:text-zinc-100 text-center">
                 <p className="text-[9px] font-black uppercase tracking-widest opacity-80">{s.label}</p>
@@ -435,19 +438,19 @@ export default function EmailAgentPage() {
             <div className="relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl w-full max-w-4xl mx-auto flex flex-col h-[400px] shadow-sm">
           <PageGuide
             pageKey="email-agent"
-            title="How the Email Agent works"
-            description="Our AI researches companies, matches them to your services, and drafts personalized outreach emails."
+            title={t('email_agent.guide_title')}
+            description={t('email_agent.guide_desc')}
             buttonClassName="absolute top-3 right-3 z-50 group"
             iconClassName="flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-slate-800 dark:text-zinc-100 shadow-lg transition-transform group-hover:scale-110"
             steps={[
-              { icon: <Building2 />, text: 'Enter a company name and URL — the AI will analyze their website and identify opportunities.' },
-              { icon: <Bot />, text: 'The agent matches the company\'s needs to your service catalog and crafts a tailored pitch.' },
-              { icon: <Mail />, text: 'Review the generated email in English and Spanish, then send it directly or copy the text.' },
-              { icon: <TrendingUp />, text: 'Track all sent emails above — see counts for auto-sent vs. manually-sent outreach.' },
+              { icon: <Building2 />, text: t('email_agent.guide_s1') },
+              { icon: <Bot />, text: t('email_agent.guide_s2') },
+              { icon: <Mail />, text: t('email_agent.guide_s3') },
+              { icon: <TrendingUp />, text: t('email_agent.guide_s4') },
             ]}
           />
           <div className="p-4 border-b border-slate-100 dark:border-zinc-800 font-black text-sm text-slate-800 dark:text-zinc-100 flex items-center gap-2">
-            <Bot className="w-4 h-4 text-slate-800 dark:text-zinc-100" /> AI Research Assistant
+            <Bot className="w-4 h-4 text-slate-800 dark:text-zinc-100" /> {t('email_agent.ai_assistant')}
           </div>
           
           <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar" ref={chatContainerRef}>
@@ -499,7 +502,7 @@ export default function EmailAgentPage() {
                 disabled={!inputValue.trim() || chatStep === "loading"}
                 className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm flex items-center gap-2 shadow-lg shadow-indigo-500/30 disabled:opacity-50 transition-all hover:-translate-y-0.5"
               >
-                <Sparkles className="w-4 h-4" /> Start AI Agent
+                <Sparkles className="w-4 h-4" /> {t('email_agent.start_agent')}
               </button>
             </div>
           </div>
@@ -508,7 +511,7 @@ export default function EmailAgentPage() {
         {/* Results Section Down Below */}
         {resultsHistory.length > 0 && (
           <div className="w-full mt-8 space-y-8">
-            <h3 className="font-black text-xl text-slate-800 dark:text-zinc-100 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 backdrop-blur-md px-4 py-2 rounded-xl inline-block shadow-lg border border-slate-100 dark:border-zinc-800">Research Results</h3>
+            <h3 className="font-black text-xl text-slate-800 dark:text-zinc-100 bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-700 backdrop-blur-md px-4 py-2 rounded-xl inline-block shadow-lg border border-slate-100 dark:border-zinc-800">{t('email_agent.research_results')}</h3>
             {resultsHistory.map(res => (
               <ResultCard key={res.id} historyId={res.id} result={res.resultData} companyName={res.companyName} companyUrl={res.companyUrl} onSendManually={handleSendManually} onSendAutomatically={handleSendAutomatically} onSaveFollowUp={handleSaveFollowUp} onRemove={handleRemoveResult} />
             ))}
@@ -528,7 +531,7 @@ export default function EmailAgentPage() {
               <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-inner">
                 <Mail className="w-4 h-4" />
               </div>
-              <h3 className="font-black text-[15px] text-slate-800 dark:text-zinc-100">Recent Email Outreach</h3>
+              <h3 className="font-black text-[15px] text-slate-800 dark:text-zinc-100">{t('email_agent.recent_outreach')}</h3>
               {sentEmails.length > 0 && (
                 <div className="flex items-center gap-2 ml-4 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 rounded-lg shadow-sm">
                   <input 
@@ -543,7 +546,7 @@ export default function EmailAgentPage() {
                     }}
                     className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                   />
-                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Select All</span>
+                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">{t('email_agent.select_all')}</span>
                 </div>
               )}
               {selectedEmails.length > 0 && (
@@ -552,12 +555,12 @@ export default function EmailAgentPage() {
                   className="ml-2 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-600 dark:bg-red-500/20 dark:hover:bg-red-500/30 dark:text-red-400 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  Delete ({selectedEmails.length})
+                  {t('email_agent.delete_label')} ({selectedEmails.length})
                 </button>
               )}
             </div>
             <span className="text-[10px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
-              {totalSent} total
+              {totalSent} {t('email_agent.total_suffix')}
             </span>
           </div>
 
@@ -566,13 +569,13 @@ export default function EmailAgentPage() {
           ) : sentEmails.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-slate-400 gap-3">
               <Mail className="w-10 h-10 opacity-30 text-gray-500" />
-              <p className="font-bold text-sm text-slate-400">No emails sent yet</p>
+              <p className="font-bold text-sm text-slate-400">{t('email_agent.no_emails')}</p>
             </div>
           ) : (
                  <div className="w-full mt-4 space-y-4">
               {Object.entries(
                 sentEmails.reduce((acc, email) => {
-                  const key = email.company_name && email.company_name !== "Unknown Company" ? email.company_name : "Prospect";
+                  const key = email.company_name && email.company_name !== "Unknown Company" ? email.company_name : t('email_agent.fallback_prospect');
                   if (!acc[key]) acc[key] = [];
                   acc[key].push(email);
                   return acc;
@@ -592,7 +595,7 @@ export default function EmailAgentPage() {
                         <div>
                           <h4 className="font-black text-lg text-slate-800 dark:text-zinc-100">{company}</h4>
                           <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{emails.length} Emails Extracted & Sent</span>
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{emails.length} {t('email_agent.emails_extracted')}</span>
                           </div>
                         </div>
                       </div>
@@ -607,7 +610,7 @@ export default function EmailAgentPage() {
                                 else setSelectedEmails(prev => prev.filter(id => !emails.map(em => em.id).includes(id)));
                               }}
                               className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4 mr-4"
-                              title="Select all in company"
+                              title={t('email_agent.select_company')}
                            />
                          </div>
                          {isCompanyExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
@@ -628,7 +631,7 @@ export default function EmailAgentPage() {
                                 }}
                                 className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
                               />
-                              <button onClick={(e) => handleDeleteEmail(e, email.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors" title="Delete">
+                              <button onClick={(e) => handleDeleteEmail(e, email.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors" title={t('email_agent.delete')}>
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
@@ -639,7 +642,7 @@ export default function EmailAgentPage() {
                                 <span className="text-sm font-black text-slate-700 dark:text-zinc-200">{email.to_email}</span>
                               </div>
                               <div className="flex flex-col justify-center">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Status</p>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('email_agent.status')}</p>
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${
                                   email.status === "Opened" ? "bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400" :
                                   email.status === "Replied" ? "bg-green-100 text-green-600 dark:bg-green-500/20 dark:text-green-400" :
@@ -649,8 +652,8 @@ export default function EmailAgentPage() {
                                 </span>
                               </div>
                               <div className="flex flex-col justify-center">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Subject</p>
-                                <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">{email.subject || "(No subject)"}</span>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('email_agent.subject')}</p>
+                                <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">{email.subject || t('email_agent.no_subject')}</span>
                               </div>
                             </div>
 
@@ -659,7 +662,7 @@ export default function EmailAgentPage() {
                                 {email.english_body && (
                                   <div>
                                     <div className="flex justify-between items-center mb-1">
-                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">English Draft</p>
+                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('email_agent.english_draft')}</p>
                                       <CopyButton text={email.english_body} />
                                     </div>
                                     <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl p-4 text-[13px] text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar font-sans leading-relaxed">
@@ -670,7 +673,7 @@ export default function EmailAgentPage() {
                                 {email.spanish_body && (
                                   <div>
                                     <div className="flex justify-between items-center mb-1">
-                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Spanish Draft</p>
+                                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('email_agent.spanish_draft')}</p>
                                       <CopyButton text={email.spanish_body} />
                                     </div>
                                     <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl p-4 text-[13px] text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar font-sans leading-relaxed">

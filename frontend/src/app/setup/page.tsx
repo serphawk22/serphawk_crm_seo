@@ -5,8 +5,10 @@ import { Globe, Link as LinkIcon, Lock, CheckCircle2, ChevronRight, AlertCircle,
 import { API_BASE_URL } from '@/config';
 import { useRole } from '@/context/RoleContext';
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function SetupPage() {
+  const { t } = useLanguage();
   const { user, email } = useRole();
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [verifyingDomain, setVerifyingDomain] = useState(false);
@@ -31,7 +33,6 @@ export default function SetupPage() {
     setDomainStatus('idle');
 
     try {
-      // Mocking real verification against backend
       const res = await fetch(`${API_BASE_URL}/setup/verify-domain`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -52,7 +53,6 @@ export default function SetupPage() {
   };
 
   const connectSocial = (platform: string) => {
-    // In reality, this redirects to OAuth URL
     setTimeout(() => {
       setConnectedSocials(prev => [...prev, platform]);
     }, 1000);
@@ -61,9 +61,9 @@ export default function SetupPage() {
   const handlePasswordChange = async () => {
     setPwStatus('idle');
     setPwError('');
-    if (!currentPassword || !newPassword) { setPwError('Please fill all fields'); setPwStatus('error'); return; }
-    if (newPassword.length < 6) { setPwError('New password must be at least 6 characters'); setPwStatus('error'); return; }
-    if (newPassword !== confirmPassword) { setPwError('New passwords don\'t match'); setPwStatus('error'); return; }
+    if (!currentPassword || !newPassword) { setPwError(t('setup.error_fill_all')); setPwStatus('error'); return; }
+    if (newPassword.length < 6) { setPwError(t('setup.error_pw_min_length')); setPwStatus('error'); return; }
+    if (newPassword !== confirmPassword) { setPwError(t('setup.error_pw_mismatch')); setPwStatus('error'); return; }
 
     setPwChanging(true);
     try {
@@ -73,13 +73,13 @@ export default function SetupPage() {
         body: JSON.stringify({ user_id: user?.id, current_password: currentPassword, new_password: newPassword }),
       });
       const data = await res.json();
-      if (!res.ok) { setPwError(data.detail || 'Failed to change password'); setPwStatus('error'); return; }
+      if (!res.ok) { setPwError(data.detail || t('setup.error_pw_change_failed')); setPwStatus('error'); return; }
       setPwStatus('success');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch {
-      setPwError('Network error. Please try again.');
+      setPwError(t('setup.error_network'));
       setPwStatus('error');
     } finally {
       setPwChanging(false);
@@ -89,19 +89,19 @@ export default function SetupPage() {
   return (
     <div className="max-w-4xl mx-auto py-10 px-4 space-y-10">
       <div className="space-y-2">
-        <h1 className="text-3xl font-black text-slate-900 dark:text-zinc-50 tracking-tight">Onboarding & Setup</h1>
-        <p className="text-slate-500 dark:text-zinc-400 font-medium">Connect your assets so we can launch your SEO campaign.</p>
+        <h1 className="text-3xl font-black text-slate-900 dark:text-zinc-50 tracking-tight">{t("setup.title")}</h1>
+        <p className="text-slate-500 dark:text-zinc-400 font-medium">{t("setup.subtitle")}</p>
       </div>
 
       <PageGuide
         pageKey="setup"
-        title="Getting Started with Onboarding"
-        description="Complete these steps to connect your website and social accounts so your SEO campaign can begin."
+        title={t("setup.guide_title")}
+        description={t("setup.guide_desc")}
         steps={[
-          { icon: '🌐', text: 'Enter your website URL and verify domain ownership to unlock full SEO capabilities.' },
-          { icon: '🔗', text: 'Connect your social media profiles so we can optimize your cross-platform presence.' },
-          { icon: '📍', text: 'We\'ll auto-detect your sitemap and verify your site structure for best results.' },
-          { icon: '✅', text: 'Once all steps are complete, your onboarding bar on the dashboard will show 100%.' },
+          { icon: '🌐', text: t("setup.guide_s1") },
+          { icon: '🔗', text: t("setup.guide_s2") },
+          { icon: '📍', text: t("setup.guide_s3") },
+          { icon: '✅', text: t("setup.guide_s4") },
         ]}
       />
 
@@ -117,14 +117,14 @@ export default function SetupPage() {
               <Globe className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">Add Website</h2>
-              <p className="text-sm text-slate-500 dark:text-zinc-400">Verify your primary domain</p>
+              <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">{t("setup.add_website")}</h2>
+              <p className="text-sm text-slate-500 dark:text-zinc-400">{t("setup.verify_domain")}</p>
             </div>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">Website URL</label>
+              <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("setup.website_url")}</label>
               <div className="flex gap-2">
                 <input
                   type="url"
@@ -138,7 +138,7 @@ export default function SetupPage() {
                   disabled={verifyingDomain}
                   className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2"
                 >
-                  {verifyingDomain ? "Verifying..." : "Verify"}
+                  {verifyingDomain ? t("setup.verifying") : t("setup.verify")}
                 </button>
               </div>
             </div>
@@ -152,10 +152,10 @@ export default function SetupPage() {
                 <div className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-emerald-600 mt-0.5" />
                   <div>
-                    <h3 className="text-emerald-900 font-bold mb-1">Domain Verified Successfully</h3>
+                    <h3 className="text-emerald-900 font-bold mb-1">{t("setup.domain_verified")}</h3>
                     <ul className="text-sm text-emerald-700 space-y-1">
-                      <li>• Sitemap auto-detected: <span className="font-semibold">{sitemapData.url}</span></li>
-                      <li>• CMS Flags: <span className="font-semibold">{sitemapData.cms}</span></li>
+                      <li>{t("setup.sitemap_detected")} <span className="font-semibold">{sitemapData.url}</span></li>
+                      <li>{t("setup.cms_flags")} <span className="font-semibold">{sitemapData.cms}</span></li>
                     </ul>
                   </div>
                 </div>
@@ -171,8 +171,8 @@ export default function SetupPage() {
                 <div className="flex gap-3">
                   <AlertCircle className="w-5 h-5 text-rose-600 mt-0.5" />
                   <div>
-                    <h3 className="text-rose-900 font-bold mb-1">Verification Failed</h3>
-                    <p className="text-sm text-rose-700">Please make sure the URL is accessible and valid.</p>
+                    <h3 className="text-rose-900 font-bold mb-1">{t("setup.verification_failed")}</h3>
+                    <p className="text-sm text-rose-700">{t("setup.url_invalid")}</p>
                   </div>
                 </div>
               </motion.div>
@@ -192,8 +192,8 @@ export default function SetupPage() {
               <Share2 className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">Add Social Media</h2>
-              <p className="text-sm text-slate-500 dark:text-zinc-400">Cross-channel presence analysis</p>
+              <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">{t("setup.add_social_media")}</h2>
+              <p className="text-sm text-slate-500 dark:text-zinc-400">{t("setup.cross_channel")}</p>
             </div>
           </div>
 
@@ -222,7 +222,7 @@ export default function SetupPage() {
                           ? 'bg-slate-100 dark:bg-zinc-800 text-slate-400 opacity-50 cursor-not-allowed'
                           : 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 hover:bg-slate-200 dark:bg-zinc-700'}`}
                   >
-                    {connected ? 'Connected' : 'Connect'}
+                    {connected ? t("setup.social_connected") : t("setup.social_connect")}
                   </button>
                 </div>
               );
@@ -234,7 +234,7 @@ export default function SetupPage() {
                 disabled={domainStatus !== 'success'}
                 className="w-full py-4 bg-gradient-to-r from-slate-800 to-slate-900 text-white font-bold rounded-xl flex justify-center items-center gap-2 hover:shadow-lg disabled:opacity-50 disabled:hover:shadow-none transition-all"
              >
-                Trigger One-Click SEO Audit <Search className="w-5 h-5" />
+                {t("setup.trigger_audit")} <Search className="w-5 h-5" />
              </button>
           </div>
         </motion.div>
@@ -252,8 +252,8 @@ export default function SetupPage() {
             <KeyRound className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">Change Password</h2>
-            <p className="text-sm text-slate-500 dark:text-zinc-400">Update your login password. Changes take effect immediately.</p>
+            <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">{t("setup.change_password")}</h2>
+            <p className="text-sm text-slate-500 dark:text-zinc-400">{t("setup.update_password_desc")}</p>
           </div>
         </div>
 
@@ -265,8 +265,8 @@ export default function SetupPage() {
           >
             <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
             <div>
-              <p className="text-sm font-bold text-emerald-800">Password updated successfully!</p>
-              <p className="text-xs text-emerald-600 mt-0.5">Your new password will be used next time you log in.</p>
+              <p className="text-sm font-bold text-emerald-800">{t("setup.password_updated")}</p>
+              <p className="text-xs text-emerald-600 mt-0.5">{t("setup.password_new_used")}</p>
             </div>
           </motion.div>
         )}
@@ -285,13 +285,13 @@ export default function SetupPage() {
         <div className="grid md:grid-cols-3 gap-4">
           {/* Current Password */}
           <div>
-            <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">Current Password</label>
+            <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">{t("setup.field_current_password")}</label>
             <div className="relative">
               <input
                 type={showCurrent ? 'text' : 'password'}
                 value={currentPassword}
                 onChange={e => setCurrentPassword(e.target.value)}
-                placeholder="Enter current password"
+                placeholder={t("setup.ph_current_password")}
                 className="w-full px-4 py-3 pr-11 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-medium"
               />
               <button
@@ -306,13 +306,13 @@ export default function SetupPage() {
 
           {/* New Password */}
           <div>
-            <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">New Password</label>
+            <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">{t("setup.field_new_password")}</label>
             <div className="relative">
               <input
                 type={showNew ? 'text' : 'password'}
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
-                placeholder="Min 6 characters"
+                placeholder={t("setup.ph_new_password")}
                 className="w-full px-4 py-3 pr-11 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-medium"
               />
               <button
@@ -327,12 +327,12 @@ export default function SetupPage() {
 
           {/* Confirm New Password */}
           <div>
-            <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">Confirm New Password</label>
+            <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1.5 block">{t("setup.field_confirm_password")}</label>
             <input
               type="password"
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
-              placeholder="Re-enter new password"
+              placeholder={t("setup.ph_confirm_password")}
               className={`w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-medium ${
                 confirmPassword && confirmPassword !== newPassword
                   ? 'border-red-300 bg-red-50/30'
@@ -347,7 +347,7 @@ export default function SetupPage() {
         <div className="mt-6 flex items-center justify-between">
           <p className="text-xs text-slate-400 font-medium">
             <Lock className="w-3.5 h-3.5 inline mr-1" />
-            Password is encrypted and stored securely.
+            {t("setup.password_encrypted")}
           </p>
           <button
             onClick={handlePasswordChange}
@@ -357,12 +357,12 @@ export default function SetupPage() {
             {pwChanging ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Updating…
+                {t("setup.updating")}
               </>
             ) : (
               <>
                 <KeyRound className="w-4 h-4" />
-                Update Password
+                {t("setup.update_password_btn")}
               </>
             )}
           </button>

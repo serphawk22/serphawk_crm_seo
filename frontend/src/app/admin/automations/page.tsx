@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { Zap, Plus, Settings2, Play, Save, ChevronRight, MessageSquare, Mail, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function AutomationsPage() {
+  const { t } = useLanguage();
   const [automations, setAutomations] = useState([
     { id: 1, name: "Stale Lead Follow-up", active: true, trigger: "Lead in 'Contacted' for 3 days", action: "Send AI Email" },
     { id: 2, name: "New Client Onboarding", active: false, trigger: "Deal Closed Won", action: "Create Project & Notify Team" }
@@ -18,13 +20,13 @@ export default function AutomationsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
             <Zap className="w-8 h-8 text-amber-500" />
-            Workflow Automations
+            {t("automations.title")}
           </h1>
-          <p className="text-sm text-slate-500 mt-1 dark:text-zinc-400">Build rules that trigger actions automatically to save time.</p>
+          <p className="text-sm text-slate-500 mt-1 dark:text-zinc-400">{t("automations.subtitle")}</p>
         </div>
         <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-medium shadow-sm transition-all">
           <Plus className="w-4 h-4" />
-          Create Automation
+          {t("automations.create_automation")}
         </button>
       </div>
 
@@ -32,7 +34,7 @@ export default function AutomationsPage() {
         
         {/* Automations List */}
         <div className="lg:col-span-1 space-y-4">
-          <h2 className="font-semibold text-slate-800 dark:text-zinc-200">Active Rules</h2>
+          <h2 className="font-semibold text-slate-800 dark:text-zinc-200">{t("automations.active_rules")}</h2>
           {automations.map(auto => (
             <div key={auto.id} className={cn("p-4 rounded-xl border cursor-pointer transition-all hover:border-indigo-300 dark:hover:border-indigo-500/50", auto.active ? "bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800" : "bg-slate-50 dark:bg-zinc-900/50 border-slate-100 dark:border-zinc-800/50 opacity-75")}>
               <div className="flex justify-between items-center mb-3">
@@ -68,12 +70,12 @@ export default function AutomationsPage() {
                   <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
                     <Play className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   </div>
-                  <span className="font-bold text-slate-800 dark:text-zinc-200 uppercase text-xs tracking-wider">Trigger</span>
+                  <span className="font-bold text-slate-800 dark:text-zinc-200 uppercase text-xs tracking-wider">{t("automations.trigger")}</span>
                 </div>
                 <select className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-300 outline-none">
-                  <option>When Lead Status changes...</option>
-                  <option>When Deal is Closed...</option>
-                  <option>When Email is received...</option>
+                  <option>{t("automations.trigger_when_status")}</option>
+                  <option>{t("automations.trigger_when_closed")}</option>
+                  <option>{t("automations.trigger_when_email")}</option>
                 </select>
               </div>
 
@@ -87,12 +89,12 @@ export default function AutomationsPage() {
                   <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
                     <Zap className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   </div>
-                  <span className="font-bold text-slate-800 dark:text-zinc-200 uppercase text-xs tracking-wider">Action</span>
+                  <span className="font-bold text-slate-800 dark:text-zinc-200 uppercase text-xs tracking-wider">{t("automations.action")}</span>
                 </div>
                 <select className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-zinc-300 outline-none">
-                  <option>Send AI Email</option>
-                  <option>Create Project</option>
-                  <option>Send Slack Notification</option>
+                  <option>{t("automations.send_ai_email")}</option>
+                  <option>{t("automations.create_project")}</option>
+                  <option>{t("automations.send_slack")}</option>
                 </select>
               </div>
 
@@ -108,7 +110,7 @@ export default function AutomationsPage() {
             <div className="absolute bottom-6 right-6 z-10 flex gap-3">
               <button className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium shadow-sm transition-all flex items-center gap-2">
                 <Save className="w-4 h-4" />
-                Save Workflow
+                {t("automations.save_workflow")}
               </button>
             </div>
             

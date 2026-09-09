@@ -9,8 +9,10 @@ import { Sidebar } from "@/components/Sidebar";
 import { Save, User as UserIcon, Phone, Mail, Loader2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function ProfilePage() {
+  const { t } = useLanguage();
   const { role, isAuthenticated, loading: authLoading } = useRole();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -107,16 +109,16 @@ export default function ProfilePage() {
             
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Your Profile</h1>
-                <p className="text-slate-500 dark:text-slate-400 mt-1">Manage your personal information and contact details.</p>
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t("profile.title")}</h1>
+                <p className="text-slate-500 dark:text-slate-400 mt-1">{t("profile.subtitle")}</p>
               </div>
               <PageGuide 
                 pageKey="profile" 
-                title="Your Profile" 
-                description="Update your personal details here." 
+                title={t("profile.guide_title")} 
+                description={t("profile.guide_desc")} 
                 steps={[
-                  { icon: <UserIcon className="w-5 h-5 text-indigo-500" />, text: "Update your full name." },
-                  { icon: <Phone className="w-5 h-5 text-indigo-500" />, text: "Add your phone number to enable WhatsApp features." }
+                  { icon: <UserIcon className="w-5 h-5 text-indigo-500" />, text: t("profile.guide_s1") },
+                  { icon: <Phone className="w-5 h-5 text-indigo-500" />, text: t("profile.guide_s2") }
                 ]} 
               />
             </div>
@@ -147,7 +149,7 @@ export default function ProfilePage() {
                     {/* Name */}
                     <div className="sm:col-span-2">
                       <label htmlFor="name" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Full Name
+                        {t("profile.field_name")}
                       </label>
                       <div className="mt-2 relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -168,7 +170,7 @@ export default function ProfilePage() {
                     {/* Email (Readonly) */}
                     <div>
                       <label htmlFor="email" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Email Address
+                        {t("profile.field_email")}
                       </label>
                       <div className="mt-2 relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -183,13 +185,13 @@ export default function ProfilePage() {
                           className="pl-10 block w-full rounded-xl border-0 py-2.5 text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/80 shadow-sm ring-1 ring-inset ring-slate-200 dark:ring-slate-700 sm:text-sm sm:leading-6 cursor-not-allowed"
                         />
                       </div>
-                      <p className="mt-1 text-xs text-slate-500">Email cannot be changed.</p>
+                      <p className="mt-1 text-xs text-slate-500">{t("profile.email_readonly")}</p>
                     </div>
 
                     {/* Phone Number */}
                     <div>
                       <label htmlFor="phone" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Phone Number
+                        {t("profile.field_phone")}
                       </label>
                       <div className="mt-2 relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -205,7 +207,7 @@ export default function ProfilePage() {
                           placeholder="+1 234 567 8900"
                         />
                       </div>
-                      <p className="mt-1 text-xs text-slate-500">Required for WhatsApp integration.</p>
+                      <p className="mt-1 text-xs text-slate-500">{t("profile.phone_hint")}</p>
                     </div>
 
                   </div>
@@ -224,7 +226,7 @@ export default function ProfilePage() {
                       ) : (
                         <Save className="h-4 w-4" />
                       )}
-                      Save Changes
+                      {t("profile.save_changes")}
                     </button>
                   </div>
                 </form>

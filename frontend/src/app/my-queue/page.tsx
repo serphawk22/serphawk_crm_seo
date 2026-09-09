@@ -9,6 +9,7 @@ import { API_BASE_URL } from "@/config";
 import { cn } from "@/lib/utils";
 import { useRole } from "@/context/RoleContext";
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from "@/context/LanguageContext";
 
 interface Task {
   id: number;
@@ -29,12 +30,6 @@ interface Task {
 interface Employee { id: number; name: string; email: string; }
 interface Client { id: number; companyName?: string; name?: string; }
 
-const COLUMNS: { key: Task["status"]; label: string; color: string; bg: string; icon: any }[] = [
-  { key: "Todo", label: "To Do", color: "text-amber-500", bg: "bg-gray-50 dark:bg-zinc-900 border-gray-200 dark:border-white/5", icon: Clock },
-  { key: "InProgress", label: "In Progress", color: "text-sky-400", bg: "bg-gray-50 dark:bg-zinc-900 border-gray-200 dark:border-white/5", icon: Zap },
-  { key: "Done", label: "Done", color: "text-emerald-500", bg: "bg-gray-50 dark:bg-zinc-900 border-gray-200 dark:border-white/5", icon: CheckCircle2 },
-];
-
 const PRIORITY_STYLES: Record<string, string> = {
   Low: "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300",
   Medium: "bg-amber-100 text-amber-700",
@@ -43,6 +38,7 @@ const PRIORITY_STYLES: Record<string, string> = {
 };
 
 export default function MyQueuePage() {
+  const { t } = useLanguage();
   const { user, role } = useRole();
   const userId = user?.id;
   const isClient = role === "Client";
@@ -64,6 +60,12 @@ export default function MyQueuePage() {
     due_date: "", assigned_to: "", client_id: "", project_id: "",
   });
 
+  const COLUMNS: { key: Task["status"]; label: string; color: string; bg: string; icon: any }[] = [
+    { key: "Todo", label: t("my_queue.col_todo"), color: "text-amber-500", bg: "bg-gray-50 dark:bg-zinc-900 border-gray-200 dark:border-white/5", icon: Clock },
+    { key: "InProgress", label: t("my_queue.col_in_progress"), color: "text-sky-400", bg: "bg-gray-50 dark:bg-zinc-900 border-gray-200 dark:border-white/5", icon: Zap },
+    { key: "Done", label: t("my_queue.col_done"), color: "text-emerald-500", bg: "bg-gray-50 dark:bg-zinc-900 border-gray-200 dark:border-white/5", icon: CheckCircle2 },
+  ];
+
   useEffect(() => {
     if (userId) fetchAll();
   }, [userId]);
@@ -71,12 +73,12 @@ export default function MyQueuePage() {
   async function fetchAll() {
     setLoading(true);
     const taskUrl = `${API_BASE_URL}/tasks?assigned_to=${userId}`;
-    const [t, e, c] = await Promise.all([
+    const [tasksData, e, c] = await Promise.all([
       fetch(taskUrl).then(r => r.json()),
       isClient ? Promise.resolve({ employees: [] }) : fetch(`${API_BASE_URL}/employees`).then(r => r.json()),
       isClient ? Promise.resolve({ clients: [] }) : fetch(`${API_BASE_URL}/clients`).then(r => r.json()),
     ]);
-    setTasks(t.tasks || []);
+    setTasks(tasksData.tasks || []);
     setEmployees(e.employees || []);
     setClients(c.clients || []);
     setLoading(false);
@@ -141,40 +143,38 @@ export default function MyQueuePage() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-black text-slate-800 dark:text-zinc-100 tracking-tight">My Queue</h1>
-          <p className="text-sm font-medium text-slate-500 dark:text-zinc-400 mt-1">Manage your assigned tasks</p>
+          <h1 className="text-2xl md:text-3xl font-black text-slate-800 dark:text-zinc-100 tracking-tight">{t("my_queue.title")}</h1>
+          <p className="text-sm font-medium text-slate-500 dark:text-zinc-400 mt-1">{t("my_queue.subtitle")}</p>
         </div>
         {!isClient && (
           <button
             onClick={() => setShowModal(true)}
             className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-2xl font-bold text-sm hover:bg-black shadow-lg transition-all active:scale-95"
           >
-            <Plus className="w-4 h-4" /> New Task
+            <Plus className="w-4 h-4" /> {t("my_queue.new_task")}
           </button>
         )}
       </div>
 
       <PageGuide
         pageKey="tasks"
-        title={isClient ? 'Understanding Your Tasks' : 'How the Task Board works'}
-        description={isClient ? 'Here you can see all tasks related to your projects and services.' : 'A Kanban-style board to manage tasks across all clients and projects.'}
+        title={isClient ? t("my_queue.guide_title_client") : t("my_queue.guide_title_staff")}
+        description={isClient ? t("my_queue.guide_desc_client") : t("my_queue.guide_desc_staff")}
         steps={isClient ? [
-          { icon: '📋', text: 'Tasks are organized by status: To Do, In Progress, and Done.' },
-          { icon: '🏷️', text: 'Each task shows its priority level (Low, Medium, High, Urgent) with color coding.' },
-          { icon: '📅', text: 'Check due dates and descriptions to stay on top of deadlines.' },
-          { icon: '💬', text: 'Your team updates task progress as work moves forward on your services.' },
+          { icon: '📋', text: t("my_queue.guide_cs1") },
+          { icon: '🏷️', text: t("my_queue.guide_cs2") },
+          { icon: '📅', text: t("my_queue.guide_cs3") },
+          { icon: '💬', text: t("my_queue.guide_cs4") },
         ] : [
-          { icon: '➕', text: 'Click \"New Task\" to create a task and assign it to a client, project, or team member.' },
-          { icon: '🔄', text: 'Tasks are grouped by status columns: To Do, In Progress, and Done.' },
-          { icon: '🏷️', text: 'Set priorities (Low, Medium, High, Urgent) to keep the team focused on what matters.' },
-          { icon: '🗑️', text: 'Use the task menu to edit details, reassign, or delete tasks.' },
+          { icon: '➕', text: t("my_queue.guide_s1") },
+          { icon: '🔄', text: t("my_queue.guide_s2") },
+          { icon: '🏷️', text: t("my_queue.guide_s3") },
+          { icon: '🗑️', text: t("my_queue.guide_s4") },
         ]}
       />
 
-      {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         {COLUMNS.map(col => (
           <div key={col.key} className={cn("rounded-2xl border p-4", col.bg)}>
@@ -187,7 +187,6 @@ export default function MyQueuePage() {
         ))}
       </div>
 
-      {/* Kanban Board */}
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -252,7 +251,7 @@ export default function MyQueuePage() {
                   </div>
                 ))}
                 {columnTasks(col.key).length === 0 && (
-                  <div className="text-center py-12 text-gray-400 text-sm">Drop tasks here</div>
+                  <div className="text-center py-12 text-gray-400 text-sm">{t("my_queue.drop_here")}</div>
                 )}
               </div>
             </div>
@@ -260,69 +259,68 @@ export default function MyQueuePage() {
         </div>
       )}
 
-      {/* Create Task Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-lg p-8">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-black text-gray-900 dark:text-zinc-50">Create Task</h2>
+              <h2 className="text-xl font-black text-gray-900 dark:text-zinc-50">{t("my_queue.create_task")}</h2>
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={createTask} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Title *</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("my_queue.field_title")}</label>
                 <input
                   required value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
                   className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Task title..."
+                  placeholder={t("my_queue.ph_title")}
                 />
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Description</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("my_queue.field_description")}</label>
                 <textarea
                   value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
                   rows={3} className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-                  placeholder="Optional details..."
+                  placeholder={t("my_queue.ph_description")}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Priority</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("my_queue.field_priority")}</label>
                   <select value={form.priority} onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}
                     className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                     {["Low", "Medium", "High", "Urgent"].map(p => <option key={p}>{p}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Due Date</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("my_queue.field_due_date")}</label>
                   <input type="date" value={form.due_date} onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))}
                     className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Assign To</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("my_queue.field_assign_to")}</label>
                   <select value={form.assigned_to} onChange={e => setForm(p => ({ ...p, assigned_to: e.target.value }))}
                     className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="">Unassigned</option>
+                    <option value="">{t("my_queue.unassigned")}</option>
                     {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Client</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("my_queue.field_client")}</label>
                   <select value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}
                     className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="">No Client</option>
+                    <option value="">{t("my_queue.no_client")}</option>
                     {clients.map((c: any) => <option key={c.id} value={c.id}>{c.companyName || c.name || `Client #${c.id}`}</option>)}
                   </select>
                 </div>
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
-                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600 hover:bg-gray-50 dark:bg-zinc-950">Cancel</button>
+                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600 hover:bg-gray-50 dark:bg-zinc-950">{t("my_queue.cancel")}</button>
                 <button type="submit" disabled={submitting}
                   className="flex-1 py-2.5 bg-gray-900 text-white rounded-xl font-bold text-sm hover:bg-black flex items-center justify-center gap-2">
-                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Task"}
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : t("my_queue.create_btn")}
                 </button>
               </div>
             </form>
@@ -330,7 +328,6 @@ export default function MyQueuePage() {
         </div>
       )}
 
-      {/* Task Detail Modal */}
       {showDetailModal && selectedTask && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-xl p-8 max-h-[90vh] overflow-y-auto">
@@ -363,22 +360,20 @@ export default function MyQueuePage() {
               )}
             </div>
 
-            {/* Move buttons */}
             {!isClient && (
             <div className="flex gap-2 mb-6">
               {COLUMNS.filter(c => c.key !== selectedTask.status).map(col => (
                 <button key={col.key} onClick={() => { moveTask(selectedTask.id, col.key); setSelectedTask(p => p ? { ...p, status: col.key } : null); }}
                   className={cn("flex-1 py-2 text-xs font-bold rounded-xl border transition-all", col.bg, col.color)}>
-                  Move to {col.label}
+                  {t("my_queue.move_to")} {col.label}
                 </button>
               ))}
             </div>
             )}
 
-            {/* Comments */}
             <div>
               <h3 className="font-bold text-gray-900 dark:text-zinc-50 mb-3 flex items-center gap-2">
-                <MessageSquare className="w-4 h-4" /> Comments ({taskComments.length})
+                <MessageSquare className="w-4 h-4" /> {t("my_queue.comments")} ({taskComments.length})
               </h3>
               <div className="space-y-3 mb-4 max-h-48 overflow-y-auto">
                 {taskComments.map((c: any) => (
@@ -390,14 +385,14 @@ export default function MyQueuePage() {
                     <p className="text-sm text-gray-800 dark:text-zinc-100">{c.content}</p>
                   </div>
                 ))}
-                {taskComments.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No comments yet</p>}
+                {taskComments.length === 0 && <p className="text-sm text-gray-400 text-center py-4">{t("my_queue.no_comments")}</p>}
               </div>
               <div className="flex gap-2">
                 <input value={newComment} onChange={e => setNewComment(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && addComment()}
                   className="flex-1 border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Add a comment..." />
-                <button onClick={addComment} className="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm font-bold">Post</button>
+                  placeholder={t("my_queue.ph_comment")} />
+                <button onClick={addComment} className="px-4 py-2 bg-gray-900 text-white rounded-xl text-sm font-bold">{t("my_queue.post")}</button>
               </div>
             </div>
 
@@ -405,7 +400,7 @@ export default function MyQueuePage() {
             <div className="mt-4 flex justify-end">
               <button onClick={() => deleteTask(selectedTask.id)}
                 className="flex items-center gap-1 text-red-500 hover:text-red-700 text-sm font-semibold">
-                <Trash2 className="w-4 h-4" /> Delete Task
+                <Trash2 className="w-4 h-4" /> {t("my_queue.delete_task")}
               </button>
             </div>
             )}
