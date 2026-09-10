@@ -284,7 +284,7 @@ export default function QuotesPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/quotes/${q.id}/send-email`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Email-Confirmed": "1" },
         body: JSON.stringify({ subject: editableSubject, body_html: bodyRef.current?.innerHTML || "" }),
       });
       const data = await res.json().catch(() => ({}));

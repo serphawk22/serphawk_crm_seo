@@ -236,7 +236,6 @@ export default function TeamsPage() {
                   <optgroup label={t("teams.optgroup_sales")}>
                     <option value="Admin">Admin</option>
                     <option value="SalesManager">{t("teams.opt_sales_manager")}</option>
-                    <option value="Employee">{t("teams.opt_sales_rep")}</option>
                   </optgroup>
                   <optgroup label={t("teams.optgroup_dev")}>
                     <option value="ProjectMember">{t("teams.opt_project_member")}</option>

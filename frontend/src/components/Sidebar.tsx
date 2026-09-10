@@ -407,11 +407,19 @@ export function Sidebar({ role }: SidebarProps) {
               
               return { ...savedSec, items: [...updatedSavedItems, ...missingItems] };
             });
+
+            const stripDisabled = (sec: any) => ({
+              ...sec,
+              items: (sec.items || []).filter((i: any) =>
+                !String(i.id || "").toLowerCase().includes("automation") &&
+                !String(i.href || "").toLowerCase().includes("automation")),
+            });
+            const mergedSectionsClean = mergedSections.map(stripDisabled);
             
             if (missingSections.length > 0) {
-              setSections([...mergedSections, ...missingSections]);
+              setSections([...mergedSectionsClean, ...missingSections.map(stripDisabled)]);
             } else {
-              setSections(mergedSections);
+              setSections(mergedSectionsClean);
             }
           }
           if (Array.isArray(data.sidebar_preferences.favourites)) {

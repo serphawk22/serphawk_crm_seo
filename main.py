@@ -694,8 +694,7 @@ allowed_origins = [
     "https://dapros-crm.serphawk.in",
     "https://crm.dapros.serphawk.in",
     "https://dapros.serphawk.in",
-    "https://crm-dapros.vercel.app",
-    "https://crm-dapros.vercel.app/",
+    "https://crm-seo.allytechcourses.com",
     "http://dapros.serphawk.in"
 ]
 
@@ -738,8 +737,11 @@ def _send_notification_email(to_email: str, subject: str, body_html: str):
         from modules.email_sender import send_email_outlook
         sender = os.environ.get("EMAIL_SENDER") or os.environ.get("OUTLOOK_EMAIL") or ""
         password = os.environ.get("EMAIL_PASSWORD") or os.environ.get("OUTLOOK_PASSWORD") or ""
+        smtp_server = os.environ.get("EMAIL_HOST") or os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+        smtp_port = int(os.environ.get("EMAIL_PORT") or os.environ.get("SMTP_PORT", 587))
         if sender and password:
-            send_email_outlook(to_email, subject, body_html, sender, password)
+            send_email_outlook(to_email, subject, body_html, sender, password,
+                               smtp_server=smtp_server, smtp_port=smtp_port)
     except Exception as e:
         print(f"[Notification email failed] {e}")
 
@@ -10662,7 +10664,7 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
     to_email = None
     if m.client_id:
         c = session.get(ClientProfile, m.client_id)
-        if c: to_email = c.email
+        if c: to_email = c.user.email if c.user else None
     elif m.lead_id:
         l = session.get(Lead, m.lead_id)
         if l: to_email = l.email
@@ -10674,7 +10676,8 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
         recips.append(to_email.strip())
 
     def _render_meeting_invite(recipient_email):
-        content = (
+        import html as _html
+        plain = (
             f"Hello,\n\n"
             f"A meeting has been scheduled:\n\n"
             f"  Title     : {m.title}\n"
@@ -10685,28 +10688,98 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
             f"  Attendees : {', '.join(recips) or '—'}"
         )
         if notes:
-            content += f"\n\nNotes:\n{notes}"
-        content += "\n\nThanks,\nSerpHawk CRM"
-        return subject, content
+            plain += f"\n\nNotes:\n{notes}"
+        plain += "\n\nThanks,\nSerpHawk CRM"
+
+        esc = _html.escape
+        title = esc(m.title or "Meeting")
+        date_time = esc(dt_str)
+        mtype = esc(m.meeting_type or "Meeting")
+        location = esc(m.location or "TBD")
+        duration = f"{int(m.duration_minutes)} min" if m.duration_minutes else "TBD"
+        attendees = esc(", ".join(recips) or "—")
+        notes_html = esc(notes)
+
+        rows = [
+            ("Title", title),
+            ("Date/Time", date_time),
+            ("Type", mtype),
+            ("Location", location),
+            ("Duration", duration),
+            ("Attendees", attendees),
+        ]
+        detail_rows = "".join(
+            f"""<tr>
+            <td style="padding:10px 16px;border-bottom:1px solid #eef2f7;color:#64748b;font-size:13px;font-weight:600;width:130px;vertical-align:top">{label}</td>
+            <td style="padding:10px 16px;border-bottom:1px solid #eef2f7;color:#0f172a;font-size:14px;font-weight:600;vertical-align:top">{value}</td>
+          </tr>"""
+            for label, value in rows
+        )
+
+        notes_block = ""
+        if notes_html:
+            notes_block = f"""
+          <div style="padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0">
+            <p style="margin:0 0 6px;color:#64748b;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Notes</p>
+            <p style="margin:0;color:#334155;font-size:14px;line-height:1.6;white-space:pre-wrap">{notes_html}</p>
+          </div>"""
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,0.08)">
+          <tr>
+            <td style="background:linear-gradient(135deg,#1e3a8a,#2563eb);padding:28px 32px">
+              <p style="margin:0;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#93c5fd">SerpHawk CRM</p>
+              <p style="margin:8px 0 0;font-size:22px;font-weight:800;color:#ffffff">📅 Meeting Scheduled</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 32px">
+              <p style="margin:0 0 16px;color:#475569;font-size:14px;line-height:1.6">Hello, a new meeting has been scheduled for you:</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:16px">
+                {detail_rows}
+              </table>
+              {notes_block}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 32px 24px;border-top:1px solid #eef2f7">
+              <p style="margin:0;color:#64748b;font-size:12px;line-height:1.5">Thanks,<br><span style="font-weight:700;color:#1d4ed8">SerpHawk CRM</span></p>
+              <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:14px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+        return subject, html_body, plain
 
     for to_email in recips:
         if not to_email:
             continue
         try:
-            subj, content = _render_meeting_invite(to_email)
-            _send_notification_email(to_email, subj, content.replace("\n", "<br>"))
+            subj, html_body, plain = _render_meeting_invite(to_email)
+            _send_notification_email(to_email, subj, html_body)
             session.add(SentEmail(
+                tenant_id=current_tenant_id.get(),
                 client_id=m.client_id,
                 lead_id=m.lead_id,
-                to_address=to_email,
+                to_email=to_email,
                 subject=subj,
-                body_content=content,
+                english_body=plain,
                 status="Sent",
-                provider="System"
             ))
             session.commit()
         except Exception as e:
             print("Failed to send meeting invite email:", e)
+            session.rollback()
             
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -11103,6 +11176,7 @@ def _quote_email_content(q: CRMQuote, session: Session, recipient_name=None):
         {extra_section}
         <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">If you have any questions about this quote, just reply to this email or contact your account manager.</p>
         <p style="color:#64748b;font-size:13px;line-height:1.6;margin:4px 0 0">This is an automated message from the SerpHawk CRM.</p>
+        <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
       </div>
     </div>
     """
@@ -13850,7 +13924,7 @@ def send_supplier_credentials(supplier_id: int, session: Session = Depends(get_s
     if not s.login_password:
         raise HTTPException(status_code=400, detail="No login credentials exist for this supplier")
 
-    login_url = (os.environ.get("FRONTEND_URL") or "https://crm-dapros.vercel.app").rstrip("/") + "/login"
+    login_url = (os.environ.get("FRONTEND_URL") or "https://crm-seo.allytechcourses.com").rstrip("/") + "/login"
     subject = "Your SERP Hawk Supplier Portal Login"
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
@@ -13882,6 +13956,7 @@ def send_supplier_credentials(supplier_id: int, session: Session = Depends(get_s
         <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">
           If you did not expect this email, you can safely ignore it. We recommend changing your password after your first login.
         </p>
+        <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
       </div>
     </div>
     """
@@ -14389,10 +14464,13 @@ def get_demo_limits(session: Session = Depends(get_session)):
     if not tenant:
         return {"success": False, "message": "Tenant not found"}
         
+    lead_count = session.exec(select(func.count(Lead.id)).where(Lead.tenant_id == tenant_id)).one()
+
     return {
         "success": True,
         "limits": {
             "clients": {"usage": tenant.usage_clients, "limit": tenant.limit_clients},
+            "leads": {"usage": lead_count, "limit": tenant.limit_clients},
             "emails": {"usage": tenant.usage_emails, "limit": tenant.limit_emails},
             "searches": {"usage": tenant.usage_searches, "limit": tenant.limit_searches},
             "projects": {"usage": tenant.usage_projects, "limit": tenant.limit_projects}
