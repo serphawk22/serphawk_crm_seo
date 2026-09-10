@@ -34,7 +34,6 @@ const TABS = [
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
   { key: 'tasks',          label: 'Tasks',           icon: CheckSquare     },
   { key: 'tickets',        label: 'Tickets',         icon: Ticket          },
-  { key: 'opportunities',  label: 'Opportunities',   icon: Target          },
   { key: 'files',          label: 'Files',           icon: FolderOpen      },
   { key: 'health',         label: 'Health',          icon: HeartPulse      },
   { key: 'conversations',  label: 'Conversations',   icon: MessageSquare   },

@@ -67,8 +67,6 @@ export default function LeadHeader({
     { icon: CheckSquare,   label: language === 'es' ? 'Crear Tarea' : 'Create Task',     onClick: onCreateTask,       color: 'text-emerald-600 ', bg: 'hover:bg-emerald-50 ' },
     { icon: Calendar,      label: language === 'es' ? 'Agendar' : 'Schedule',            onClick: onScheduleMeeting,  color: 'text-amber-600 ',   bg: 'hover:bg-amber-50 ' },
     { icon: Mail,          label: language === 'es' ? 'Enviar Correo' : 'Send Email',    onClick: onSendEmail,        color: 'text-sky-600 ',       bg: 'hover:bg-sky-50 '     },
-    { icon: Upload,        label: language === 'es' ? 'Subir Archivo' : 'Upload File',   onClick: onUploadFile,       color: 'text-pink-600 ',     bg: 'hover:bg-pink-50 '   },
-    { icon: Target,        label: language === 'es' ? 'Nueva Oportunidad' : 'New Opportunity', onClick: onCreateOpportunity, color: 'text-indigo-600 ', bg: 'hover:bg-indigo-50 ' },
   ];
 
   // Contact info pills for display in header

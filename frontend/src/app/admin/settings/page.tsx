@@ -133,7 +133,6 @@ export default function SettingsPage() {
     { id: "notifications", label: t("settings.tab_notifications"), icon: Bell },
     { id: "appearance", label: t("settings.tab_appearance"), icon: Palette },
     { id: "smtp", label: t("settings.tab_smtp"), icon: Mail },
-    { id: "integrations", label: t("settings.tab_integrations"), icon: Mail },
   ];
 
   // Profile
