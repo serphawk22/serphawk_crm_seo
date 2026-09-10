@@ -1,18 +1,24 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FileText, Plus, X, Search, Loader2, Trash2, Building2,
   ShoppingCart, Package, Minus, CheckCircle, IndianRupee,
-  BadgeDollarSign, User2, Download
+  BadgeDollarSign, User2, Download, Eye
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+interface QuoteItem {
+  id?: number; description: string; quantity: number;
+  unit_price: number; provider?: string; discount_pct?: number;
+  tax_rate?: number; total?: number;
+}
 interface Quote {
   id: number; quote_number?: string; title: string; status: string;
   grand_total: number; currency: string; lead_name?: string;
   client_name?: string; valid_until?: string; created_at: string;
+  notes?: string; terms?: string; items?: QuoteItem[];
 }
 interface Lead   { id: number; company_name?: string; contact_name?: string; email?: string; }
 interface Client { id: number; companyName?: string; }
@@ -52,7 +58,30 @@ export default function QuotesPage() {
   const [modalStep, setModalStep] = useState<ModalStep>("form");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [pendingSend, setPendingSend] = useState<Quote | null>(null);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  // Email preview details shown in the confirmation modal before sending.
+  const [emailPreview, setEmailPreview] = useState<{
+    from_email: string | null;
+    recipient_email: string | null;
+    recipient_name: string | null;
+    company_name: string | null;
+    subject: string;
+    body_html?: string;
+    items: { description: string; quantity: number; unit_price: number }[];
+    sendable: boolean;
+  } | null>(null);
+  const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
+  // Editable subject / body the user can adjust before sending.
+  const [editableSubject, setEditableSubject] = useState("");
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const bodyInitializedIdRef = useRef<number | null>(null);
   const [downloadingQuote, setDownloadingQuote] = useState<Quote | null>(null);
+
+  // Preview state (click a row to preview details, like proposals)
+  const [previewQuote, setPreviewQuote] = useState<Quote | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // Form
   const [form, setForm] = useState({
@@ -86,6 +115,34 @@ export default function QuotesPage() {
   };
 
   useEffect(loadQuotes, []);
+
+  // When the "Send Email" confirmation modal opens, load the email details so
+  // the user can review exactly what will be sent (recipient, subject, items)
+  // before giving their permission.
+  useEffect(() => {
+    if (!pendingSend) { setEmailPreview(null); return; }
+    setEmailPreviewLoading(true);
+    fetch(`${API_BASE_URL}/quotes/${pendingSend.id}/email-preview`)
+      .then(r => r.json())
+      .then(p => {
+        setEmailPreview(p);
+        setEditableSubject(p.subject || "");
+        bodyInitializedIdRef.current = null;
+      })
+      .catch(console.error)
+      .finally(() => setEmailPreviewLoading(false));
+  }, [pendingSend]);
+
+  // Seed the editable body once whenever a new preview finishes loading,
+  // without clobbering the user's edits on later re-renders.
+  useEffect(() => {
+    if (emailPreview && pendingSend && bodyRef.current) {
+      if (bodyInitializedIdRef.current !== pendingSend.id) {
+        bodyRef.current.innerHTML = emailPreview.body_html || "";
+        bodyInitializedIdRef.current = pendingSend.id;
+      }
+    }
+  }, [emailPreview, pendingSend]);
 
   async function loadModalData() {
     if (modalDataLoaded) return;
@@ -177,14 +234,19 @@ export default function QuotesPage() {
     if (form.linked_to === "client" && form.client_id) payload.client_id = Number(form.client_id);
 
     try {
-      await fetch(`${API_BASE_URL}/quotes`, {
+      const res = await fetch(`${API_BASE_URL}/quotes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (!res.ok) {
+        setError("Failed to save. Please try again.");
+      } else {
+        setToast({ ok: true, msg: "Quote created. You can review and send it by email from the Quotes list." });
+      }
       setShowModal(false);
       loadQuotes();
-    } catch (e) {
+    } catch {
       setError("Failed to save. Please try again.");
     } finally {
       setSaving(false);
@@ -195,15 +257,81 @@ export default function QuotesPage() {
     if (!confirm("Delete quote?")) return;
     await fetch(`${API_BASE_URL}/quotes/${id}`, { method: "DELETE" });
     setQuotes(prev => prev.filter(q => q.id !== id));
+    setPreviewQuote(prev => prev && prev.id === id ? null : prev);
+  };
+
+  const setQuoteStatusLocal = (q: Quote, status: string) => {
+    setQuotes(prev => prev.map(qt => qt.id === q.id ? { ...qt, status } : qt));
+    setPreviewQuote(prev => prev && prev.id === q.id ? { ...prev, status } : prev);
   };
 
   const handleStatus = async (q: Quote, status: string) => {
+    if (status === "Sent") {
+      setPendingSend(q);
+      return;
+    }
     await fetch(`${API_BASE_URL}/quotes/${q.id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: q.title, status }),
     });
-    setQuotes(prev => prev.map(qt => qt.id === q.id ? { ...qt, status } : qt));
+    setQuoteStatusLocal(q, status);
   };
+
+  const sendEmailAndMarkSent = async () => {
+    if (!pendingSend) return;
+    setSendingEmail(true);
+    const q = pendingSend;
+    try {
+      const res = await fetch(`${API_BASE_URL}/quotes/${q.id}/send-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Email-Confirmed": "1" },
+        body: JSON.stringify({ subject: editableSubject, body_html: bodyRef.current?.innerHTML || "" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.email_sent) {
+        setToast({ ok: true, msg: `Quote #${q.quote_number || q.id} emailed to ${data.recipient_name || "the lead/client"} (${data.recipient_email || "email on file"}).` });
+      } else {
+        setToast({ ok: false, msg: data.recipient_email ? "Failed to send email." : "No email on the linked lead/client." });
+      }
+      await fetch(`${API_BASE_URL}/quotes/${q.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: q.title, status: "Sent" }),
+      });
+      setQuoteStatusLocal(q, "Sent");
+    } catch {
+      setToast({ ok: false, msg: "Failed to send email." });
+    } finally {
+      setSendingEmail(false);
+      setPendingSend(null);
+      loadQuotes();
+    }
+  };
+
+  const markSentOnly = async () => {
+    if (!pendingSend) return;
+    const q = pendingSend;
+    await fetch(`${API_BASE_URL}/quotes/${q.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: q.title, status: "Sent" }),
+    });
+    setQuoteStatusLocal(q, "Sent");
+    setPendingSend(null);
+    loadQuotes();
+  };
+
+  // ── Preview ───────────────────────────────────────────────────────────────
+  async function openPreview(q: Quote) {
+    setPreviewQuote(q);
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/quotes/${q.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPreviewQuote(data.quote || q);
+      }
+    } catch (e) { console.error(e); }
+    finally { setPreviewLoading(false); }
+  }
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const filtered = useMemo(() => quotes.filter(q => {
@@ -233,10 +361,27 @@ export default function QuotesPage() {
   }
 
   function handleDownloadSelect(provider: 'SERP_HAWK' | 'DAPROS') {
-    if (downloadingQuote) {
-      window.open(`${API_BASE_URL}/quotes/${downloadingQuote.id}/pdf?provider=${provider}`, '_blank');
-      setDownloadingQuote(null);
-    }
+    if (!downloadingQuote) return;
+    const q = downloadingQuote;
+    setDownloadingQuote(null);
+    // Use authenticated fetch (injects X-User-ID / X-Tenant-ID) so the backend
+    // can resolve the correct tenant for the quote, then trigger a file download.
+    fetch(`${API_BASE_URL}/quotes/${q.id}/pdf?provider=${provider}`)
+      .then(res => {
+        if (!res.ok) throw new Error(`PDF download failed (${res.status})`);
+        return res.blob();
+      })
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${q.quote_number || `quote-${q.id}`}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      })
+      .catch(err => console.error(err));
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -310,7 +455,8 @@ export default function QuotesPage() {
           </div>
         ) : filtered.map((q, i) => (
           <motion.div key={q.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
-            className="grid grid-cols-1 md:grid-cols-[auto_2fr_1.5fr_1fr_1fr_auto] gap-3 md:gap-4 items-center px-6 py-4 border-b border-slate-100 dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-800/40 group transition-colors">
+            onClick={() => openPreview(q)}
+            className="grid grid-cols-1 md:grid-cols-[auto_2fr_1.5fr_1fr_1fr_auto] gap-3 md:gap-4 items-center px-6 py-4 border-b border-slate-100 dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-800/40 group transition-colors cursor-pointer">
             <span className="text-xs font-mono text-slate-400">{q.quote_number || `#${q.id}`}</span>
             <p className="text-sm font-semibold text-slate-800 dark:text-zinc-100">{q.title}</p>
             <div className="flex items-center gap-1.5">
@@ -322,16 +468,21 @@ export default function QuotesPage() {
             <span className="text-sm font-black text-slate-800 dark:text-zinc-100">
               {currSymbol(q.currency || "MXN")}{(q.grand_total || 0).toFixed(2)}
             </span>
-            <select value={q.status} onChange={e => handleStatus(q, e.target.value)}
+            <select value={q.status} onClick={e => e.stopPropagation()}
+              onChange={e => handleStatus(q, e.target.value)}
               className={`text-xs font-bold px-2 py-1 rounded-lg border-0 outline-none cursor-pointer ${STATUS_COLORS[q.status] || STATUS_COLORS.Draft}`}>
               {STATUSES.map(s => <option key={s}>{s}</option>)}
             </select>
             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
-              <button onClick={() => setDownloadingQuote(q)} title="Download PDF"
+              <button onClick={e => { e.stopPropagation(); openPreview(q); }} title="Preview Quote"
+                className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20">
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={e => { e.stopPropagation(); setDownloadingQuote(q); }} title="Download PDF"
                 className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20">
                 <Download className="w-3.5 h-3.5" />
               </button>
-              <button onClick={() => handleDelete(q.id)} title="Delete Quote"
+              <button onClick={e => { e.stopPropagation(); handleDelete(q.id); }} title="Delete Quote"
                 className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -549,7 +700,7 @@ export default function QuotesPage() {
                               }`}>
                               {/* Thumbnail */}
                               {item.photo_url ? (
-                                <img src={item.photo_url} alt={item.name} className="w-12 h-12 rounded-lg object-cover flex-shrink-0 bg-slate-100" />
+                                <img src={item.photo_url.startsWith('/') ? `${API_BASE_URL}${item.photo_url}` : item.photo_url} alt={item.name} className="w-12 h-12 rounded-lg object-cover flex-shrink-0 bg-slate-100" />
                               ) : (
                                 <div className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-zinc-700 flex items-center justify-center flex-shrink-0">
                                   <Package className="w-5 h-5 text-slate-300" />
@@ -668,7 +819,7 @@ export default function QuotesPage() {
 
       {/* PDF Download Provider Modal */}
       {downloadingQuote && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
           <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-sm shadow-2xl p-6 relative overflow-hidden border border-zinc-200 dark:border-zinc-800">
             <button onClick={() => setDownloadingQuote(null)} className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800/50 rounded-full transition-colors"><X className="w-5 h-5"/></button>
             <h3 className="text-xl font-black text-zinc-900 dark:text-white mb-2 tracking-tight">Download Quote</h3>
@@ -681,17 +832,262 @@ export default function QuotesPage() {
                 </div>
                 <Download className="w-5 h-5 text-indigo-400 group-hover:text-indigo-600 transition-colors" />
               </button>
-              <button onClick={() => handleDownloadSelect('DAPROS')} className="w-full flex items-center justify-between p-4 rounded-xl border-2 border-emerald-100 dark:border-emerald-900/30 bg-emerald-50/50 dark:bg-emerald-900/10 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-200 dark:hover:border-emerald-800 transition-all text-left group">
-                <div>
-                  <div className="font-bold text-emerald-900 dark:text-emerald-300">DaPros</div>
-                  <div className="text-xs font-semibold text-emerald-600/70 dark:text-emerald-400/70">Clean Format (MXN)</div>
-                </div>
-                <Download className="w-5 h-5 text-emerald-400 group-hover:text-emerald-600 transition-colors" />
-              </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* QUOTE PREVIEW  (click a row ⇒ details, same as proposals)          */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {previewQuote && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4"
+            onClick={e => { if (e.target === e.currentTarget) setPreviewQuote(null); }}>
+            <motion.div initial={{ scale: 0.94, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 16 }}
+              transition={{ type: "spring", stiffness: 300, damping: 28 }}
+              className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+
+      {/* Header */}
+      {toast && (
+        <div className={`px-4 py-3 rounded-xl text-sm font-semibold border ${toast.ok ? "bg-emerald-500/10 text-emerald-700 border-emerald-300 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-700" : "bg-amber-500/10 text-amber-700 border-amber-300 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-700"}`}>
+          <div className="flex items-center justify-between gap-3">
+            <span>{toast.msg}</span>
+            <button onClick={() => setToast(null)} className="text-xs underline opacity-70 hover:opacity-100">OK</button>
+          </div>
+        </div>
+      )}
+      {/* Header */}
+              <div className="flex items-start justify-between p-6 border-b border-slate-200 dark:border-zinc-700">
+                <div>
+                  <span className="text-xs font-mono text-slate-400">{previewQuote.quote_number || `#${previewQuote.id}`}</span>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-zinc-100 mt-0.5">{previewQuote.title}</h2>
+                  {(previewQuote.client_name || previewQuote.lead_name) && (
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5 flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                      {previewQuote.client_name || previewQuote.lead_name}
+                    </p>
+                  )}
+                </div>
+                <button onClick={() => setPreviewQuote(null)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors">
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* Status */}
+                <div>
+                  <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Status</p>
+                  <div className="flex flex-wrap gap-2">
+                    {STATUSES.map(s => (
+                      <button key={s} onClick={() => handleStatus(previewQuote, s)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+                          previewQuote.status === s
+                            ? "border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                            : "border-slate-200 dark:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-300"
+                        }`}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Line items */}
+                {previewQuote.items && previewQuote.items.length > 0 ? (
+                  <div>
+                    <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">
+                      Items ({previewQuote.currency || "MXN"})
+                    </p>
+                    <div className="border border-slate-200 dark:border-zinc-700 rounded-xl overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-slate-50 dark:bg-zinc-800 text-left">
+                            <th className="px-3 py-2 font-semibold text-slate-600 dark:text-zinc-400 text-xs">Item</th>
+                            <th className="px-3 py-2 font-semibold text-slate-600 dark:text-zinc-400 text-xs">Qty</th>
+                            <th className="px-3 py-2 font-semibold text-slate-600 dark:text-zinc-400 text-xs text-right">Unit Price</th>
+                            <th className="px-3 py-2 font-semibold text-slate-600 dark:text-zinc-400 text-xs text-right">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previewLoading ? (
+                            <tr>
+                              <td colSpan={4} className="px-3 py-8 text-center">
+                                <Loader2 className="w-5 h-5 animate-spin text-amber-500 mx-auto" />
+                              </td>
+                            </tr>
+                          ) : previewQuote.items!.map((li, i) => (
+                            <tr key={i} className="border-t border-slate-100 dark:border-zinc-800">
+                              <td className="px-3 py-2.5 text-slate-900 dark:text-zinc-100">{li.description}</td>
+                              <td className="px-3 py-2.5 text-slate-600 dark:text-zinc-300">{li.quantity}</td>
+                              <td className="px-3 py-2.5 text-right text-slate-600 dark:text-zinc-300">{fmtMoney(li.unit_price, previewQuote.currency || "MXN")}</td>
+                              <td className="px-3 py-2.5 text-right font-semibold text-slate-900 dark:text-zinc-100">{fmtMoney(li.quantity * li.unit_price, previewQuote.currency || "MXN")}</td>
+                            </tr>
+                          ))}
+                          <tr className="border-t-2 border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800">
+                            <td colSpan={3} className="px-3 py-2.5 font-bold text-slate-900 dark:text-zinc-100 text-right">Total</td>
+                            <td className="px-3 py-2.5 text-right font-bold text-amber-600 text-base">
+                              {fmtMoney(previewQuote.grand_total || 0, previewQuote.currency || "MXN")}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-500 dark:text-zinc-400">
+                    Total: <span className="font-bold text-amber-600">{fmtMoney(previewQuote.grand_total || 0, previewQuote.currency || "MXN")}</span>
+                  </div>
+                )}
+
+                {/* Notes / Terms */}
+                {(previewQuote.notes || previewQuote.terms) && (
+                  <div>
+                    <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1.5">Notes &amp; Terms</p>
+                    <p className="text-sm text-slate-700 dark:text-zinc-300 leading-relaxed bg-slate-50 dark:bg-zinc-800 rounded-xl p-3 whitespace-pre-wrap">
+                      {[previewQuote.notes, previewQuote.terms].filter(Boolean).join("\n\n")}
+                    </p>
+                  </div>
+                )}
+
+                {/* Meta */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: "Valid Until", value: previewQuote.valid_until || "—" },
+                    { label: "Currency", value: previewQuote.currency || "MXN" },
+                    { label: "Created", value: new Date(previewQuote.created_at).toLocaleDateString("en-IN") },
+                    { label: "Status", value: previewQuote.status },
+                  ].map(m => (
+                    <div key={m.label} className="p-3 bg-slate-50 dark:bg-zinc-800 rounded-xl">
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">{m.label}</p>
+                      <p className="text-sm font-medium text-slate-900 dark:text-zinc-100">{m.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setDownloadingQuote(previewQuote)}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-xl font-semibold text-sm hover:bg-amber-600 transition-colors">
+                    <Download className="w-4 h-4" /> Download PDF
+                  </button>
+                  <button onClick={() => handleDelete(previewQuote.id)}
+                    className="px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-semibold text-sm hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Send Email Confirmation Modal */}
+      <AnimatePresence>
+        {pendingSend && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+            onClick={e => { if (e.target === e.currentTarget && !sendingEmail) setPendingSend(null); }}>
+            <motion.div initial={{ scale: 0.94, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 16 }}
+              transition={{ type: "spring", stiffness: 300, damping: 28 }}
+              className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-zinc-700 sticky top-0 bg-white dark:bg-zinc-900 z-10">
+                <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100">Confirm & Send Email</h2>
+                <button onClick={() => setPendingSend(null)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="p-6 space-y-5">
+                <p className="text-sm text-slate-600 dark:text-zinc-300 leading-relaxed">
+                  Review the email below, then confirm to send it to the linked lead/client.
+                </p>
+
+                {emailPreviewLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-slate-400 py-4">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Loading email details…
+                  </div>
+                ) : !emailPreview?.sendable ? (
+                  <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40">
+                    <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">No email address on the linked lead/client.</p>
+                    <p className="text-xs text-amber-600/70 dark:text-amber-500/70 mt-1">Add an email to the lead/client to send the quote by email. You can still mark it as Sent.</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* From / To */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700">
+                        <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-1">From</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-zinc-100">
+                          {emailPreview.from_email || "—"}
+                        </p>
+                        {!emailPreview.from_email && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">No sender configured</p>
+                        )}
+                      </div>
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700">
+                        <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-1">To</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-zinc-100">
+                          {emailPreview.recipient_name || emailPreview.company_name || "Recipient"}
+                        </p>
+                        {emailPreview.recipient_email && (
+                          <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{emailPreview.recipient_email}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Subject (editable) */}
+                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700">
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-1">Subject</p>
+                      <input value={editableSubject}
+                        onChange={e => setEditableSubject(e.target.value)}
+                        className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm font-medium text-slate-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                    </div>
+
+                    {/* Email body (editable) */}
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-2">Email Body <span className="normal-case font-medium text-slate-300 dark:text-zinc-500">— click to edit</span></p>
+                      <div className="rounded-xl border border-slate-200 dark:border-zinc-700 overflow-hidden bg-white">
+                        <div ref={bodyRef} contentEditable suppressContentEditableWarning
+                          className="max-h-80 overflow-y-auto p-4 outline-none focus:ring-2 focus:ring-inset focus:ring-amber-500/50"
+                          style={{ minHeight: 180 }} />
+                      </div>
+                      <p className="text-[10px] text-slate-300 dark:text-zinc-500 mt-1">Tip: the body supports simple formatting (bold, lists, links). Your edits go out with the email.</p>
+                    </div>
+
+                    {/* Quote summary */}
+                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700">
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-2">Quote Summary</p>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-zinc-100">{pendingSend.title}</p>
+                      <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+                        {pendingSend.quote_number || `#${pendingSend.id}`} · {pendingSend.currency || "MXN"} {pendingSend.grand_total?.toFixed(2)}
+                      </p>
+                      {emailPreview.items && emailPreview.items.length > 0 && (
+                        <div className="mt-3 space-y-1 border-t border-slate-200 dark:border-zinc-700 pt-2">
+                          {emailPreview.items.map((it, i) => (
+                            <div key={i} className="flex justify-between text-xs text-slate-600 dark:text-zinc-300">
+                              <span className="truncate pr-2">{it.description}</span>
+                              <span className="font-bold shrink-0">{it.quantity} × {pendingSend.currency || "MXN"} {it.unit_price.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="flex gap-3 px-6 py-4 border-t border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900/50 rounded-b-2xl">
+                <button onClick={markSentOnly} disabled={sendingEmail}
+                  className="flex-1 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 font-semibold text-sm hover:bg-slate-100 transition-all disabled:opacity-40">
+                  Mark Sent Only
+                </button>
+                <button onClick={sendEmailAndMarkSent} disabled={sendingEmail || emailPreviewLoading || !emailPreview?.sendable}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold text-sm hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2 shadow-md">
+                  {sendingEmail && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {sendingEmail ? "Sending…" : "Confirm & Send"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

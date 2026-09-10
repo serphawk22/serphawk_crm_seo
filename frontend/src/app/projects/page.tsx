@@ -8,8 +8,10 @@ import Link from "next/link";
 import { useRole } from "@/context/RoleContext";
 import PageGuide from '@/components/PageGuide';
 import DemoLimits from '@/components/DemoLimits';
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function ProjectsPage() {
+  const { t } = useLanguage();
   const { role, user } = useRole();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -116,8 +118,8 @@ export default function ProjectsPage() {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Project Dashboard</h1>
-          <p className="text-gray-500 font-medium">Create, track, and manage all your team initiatives.</p>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">{t("projects.title")}</h1>
+          <p className="text-gray-500 font-medium">{t("projects.subtitle")}</p>
         </div>
         {role === "Admin" || role === "SuperAdmin" ? (
           <button 
@@ -125,7 +127,7 @@ export default function ProjectsPage() {
             className="flex items-center gap-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-2xl font-bold hover:shadow-lg hover:-translate-y-0.5 transition-all active:scale-95"
           >
             <Plus className="w-5 h-5" />
-            New Project
+            {t("projects.new_project")}
           </button>
         ) : null}
       </div>
@@ -134,13 +136,13 @@ export default function ProjectsPage() {
 
       <PageGuide
         pageKey="projects"
-        title="How the Project Dashboard works"
-        description="Create, organize, and track team initiatives from start to finish."
+        title={t("projects.guide_title")}
+        description={t("projects.guide_desc")}
         steps={[
-          { icon: '📁', text: 'Click \"New Project\" to create an initiative with a name, description, and status.' },
-          { icon: '👥', text: 'Click any project card to assign team members, set progress, and manage details.' },
-          { icon: '📊', text: 'Each project card shows its current status (Planning, Active, Completed) and progress.' },
-          { icon: '💬', text: 'Inside each project you can add comments, track activity, and monitor timelines.' },
+          { icon: '📁', text: t("projects.guide_s1") },
+          { icon: '👥', text: t("projects.guide_s2") },
+          { icon: '📊', text: t("projects.guide_s3") },
+          { icon: '💬', text: t("projects.guide_s4") },
         ]}
       />
 
@@ -179,18 +181,18 @@ export default function ProjectsPage() {
                      <option value="Active">Active</option>
                      <option value="Completed">Completed</option>
                    </select>
-                   <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest leading-none">Status</p>
+                   <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest leading-none">{t("projects.status")}</p>
                 </div>
               </div>
               
               <h3 className="text-xl font-black text-gray-900 mb-2 truncate group-hover:text-blue-600 transition-colors uppercase tracking-tight" title={project.name}>{project.name}</h3>
               <p className="text-sm text-gray-400 font-medium mb-6 line-clamp-2 min-h-[2.5rem]">
-                {project.description || "No project description provided."}
+                {project.description || t("projects.no_description")}
               </p>
 
               <div className="space-y-3">
                 <div className="flex justify-between items-end">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Progress</p>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t("projects.progress")}</p>
                   <p className="text-sm font-black text-gray-900">{project.progress}%</p>
                 </div>
                 <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden">
@@ -210,7 +212,7 @@ export default function ProjectsPage() {
                       +{(project.employeeIds?.length || 0) + (project.internIds?.length || 0)}
                     </div>
                  </div>
-                 <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Team Assigned</p>
+                 <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">{t("projects.team_assigned")}</p>
               </div>
             </Link>
           ))
@@ -219,13 +221,13 @@ export default function ProjectsPage() {
             <div className="w-16 h-16 bg-white dark:bg-zinc-900 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm border">
                <StickyNote className="w-8 h-8 text-gray-300" />
             </div>
-            <p className="text-xl font-black text-gray-900 dark:text-zinc-50 mb-2">No Projects Found</p>
-            <p className="text-gray-500 dark:text-zinc-400 font-medium max-w-xs mx-auto mb-8">Ready to start something new? Create your first comprehensive project dashboard.</p>
+            <p className="text-xl font-black text-gray-900 dark:text-zinc-50 mb-2">{t("projects.empty_title")}</p>
+            <p className="text-gray-500 dark:text-zinc-400 font-medium max-w-xs mx-auto mb-8">{t("projects.empty_desc")}</p>
             <button 
               onClick={() => setShowCreateModal(true)}
               className="px-8 py-3 bg-white dark:bg-zinc-900 border-2 border-gray-900 text-gray-900 dark:text-zinc-50 rounded-2xl font-bold text-sm hover:bg-gray-900 hover:text-white transition-all shadow-sm"
             >
-               Create New Project
+               {t("projects.create_new_project")}
             </button>
           </div>
         )}
@@ -237,8 +239,8 @@ export default function ProjectsPage() {
           <div className="bg-white dark:bg-zinc-900 w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-8 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50 dark:bg-zinc-950/50">
               <div>
-                <h2 className="text-2xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">Create Project</h2>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Setup new team initiative</p>
+                <h2 className="text-2xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">{t("projects.create_project_title")}</h2>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t("projects.create_project_sub")}</p>
               </div>
               <button onClick={() => setShowCreateModal(false)} className="p-3 hover:bg-white dark:bg-zinc-900 rounded-2xl transition-all shadow-sm">
                 <X className="w-5 h-5 text-gray-400" />
@@ -247,60 +249,60 @@ export default function ProjectsPage() {
             
             <form onSubmit={handleCreate} className="p-8 space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Project Title</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_project_title")}</label>
                 <input 
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., Q1 SEO Optimization" 
+                  placeholder={t("projects.project_title_placeholder")} 
                   className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Project Objective</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_objective")}</label>
                 <textarea 
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the main goals and scope of this project..." 
+                  placeholder={t("projects.objective_placeholder")} 
                   className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none resize-none"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Project Type</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_project_type")}</label>
                 <select 
                   value={projectType}
                   onChange={(e) => setProjectType(e.target.value)}
                   className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"
                 >
-                  <option value="Development">Development Project</option>
-                  <option value="Sales">Sales Project</option>
+                  <option value="Development">{t("projects.type_development")}</option>
+                  <option value="Sales">{t("projects.type_sales")}</option>
                 </select>
               </div>
 
               {projectType === 'Sales' && (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Assign to Client (Optional)</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_assign_client")}</label>
                     <select 
                       value={clientId}
                       onChange={(e) => setClientId(e.target.value)}
                       className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"
                     >
-                      <option value="">-- None --</option>
+                      <option value="">{t("projects.none")}</option>
                       {availableClients.map(c => <option key={c.id} value={c.id}>{c.companyName || c.email}</option>)}
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Assign to Lead (Optional)</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_assign_lead")}</label>
                     <select 
                       value={leadId}
                       onChange={(e) => setLeadId(e.target.value)}
                       className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"
                     >
-                      <option value="">-- None --</option>
+                      <option value="">{t("projects.none")}</option>
                       {availableLeads.map(l => <option key={l.id} value={l.id}>{l.name || l.email}</option>)}
                     </select>
                   </div>
@@ -308,7 +310,7 @@ export default function ProjectsPage() {
               )}
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Assign Team Members (Multi-select)</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_assign_members")}</label>
                 <select 
                   multiple
                   value={projectMemberIds.map(String)}
@@ -321,12 +323,12 @@ export default function ProjectsPage() {
                 >
                   {availableUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
                 </select>
-                <p className="text-[10px] text-gray-400 ml-1">Hold Ctrl/Cmd to select multiple members</p>
+                <p className="text-[10px] text-gray-400 ml-1">{t("projects.ctrl_select_hint")}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Initial Status</label>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_initial_status")}</label>
                   <select 
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
@@ -338,7 +340,7 @@ export default function ProjectsPage() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Progress (%)</label>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_progress")}</label>
                   <input 
                     type="number" 
                     min="0" 
@@ -356,7 +358,7 @@ export default function ProjectsPage() {
                   onClick={() => setShowCreateModal(false)}
                   className="flex-1 px-6 py-4 bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-zinc-400 rounded-2xl font-bold text-sm hover:bg-gray-200 transition-all"
                 >
-                  Cancel
+                  {t("projects.cancel")}
                 </button>
                 <button 
                   type="submit"
@@ -364,7 +366,7 @@ export default function ProjectsPage() {
                   className="flex-1 px-6 py-4 bg-gray-900 text-white rounded-2xl font-bold text-sm hover:bg-black shadow-lg shadow-gray-900/20 transition-all flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  Create Project
+                  {t("projects.create_project_btn")}
                 </button>
               </div>
             </form>

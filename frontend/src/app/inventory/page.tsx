@@ -1,12 +1,14 @@
 "use client";
 import { API_BASE_URL } from "@/config";
 import React, { useState, useEffect, useRef } from "react";
+import { ExportActions } from "@/components/ExportActions";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Package, Plus, Search, Trash2, Edit2, X, ChevronDown, ChevronUp,
   Loader2, Tag, Building2, DollarSign, Clock, ShoppingCart, Send,
   CheckCircle, AlertTriangle, Upload, Star, StarOff, MoreHorizontal
 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface Supplier {
   id: number;
@@ -20,6 +22,9 @@ interface Supplier {
   min_order_qty?: number;
   is_preferred: boolean;
   notes?: string;
+  supplier_user_id?: number | null;
+  credentials_ready?: boolean;
+  credentials_sent?: boolean;
 }
 
 interface InventoryItem {
@@ -52,6 +57,7 @@ const UNITS = ["pcs", "kg", "g", "L", "mL", "m", "cm", "box", "pack", "pair", "r
 const CURRENCIES = ["USD", "EUR", "GBP", "INR", "AED", "SGD"];
 
 export default function InventoryPage() {
+  const { t } = useLanguage();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -65,10 +71,35 @@ export default function InventoryPage() {
   const [supplierForm, setSupplierForm] = useState({ ...emptySupplier });
   const [rfqForm, setRfqForm] = useState({ supplier_name: "", supplier_email: "", quantity: "", notes: "" });
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
-  const [newCredentials, setNewCredentials] = useState<{ email: string; password: string; name: string } | null>(null);
+  const [newCredentials, setNewCredentials] = useState<{ supplier_id: number; email: string; password: string; name: string } | null>(null);
+  const [sendingCreds, setSendingCreds] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API_BASE_URL}/upload-image`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (res.ok && data.file_url) {
+        setItemForm(f => ({ ...f, photo_url: data.file_url }));
+        showToast(t("inventory.toast_photo_uploaded"), "ok");
+      } else {
+        showToast(data.detail || t("inventory.toast_upload_failed"), "err");
+      }
+    } catch {
+      showToast(t("inventory.toast_network_error"), "err");
+    } finally {
+      setUploadingPhoto(false);
+      if (e.target) e.target.value = "";
+    }
+  };
 
   const showToast = (msg: string, type: "ok" | "err" = "ok") => {
     setToast({ msg, type });
@@ -91,7 +122,7 @@ export default function InventoryPage() {
   const filtered = items.filter(item => {
     const q = search.toLowerCase();
     const matchSearch = !q || item.name.toLowerCase().includes(q) || item.code.toLowerCase().includes(q)
-      || (item.category || "").toLowerCase().includes(q) || item.tags.some(t => t.toLowerCase().includes(q));
+      || (item.category || "").toLowerCase().includes(q) || item.tags.some(tag => tag.toLowerCase().includes(q));
     const matchCat = categoryFilter === "All" || item.category === categoryFilter;
     return matchSearch && matchCat;
   });
@@ -128,17 +159,17 @@ export default function InventoryPage() {
       if (res.ok) {
         setShowItemModal(false);
         fetchItems();
-        showToast(editItem ? "Item updated!" : "Item created!");
+        showToast(editItem ? t("inventory.toast_item_updated") : t("inventory.toast_item_created"));
       }
     } finally { setSaving(false); }
   };
 
   const handleDeleteItem = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Delete this inventory item?")) return;
+    if (!confirm(t("inventory.confirm_delete_item"))) return;
     await fetch(`${API_BASE_URL}/inventory/${id}`, { method: "DELETE" });
     fetchItems();
-    showToast("Deleted.");
+    showToast(t("inventory.toast_deleted"));
   };
 
   const handleAddSupplier = async () => {
@@ -153,11 +184,28 @@ export default function InventoryPage() {
       setShowSupplierModal(null);
       fetchItems();
       if (data.credentials_created) {
-        setNewCredentials({ email: data.login_email, password: data.login_password, name: supplierForm.supplier_name });
+        setNewCredentials({ supplier_id: data.id, email: data.login_email, password: data.login_password, name: supplierForm.supplier_name });
       } else {
-        showToast("Supplier added!");
+        showToast(t("inventory.toast_supplier_added"));
       }
     } finally { setSaving(false); }
+  };
+
+  const handleSendCredentials = async (supplierId: number, supplierName: string) => {
+    setSendingCreds(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/inventory/suppliers/${supplierId}/send-credentials`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`${supplierName}: ${t("inventory.toast_cred_sent")}`);
+        fetchItems();
+        if (newCredentials?.supplier_id === supplierId) setNewCredentials(null);
+      } else {
+        showToast(data.detail || t("inventory.toast_cred_send_failed"), "err");
+      }
+    } catch {
+      showToast(t("inventory.toast_cred_send_failed"), "err");
+    } finally { setSendingCreds(false); }
   };
 
   const handleDeleteSupplier = async (supplierId: number, e: React.MouseEvent) => {
@@ -181,22 +229,22 @@ export default function InventoryPage() {
         })
       });
       setShowRFQModal(null);
-      showToast("RFQ sent to supplier!");
+      showToast(t("inventory.toast_rfq_sent"));
     } finally { setSaving(false); }
   };
 
   const handleTagAdd = () => {
-    const t = tagInput.trim();
-    if (t && !itemForm.tags.includes(t)) {
-      setItemForm(f => ({ ...f, tags: [...f.tags, t] }));
+    const tag = tagInput.trim();
+    if (tag && !itemForm.tags.includes(tag)) {
+      setItemForm(f => ({ ...f, tags: [...f.tags, tag] }));
     }
     setTagInput("");
   };
 
   const stockStatus = (item: InventoryItem) => {
-    if (item.current_stock === 0) return { label: "Out of Stock", color: "text-red-500 bg-red-50 dark:bg-red-900/20" };
-    if (item.current_stock <= item.min_stock) return { label: "Low Stock", color: "text-amber-600 bg-amber-50 dark:bg-amber-900/20" };
-    return { label: "In Stock", color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20" };
+    if (item.current_stock === 0) return { label: t("inventory.stock_out_of_stock"), color: "text-red-500 bg-red-50 dark:bg-red-900/20" };
+    if (item.current_stock <= item.min_stock) return { label: t("inventory.stock_low_stock"), color: "text-amber-600 bg-amber-50 dark:bg-amber-900/20" };
+    return { label: t("inventory.stock_in_stock"), color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20" };
   };
 
   const categories = ["All", ...Array.from(new Set(items.map(i => i.category || "Other")))];
@@ -226,22 +274,22 @@ export default function InventoryPage() {
                   <CheckCircle className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">Supplier Account Created!</h2>
-                  <p className="text-xs text-slate-500">{newCredentials.name} can now log into the Supplier Portal</p>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t("inventory.cred_title")}</h2>
+                  <p className="text-xs text-slate-500">{newCredentials.name} {t("inventory.cred_can_login")}</p>
                 </div>
               </div>
               <div className="space-y-3 mb-5">
                 <div className="p-4 bg-slate-900 rounded-xl">
-                  <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">Login URL</p>
-                  <code className="text-blue-400 text-sm font-mono">crm-dapros.vercel.app/login</code>
+                  <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">{t("inventory.cred_login_url")}</p>
+                  <code className="text-blue-400 text-sm font-mono break-all">{typeof window !== 'undefined' ? `${window.location.origin}/login` : ''}</code>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-4 bg-slate-900 rounded-xl">
-                    <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">Email</p>
+                    <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">{t("inventory.cred_email")}</p>
                     <code className="text-emerald-400 text-sm font-mono break-all select-all">{newCredentials.email}</code>
                   </div>
                   <div className="p-4 bg-slate-900 rounded-xl">
-                    <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">Password</p>
+                    <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">{t("inventory.cred_password")}</p>
                     <code className="text-amber-400 text-sm font-mono select-all">{newCredentials.password}</code>
                   </div>
                 </div>
@@ -249,13 +297,21 @@ export default function InventoryPage() {
               <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl mb-4">
                 <p className="text-xs text-amber-700 dark:text-amber-400 font-medium flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  Share these credentials with the supplier. They can update pricing, stock levels, and lot numbers after logging in.
+                  {t("inventory.cred_share_notice")}
                 </p>
               </div>
-              <button onClick={() => { setNewCredentials(null); showToast("Supplier added with login access!"); }}
-                className="w-full py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition-all">
-                Done — I've shared the credentials
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => handleSendCredentials(newCredentials.supplier_id, newCredentials.name)}
+                  disabled={sendingCreds}
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+                  {sendingCreds ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {t("inventory.cred_send_email")}
+                </button>
+                <button onClick={() => { setNewCredentials(null); showToast(t("inventory.toast_supplier_added_login")); }}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition-all">
+                  {t("inventory.cred_done_btn")}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -265,15 +321,23 @@ export default function InventoryPage() {
       <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-black">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Inventory</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t("inventory.title")}</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-              {items.length} items · {items.reduce((a, b) => a + b.suppliers.length, 0)} supplier links
+              {items.length} {t("inventory.items_label")} · {items.reduce((a, b) => a + b.suppliers.length, 0)} {t("inventory.supplier_links_label")}
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <ExportActions
+              downloadUrl={`${API_BASE_URL}/inventory/export-pdf`}
+              emailUrl={`${API_BASE_URL}/inventory/export-pdf`}
+              filename="inventory_list.pdf"
+              label="Inventory"
+              items={items.map(i => ({ id: i.id, name: i.name, code: i.code }))}
+              multiDownloadUrl={`${API_BASE_URL}/inventory/pdf`}
+            />
             <button onClick={openCreate}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all hover:shadow-md active:scale-95">
-              <Plus className="w-4 h-4" /> Add Item
+              <Plus className="w-4 h-4" /> {t("inventory.btn_add_item")}
             </button>
           </div>
         </div>
@@ -281,10 +345,10 @@ export default function InventoryPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
           {[
-            { label: "Total Items", value: items.length, color: "text-blue-600", bg: "bg-blue-500/10" },
-            { label: "In Stock", value: items.filter(i => i.current_stock > i.min_stock).length, color: "text-emerald-600", bg: "bg-emerald-500/10" },
-            { label: "Low / Out", value: items.filter(i => i.current_stock <= i.min_stock).length, color: "text-amber-600", bg: "bg-amber-500/10" },
-            { label: "Suppliers", value: items.reduce((a, b) => a + b.suppliers.length, 0), color: "text-violet-600", bg: "bg-violet-500/10" },
+            { label: t("inventory.stat_total_items"), value: items.length, color: "text-blue-600", bg: "bg-blue-500/10" },
+            { label: t("inventory.stat_in_stock"), value: items.filter(i => i.current_stock > i.min_stock).length, color: "text-emerald-600", bg: "bg-emerald-500/10" },
+            { label: t("inventory.stat_low_out"), value: items.filter(i => i.current_stock <= i.min_stock).length, color: "text-amber-600", bg: "bg-amber-500/10" },
+            { label: t("inventory.stat_suppliers"), value: items.reduce((a, b) => a + b.suppliers.length, 0), color: "text-violet-600", bg: "bg-violet-500/10" },
           ].map(s => (
             <div key={s.label} className={`flex items-center gap-3 px-4 py-3 rounded-xl ${s.bg}`}>
               <p className={`text-xl font-black ${s.color}`}>{s.value}</p>
@@ -298,14 +362,14 @@ export default function InventoryPage() {
       <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-black border-b border-slate-200 dark:border-slate-800 flex-wrap gap-3">
         <div className="relative w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input type="text" placeholder="Search items..." value={search} onChange={e => setSearch(e.target.value)}
+          <input type="text" placeholder={t("inventory.search_placeholder")} value={search} onChange={e => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-900 dark:text-white placeholder:text-slate-400" />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {categories.map(cat => (
             <button key={cat} onClick={() => setCategoryFilter(cat)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${categoryFilter === cat ? "bg-blue-600 text-white shadow-sm" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"}`}>
-              {cat}
+              {cat === "All" ? t("inventory.filter_all") : cat}
             </button>
           ))}
         </div>
@@ -322,10 +386,10 @@ export default function InventoryPage() {
             <div className="w-16 h-16 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center mb-4">
               <Package className="w-8 h-8 text-slate-400" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">No inventory items</h3>
-            <p className="text-sm text-slate-500 mt-1">Click "Add Item" to get started.</p>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{t("inventory.empty_title")}</h3>
+            <p className="text-sm text-slate-500 mt-1">{t("inventory.empty_desc")}</p>
             <button onClick={openCreate} className="mt-4 flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">
-              <Plus className="w-4 h-4" /> Add your first item
+              <Plus className="w-4 h-4" /> {t("inventory.empty_add_first")}
             </button>
           </div>
         ) : (
@@ -343,7 +407,7 @@ export default function InventoryPage() {
                     {/* Photo */}
                     <div className="w-14 h-14 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 overflow-hidden">
                       {item.photo_url ? (
-                        <img src={item.photo_url} alt={item.name} className="w-full h-full object-cover" />
+                        <img src={item.photo_url.startsWith("/static") ? `${API_BASE_URL}${item.photo_url}` : item.photo_url} alt={item.name} className="w-full h-full object-cover" />
                       ) : (
                         <Package className="w-6 h-6 text-slate-400" />
                       )}
@@ -358,8 +422,8 @@ export default function InventoryPage() {
                       </div>
                       <div className="flex items-center gap-4 text-[12px] text-slate-500 dark:text-slate-400 flex-wrap">
                         {item.category && <span className="flex items-center gap-1"><Tag className="w-3 h-3" />{item.category}</span>}
-                        <span>Stock: <b className="text-slate-700 dark:text-slate-200">{item.current_stock} {item.unit || "units"}</b></span>
-                        <span>Min: <b className="text-slate-700 dark:text-slate-200">{item.min_stock} {item.unit || "units"}</b></span>
+                        <span>{t("inventory.label_stock")} <b className="text-slate-700 dark:text-slate-200">{item.current_stock} {item.unit || t("inventory.default_unit")}</b></span>
+                        <span>{t("inventory.label_min")} <b className="text-slate-700 dark:text-slate-200">{item.min_stock} {item.unit || t("inventory.default_unit")}</b></span>
                         {preferredSupplier && (
                           <span className="flex items-center gap-1 text-violet-600 dark:text-violet-400">
                             <Building2 className="w-3 h-3" />
@@ -370,8 +434,8 @@ export default function InventoryPage() {
                       </div>
                       {item.tags.length > 0 && (
                         <div className="flex gap-1 mt-1.5 flex-wrap">
-                          {item.tags.map(t => (
-                            <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium">{t}</span>
+                          {item.tags.map(tag => (
+                            <span key={tag} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium">{tag}</span>
                           ))}
                         </div>
                       )}
@@ -379,15 +443,15 @@ export default function InventoryPage() {
 
                     {/* Actions */}
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs font-medium text-slate-400">{item.suppliers.length} supplier{item.suppliers.length !== 1 ? "s" : ""}</span>
+                      <span className="text-xs font-medium text-slate-400">{item.suppliers.length} {item.suppliers.length !== 1 ? t("inventory.suppliers_suffix") : t("inventory.supplier_suffix")}</span>
                       <button onClick={e => { e.stopPropagation(); setShowRFQModal({ item }); setRfqForm({ supplier_name: "", supplier_email: "", quantity: "", notes: "" }); }}
-                        title="Send RFQ" className="p-1.5 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-900/30 text-slate-400 hover:text-violet-600 transition-colors">
+                        title={t("inventory.title_send_rfq")} className="p-1.5 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-900/30 text-slate-400 hover:text-violet-600 transition-colors">
                         <Send className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={e => openEdit(item, e)} title="Edit" className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors">
+                      <button onClick={e => openEdit(item, e)} title={t("inventory.title_edit")} className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors">
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={e => handleDeleteItem(item.id, e)} title="Delete" className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors">
+                      <button onClick={e => handleDeleteItem(item.id, e)} title={t("inventory.title_delete")} className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                       {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
@@ -401,14 +465,14 @@ export default function InventoryPage() {
                         className="border-t border-slate-100 dark:border-slate-800 overflow-hidden">
                         <div className="p-4">
                           <div className="flex items-center justify-between mb-3">
-                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Suppliers & Lot-wise Cost</h4>
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t("inventory.section_suppliers_cost")}</h4>
                             <button onClick={() => { setShowSupplierModal({ itemId: item.id }); setSupplierForm({ ...emptySupplier }); }}
                               className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
-                              <Plus className="w-3 h-3" /> Add Supplier
+                              <Plus className="w-3 h-3" /> {t("inventory.btn_add_supplier")}
                             </button>
                           </div>
                           {item.suppliers.length === 0 ? (
-                            <p className="text-sm text-slate-400 text-center py-4">No suppliers added yet.</p>
+                            <p className="text-sm text-slate-400 text-center py-4">{t("inventory.no_suppliers")}</p>
                           ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                               {item.suppliers.map(s => (
@@ -421,15 +485,26 @@ export default function InventoryPage() {
                                       </div>
                                       {s.supplier_brand && <span className="text-[11px] text-slate-500">{s.supplier_brand}</span>}
                                     </div>
-                                    <button onClick={e => handleDeleteSupplier(s.id, e)}
-                                      className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-300 hover:text-red-500 transition-colors">
-                                      <X className="w-3 h-3" />
-                                    </button>
+                                    <div className="flex items-center gap-1">
+                                      {s.credentials_ready && (
+                                        <button
+                                          onClick={e => { e.stopPropagation(); handleSendCredentials(s.id, s.supplier_name); }}
+                                          disabled={sendingCreds}
+                                          title={s.credentials_sent ? t("inventory.title_resend_creds") : t("inventory.title_send_creds")}
+                                          className={`p-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors ${s.credentials_sent ? "text-emerald-500" : "text-slate-400 hover:text-emerald-600"}`}>
+                                          {sendingCreds ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                                        </button>
+                                      )}
+                                      <button onClick={e => handleDeleteSupplier(s.id, e)}
+                                        className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-300 hover:text-red-500 transition-colors">
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
                                   </div>
                                   <div className="space-y-1 text-[12px] text-slate-600 dark:text-slate-400">
-                                    {s.unit_cost != null && <div className="flex items-center gap-1"><DollarSign className="w-3 h-3" />{s.currency} {s.unit_cost} / unit</div>}
-                                    {s.lead_time_days != null && <div className="flex items-center gap-1"><Clock className="w-3 h-3" />{s.lead_time_days} day lead time</div>}
-                                    {s.lot_number && <div className="flex items-center gap-1"><ShoppingCart className="w-3 h-3" />Lot: {s.lot_number}</div>}
+                                    {s.unit_cost != null && <div className="flex items-center gap-1"><DollarSign className="w-3 h-3" />{s.currency} {s.unit_cost} {t("inventory.per_unit")}</div>}
+                                    {s.lead_time_days != null && <div className="flex items-center gap-1"><Clock className="w-3 h-3" />{s.lead_time_days} {t("inventory.day_lead_time")}</div>}
+                                    {s.lot_number && <div className="flex items-center gap-1"><ShoppingCart className="w-3 h-3" />{t("inventory.lot_label")} {s.lot_number}</div>}
                                     {s.supplier_email && <div className="text-blue-500 truncate">{s.supplier_email}</div>}
                                   </div>
                                 </div>
@@ -461,8 +536,8 @@ export default function InventoryPage() {
                     <Package className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">{editItem ? "Edit Item" : "Add Inventory Item"}</h2>
-                    <p className="text-xs text-slate-500">Including photo, code, tags, and supplier details</p>
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">{editItem ? t("inventory.modal_edit_item") : t("inventory.modal_add_item")}</h2>
+                    <p className="text-xs text-slate-500">{t("inventory.modal_item_sub")}</p>
                   </div>
                 </div>
                 <button onClick={() => setShowItemModal(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors">
@@ -471,16 +546,30 @@ export default function InventoryPage() {
               </div>
 
               <div className="px-6 py-5 space-y-4">
-                {/* Photo URL */}
+                {/* Photo Upload */}
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Photo URL</label>
-                  <div className="flex gap-2">
-                    <input value={itemForm.photo_url} onChange={e => setItemForm(f => ({ ...f, photo_url: e.target.value }))}
-                      placeholder="https://example.com/photo.jpg"
-                      className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_photo")}</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      id="inventoryPhotoUpload"
+                      onChange={handlePhotoUpload}
+                    />
+                    <label
+                      htmlFor="inventoryPhotoUpload"
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 text-sm font-semibold text-slate-600 dark:text-zinc-300 cursor-pointer hover:border-blue-500 hover:text-blue-600 transition-colors"
+                    >
+                      <Upload className="w-4 h-4" /> {uploadingPhoto ? t("inventory.uploading") : itemForm.photo_url ? t("inventory.change_photo") : t("inventory.upload_image")}
+                    </label>
                     {itemForm.photo_url && (
-                      <div className="w-10 h-10 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
-                        <img src={itemForm.photo_url} alt="preview" className="w-full h-full object-cover" onError={e => { (e.target as any).style.display = "none"; }} />
+                      <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shrink-0">
+                        <img src={itemForm.photo_url.startsWith("/static") ? `${API_BASE_URL}${itemForm.photo_url}` : itemForm.photo_url} alt="preview" className="w-full h-full object-cover" />
+                        <button type="button" onClick={() => setItemForm(f => ({ ...f, photo_url: "" }))}
+                          className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors">
+                          <X className="w-3 h-3" />
+                        </button>
                       </div>
                     )}
                   </div>
@@ -488,12 +577,12 @@ export default function InventoryPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Item Code <span className="text-red-500">*</span></label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_item_code")} <span className="text-red-500">*</span></label>
                     <input autoFocus value={itemForm.code} onChange={e => setItemForm(f => ({ ...f, code: e.target.value }))} placeholder="SKU-001"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Item Name <span className="text-red-500">*</span></label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_item_name")} <span className="text-red-500">*</span></label>
                     <input value={itemForm.name} onChange={e => setItemForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Industrial Pump"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
@@ -501,18 +590,18 @@ export default function InventoryPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Category</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_category")}</label>
                     <select value={itemForm.category} onChange={e => setItemForm(f => ({ ...f, category: e.target.value }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Select category...</option>
+                      <option value="">{t("inventory.select_category")}</option>
                       {CATEGORIES.map(c => <option key={c}>{c}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Unit</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_unit")}</label>
                     <select value={itemForm.unit} onChange={e => setItemForm(f => ({ ...f, unit: e.target.value }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Select unit...</option>
+                      <option value="">{t("inventory.select_unit")}</option>
                       {UNITS.map(u => <option key={u}>{u}</option>)}
                     </select>
                   </div>
@@ -520,12 +609,12 @@ export default function InventoryPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Current Stock</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_current_stock")}</label>
                     <input type="number" value={itemForm.current_stock} onChange={e => setItemForm(f => ({ ...f, current_stock: parseFloat(e.target.value) || 0 }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Min Stock Alert</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_min_stock")}</label>
                     <input type="number" value={itemForm.min_stock} onChange={e => setItemForm(f => ({ ...f, min_stock: parseFloat(e.target.value) || 0 }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
@@ -533,10 +622,10 @@ export default function InventoryPage() {
 
                 {/* Tags */}
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Tags</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_tags")}</label>
                   <div className="flex gap-2">
                     <input value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleTagAdd(); } }}
-                      placeholder="Add tag and press Enter"
+                      placeholder={t("inventory.tag_placeholder")}
                       className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     <button onClick={handleTagAdd} className="px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition-colors">
                       <Plus className="w-4 h-4" />
@@ -544,10 +633,10 @@ export default function InventoryPage() {
                   </div>
                   {itemForm.tags.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {itemForm.tags.map(t => (
-                        <span key={t} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">
-                          {t}
-                          <button onClick={() => setItemForm(f => ({ ...f, tags: f.tags.filter(tt => tt !== t) }))}>
+                      {itemForm.tags.map(tag => (
+                        <span key={tag} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">
+                          {tag}
+                          <button onClick={() => setItemForm(f => ({ ...f, tags: f.tags.filter(tt => tt !== tag) }))}>
                             <X className="w-3 h-3" />
                           </button>
                         </span>
@@ -557,9 +646,9 @@ export default function InventoryPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Description</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_description")}</label>
                   <textarea value={itemForm.description} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} rows={2}
-                    placeholder="Brief description of this item..."
+                    placeholder={t("inventory.desc_placeholder")}
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
                 </div>
               </div>
@@ -567,12 +656,12 @@ export default function InventoryPage() {
               <div className="flex gap-3 px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 rounded-b-2xl">
                 <button onClick={() => setShowItemModal(false)}
                   className="flex-1 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-sm hover:bg-slate-100 transition-all">
-                  Cancel
+                  {t("inventory.btn_cancel")}
                 </button>
                 <button onClick={handleSaveItem} disabled={saving || !itemForm.name.trim() || !itemForm.code.trim()}
                   className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/20">
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {editItem ? "Save Changes" : "Add Item"}
+                  {editItem ? t("inventory.btn_save_changes") : t("inventory.btn_add_item")}
                 </button>
               </div>
             </motion.div>
@@ -593,7 +682,7 @@ export default function InventoryPage() {
                   <div className="w-9 h-9 rounded-xl bg-violet-600 flex items-center justify-center">
                     <Building2 className="w-5 h-5 text-white" />
                   </div>
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">Add Supplier</h2>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t("inventory.modal_add_supplier")}</h2>
                 </div>
                 <button onClick={() => setShowSupplierModal(null)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors">
                   <X className="w-4 h-4" />
@@ -603,48 +692,48 @@ export default function InventoryPage() {
               <div className="px-6 py-5 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Supplier Name <span className="text-red-500">*</span></label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_supplier_name")} <span className="text-red-500">*</span></label>
                     <input autoFocus value={supplierForm.supplier_name} onChange={e => setSupplierForm(f => ({ ...f, supplier_name: e.target.value }))} placeholder="Supplier Co."
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Brand</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_brand")}</label>
                     <input value={supplierForm.supplier_brand} onChange={e => setSupplierForm(f => ({ ...f, supplier_brand: e.target.value }))} placeholder="Brand name"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Supplier Email</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_supplier_email")}</label>
                   <input type="email" value={supplierForm.supplier_email} onChange={e => setSupplierForm(f => ({ ...f, supplier_email: e.target.value }))} placeholder="orders@supplier.com"
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Unit Cost</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_unit_cost")}</label>
                     <input type="number" value={supplierForm.unit_cost} onChange={e => setSupplierForm(f => ({ ...f, unit_cost: parseFloat(e.target.value) || 0 }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Currency</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_currency")}</label>
                     <select value={supplierForm.currency} onChange={e => setSupplierForm(f => ({ ...f, currency: e.target.value }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                       {CURRENCIES.map(c => <option key={c}>{c}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Lead Time (days)</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_lead_time")}</label>
                     <input type="number" value={supplierForm.lead_time_days} onChange={e => setSupplierForm(f => ({ ...f, lead_time_days: parseInt(e.target.value) || 0 }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Lot Number</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_lot_number")}</label>
                     <input value={supplierForm.lot_number} onChange={e => setSupplierForm(f => ({ ...f, lot_number: e.target.value }))} placeholder="LOT-2024-001"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Min Order Qty</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_min_order_qty")}</label>
                     <input type="number" value={supplierForm.min_order_qty} onChange={e => setSupplierForm(f => ({ ...f, min_order_qty: parseFloat(e.target.value) || 0 }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
@@ -653,11 +742,11 @@ export default function InventoryPage() {
                   <input type="checkbox" id="is-preferred" checked={supplierForm.is_preferred} onChange={e => setSupplierForm(f => ({ ...f, is_preferred: e.target.checked }))}
                     className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500" />
                   <label htmlFor="is-preferred" className="text-sm font-medium text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                    <Star className="w-3.5 h-3.5 text-violet-500" /> Mark as preferred supplier
+                    <Star className="w-3.5 h-3.5 text-violet-500" /> {t("inventory.label_preferred")}
                   </label>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Notes</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_notes")}</label>
                   <textarea value={supplierForm.notes} onChange={e => setSupplierForm(f => ({ ...f, notes: e.target.value }))} rows={2}
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
                 </div>
@@ -666,11 +755,11 @@ export default function InventoryPage() {
               <div className="flex gap-3 px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 rounded-b-2xl">
                 <button onClick={() => setShowSupplierModal(null)}
                   className="flex-1 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-sm hover:bg-slate-100 transition-all">
-                  Cancel
+                  {t("inventory.btn_cancel")}
                 </button>
                 <button onClick={handleAddSupplier} disabled={saving || !supplierForm.supplier_name.trim()}
                   className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white font-semibold text-sm hover:bg-violet-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
-                  {saving && <Loader2 className="w-4 h-4 animate-spin" />} Add Supplier
+                  {saving && <Loader2 className="w-4 h-4 animate-spin" />} {t("inventory.btn_add_supplier_modal")}
                 </button>
               </div>
             </motion.div>
@@ -692,7 +781,7 @@ export default function InventoryPage() {
                     <Send className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">Send RFQ</h2>
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t("inventory.modal_send_rfq")}</h2>
                     <p className="text-xs text-slate-500">{showRFQModal.item.name} · {showRFQModal.item.code}</p>
                   </div>
                 </div>
@@ -702,41 +791,41 @@ export default function InventoryPage() {
               </div>
               <div className="px-6 py-5 space-y-4">
                 <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-700 dark:text-amber-400 font-medium">
-                  This will create an RFQ request. The supplier will be notified to fill in pricing and delivery timelines.
+                  {t("inventory.rfq_notice")}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Supplier Name</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_supplier_name")}</label>
                     <input autoFocus value={rfqForm.supplier_name} onChange={e => setRfqForm(f => ({ ...f, supplier_name: e.target.value }))} placeholder="Supplier Co."
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Supplier Email <span className="text-red-500">*</span></label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_supplier_email")} <span className="text-red-500">*</span></label>
                     <input type="email" value={rfqForm.supplier_email} onChange={e => setRfqForm(f => ({ ...f, supplier_email: e.target.value }))} placeholder="orders@supplier.com"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Quantity Required</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_quantity")}</label>
                   <input type="number" value={rfqForm.quantity} onChange={e => setRfqForm(f => ({ ...f, quantity: e.target.value }))} placeholder="e.g. 100"
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Notes to Supplier</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_notes_to_supplier")}</label>
                   <textarea value={rfqForm.notes} onChange={e => setRfqForm(f => ({ ...f, notes: e.target.value }))} rows={3}
                     placeholder="Any specific requirements, delivery location, specs..."
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
                 </div>
               </div>
               <div className="flex gap-3 px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 rounded-b-2xl">
                 <button onClick={() => setShowRFQModal(null)}
                   className="flex-1 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-sm hover:bg-slate-100 transition-all">
-                  Cancel
+                  {t("inventory.btn_cancel")}
                 </button>
                 <button onClick={handleSendRFQ} disabled={saving || !rfqForm.supplier_email.trim()}
                   className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-                  <Send className="w-4 h-4" /> Send RFQ
+                  <Send className="w-4 h-4" /> {t("inventory.btn_send_rfq")}
                 </button>
               </div>
             </motion.div>

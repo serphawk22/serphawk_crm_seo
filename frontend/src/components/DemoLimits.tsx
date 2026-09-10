@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useRole } from "@/context/RoleContext";
 import { API_BASE_URL } from "@/config";
-import { AlertTriangle, ArrowUpCircle, CheckCircle2, Users, Mail, Radar, Globe } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, CheckCircle2, Users, UserPlus, Mail, Radar } from "lucide-react";
 
 interface DemoLimitsProps {
   type: "clients" | "emails" | "searches" | "projects";
@@ -14,9 +14,9 @@ interface LimitData {
 
 interface Limits {
   clients: LimitData;
+  leads: LimitData;
   emails: LimitData;
   searches: LimitData;
-  projects: LimitData;
 }
 
 function LimitPill({ icon, label, usage, limit }: { icon: React.ReactNode; label: string; usage: number; limit: number }) {
@@ -117,10 +117,10 @@ export default function DemoLimits({ type }: DemoLimitsProps) {
 
       {/* All 4 limit pills */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4">
+        <LimitPill icon={<UserPlus className="w-3.5 h-3.5" />} label="Leads" usage={limits.leads.usage} limit={limits.leads.limit} />
         <LimitPill icon={<Users className="w-3.5 h-3.5" />} label="Clients" usage={limits.clients.usage} limit={limits.clients.limit} />
         <LimitPill icon={<Radar className="w-3.5 h-3.5" />} label="Radar Searches" usage={limits.searches.usage} limit={limits.searches.limit} />
         <LimitPill icon={<Mail className="w-3.5 h-3.5" />} label="Email Agent" usage={limits.emails.usage} limit={limits.emails.limit} />
-        <LimitPill icon={<Globe className="w-3.5 h-3.5" />} label="Projects/Sites" usage={limits.projects.usage} limit={limits.projects.limit} />
       </div>
     </div>
   );

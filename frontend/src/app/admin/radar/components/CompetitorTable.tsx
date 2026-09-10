@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { MapPin, TrendingUp, Users, Layers, ExternalLink, Plus, Check, Star, Globe, Info } from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface Competitor {
   place_id: string;
@@ -40,14 +41,14 @@ const PIN_COLORS: Record<string, string> = {
   green:  'bg-green-500/20 text-green-600 dark:text-green-400 border-green-500/30',
 };
 
-const LABELS: Record<string, string> = {
-  red: 'Direct Competitor',
-  orange: 'Strong Competitor',
-  yellow: 'Moderate',
-  green: 'Weak Competitor',
-};
-
 function CompetitorRow({ c, onAdd, isAdded }: { c: Competitor; onAdd: (c: Competitor) => Promise<void>; isAdded: boolean }) {
+  const { t } = useLanguage();
+  const LABELS: Record<string, string> = {
+    red: t('radar.direct_competitor'),
+    orange: t('radar.strong_competitor'),
+    yellow: t('radar.moderate'),
+    green: t('radar.weak_competitor'),
+  };
   const [loading, setLoading] = useState(false);
   const colorClass = PIN_COLORS[c.pin_color] || PIN_COLORS.green;
 
@@ -63,7 +64,7 @@ function CompetitorRow({ c, onAdd, isAdded }: { c: Competitor; onAdd: (c: Compet
       <td className="py-4 px-4">
         <div className="flex items-start gap-3">
           <div className={`shrink-0 mt-0.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${colorClass}`}>
-            {LABELS[c.pin_color] || 'Competitor'}
+            {LABELS[c.pin_color] || t('radar.competitor')}
           </div>
           <div>
             <div className="font-bold text-sm text-slate-800 dark:text-zinc-100">{c.name}</div>
@@ -99,7 +100,7 @@ function CompetitorRow({ c, onAdd, isAdded }: { c: Competitor; onAdd: (c: Compet
             <span className="text-[9px] text-slate-400">+{c.matched_services.length - 3}</span>
           )}
         </div>
-        <div className="text-xs text-slate-500 dark:text-zinc-500 mt-1">{c.overlap_pct}% overlap</div>
+        <div className="text-xs text-slate-500 dark:text-zinc-500 mt-1">{c.overlap_pct}% {t('radar.overlap')}</div>
       </td>
       <td className="py-4 px-4">
         <div className="flex items-center gap-2">
@@ -126,9 +127,9 @@ function CompetitorRow({ c, onAdd, isAdded }: { c: Competitor; onAdd: (c: Compet
             {loading ? (
               <span className="animate-spin w-3 h-3 border border-white border-t-transparent rounded-full" />
             ) : isAdded ? (
-              <><Check size={10} /> Added</>
+              <><Check size={10} /> {t('radar.added')}</>
             ) : (
-              <><Plus size={10} /> Add to CRM</>
+              <><Plus size={10} /> {t('radar.add_to_crm')}</>
             )}
           </button>
         </div>
@@ -138,13 +139,14 @@ function CompetitorRow({ c, onAdd, isAdded }: { c: Competitor; onAdd: (c: Compet
 }
 
 export default function CompetitorTable({ rankings, onAddToClients, addedPlaceIds }: CompetitorTableProps) {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'nearest' | 'largest_market' | 'largest_team' | 'most_similar'>('nearest');
 
   const TABS = [
-    { key: 'nearest', label: 'Nearest', icon: MapPin, subtitle: 'By distance from target' },
-    { key: 'largest_market', label: 'Largest Market', icon: TrendingUp, subtitle: 'By market size score' },
-    { key: 'largest_team', label: 'Largest Teams', icon: Users, subtitle: 'By employee estimate' },
-    { key: 'most_similar', label: 'Most Similar', icon: Layers, subtitle: 'By service overlap' },
+    { key: 'nearest', label: t('radar.tab_nearest'), icon: MapPin, subtitle: t('radar.tab_nearest_sub') },
+    { key: 'largest_market', label: t('radar.tab_largest_market'), icon: TrendingUp, subtitle: t('radar.tab_largest_market_sub') },
+    { key: 'largest_team', label: t('radar.tab_largest_teams'), icon: Users, subtitle: t('radar.tab_largest_teams_sub') },
+    { key: 'most_similar', label: t('radar.tab_most_similar'), icon: Layers, subtitle: t('radar.tab_most_similar_sub') },
   ] as const;
 
   const currentList = rankings[activeTab] || [];
@@ -168,7 +170,7 @@ export default function CompetitorTable({ rankings, onAddToClients, addedPlaceId
               <Icon size={14} />
               {tab.label}
               <span className="text-[9px] font-black bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 px-1.5 py-0.5 rounded-full">
-                TOP {rankings[tab.key]?.length || 0}
+                {t('radar.top')} {rankings[tab.key]?.length || 0}
               </span>
             </button>
           );
@@ -179,35 +181,35 @@ export default function CompetitorTable({ rankings, onAddToClients, addedPlaceId
       {currentList.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-slate-400">
           <div className="text-4xl mb-3">📍</div>
-          <p className="text-sm font-medium">No competitors found in this category</p>
+          <p className="text-sm font-medium">{t('radar.no_competitors')}</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-slate-100 dark:border-zinc-800 text-[10px] text-slate-500 dark:text-zinc-400 uppercase tracking-widest bg-slate-50 dark:bg-zinc-950">
-                <th className="py-3 px-4 font-bold">Business</th>
-                <th className="py-3 px-4 font-bold">Distance</th>
+                <th className="py-3 px-4 font-bold">{t('radar.business')}</th>
+                <th className="py-3 px-4 font-bold">{t('radar.distance')}</th>
                 <th className="py-3 px-4 font-bold">
                   <div className="flex items-center gap-1 group relative">
-                    Market Score
+                    {t('radar.market_score')}
                     <Info size={12} className="text-slate-400 cursor-help" />
                     <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-48 p-2 bg-zinc-800 dark:bg-zinc-700 text-zinc-200 text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 normal-case tracking-normal font-normal border border-zinc-700">
-                      Based on review count (max 50pts), star rating (max 20pts), website presence (10pts), and service variety (max 20pts). Max Score: 100.
+                      {t('radar.market_score_tip')}
                     </div>
                   </div>
                 </th>
                 <th className="py-3 px-4 font-bold">
                   <div className="flex items-center gap-1 group relative">
-                    Team Size
+                    {t('radar.team_size')}
                     <Info size={12} className="text-slate-400 cursor-help" />
                     <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-40 p-2 bg-zinc-800 dark:bg-zinc-700 text-zinc-200 text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 normal-case tracking-normal font-normal border border-zinc-700">
-                      Estimated employee tier derived proportionally from the business's market score.
+                      {t('radar.team_size_tip')}
                     </div>
                   </div>
                 </th>
-                <th className="py-3 px-4 font-bold">Services</th>
-                <th className="py-3 px-4 font-bold">Actions</th>
+                <th className="py-3 px-4 font-bold">{t('radar.services')}</th>
+                <th className="py-3 px-4 font-bold">{t('radar.actions')}</th>
               </tr>
             </thead>
             <tbody>

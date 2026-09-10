@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Activity, Search, MousePointerClick, TrendingUp, BarChart3, LineChart, Users, Eye, DollarSign, FolderKanban, Loader2 } from 'lucide-react';
 import { API_BASE_URL } from '@/config';
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from "@/context/LanguageContext";
 
 interface MonitorData {
   total_keywords: number;
@@ -19,6 +20,7 @@ interface MonitorData {
 }
 
 export default function MonitorPage() {
+  const { t } = useLanguage();
   const [data, setData] = useState<MonitorData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -39,10 +41,10 @@ export default function MonitorPage() {
   }
 
   const kpis = [
-    { title: 'Keywords Tracked', val: data?.total_keywords ?? 0, sub: `${data?.keyword_rows?.length ?? 0} recent entries`, icon: Search, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { title: 'Avg. Position', val: data?.avg_position ?? '—', sub: 'Across all keywords', icon: TrendingUp, color: 'text-fuchsia-600', bg: 'bg-fuchsia-50' },
-    { title: 'Total Revenue', val: `$${(data?.total_revenue ?? 0).toLocaleString()}`, sub: `$${(data?.paid_revenue ?? 0).toLocaleString()} paid`, icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { title: 'Projects', val: `${data?.completed_projects ?? 0}/${data?.total_projects ?? 0}`, sub: `${data?.avg_progress ?? 0}% avg progress`, icon: FolderKanban, color: 'text-sky-600', bg: 'bg-sky-50' },
+    { title: t("monitor.keywords_tracked"), val: data?.total_keywords ?? 0, sub: t("monitor.recent_entries").replace("{count}", String(data?.keyword_rows?.length ?? 0)), icon: Search, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { title: t("monitor.avg_position"), val: data?.avg_position ?? '—', sub: t("monitor.across_keywords"), icon: TrendingUp, color: 'text-fuchsia-600', bg: 'bg-fuchsia-50' },
+    { title: t("monitor.total_revenue"), val: `$${(data?.total_revenue ?? 0).toLocaleString()}`, sub: t("monitor.paid_amount").replace("{amount}", `$${(data?.paid_revenue ?? 0).toLocaleString()}`), icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { title: t("monitor.projects"), val: `${data?.completed_projects ?? 0}/${data?.total_projects ?? 0}`, sub: t("monitor.avg_progress").replace("{percent}", String(data?.avg_progress ?? 0)), icon: FolderKanban, color: 'text-sky-600', bg: 'bg-sky-50' },
   ];
 
   const maxActivity = Math.max(...(data?.weekly_activity?.map(w => w.count) || [1]), 1);
@@ -53,27 +55,27 @@ export default function MonitorPage() {
         <div>
           <h1 className="text-3xl font-black text-slate-900 dark:text-zinc-50 tracking-tight flex items-center gap-3">
              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl"><Activity className="w-8 h-8"/></div>
-             Live Monitoring & Analytics
+             {t("monitor.title")}
           </h1>
-          <p className="text-slate-500 dark:text-zinc-400 font-medium mt-2">Real-time keyword tracking and business insights from your CRM data.</p>
+          <p className="text-slate-500 dark:text-zinc-400 font-medium mt-2">{t("monitor.subtitle")}</p>
         </div>
         <div className="flex gap-3">
              <div className="px-4 py-2 bg-slate-100 dark:bg-zinc-800 rounded-xl flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">Live Data</span>
+                <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">{t("monitor.live_data")}</span>
              </div>
         </div>
       </div>
 
       <PageGuide
         pageKey="monitor"
-        title="How Live Monitoring works"
-        description="Real-time dashboard showing your keyword performance, project stats, and revenue insights."
+        title={t("monitor.guide_title")}
+        description={t("monitor.guide_desc")}
         steps={[
-          { icon: '📊', text: 'KPI cards at the top show live data: keywords tracked, average position, clicks, and revenue.' },
-          { icon: '📈', text: 'The activity chart visualizes weekly keyword performance trends over time.' },
-          { icon: '🔍', text: 'The keyword table shows each tracked keyword with its position, URL, and search engine.' },
-          { icon: '🟢', text: 'Data refreshes from your CRM automatically — the green \"Live Data\" badge confirms real-time sync.' },
+          { icon: '📊', text: t("monitor.guide_s1") },
+          { icon: '📈', text: t("monitor.guide_s2") },
+          { icon: '🔍', text: t("monitor.guide_s3") },
+          { icon: '🟢', text: t("monitor.guide_s4") },
         ]}
       />
 
@@ -99,23 +101,23 @@ export default function MonitorPage() {
          {/* Live Ranking Tracker */}
          <motion.div initial={{opacity: 0, scale: 0.95}} animate={{opacity: 1, scale: 1}} className="bg-white dark:bg-zinc-900 rounded-3xl border border-slate-200 dark:border-zinc-700 shadow-sm overflow-hidden flex flex-col">
             <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50 dark:bg-zinc-950/50">
-               <h3 className="font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2">
-                 <TrendingUp className="w-5 h-5 text-indigo-500"/> SEO Ranking Tracker
+                 <h3 className="font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2">
+                   <TrendingUp className="w-5 h-5 text-indigo-500"/> {t("monitor.seo_ranking")}
                </h3>
             </div>
             <div className="overflow-x-auto">
                <table className="w-full text-left">
                  <thead>
                    <tr className="border-b border-slate-100 dark:border-zinc-800">
-                     <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest pl-6">Keyword</th>
-                     <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Position</th>
-                     <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Engine</th>
-                     <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest pr-6">Recorded</th>
+                    <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest pl-6">{t("monitor.keyword")}</th>
+                    <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">{t("monitor.position")}</th>
+                    <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">{t("monitor.engine")}</th>
+                    <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest pr-6">{t("monitor.recorded")}</th>
                    </tr>
                  </thead>
                  <tbody className="divide-y divide-slate-50">
                    {(data?.keyword_rows || []).length === 0 ? (
-                     <tr><td colSpan={4} className="p-6 text-center text-sm text-slate-400">No keyword rankings logged yet. Go to Rankings → Log Ranking to start tracking.</td></tr>
+                     <tr><td colSpan={4} className="p-6 text-center text-sm text-slate-400">{t("monitor.no_rankings")}</td></tr>
                    ) : (
                      data!.keyword_rows.map((k, i) => (
                        <tr key={i} className="hover:bg-slate-50 dark:bg-zinc-950 transition-colors">
@@ -134,8 +136,8 @@ export default function MonitorPage() {
          {/* Weekly Activity Chart */}
          <motion.div initial={{opacity: 0, scale: 0.95}} animate={{opacity: 1, scale: 1}} className="bg-white dark:bg-zinc-900 rounded-3xl border border-slate-200 dark:border-zinc-700 shadow-sm p-6">
             <div className="flex justify-between items-center mb-6">
-               <h3 className="font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2">
-                 <BarChart3 className="w-5 h-5 text-indigo-500"/> Weekly Activity
+                 <h3 className="font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2">
+                   <BarChart3 className="w-5 h-5 text-indigo-500"/> {t("monitor.weekly_activity")}
                </h3>
             </div>
             
@@ -156,15 +158,15 @@ export default function MonitorPage() {
 
             <div className="mt-8 grid grid-cols-3 gap-4">
                <div className="p-4 border border-slate-100 dark:border-zinc-800 rounded-2xl text-center">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total Revenue</p>
-                  <p className="text-xl font-black text-slate-800 dark:text-zinc-100 mt-1">${(data?.total_revenue ?? 0).toLocaleString()}</p>
+                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t("monitor.total_revenue_label")}</p>
+                   <p className="text-xl font-black text-slate-800 dark:text-zinc-100 mt-1">${(data?.total_revenue ?? 0).toLocaleString()}</p>
                </div>
                <div className="p-4 border border-slate-100 dark:border-zinc-800 rounded-2xl text-center">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Paid</p>
-                  <p className="text-xl font-black text-emerald-600 mt-1">${(data?.paid_revenue ?? 0).toLocaleString()}</p>
+                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t("monitor.paid")}</p>
+                   <p className="text-xl font-black text-emerald-600 mt-1">${(data?.paid_revenue ?? 0).toLocaleString()}</p>
                </div>
                <div className="p-4 border border-slate-100 dark:border-zinc-800 rounded-2xl text-center">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Pending</p>
+                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t("monitor.pending")}</p>
                   <p className="text-xl font-black text-amber-600 mt-1">${(data?.pending_revenue ?? 0).toLocaleString()}</p>
                </div>
             </div>

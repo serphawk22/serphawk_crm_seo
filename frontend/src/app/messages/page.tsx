@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Paperclip, Search, UserCheck, MessageCircle, RefreshCw, ArrowRight, CheckCheck, Check, Circle, Phone, Video, MoreHorizontal, Smile, Image, Mic } from 'lucide-react';
 import { API_BASE_URL } from '@/config';
 import { useRole } from '@/context/RoleContext';
+import { useLanguage } from '@/context/LanguageContext';
 import Link from 'next/link';
 import PageGuide from '@/components/PageGuide';
 
@@ -44,6 +45,7 @@ function fmtTime(iso: string) {
 const LS_KEY = 'crm_msg_read_map';
 
 export default function MessagesHubPage() {
+  const { t } = useLanguage();
   const { role, user } = useRole();
 
   const userId   = user?.id ?? null;
@@ -297,13 +299,13 @@ export default function MessagesHubPage() {
 
       <PageGuide
         pageKey="messages"
-        title="How Messages work"
-        description="Your communication hub for all service-related conversations with your team."
+        title={t('messages.guide_title')}
+        description={t('messages.guide_desc')}
         steps={[
-          { icon: '💬', text: 'Each thread is linked to a service request — select one from the left panel to start chatting.' },
-          { icon: '🔍', text: 'Use the search bar and filter tabs (All, Running, Done, Hold) to find specific conversations.' },
-          { icon: '🔔', text: 'Unread messages show a badge count — click a thread to mark it as read.' },
-          { icon: '⌨️', text: 'Press Enter to send a message, or Shift+Enter for a new line.' },
+          { icon: '💬', text: t('messages.guide_s1') },
+          { icon: '🔍', text: t('messages.guide_s2') },
+          { icon: '🔔', text: t('messages.guide_s3') },
+          { icon: '⌨️', text: t('messages.guide_s4') },
         ]}
       />
 
@@ -321,16 +323,16 @@ export default function MessagesHubPage() {
                   <MessageCircle className="w-4.5 h-4.5 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-sm font-black text-gray-900 dark:text-zinc-50 tracking-tight">Messages</h1>
+                  <h1 className="text-sm font-black text-gray-900 dark:text-zinc-50 tracking-tight">{t('messages.page_title')}</h1>
                   <p className="text-[11px] text-gray-400 font-medium">
-                    {totalUnread > 0 ? `${totalUnread} unread` : `${threads.length} conversation${threads.length !== 1 ? 's' : ''}`}
+                    {totalUnread > 0 ? `${totalUnread} ${t('messages.x_unread')}` : `${threads.length} ${threads.length !== 1 ? t('messages.x_conversations') : t('messages.x_conversation')}`}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => fetchThreads()}
                 className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                title="Refresh"
+                title={t('messages.refresh')}
               >
                 <RefreshCw className="w-4 h-4" />
               </button>
@@ -341,7 +343,7 @@ export default function MessagesHubPage() {
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search conversations…"
+                placeholder={t('messages.search_placeholder')}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="w-full bg-white dark:bg-zinc-900 border border-gray-200 rounded-xl py-2.5 pl-9 pr-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder:text-gray-400 transition-all"
@@ -350,34 +352,45 @@ export default function MessagesHubPage() {
 
             {/* Category filters */}
             <div className="flex gap-1.5 mb-3">
-              {['All', 'Saying', 'Need Reply', 'Unread', 'Sent'].map(c => (
+              {[
+                { v: 'All', l: t('messages.cat_all') },
+                { v: 'Saying', l: t('messages.cat_saying') },
+                { v: 'Need Reply', l: t('messages.cat_need_reply') },
+                { v: 'Unread', l: t('messages.cat_unread') },
+                { v: 'Sent', l: t('messages.cat_sent') },
+              ].map(c => (
                 <button
-                  key={c}
-                  onClick={() => setCategory(c)}
+                  key={c.v}
+                  onClick={() => setCategory(c.v)}
                   className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    category === c
+                    category === c.v
                       ? 'bg-indigo-600 text-white shadow-sm'
                       : 'bg-white dark:bg-zinc-900 text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700 dark:text-zinc-200'
                   }`}
                 >
-                  {c}
+                  {c.l}
                 </button>
               ))}
             </div>
 
             {/* Filters */}
             <div className="flex gap-1.5">
-              {['All', 'Running', 'Done', 'Hold'].map(f => (
+              {[
+                { v: 'All', l: t('messages.filter_all') },
+                { v: 'Running', l: t('messages.filter_running') },
+                { v: 'Done', l: t('messages.filter_done') },
+                { v: 'Hold', l: t('messages.filter_hold') },
+              ].map(f => (
                 <button
-                  key={f}
-                  onClick={() => setFilter(f)}
+                  key={f.v}
+                  onClick={() => setFilter(f.v)}
                   className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    filter === f
+                    filter === f.v
                       ? 'bg-indigo-600 text-white shadow-sm'
                       : 'bg-white dark:bg-zinc-900 text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700 dark:text-zinc-200'
                   }`}
                 >
-                  {f}
+                  {f.l}
                 </button>
               ))}
             </div>
@@ -388,7 +401,7 @@ export default function MessagesHubPage() {
             {loading ? (
               <div className="py-20 text-center">
                 <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                <p className="text-sm text-gray-400 font-medium">Loading…</p>
+                <p className="text-sm text-gray-400 font-medium">{t('messages.loading')}</p>
               </div>
             ) : filteredThreads.length === 0 ? (
               <div className="py-20 px-6 text-center space-y-4">
@@ -396,16 +409,16 @@ export default function MessagesHubPage() {
                   <MessageCircle className="w-7 h-7 text-gray-300" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-gray-500">No conversations yet</p>
+                  <p className="text-sm font-bold text-gray-500">{t('messages.no_conversations')}</p>
                   <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                    A chat thread is created when you place a service request.
+                    {t('messages.no_conversations_desc')}
                   </p>
                 </div>
                 <Link
                   href="/pricing"
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 transition-colors"
                 >
-                  Browse Services <ArrowRight className="w-3.5 h-3.5" />
+                  {t('messages.browse_services')} <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
               </div>
             ) : (
@@ -453,17 +466,17 @@ export default function MessagesHubPage() {
                           <div className="flex items-center justify-between gap-2">
                             <p className={`text-xs truncate ${unreadCount > 0 ? 'text-gray-700 dark:text-zinc-200 font-medium' : 'text-gray-400'}`}>
                               {lastMsg
-                                ? `${lastMsg.isMe ? 'You' : lastMsg.sender}: ${lastMsg.content}`
-                                : 'No messages yet'}
+                                ? `${lastMsg.isMe ? t('messages.you') : lastMsg.sender}: ${lastMsg.content}`
+                                : t('messages.no_messages_yet')}
                             </p>
                             <div className="flex items-center gap-1">
                               {thread.has_unanswered && (
                                 <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
-                                  Unanswered
+                                  {t('messages.unanswered')}
                                 </span>
                               )}
                               <span className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold border ${status.color}`}>
-                                {status.label}
+                                {t(`messages.status_${thread.service_status?.toLowerCase().replace(/\s+/g, '_')}`) || status.label}
                               </span>
                             </div>
                           </div>
@@ -496,7 +509,7 @@ export default function MessagesHubPage() {
                     </span>
                     <span className="text-gray-300">·</span>
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${STATUS_MAP[activeThread.service_status]?.color || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                      {STATUS_MAP[activeThread.service_status]?.label || activeThread.service_status || 'Active'}
+                      {t(`messages.status_${activeThread.service_status?.toLowerCase().replace(/\s+/g, '_')}`) || STATUS_MAP[activeThread.service_status]?.label || activeThread.service_status || t('messages.status_active')}
                     </span>
                   </div>
                 </div>
@@ -522,8 +535,8 @@ export default function MessagesHubPage() {
                     <MessageCircle className="w-7 h-7 text-indigo-300" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-gray-500">Start the conversation</p>
-                    <p className="text-xs text-gray-400 mt-0.5 max-w-xs">Send a message to connect with your team about this service.</p>
+                    <p className="text-sm font-bold text-gray-500">{t('messages.start_conversation')}</p>
+                    <p className="text-xs text-gray-400 mt-0.5 max-w-xs">{t('messages.start_conversation_desc')}</p>
                   </div>
                 </div>
               ) : (
@@ -531,7 +544,7 @@ export default function MessagesHubPage() {
                   {/* Date separator at top */}
                   <div className="flex items-center gap-3 py-2">
                     <div className="flex-1 h-px bg-gray-200" />
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Conversation Start</span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{t('messages.conversation_start')}</span>
                     <div className="flex-1 h-px bg-gray-200" />
                   </div>
 
@@ -565,7 +578,7 @@ export default function MessagesHubPage() {
                         {/* Bubble */}
                         <div className={`max-w-[65%] ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
                           <span className={`text-[10px] font-semibold mb-1 px-1 ${isMe ? 'text-gray-400 text-right self-end' : 'text-gray-500'}`}>
-                            {isMe ? 'You' : msg.sender}
+                            {isMe ? t('messages.you') : msg.sender}
                           </span>
                           <div className={`rounded-2xl px-4 py-2.5 ${
                             isMe
@@ -623,7 +636,7 @@ export default function MessagesHubPage() {
                     value={newMessage}
                     onChange={e => setNewMessage(e.target.value)}
                     onInput={handleTyping}
-                    placeholder={role === 'Client' ? `Message ${activeThread.handler}…` : 'Type your reply…'}
+                    placeholder={role === 'Client' ? `${t('messages.placeholder_message')} ${activeThread.handler}…` : t('messages.placeholder_reply')}
                     rows={1}
                     className="flex-1 bg-transparent py-2 text-sm focus:outline-none resize-none max-h-28 placeholder:text-gray-400"
                     onKeyDown={e => {
@@ -654,25 +667,25 @@ export default function MessagesHubPage() {
               <MessageCircle className="w-9 h-9 text-indigo-300" />
             </div>
             {loading ? (
-              <p className="text-sm font-bold text-gray-400 animate-pulse">Loading your threads…</p>
+              <p className="text-sm font-bold text-gray-400 animate-pulse">{t('messages.loading_threads')}</p>
             ) : threads.length > 0 ? (
               <div className="text-center">
-                <h3 className="text-lg font-black text-gray-700 dark:text-zinc-200">Select a conversation</h3>
+                <h3 className="text-lg font-black text-gray-700 dark:text-zinc-200">{t('messages.select_conversation')}</h3>
                 <p className="text-sm font-medium mt-1.5 text-gray-400 max-w-xs">
-                  Choose a thread from the left to start messaging.
+                  {t('messages.select_conversation_desc')}
                 </p>
               </div>
             ) : (
               <div className="text-center">
-                <h3 className="text-lg font-black text-gray-700 dark:text-zinc-200">No conversations yet</h3>
+                <h3 className="text-lg font-black text-gray-700 dark:text-zinc-200">{t('messages.no_conversations')}</h3>
                 <p className="text-sm font-medium mt-1.5 text-gray-400 max-w-xs">
-                  A chat thread opens automatically once you place a service request.
+                  {t('messages.no_conversations_desc2')}
                 </p>
                 <Link
                   href="/pricing"
                   className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-colors"
                 >
-                  Browse Services <ArrowRight className="w-4 h-4" />
+                  {t('messages.browse_services')} <ArrowRight className="w-4 h-4" />
                 </Link>
               </div>
             )}

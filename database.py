@@ -116,6 +116,36 @@ class User(SQLModel, table=True):
     assigned_requests: List["ServiceRequest"] = Relationship(back_populates="assigned_employee")
     deals: List["Deal"] = Relationship(back_populates="assigned_user")
 
+class PasswordResetToken(SQLModel, table=True):
+    """One-time token used to reset a user's password."""
+    __tablename__ = "password_reset_tokens"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    token: str = Field(unique=True, index=True, max_length=128)
+    expires_at: datetime = Field(index=True)
+    used: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    user: Optional["User"] = Relationship()
+
+
+class EmailOTP(SQLModel, table=True):
+    """One-time code sent to verify ownership of an email address for SMTP / integration setup."""
+    __tablename__ = "email_otps"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    email: str = Field(max_length=255, index=True)
+    otp_code: str = Field(max_length=8)
+    purpose: str = Field(max_length=50, default="smtp_settings")  # smtp_settings | integration | signup
+    expires_at: datetime = Field(index=True)
+    verified: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    user: Optional["User"] = Relationship()
+
+
 class MarketplaceService(SQLModel, table=True):
     """
     Central B2B Marketplace catalog entry.
@@ -124,6 +154,7 @@ class MarketplaceService(SQLModel, table=True):
     __tablename__ = "marketplace_services"
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
 
     # Service identity
     service_name: str = Field(max_length=255)
@@ -1058,6 +1089,17 @@ class Lead(SQLModel, table=True):
     account: Optional[Account] = Relationship(back_populates="leads")
     contacts: List["Contact"] = Relationship(back_populates="lead")
 
+class LeadNote(SQLModel, table=True):
+    """Note attached to an individual lead, with author and timestamp"""
+    __tablename__ = "lead_notes"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    lead_id: int = Field(foreign_key="leads.id", index=True)
+    content: str = Field(sa_column=Column(Text))
+    author_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    author_name: Optional[str] = Field(default=None, max_length=255)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 class Contact(SQLModel, table=True):
     __tablename__ = "contacts"
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
@@ -1130,6 +1172,7 @@ class Product(SQLModel, table=True):
     category: Optional[str] = Field(default=None, max_length=200)
     unit_price: float = Field(default=0.0)
     currency: str = Field(default="USD", max_length=10)
+    photo_url: Optional[str] = Field(default=None, max_length=500)
     tax_rate: float = Field(default=0.0)
     stock_quantity: Optional[int] = Field(default=None)
     is_active: bool = Field(default=True)
@@ -1341,6 +1384,12 @@ def create_db_and_tables():
         "ALTER TABLE whatsappsession ADD COLUMN active_live_chat_session VARCHAR",
         "ALTER TABLE whatsappsession ALTER COLUMN pending_action DROP NOT NULL",
         "ALTER TABLE whatsappsession ALTER COLUMN action_data DROP NOT NULL",
+        "ALTER TABLE products ADD COLUMN photo_url VARCHAR(500)",
+        "ALTER TABLE marketplace_services ADD COLUMN tenant_id INTEGER REFERENCES tenants(id)",
+        "ALTER TABLE email_otps ALTER COLUMN user_id DROP NOT NULL",
+        # Supplier credentials emailing
+        "ALTER TABLE inventory_suppliers ADD COLUMN login_password VARCHAR(255)",
+        "ALTER TABLE inventory_suppliers ADD COLUMN credentials_sent BOOLEAN DEFAULT FALSE",
     ]
     
     with engine.connect() as conn:
@@ -1351,6 +1400,34 @@ def create_db_and_tables():
             except Exception as e:
                 # Column likely already exists
                 conn.rollback()
+        
+    # Backfill tenant_id on marketplace_services from client_profiles
+    try:
+        with engine.connect() as conn:
+            dialect = engine.dialect.name
+            if dialect == "postgresql":
+                conn.execute(text("""
+                    UPDATE marketplace_services ms
+                    SET tenant_id = cp.tenant_id
+                    FROM client_profiles cp
+                    WHERE ms.provider_client_id = cp.id
+                      AND ms.tenant_id IS NULL
+                      AND cp.tenant_id IS NOT NULL
+                """))
+            else:
+                conn.execute(text("""
+                    UPDATE marketplace_services
+                    SET tenant_id = (
+                        SELECT cp.tenant_id FROM client_profiles cp
+                        WHERE cp.id = marketplace_services.provider_client_id
+                          AND cp.tenant_id IS NOT NULL
+                    )
+                    WHERE marketplace_services.tenant_id IS NULL
+                      AND marketplace_services.provider_client_id IS NOT NULL
+                """))
+            conn.commit()
+    except Exception:
+        pass
         
     # Seed default statuses if none exist
     try:
@@ -1527,6 +1604,8 @@ class InventorySupplier(SQLModel, table=True):
     min_order_qty: Optional[float] = Field(default=None)
     is_preferred: bool = Field(default=False)
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    login_password: Optional[str] = Field(default=None, max_length=255)  # plaintext unique password for supplier login
+    credentials_sent: bool = Field(default=False)  # whether credentials email has been sent
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     item: Optional[InventoryItem] = Relationship(back_populates="suppliers")

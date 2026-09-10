@@ -20,6 +20,7 @@ import { CallNotificationBar } from "@/components/CallNotificationBar";
 import { DeveloperHeader } from "@/components/DeveloperHeader";
 import SpaceAtmosphere from "@/components/SpaceAtmosphere";
 import TelemetryTracker from "@/components/TelemetryTracker";
+import { WHATSAPP_LINK } from "@/config";
 import Script from "next/script";
 import TopRightControls from "@/components/TopRightControls";
 import GoogleProviderWrapper from "@/components/GoogleProviderWrapper";
@@ -34,7 +35,7 @@ function AdminMainContent({ children }: { children: React.ReactNode }) {
   return (
     <main className={`relative z-10 min-h-screen transition-all duration-300 ${collapsed ? "ml-[72px]" : "ml-[280px]"}`}>
       <TopRightControls />
-      <div className={isClientDetail ? "w-full h-full pr-20" : "p-6 md:p-8 pr-20 md:pr-24 max-w-[1600px] mx-auto h-full"}>
+      <div className={isClientDetail ? "w-full h-full pr-20" : "pt-[76px] px-6 md:px-8 pb-6 md:pb-8 pr-20 md:pr-24 max-w-[1600px] mx-auto h-full"}>
         {children}
       </div>
     </main>
@@ -76,7 +77,16 @@ function AppContent({ children }: { children: React.ReactNode }) {
     // Global fetch interceptor for LIMIT_REACHED
     const originalFetch = window.fetch;
     window.fetch = async (...args) => {
-      const response = await originalFetch(...args);
+      let response: Response;
+      try {
+        response = await originalFetch(...args);
+      } catch (netErr) {
+        console.warn('[API] Request failed (network):', netErr instanceof Error ? netErr.message : netErr);
+        return new Response(
+          JSON.stringify({ ok: false, message: 'Network error. Please try again.', status: 'network_error' }),
+          { status: 503, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
       if (response.status === 403) {
         try {
           const cloned = response.clone();
@@ -102,7 +112,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
     return <GlobalLoader />;
   }
 
-  if (pathname === "/login" || pathname === "/signup" || pathname === "/demo_showcase" || pathname?.startsWith("/demo_showcase")) {
+  if (pathname === "/login" || pathname === "/signup" || pathname === "/demo_showcase" || pathname === "/reset-password" || pathname?.startsWith("/demo_showcase")) {
     return <main className="h-screen w-full">{children}</main>;
   }
 
@@ -219,6 +229,12 @@ export default function RootLayout({
                   navigator.serviceWorker.register('/sw.js').catch(function(err) {
                     console.log('ServiceWorker registration failed: ', err);
                   });
+                  var refreshing = false;
+                  navigator.serviceWorker.addEventListener('controllerchange', function() {
+                    if (refreshing) return;
+                    refreshing = true;
+                    window.location.reload();
+                  });
                 });
               }
             `,
@@ -245,7 +261,7 @@ export default function RootLayout({
 
         {/* Global WhatsApp Widget */}
         <a
-          href="https://wa.me/919502901416?text=Hi,%20I'd%20like%20to%20book%20a%20demo%20or%20catch%20up%20for%20a%20meeting"
+          href={`${WHATSAPP_LINK}?text=Hi,%20I'd%20like%20to%20book%20a%20demo%20or%20catch%20up%20for%20a%20meeting`}
           target="_blank"
           rel="noopener noreferrer"
           className="fixed bottom-6 left-6 z-[9999] bg-[#25D366] text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center justify-center cursor-pointer"

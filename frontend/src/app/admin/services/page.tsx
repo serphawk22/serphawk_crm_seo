@@ -5,9 +5,11 @@ import { Plus, Tag, DollarSign, Image as ImageIcon, Users, FileText, Activity, L
 import { API_BASE_URL } from '@/config';
 import { useRole } from '@/context/RoleContext';
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from '@/context/LanguageContext';
 
 export default function AdminServicesPage() {
   const { role } = useRole();
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -22,7 +24,7 @@ export default function AdminServicesPage() {
   });
 
   if (role !== 'Admin' && role !== 'Employee') {
-     return <div className="p-10 text-center text-red-500 font-bold">Unauthorized. Admins only.</div>;
+     return <div className="p-10 text-center text-red-500 font-bold">{t('services.unauthorized')}</div>;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,21 +60,21 @@ export default function AdminServicesPage() {
          <div>
             <h1 className="text-3xl font-black text-slate-900 dark:text-zinc-50 tracking-tight flex items-center gap-3">
                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><Layers className="w-8 h-8"/></div>
-               Service Catalog Builder
+               {t('services.title')}
             </h1>
-            <p className="text-slate-500 dark:text-zinc-400 font-medium mt-2">Create rich service offerings for clients to browse and purchase.</p>
+            <p className="text-slate-500 dark:text-zinc-400 font-medium mt-2">{t('services.subtitle')}</p>
          </div>
       </div>
 
       <PageGuide
         pageKey="admin-services"
-        title="How the Service Catalog Builder works"
-        description="Create and manage the services your clients can browse and purchase from the Store."
+        title={t('services.guide_title')}
+        description={t('services.guide_desc')}
         steps={[
-          { icon: '🛠️', text: 'Fill out the form below with service name, cost, descriptions, and an image URL.' },
-          { icon: '🏷️', text: 'Set a handler role (who manages this service) — it appears in the client\'s Store page.' },
-          { icon: '💰', text: 'The cost you set here is the amount clients will see when requesting a quote.' },
-          { icon: '📝', text: 'Add a short and long description plus past results to make the service compelling.' },
+          { icon: '🛠️', text: t('services.guide_step1') },
+          { icon: '🏷️', text: t('services.guide_step2') },
+          { icon: '💰', text: t('services.guide_step3') },
+          { icon: '📝', text: t('services.guide_step4') },
         ]}
       />
 
@@ -85,14 +87,14 @@ export default function AdminServicesPage() {
          <div className="grid md:grid-cols-2 gap-6">
             <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                   <Tag className="w-4 h-4 text-indigo-400"/> Service Name
+                   <Tag className="w-4 h-4 text-indigo-400"/> {t('services.service_name')}
                 </label>
-                <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="e.g. Technical SEO Deep Dive" />
+                <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder={t('services.ph_name')} />
             </div>
             
             <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                   <DollarSign className="w-4 h-4 text-emerald-400"/> Price ($)
+                   <DollarSign className="w-4 h-4 text-emerald-400"/> {t('services.price')} ($)
                 </label>
                 <input required type="number" step="0.01" value={formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none" placeholder="499.00" />
             </div>
@@ -100,49 +102,49 @@ export default function AdminServicesPage() {
 
          <div className="space-y-2">
             <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                <FileText className="w-4 h-4 text-slate-400"/> Short Intro (Visible on Cart Card)
+                <FileText className="w-4 h-4 text-slate-400"/> {t('services.short_intro')}
             </label>
-            <textarea required maxLength={150} value={formData.intro_description} onChange={e => setFormData({...formData, intro_description: e.target.value})} className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none h-24" placeholder="A brief punchy description..." />
+            <textarea required maxLength={150} value={formData.intro_description} onChange={e => setFormData({...formData, intro_description: e.target.value})} className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none h-24" placeholder={t('services.ph_intro')} />
          </div>
 
          <div className="space-y-2">
             <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                <FileText className="w-4 h-4 text-slate-400"/> Full Detailed Description
+                <FileText className="w-4 h-4 text-slate-400"/> {t('services.full_desc')}
             </label>
-            <textarea value={formData.full_description} onChange={e => setFormData({...formData, full_description: e.target.value})} className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none min-h-[150px]" placeholder="Everything included in this service..." />
+            <textarea value={formData.full_description} onChange={e => setFormData({...formData, full_description: e.target.value})} className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none min-h-[150px]" placeholder={t('services.ph_full_desc')} />
          </div>
 
          <div className="grid md:grid-cols-2 gap-6">
             <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                   <Users className="w-4 h-4 text-fuchsia-400"/> Handled By (Role/Team)
+                   <Users className="w-4 h-4 text-fuchsia-400"/> {t('services.handled_by')}
                 </label>
-                <input required type="text" value={formData.handler_role} onChange={e => setFormData({...formData, handler_role: e.target.value})} className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-fuchsia-500 focus:outline-none" placeholder="e.g. SEO Specialist / Content Team" />
+                <input required type="text" value={formData.handler_role} onChange={e => setFormData({...formData, handler_role: e.target.value})} className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-fuchsia-500 focus:outline-none" placeholder={t('services.ph_handled_by')} />
             </div>
 
             <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                   <ImageIcon className="w-4 h-4 text-sky-400"/> Cover Image URL
+                   <ImageIcon className="w-4 h-4 text-sky-400"/> {t('services.cover_image')}
                 </label>
-                <input type="url" value={formData.image_url} onChange={e => setFormData({...formData, image_url: e.target.value})} className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder="https://example.com/image.jpg" />
+                <input type="url" value={formData.image_url} onChange={e => setFormData({...formData, image_url: e.target.value})} className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none" placeholder={t('services.ph_image')} />
             </div>
          </div>
 
          <div className="space-y-2">
             <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                <Activity className="w-4 h-4 text-rose-400"/> Past Experience / Results
+                <Activity className="w-4 h-4 text-rose-400"/> {t('services.past_results')}
             </label>
-            <textarea value={formData.past_results} onChange={e => setFormData({...formData, past_results: e.target.value})} className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-none h-24" placeholder="Increased organic traffic by 300% for an e-commerce brand..." />
+            <textarea value={formData.past_results} onChange={e => setFormData({...formData, past_results: e.target.value})} className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-none h-24" placeholder={t('services.ph_past_results')} />
          </div>
 
          <div className="pt-6 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between">
             {success ? (
                <motion.div initial={{opacity:0, x:-10}} animate={{opacity:1, x:0}} className="flex items-center gap-2 text-emerald-600 font-bold bg-emerald-50 px-4 py-2 rounded-xl">
-                  <CheckCircle className="w-5 h-5"/> Service Published to Store
+                  <CheckCircle className="w-5 h-5"/> {t('services.published')}
                </motion.div>
             ) : <div />}
             <button disabled={loading} type="submit" className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl transition-all shadow-md flex items-center gap-2 disabled:opacity-50">
-               <Plus className="w-5 h-5"/> {loading ? 'Publishing...' : 'Publish Service'}
+               <Plus className="w-5 h-5"/> {loading ? t('services.publishing') : t('services.publish_service')}
             </button>
          </div>
       </motion.form>

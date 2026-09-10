@@ -5,8 +5,10 @@ import { Activity, Download, RefreshCw, Layers, CheckCircle, Search, TrendingUp,
 import { API_BASE_URL } from '@/config';
 import { useRole } from '@/context/RoleContext';
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function AuditPage() {
+  const { t } = useLanguage();
   const { email } = useRole();
   const [domain, setDomain] = useState('');
   const [running, setRunning] = useState(false);
@@ -48,20 +50,20 @@ export default function AuditPage() {
       <div>
         <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight flex items-center gap-3">
           <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl"><Activity className="w-7 h-7" /></div>
-          SEO Audit
+          {t("audit.title")}
         </h1>
-        <p className="text-gray-500 dark:text-zinc-400 font-medium mt-1">Enter any domain to run a real technical SEO analysis.</p>
+        <p className="text-gray-500 dark:text-zinc-400 font-medium mt-1">{t("audit.subtitle")}</p>
       </div>
 
       <PageGuide
         pageKey="audit"
-        title="How SEO Audits work"
-        description="Run a comprehensive technical SEO analysis on any domain to identify issues and opportunities."
+        title={t("audit.guide_title")}
+        description={t("audit.guide_desc")}
         steps={[
-          { icon: '🌐', text: 'Type any domain in the input box and click \"Run Audit\" to begin the analysis.' },
-          { icon: '📊', text: 'The audit checks page speed, meta tags, headings, links, images, and more.' },
-          { icon: '🟢', text: 'Scores are color-coded: green (80+) is great, amber (50-79) needs work, red (<50) is critical.' },
-          { icon: '⬇️', text: 'Download the full audit report as a PDF for detailed review and client presentations.' },
+          { icon: '🌐', text: t("audit.guide_s1") },
+          { icon: '📊', text: t("audit.guide_s2") },
+          { icon: '🟢', text: t("audit.guide_s3") },
+          { icon: '⬇️', text: t("audit.guide_s4") },
         ]}
       />
 
@@ -87,14 +89,14 @@ export default function AuditPage() {
             }`}
           >
             {running ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            {running ? 'Scanning...' : 'Run Audit'}
+            {running ? t("audit.scanning") : t("audit.run_audit")}
           </button>
           <button
             onClick={downloadReport}
             disabled={!auditData}
             className="px-6 py-3 border border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-zinc-200 font-bold rounded-xl flex items-center gap-2 text-sm hover:bg-gray-50 dark:bg-zinc-950 disabled:opacity-40 transition-all"
           >
-            <Download className="w-4 h-4" /> Export PDF
+            <Download className="w-4 h-4" /> {t("audit.export_pdf")}
           </button>
         </div>
       </div>
@@ -108,8 +110,8 @@ export default function AuditPage() {
             <Search className="w-7 h-7 text-indigo-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
           </div>
           <div>
-            <h3 className="text-xl font-black text-gray-800 dark:text-zinc-100">Crawling {domain || 'your domain'}...</h3>
-            <p className="text-gray-400 text-sm mt-1.5">Checking title tags, meta, headers, images, HTTPS, and more.</p>
+            <h3 className="text-xl font-black text-gray-800 dark:text-zinc-100">{t("audit.crawling").replace("{domain}", domain || '')}</h3>
+            <p className="text-gray-400 text-sm mt-1.5">{t("audit.crawling_checking")}</p>
           </div>
         </motion.div>
       )}
@@ -126,10 +128,10 @@ export default function AuditPage() {
           {/* KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: 'Health Score', value: `${auditData.health_score}/100`, icon: TrendingUp, color: scoreColor(auditData.health_score), bg: scoreBg(auditData.health_score) },
-              { label: 'Page Speed', value: `${auditData.page_speed_desktop}/100`, icon: Zap, color: scoreColor(auditData.page_speed_desktop), bg: scoreBg(auditData.page_speed_desktop) },
-              { label: 'Issues Found', value: auditData.issues_count, icon: AlertTriangle, color: auditData.issues_count > 0 ? 'text-red-600' : 'text-emerald-600', bg: auditData.issues_count > 0 ? 'bg-red-50' : 'bg-emerald-50' },
-              { label: 'Load Time', value: `${auditData.load_time}s`, icon: Clock, color: auditData.load_time <= 2 ? 'text-emerald-600' : 'text-amber-600', bg: auditData.load_time <= 2 ? 'bg-emerald-50' : 'bg-amber-50' },
+              { label: t("audit.health_score"), value: `${auditData.health_score}/100`, icon: TrendingUp, color: scoreColor(auditData.health_score), bg: scoreBg(auditData.health_score) },
+              { label: t("audit.page_speed"), value: `${auditData.page_speed_desktop}/100`, icon: Zap, color: scoreColor(auditData.page_speed_desktop), bg: scoreBg(auditData.page_speed_desktop) },
+              { label: t("audit.issues_found"), value: auditData.issues_count, icon: AlertTriangle, color: auditData.issues_count > 0 ? 'text-red-600' : 'text-emerald-600', bg: auditData.issues_count > 0 ? 'bg-red-50' : 'bg-emerald-50' },
+              { label: t("audit.load_time"), value: `${auditData.load_time}s`, icon: Clock, color: auditData.load_time <= 2 ? 'text-emerald-600' : 'text-amber-600', bg: auditData.load_time <= 2 ? 'bg-emerald-50' : 'bg-amber-50' },
             ].map(s => (
               <div key={s.label} className={`rounded-2xl p-5 ${s.bg}`}>
                 <div className="flex items-center gap-2 mb-2">
@@ -145,7 +147,7 @@ export default function AuditPage() {
           <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-700 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-gray-100 dark:border-zinc-800">
               <h3 className="font-black text-lg text-gray-900 dark:text-zinc-50 flex items-center gap-2">
-                <Layers className="w-5 h-5 text-indigo-500" /> Technical SEO Findings
+                <Layers className="w-5 h-5 text-indigo-500" /> {t("audit.technical_findings")}
               </h3>
             </div>
             <div className="divide-y divide-gray-50">
@@ -159,11 +161,11 @@ export default function AuditPage() {
                     </div>
                     {pass ? (
                       <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 text-xs font-bold shrink-0">
-                        <CheckCircle className="w-3.5 h-3.5" /> Pass
+                        <CheckCircle className="w-3.5 h-3.5" /> {t("audit.pass")}
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-50 text-red-600 text-xs font-bold shrink-0">
-                        <AlertTriangle className="w-3.5 h-3.5" /> Issue
+                        <AlertTriangle className="w-3.5 h-3.5" /> {t("audit.issue")}
                       </span>
                     )}
                   </div>

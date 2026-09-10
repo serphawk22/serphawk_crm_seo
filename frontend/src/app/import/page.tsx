@@ -6,6 +6,7 @@ import {
   Upload, FileSpreadsheet, Link, CheckCircle, X, Loader2,
   AlertTriangle, ArrowRight, Download, ChevronRight, Table2
 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 type ImportTarget = "leads" | "clients";
 type ImportResult = { created: number; skipped: number; errors: string[] };
@@ -16,6 +17,7 @@ Tech Startup Inc,hello@techstartup.io,,https://techstartup.io,SaaS,Referral,Qual
 Global Retail Co,info@globalretail.com,+44-20-1234-5678,,Retail,Website,Contacted,"London UK",Follow up next week`;
 
 export default function ImportPage() {
+  const { t } = useLanguage();
   const [target, setTarget] = useState<ImportTarget>("leads");
   const [step, setStep] = useState<"upload" | "preview" | "result">("upload");
   const [dragging, setDragging] = useState(false);
@@ -82,10 +84,10 @@ export default function ImportPage() {
         setPreview(parsed);
         setStep("preview");
       } else {
-        alert("Could not fetch Google Sheet. Make sure it's publicly shared (Anyone with link can view).");
+        alert(t("import.google_fetch_error"));
       }
     } catch {
-      alert("Failed to load Google Sheet. Check the URL and sharing settings.");
+      alert(t("import.google_load_error"));
     } finally { setImporting(false); }
   };
 
@@ -143,13 +145,13 @@ export default function ImportPage() {
               <Upload className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Import Data</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Upload from CSV, Excel, or Google Sheets</p>
+              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t("import.title")}</h1>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t("import.subtitle")}</p>
             </div>
           </div>
           <button onClick={handleDownloadSample}
             className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition-all">
-            <Download className="w-3.5 h-3.5" /> Sample CSV
+            <Download className="w-3.5 h-3.5" /> {t("import.sample_csv")}
           </button>
         </div>
 
@@ -169,7 +171,7 @@ export default function ImportPage() {
         {/* Target Toggle */}
         {step !== "result" && (
           <div className="flex items-center gap-3 mb-6">
-            <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Import as:</span>
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{t("import.import_as")}</span>
             {(["leads", "clients"] as const).map(t => (
               <button key={t} onClick={() => setTarget(t)}
                 className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${target === t ? "bg-blue-600 text-white shadow-sm" : "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-blue-400"}`}>
@@ -187,7 +189,7 @@ export default function ImportPage() {
               {(["file", "google"] as const).map(m => (
                 <button key={m} onClick={() => setMode(m)}
                   className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${mode === m ? "bg-slate-900 dark:bg-white text-white dark:text-black" : "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"}`}>
-                  {m === "file" ? "📄 Upload File" : "📊 Google Sheet"}
+                  {m === "file" ? t("import.upload_file") : t("import.google_sheet")}
                 </button>
               ))}
             </div>
@@ -204,29 +206,29 @@ export default function ImportPage() {
                   <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
                     <FileSpreadsheet className="w-8 h-8 text-blue-600 dark:text-blue-400" />
                   </div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Drop your file here</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Supports CSV, Excel (.xlsx), or .xls files</p>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{t("import.drop_file")}</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">{t("import.drop_file_desc")}</p>
                   <button className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all">
-                    Browse Files
+                    {t("import.browse_files")}
                   </button>
                 </div>
 
                 {/* Column Mapping Guide */}
                 <div className="mt-6 bg-white dark:bg-[#111] rounded-2xl border border-slate-200 dark:border-slate-800 p-5">
                   <h3 className="font-bold text-slate-800 dark:text-white text-sm mb-3 flex items-center gap-2">
-                    <Table2 className="w-4 h-4 text-slate-500" /> Supported Column Names
+                    <Table2 className="w-4 h-4 text-slate-500" /> {t("import.supported_columns")}
                   </h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {[
-                      { col: "company_name / company / name", desc: "Company name (required)" },
-                      { col: "email / e-mail", desc: "Contact email" },
-                      { col: "phone / mobile / tel", desc: "Phone number" },
-                      { col: "website / url", desc: "Website URL" },
-                      { col: "industry / sector", desc: "Industry" },
-                      { col: "source / lead source", desc: "Lead source" },
-                      { col: "status", desc: "Pipeline status" },
-                      { col: "address / location", desc: "Address" },
-                      { col: "notes / comments", desc: "Notes" },
+                      { col: "company_name / company / name", desc: t("import.col_company") },
+                      { col: "email / e-mail", desc: t("import.col_email") },
+                      { col: "phone / mobile / tel", desc: t("import.col_phone") },
+                      { col: "website / url", desc: t("import.col_website") },
+                      { col: "industry / sector", desc: t("import.col_industry") },
+                      { col: "source / lead source", desc: t("import.col_source") },
+                      { col: "status", desc: t("import.col_status") },
+                      { col: "address / location", desc: t("import.col_address") },
+                      { col: "notes / comments", desc: t("import.col_notes") },
                     ].map(c => (
                       <div key={c.col} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900">
                         <code className="text-xs font-mono text-blue-600 dark:text-blue-400">{c.col}</code>
@@ -241,9 +243,9 @@ export default function ImportPage() {
                 <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
                   <span className="text-3xl">📊</span>
                 </div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white text-center mb-2">Import from Google Sheets</h3>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white text-center mb-2">{t("import.import_from_google")}</h3>
                 <p className="text-sm text-slate-500 text-center mb-6">
-                  Make sure your sheet is set to <strong>"Anyone with the link can view"</strong>
+                  {t("import.google_share_tip")}
                 </p>
                 <div className="flex gap-2">
                   <input value={googleSheetUrl} onChange={e => setGoogleSheetUrl(e.target.value)}
@@ -252,7 +254,7 @@ export default function ImportPage() {
                   <button onClick={handleGoogleSheet} disabled={importing || !googleSheetUrl.trim()}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-all">
                     {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-                    Load
+                    {t("import.load")}
                   </button>
                 </div>
               </div>
@@ -265,17 +267,17 @@ export default function ImportPage() {
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="font-bold text-slate-900 dark:text-white">Data Preview</h2>
-                <p className="text-sm text-slate-500">{preview.rows.length} rows found · {preview.headers.length} columns detected</p>
+                <h2 className="font-bold text-slate-900 dark:text-white">{t("import.data_preview")}</h2>
+                <p className="text-sm text-slate-500">{t("import.rows_found").replace("{rows}", String(preview.rows.length)).replace("{columns}", String(preview.headers.length))}</p>
               </div>
               <div className="flex gap-2">
                 <button onClick={reset} className="px-3 py-2 rounded-xl text-sm font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition-all">
-                  ← Back
+                  {t("import.back")}
                 </button>
                 <button onClick={handleImport} disabled={importing}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md shadow-blue-500/20">
                   {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                  Import {preview.rows.length} {target}
+                  {t("import.import_count").replace("{count}", String(preview.rows.length)).replace("{target}", target)}
                 </button>
               </div>
             </div>
@@ -283,7 +285,7 @@ export default function ImportPage() {
             {/* Data cleaning note */}
             <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl mb-4 text-xs text-blue-700 dark:text-blue-400 font-medium">
               <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-              Data will be auto-cleaned: empty rows removed, column names mapped automatically, duplicates skipped.
+              {t("import.auto_cleaned")}
             </div>
 
             {/* Table Preview */}
@@ -312,7 +314,7 @@ export default function ImportPage() {
               </div>
               {preview.rows.length > 20 && (
                 <div className="px-4 py-2 text-xs text-slate-400 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
-                  Showing 20 of {preview.rows.length} rows
+                  {t("import.showing_of").replace("{total}", String(preview.rows.length))}
                 </div>
               )}
             </div>
@@ -327,27 +329,27 @@ export default function ImportPage() {
               {result.created > 0 ? <CheckCircle className="w-10 h-10 text-emerald-600" /> : <AlertTriangle className="w-10 h-10 text-amber-600" />}
             </div>
             <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">
-              {result.created > 0 ? "Import Successful!" : "Import Complete"}
+              {result.created > 0 ? t("import.import_successful") : t("import.import_complete")}
             </h2>
             <div className="flex items-center gap-6 mt-4 mb-6">
               <div className="text-center">
                 <p className="text-3xl font-black text-emerald-600">{result.created}</p>
-                <p className="text-sm text-slate-500">{target} created</p>
+                <p className="text-sm text-slate-500">{t("import.created").replace("{target}", target)}</p>
               </div>
               <div className="text-center">
                 <p className="text-3xl font-black text-amber-600">{result.skipped}</p>
-                <p className="text-sm text-slate-500">rows skipped</p>
+                <p className="text-sm text-slate-500">{t("import.rows_skipped")}</p>
               </div>
               {result.errors.length > 0 && (
                 <div className="text-center">
                   <p className="text-3xl font-black text-red-600">{result.errors.length}</p>
-                  <p className="text-sm text-slate-500">errors</p>
+                  <p className="text-sm text-slate-500">{t("import.errors")}</p>
                 </div>
               )}
             </div>
             {result.errors.length > 0 && (
               <div className="w-full max-w-lg p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl mb-6 text-left">
-                <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-2">Errors:</p>
+                <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-2">{t("import.errors_label")}</p>
                 {result.errors.slice(0, 5).map((e, i) => (
                   <p key={i} className="text-xs text-red-600 dark:text-red-400">{e}</p>
                 ))}
@@ -356,10 +358,10 @@ export default function ImportPage() {
             <div className="flex gap-3">
               <button onClick={reset}
                 className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-sm hover:bg-slate-200 transition-all">
-                Import More
+                {t("import.import_more")}
               </button>
               <a href={`/${target}`} className="px-5 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-all flex items-center gap-2">
-                View {target.charAt(0).toUpperCase() + target.slice(1)} <ArrowRight className="w-4 h-4" />
+                {t("import.view_target").replace("{target}", target.charAt(0).toUpperCase() + target.slice(1))} <ArrowRight className="w-4 h-4" />
               </a>
             </div>
           </motion.div>

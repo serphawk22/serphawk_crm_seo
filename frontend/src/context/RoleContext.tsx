@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useRouter, usePathname } from 'next/navigation';
 import { API_BASE_URL } from '@/config';
 
-export type Role = 'SuperAdmin' | 'Admin' | 'Employee' | 'Client' | 'Intern' | 'SalesManager' | 'Supplier';
+export type Role = 'SuperAdmin' | 'Admin' | 'Employee' | 'Client' | 'Intern' | 'SalesManager' | 'Supplier' | 'Demo' | 'ProjectMember';
 
 interface User {
   id: number;
@@ -69,7 +69,33 @@ if (typeof window !== 'undefined' && !(window as any)._fetchPatched) {
         return new Response(JSON.stringify({ id: -1, status: "offline", message: "Saved offline" }), { status: 200, statusText: "OK" });
       } catch(err) {}
     }
-    const response = await originalFetch(resource, config);
+    // Universal "confirm before email" gate: block any outbound request that
+    // sends a mail until the user confirms it in the popup.
+    if (isInternalApi && typeof resource === 'string') {
+      try {
+        const { emailTriggerInfo, requestEmailConfirmation } = await import('@/lib/emailConfirm');
+        const info = emailTriggerInfo(resource, config);
+        if (info) {
+          const ok = await requestEmailConfirmation(info);
+          if (!ok) {
+            return new Response(
+              JSON.stringify({ ok: false, cancelled: true, email_sent: false, message: "Email send cancelled by user." }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+      } catch (e) {}
+    }
+    let response: Response;
+    try {
+      response = await originalFetch(resource, config);
+    } catch (netErr) {
+      console.warn(`[API] Request failed (network): ${typeof resource === 'string' ? resource : '(non-string URL)'}`, netErr instanceof Error ? netErr.message : netErr);
+      return new Response(
+        JSON.stringify({ ok: false, message: 'Network error. Please try again.', status: 'network_error' }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
     
     // If we get a 401 from an internal API (other than the login endpoint itself)
     if (response.status === 401 && isInternalApi && typeof resource === 'string' && !resource.endsWith('/login')) {
@@ -103,7 +129,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!loading) {
-      if (!isAuthenticated && pathname !== '/login' && pathname !== '/signup' && pathname !== '/' && !pathname?.startsWith('/demo_showcase')) {
+      if (!isAuthenticated && pathname !== '/login' && pathname !== '/signup' && pathname !== '/' && !pathname?.startsWith('/demo_showcase') && pathname !== '/reset-password') {
         router.replace('/login');
       } else if (isAuthenticated && (pathname === '/login' || pathname === '/signup')) {
         if (user?.role === 'Supplier') {
@@ -124,14 +150,16 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password: pass })
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const data = await res.json();
         setUser(data.user);
         setIsAuthenticated(true);
         localStorage.setItem('crm_user', JSON.stringify(data.user));
         return { success: true };
       }
-      const data = await res.json().catch(() => ({}));
+      if (res.status === 503 && (data.status === 'network_error' || data.ok === false)) {
+        return { success: false, message: `Unable to connect to the CRM API at ${API_BASE_URL}. Please check that the backend is reachable and try again.` };
+      }
       return { success: false, message: data.detail || 'Invalid credentials. Please try again.' };
     } catch (err) {
       console.error('Login request failed', err);

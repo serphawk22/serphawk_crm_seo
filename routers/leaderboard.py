@@ -3,6 +3,7 @@ from sqlmodel import Session, select
 from typing import List
 from pydantic import BaseModel
 from database import engine, User, Deal, ConversationLog
+from modules.api_tracker import current_salesperson_id
 
 router = APIRouter(prefix="/leaderboard", tags=["Leaderboard"])
 
@@ -21,7 +22,13 @@ class LeaderboardEntry(BaseModel):
 
 @router.get("", response_model=List[LeaderboardEntry])
 def get_leaderboard(session: Session = Depends(get_session)):
-    users = session.exec(select(User).where(User.role.in_(["Employee", "SalesManager", "Admin"]))).all()
+    query = select(User).where(User.role.in_(["Employee", "SalesManager"]))
+    requester_id = current_salesperson_id.get()
+    if requester_id:
+        requester = session.get(User, requester_id)
+        if requester and requester.tenant_id:
+            query = query.where(User.tenant_id == requester.tenant_id)
+    users = session.exec(query).all()
     
     leaderboard = []
     
@@ -38,7 +45,7 @@ def get_leaderboard(session: Session = Depends(get_session)):
         # Get calls made
         calls = session.exec(select(ConversationLog).where(ConversationLog.author_id == user.id, ConversationLog.type == "call")).all()
         calls_made = len(calls)
-        
+
         leaderboard.append(LeaderboardEntry(
             user_id=user.id,
             name=user.name or user.email.split('@')[0],

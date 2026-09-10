@@ -177,6 +177,14 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
   const [extractResult, setExtractResult] = React.useState<{ count: number; marketplace: number } | null>(null);
   const [extractError, setExtractError] = React.useState<string | null>(null);
 
+  const toErrorMessage = (data: any, fallback: string): string => {
+    const d = data?.detail ?? data?.message ?? data?.error ?? data;
+    if (typeof d === "string") return d || fallback;
+    if (Array.isArray(d)) return d.map((x: any) => x?.msg || x || "").filter(Boolean).join(" · ") || fallback;
+    if (d && typeof d === "object") return d.message || d.msg || fallback;
+    return fallback;
+  };
+
   const [isGeneratingDraft, setIsGeneratingDraft] = React.useState(false);
   const [isAnalyzingCompetitor, setIsAnalyzingCompetitor] = React.useState(false);
 
@@ -214,11 +222,8 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         window.dispatchEvent(new CustomEvent('refresh-client-data'));
         // Trigger emails refetch if needed
       } else {
-        const text = await res.text().catch(() => "");
-        let errData = null;
-        try { errData = JSON.parse(text); } catch (e) {}
-        const msg = errData?.detail?.message || errData?.detail || text || "Failed to generate draft.";
-        throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        const errData = await res.json().catch(() => null);
+        throw new Error(toErrorMessage(errData, "Failed to generate draft."));
       }
     } catch (e: any) {
       console.error(e);
@@ -247,11 +252,8 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         
         (document.getElementById('compDomain') as HTMLInputElement).value = '';
       } else {
-        const text = await res.text().catch(() => "");
-        let errData = null;
-        try { errData = JSON.parse(text); } catch (e) {}
-        const msg = errData?.detail?.message || errData?.detail || text || "Failed to run competitor analysis.";
-        throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        const errData = await res.json().catch(() => null);
+        throw new Error(toErrorMessage(errData, "Failed to run competitor analysis."));
       }
     } catch (e: any) {
       console.error(e);
@@ -306,9 +308,9 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
       try { data = JSON.parse(text); } catch(e) {}
       
       if (!res.ok) {
-        setExtractError(data.detail || text || 'Failed to extract services');
+        setExtractError(toErrorMessage(data, 'Failed to extract services'));
       } else if (data.ok === false) {
-        setExtractError(data.message || 'Failed to extract services');
+        setExtractError(toErrorMessage(data, 'Failed to extract services'));
       } else {
         setExtractResult({ count: data.services?.length || 0, marketplace: data.marketplace_entries_added || 0 });
         window.dispatchEvent(new CustomEvent('refresh-client-data'));

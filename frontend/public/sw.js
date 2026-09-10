@@ -1,4 +1,4 @@
-const CACHE_NAME = "serphawk-crm-v2";
+const CACHE_NAME = "serphawk-crm-v3";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

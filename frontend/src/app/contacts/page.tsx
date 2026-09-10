@@ -1,16 +1,17 @@
 "use client";
 import { API_BASE_URL } from "@/config";
+import { useLanguage } from "@/context/LanguageContext";
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Plus, Filter, Users as UsersIcon, Mail, Phone, Globe, Linkedin, Twitter, MoreVertical, Tag, ChevronDown, ChevronRight, CornerDownRight, Trash, Edit, AlertCircle } from "lucide-react";
 
 const ContactRow = ({ contact, depth = 0, onAddSubContact, onEdit, onDelete, onAddNote }: any) => {
+  const { t } = useLanguage();
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<any[]>([]);
   const [loadingChildren, setLoadingChildren] = useState(false);
 
-  // Search results are flat but show path
   const isSearchResult = !!contact.hierarchy_path;
 
   const toggleExpand = async () => {
@@ -45,19 +46,19 @@ const ContactRow = ({ contact, depth = 0, onAddSubContact, onEdit, onDelete, onA
                 {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </button>
             ) : (
-              <div className="w-6" /> // spacer
+              <div className="w-6" />
             )}
             {depth > 0 && <CornerDownRight className="w-4 h-4 text-slate-300 dark:text-slate-600" />}
             <div className="flex flex-col">
               <span className="font-semibold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                {contact.full_name || "Unknown"}
+                {contact.full_name || t("contacts.unknown")}
                 {contact.children_count > 0 && !isSearchResult && (
                   <span className="text-xs bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md text-slate-500">
-                    {contact.children_count} Sub-Contacts
+                    {contact.children_count} {t("contacts.sub_contacts")}
                   </span>
                 )}
               </span>
-              <span className="text-[13px] text-slate-500 mt-0.5">{contact.designation || "No title"}</span>
+              <span className="text-[13px] text-slate-500 mt-0.5">{contact.designation || t("contacts.no_title")}</span>
               {isSearchResult && contact.hierarchy_path && (
                 <span className="text-xs text-blue-500 mt-1 flex items-center gap-1">
                    {contact.hierarchy_path}
@@ -98,13 +99,13 @@ const ContactRow = ({ contact, depth = 0, onAddSubContact, onEdit, onDelete, onA
         </td>
         <td className="px-6 py-4 text-right">
           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button onClick={() => onAddSubContact(contact)} title="Add Sub-Contact" className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors">
+            <button onClick={() => onAddSubContact(contact)} title={t("contacts.add_sub_contact")} className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors">
               <Plus className="w-4 h-4" />
             </button>
-            <button onClick={() => onEdit(contact)} title="Edit" className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+            <button onClick={() => onEdit(contact)} title={t("contacts.edit")} className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
               <Edit className="w-4 h-4" />
             </button>
-            <button onClick={() => onDelete(contact)} title="Delete" className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-600 transition-colors">
+            <button onClick={() => onDelete(contact)} title={t("contacts.delete")} className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-600 transition-colors">
               <Trash className="w-4 h-4" />
             </button>
           </div>
@@ -123,7 +124,7 @@ const ContactRow = ({ contact, depth = 0, onAddSubContact, onEdit, onDelete, onA
       ))}
       {expanded && loadingChildren && (
         <tr>
-           <td colSpan={4} className="px-6 py-2 text-left text-xs text-slate-400" style={{ paddingLeft: `${(depth+1) * 24 + 32}px` }}>Loading...</td>
+           <td colSpan={4} className="px-6 py-2 text-left text-xs text-slate-400" style={{ paddingLeft: `${(depth+1) * 24 + 32}px` }}>{t("contacts.loading")}</td>
         </tr>
       )}
     </>
@@ -131,8 +132,9 @@ const ContactRow = ({ contact, depth = 0, onAddSubContact, onEdit, onDelete, onA
 };
 
 export default function ContactsPage() {
+  const { t } = useLanguage();
   const [contacts, setContacts] = useState<any[]>([]);
-  const [allFlatContacts, setAllFlatContacts] = useState<any[]>([]); // For Move Contact dropdown
+  const [allFlatContacts, setAllFlatContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -176,7 +178,7 @@ export default function ContactsPage() {
 
   const fetchAllContactsFlat = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/contacts?search=`); // fetch all via search logic
+      const res = await fetch(`${API_BASE_URL}/contacts?search=`);
       if (res.ok) {
         const data = await res.json();
         setAllFlatContacts(Array.isArray(data) ? data : data.contacts || []);
@@ -194,7 +196,7 @@ export default function ContactsPage() {
   }, [searchQuery]);
 
   const handleAddNote = async (contact: any) => {
-    const note = prompt("Enter note for this contact:");
+    const note = prompt(t("contacts.enter_note"));
     if (note) {
       const newNotes = contact.notes ? contact.notes + "\n" + note : note;
       try {
@@ -251,7 +253,7 @@ export default function ContactsPage() {
       fetchAllContactsFlat();
     } catch (e) {
       console.error(e);
-      alert("Error deleting contact");
+      alert(t("contacts.error_deleting"));
     }
   };
 
@@ -259,15 +261,15 @@ export default function ContactsPage() {
     <div className="flex flex-col h-full bg-[#f8fafc] dark:bg-black rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-800">
       <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-black">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Contacts</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage individual decision makers and stakeholders</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t("contacts.title")}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("contacts.subtitle")}</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Search contacts..." 
+              placeholder={t("contacts.search_placeholder")} 
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-blue-500 w-64"
@@ -275,7 +277,7 @@ export default function ContactsPage() {
           </div>
           <button onClick={() => { setForm(emptyForm); setShowModal(true); }} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-colors">
             <Plus className="w-4 h-4" />
-            Add Contact
+            {t("contacts.add_contact")}
           </button>
         </div>
       </div>
@@ -290,19 +292,19 @@ export default function ContactsPage() {
             <div className="w-16 h-16 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center mb-4">
               <UsersIcon className="w-8 h-8 text-slate-400" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">No contacts found</h3>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{t("contacts.no_contacts_found")}</h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm">
-              We couldn't find any contacts matching your criteria.
+              {t("contacts.no_contacts_matching")}
             </p>
           </div>
         ) : (
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-[13px] font-semibold text-slate-500 dark:text-slate-400">
-                <th className="px-6 py-4 font-medium">Name & Title</th>
-                <th className="px-6 py-4 font-medium">Contact Details</th>
-                <th className="px-6 py-4 font-medium">Social</th>
-                <th className="px-6 py-4 font-medium text-right">Actions</th>
+                <th className="px-6 py-4 font-medium">{t("contacts.name_title")}</th>
+                <th className="px-6 py-4 font-medium">{t("contacts.contact_details")}</th>
+                <th className="px-6 py-4 font-medium">{t("contacts.social")}</th>
+                <th className="px-6 py-4 font-medium text-right">{t("contacts.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -330,27 +332,27 @@ export default function ContactsPage() {
               className="bg-white dark:bg-black rounded-2xl shadow-2xl w-full max-w-md p-6">
               <div className="flex items-center gap-3 mb-4 text-red-600">
                 <AlertCircle className="w-6 h-6" />
-                <h2 className="text-xl font-bold">Delete Contact?</h2>
+                <h2 className="text-xl font-bold">{t("contacts.delete_contact")}</h2>
               </div>
               <p className="text-slate-600 dark:text-slate-300 mb-6">
-                Are you sure you want to delete <strong>{contactToDelete.full_name}</strong>?
+                {t("contacts.delete_confirm_1")} <strong>{contactToDelete.full_name}</strong>{t("contacts.delete_confirm_2")}
                 {contactToDelete.children_count > 0 && (
                   <span className="block mt-2 text-amber-600 dark:text-amber-500">
-                    This contact has {contactToDelete.children_count} sub-contact(s). What would you like to do with them?
+                    {t("contacts.has_sub_contacts")} {contactToDelete.children_count} {t("contacts.sub_contacts_suffix")}
                   </span>
                 )}
               </p>
               <div className="flex flex-col gap-3">
                 {contactToDelete.children_count > 0 && (
                   <button onClick={() => executeDelete('move_to_parent')} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm">
-                    Delete and Move Sub-Contacts to Parent
+                    {t("contacts.delete_and_move")}
                   </button>
                 )}
                 <button onClick={() => executeDelete('cascade')} className="w-full px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold text-sm">
-                  {contactToDelete.children_count > 0 ? "Delete Contact AND all Sub-Contacts" : "Delete Contact"}
+                  {contactToDelete.children_count > 0 ? t("contacts.delete_contact_and_all") : t("contacts.delete_contact")}
                 </button>
                 <button onClick={() => setShowDeleteModal(false)} className="w-full px-4 py-2.5 rounded-xl font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 text-sm">
-                  Cancel
+                  {t("contacts.cancel")}
                 </button>
               </div>
             </motion.div>
@@ -368,7 +370,7 @@ export default function ContactsPage() {
               className="bg-white dark:bg-black rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
               <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center sticky top-0 bg-white dark:bg-black z-10">
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                  {form.id ? "Edit Contact" : "Add New Contact"}
+                  {form.id ? t("contacts.edit_contact") : t("contacts.add_new_contact")}
                 </h2>
                 <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white"><UsersIcon className="w-5 h-5"/></button>
               </div>
@@ -376,15 +378,15 @@ export default function ContactsPage() {
                 
                 {/* Parent Contact Dropdown for Hierarchy */}
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Parent Contact</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("contacts.parent_contact")}</label>
                   <select 
                     value={form.parent_contact_id || ""} 
                     onChange={e => setForm({...form, parent_contact_id: e.target.value ? parseInt(e.target.value) : null})} 
                     className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white"
                   >
-                    <option value="">None (Root Level)</option>
+                    <option value="">{t("contacts.none_root")}</option>
                     {allFlatContacts.map(c => {
-                      if (c.id === form.id) return null; // Can't be own parent
+                      if (c.id === form.id) return null;
                       return (
                         <option key={c.id} value={c.id}>{c.full_name} {c.hierarchy_path ? `(${c.hierarchy_path})` : ''}</option>
                       )
@@ -394,61 +396,61 @@ export default function ContactsPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">First Name *</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("contacts.first_name")}</label>
                     <input value={form.first_name} onChange={e => setForm({...form, first_name: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Last Name</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("contacts.last_name")}</label>
                     <input value={form.last_name} onChange={e => setForm({...form, last_name: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Email</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("contacts.email")}</label>
                     <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Mobile Number</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("contacts.mobile_number")}</label>
                     <input value={form.mobile_number} onChange={e => setForm({...form, mobile_number: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Designation</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("contacts.designation")}</label>
                     <input value={form.designation} onChange={e => setForm({...form, designation: e.target.value})} placeholder="e.g. CEO" className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Department</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("contacts.department")}</label>
                     <input value={form.department} onChange={e => setForm({...form, department: e.target.value})} placeholder="e.g. Sales" className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
                   </div>
                 </div>
 
                 <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2 block">Assignment Options</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2 block">{t("contacts.assignment_options")}</label>
                   <div className="grid grid-cols-2 gap-2 mb-4">
                     <label className="flex items-center gap-2 text-sm p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 cursor-pointer text-slate-900 dark:text-white">
-                      <input type="radio" name="assignment" checked={form.assignment_type === 'none'} onChange={() => setForm({...form, assignment_type: 'none'})} /> Standalone Contact
+                      <input type="radio" name="assignment" checked={form.assignment_type === 'none'} onChange={() => setForm({...form, assignment_type: 'none'})} /> {t("contacts.standalone")}
                     </label>
                     <label className="flex items-center gap-2 text-sm p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 cursor-pointer text-slate-900 dark:text-white">
-                      <input type="radio" name="assignment" checked={form.assignment_type === 'create_lead'} onChange={() => setForm({...form, assignment_type: 'create_lead'})} /> Create new Lead
+                      <input type="radio" name="assignment" checked={form.assignment_type === 'create_lead'} onChange={() => setForm({...form, assignment_type: 'create_lead'})} /> {t("contacts.create_new_lead")}
                     </label>
                     <label className="flex items-center gap-2 text-sm p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 cursor-pointer text-slate-900 dark:text-white">
-                      <input type="radio" name="assignment" checked={form.assignment_type === 'lead'} onChange={() => setForm({...form, assignment_type: 'lead'})} /> Assign to Lead
+                      <input type="radio" name="assignment" checked={form.assignment_type === 'lead'} onChange={() => setForm({...form, assignment_type: 'lead'})} /> {t("contacts.assign_to_lead")}
                     </label>
                     <label className="flex items-center gap-2 text-sm p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 cursor-pointer text-slate-900 dark:text-white">
-                      <input type="radio" name="assignment" checked={form.assignment_type === 'client'} onChange={() => setForm({...form, assignment_type: 'client'})} /> Assign to Client
+                      <input type="radio" name="assignment" checked={form.assignment_type === 'client'} onChange={() => setForm({...form, assignment_type: 'client'})} /> {t("contacts.assign_to_client")}
                     </label>
                   </div>
 
                   {form.assignment_type === 'lead' && (
                     <select value={form.lead_id} onChange={e => setForm({...form, lead_id: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white">
-                      <option value="">Select a Lead...</option>
+                      <option value="">{t("contacts.select_lead")}</option>
                       {leads.map(l => <option key={l.id} value={l.id}>{l.company_name}</option>)}
                     </select>
                   )}
                   {form.assignment_type === 'client' && (
                     <select value={form.client_id} onChange={e => setForm({...form, client_id: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white">
-                      <option value="">Select a Client...</option>
+                      <option value="">{t("contacts.select_client")}</option>
                       {clients.map(c => <option key={c.id} value={c.id}>{c.companyName || c.projectName || c.email}</option>)}
                     </select>
                   )}
@@ -456,18 +458,18 @@ export default function ContactsPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">LinkedIn URL</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("contacts.linkedin_url")}</label>
                     <input type="text" value={form.linkedin_url || ""} onChange={e => setForm({...form, linkedin_url: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Twitter URL</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("contacts.twitter_url")}</label>
                     <input type="text" value={form.twitter_url || ""} onChange={e => setForm({...form, twitter_url: e.target.value})} className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white" />
                   </div>
                 </div>
 
               </div>
               <div className="p-6 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-end gap-3 rounded-b-2xl sticky bottom-0">
-                <button onClick={() => setShowModal(false)} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-sm hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>
+                <button onClick={() => setShowModal(false)} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-sm hover:bg-slate-100 dark:hover:bg-slate-800">{t("contacts.cancel")}</button>
                 <button onClick={async () => {
                   if (!form.first_name.trim()) return;
                   setSaving(true);
@@ -491,7 +493,7 @@ export default function ContactsPage() {
                     const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                     if (!res.ok) {
                       const err = await res.json();
-                      alert(err.detail || "Error saving contact.");
+                      alert(err.detail || t("contacts.error_saving"));
                       setSaving(false);
                       return;
                     }
@@ -501,7 +503,7 @@ export default function ContactsPage() {
                     fetchAllContactsFlat();
                   } catch (e) { console.error(e); } finally { setSaving(false); }
                 }} disabled={saving || !form.first_name} className="px-5 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50">
-                  {saving ? 'Saving...' : 'Save Contact'}
+                  {saving ? t("contacts.saving") : t("contacts.save_contact")}
                 </button>
               </div>
             </motion.div>
