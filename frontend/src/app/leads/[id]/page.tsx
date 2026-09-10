@@ -1134,7 +1134,7 @@ export default function LeadDetailsPage() {
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ employee_id: Number(val) }),
                     });
-                    fetchClient();
+                    fetchLead();
                   }}
                   className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-zinc-700 
                              bg-slate-50 dark:bg-zinc-950  text-slate-800 dark:text-zinc-100 
