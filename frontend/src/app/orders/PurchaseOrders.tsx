@@ -36,8 +36,16 @@ export default function PurchaseOrdersPage() {
   const handleSave = async () => {
     if (!form.vendor_name.trim()) return;
     setSaving(true);
-    await fetch(`${API_BASE_URL}/purchase-orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, grand_total: parseFloat(form.grand_total) || 0 }) });
-    setSaving(false); setShowModal(false); load();
+    try {
+      const res = await fetch(`${API_BASE_URL}/purchase-orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, grand_total: parseFloat(form.grand_total) || 0 }) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        notify("err", err.detail || "Failed to create order");
+        return;
+      }
+      setShowModal(false); load();
+    } catch { notify("err", "Network error"); }
+    finally { setSaving(false); }
   };
   const handleDelete = async (id: number) => { if (!confirm("Delete PO?")) return; await fetch(`${API_BASE_URL}/purchase-orders/${id}`, { method: "DELETE" }); load(); };
   const handleStatus = async (o: PO, status: string) => {

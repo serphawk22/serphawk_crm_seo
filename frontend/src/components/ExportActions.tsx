@@ -30,9 +30,25 @@ export function ExportActions({ downloadUrl, emailUrl, filename, label = "Export
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [toast, setToast] = useState<Toast | null>(null);
 
-  const notify = (type: "ok" | "err", text: string) => {
-    setToast({ type, text });
+  const notify = (type: "ok" | "err", text: unknown) => {
+    setToast({ type, text: typeof text === "string" ? text : errorText(text, t("export_actions.download_failed")) });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const errorText = (detail: unknown, fallback: string): string => {
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      const msgs = detail.map((e: any) => {
+        if (e && typeof e === "object" && typeof e.msg === "string") {
+          const loc = Array.isArray(e.loc) ? e.loc.filter((x: any) => typeof x === "string").join(".") : "";
+          return loc ? `${loc}: ${e.msg}` : e.msg;
+        }
+        return JSON.stringify(e);
+      });
+      return msgs.filter(Boolean).join("; ");
+    }
+    if (detail && typeof detail === "object") return JSON.stringify(detail);
+    return fallback;
   };
 
   const handleDownload = async () => {
@@ -41,7 +57,7 @@ export function ExportActions({ downloadUrl, emailUrl, filename, label = "Export
       const res = await fetch(downloadUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        notify("err", d.detail || t("export_actions.download_failed"));
+        notify("err", errorText(d.detail, t("export_actions.download_failed")));
         return;
       }
       const blob = await res.blob();
@@ -70,7 +86,7 @@ export function ExportActions({ downloadUrl, emailUrl, filename, label = "Export
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
-        notify("err", d.detail || t("export_actions.send_failed"));
+        notify("err", errorText(d.detail, t("export_actions.send_failed")));
         return;
       }
       notify("ok", `${t("export_actions.pdf_sent_to")} ${email.trim()}`);
@@ -94,7 +110,7 @@ export function ExportActions({ downloadUrl, emailUrl, filename, label = "Export
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        notify("err", d.detail || t("export_actions.download_failed"));
+        notify("err", errorText(d.detail, t("export_actions.download_failed")));
         return;
       }
       const blob = await res.blob();

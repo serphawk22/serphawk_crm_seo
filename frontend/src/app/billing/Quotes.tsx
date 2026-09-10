@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FileText, Plus, X, Search, Loader2, Trash2, Building2,
@@ -46,7 +46,14 @@ function fmtMoney(v: number, c: string) {
 // ─── Modal state type ─────────────────────────────────────────────────────────
 type ModalStep = "form" | "cart";
 
-export default function QuotesPage() {
+export interface QuotesHandle {
+  openCreate: () => void;
+}
+
+const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function QuotesPage(
+  { embedded = false },
+  ref
+) {
   // List state
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -209,6 +216,8 @@ export default function QuotesPage() {
     setShowModal(true);
     loadModalData();
   };
+
+  useImperativeHandle(ref, () => ({ openCreate }));
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const canSave = () => {
@@ -386,8 +395,9 @@ export default function QuotesPage() {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#f8fafc] dark:bg-zinc-950 p-4 md:p-6 space-y-5">
+    <div className={embedded ? "space-y-5" : "min-h-screen bg-[#f8fafc] dark:bg-zinc-950 p-4 md:p-6 space-y-5"}>
       {/* Header */}
+      {!embedded && (
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-4">
           <div className="p-3 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-500/20">
@@ -403,6 +413,7 @@ export default function QuotesPage() {
           <Plus className="w-4 h-4" /> New Quote
         </button>
       </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1090,4 +1101,6 @@ export default function QuotesPage() {
       </AnimatePresence>
     </div>
   );
-}
+});
+
+export default QuotesPage;

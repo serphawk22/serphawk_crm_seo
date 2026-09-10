@@ -51,11 +51,25 @@ export default function SalesOrdersPage() {
     if (form.linked_to === "lead" && !form.lead_id) { alert("Please select a lead first"); return; }
     if (form.linked_to === "client" && !form.client_id) { alert("Please select a client first"); return; }
     setSaving(true);
-    const payload: any = { ...form, grand_total: parseFloat(form.grand_total as string) || 0 };
-    if (form.linked_to === "lead") payload.lead_id = Number(form.lead_id);
-    if (form.linked_to === "client") payload.client_id = Number(form.client_id);
-    await fetch(`${API_BASE_URL}/sales-orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    setSaving(false); setShowModal(false); load();
+    try {
+      const payload = {
+        status: form.status,
+        grand_total: parseFloat(form.grand_total as string) || 0,
+        currency: form.currency,
+        delivery_date: form.delivery_date || null,
+        notes: form.notes || null,
+        lead_id: form.linked_to === "lead" ? Number(form.lead_id) : null,
+        client_id: form.linked_to === "client" ? Number(form.client_id) : null,
+      };
+      const res = await fetch(`${API_BASE_URL}/sales-orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        notify("err", err.detail || "Failed to create order");
+        return;
+      }
+      setShowModal(false); load();
+    } catch { notify("err", "Network error"); }
+    finally { setSaving(false); }
   };
   const handleDelete = async (id: number) => { if (!confirm("Delete order?")) return; await fetch(`${API_BASE_URL}/sales-orders/${id}`, { method: "DELETE" }); load(); };
   const handleStatus = async (o: SalesOrder, status: string) => {

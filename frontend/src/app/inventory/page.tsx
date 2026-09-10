@@ -81,6 +81,11 @@ export default function InventoryPage() {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showToast("Image must be under 10 MB", "err");
+      if (e.target) e.target.value = "";
+      return;
+    }
     setUploadingPhoto(true);
     try {
       const fd = new FormData();
@@ -101,9 +106,11 @@ export default function InventoryPage() {
     }
   };
 
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = (msg: string, type: "ok" | "err" = "ok") => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
   };
 
   const fetchItems = async () => {
@@ -181,13 +188,21 @@ export default function InventoryPage() {
         body: JSON.stringify(supplierForm)
       });
       const data = await res.json();
+      if (!res.ok) {
+        showToast(data.detail || "Failed to add supplier", "err");
+        return;
+      }
       setShowSupplierModal(null);
-      fetchItems();
-      if (data.credentials_created) {
+      setSupplierForm({ ...emptySupplier });
+      await fetchItems();
+      if (data.credentials_created && data.login_email) {
         setNewCredentials({ supplier_id: data.id, email: data.login_email, password: data.login_password, name: supplierForm.supplier_name });
       } else {
-        showToast(t("inventory.toast_supplier_added"));
+        // No email → show popup with message to add email for portal access
+        setNewCredentials({ supplier_id: data.id, email: "", password: "", name: supplierForm.supplier_name });
       }
+    } catch {
+      showToast("Network error — please try again", "err");
     } finally { setSaving(false); }
   };
 
@@ -262,7 +277,7 @@ export default function InventoryPage() {
         )}
       </AnimatePresence>
 
-      {/* Credentials Modal - shown when supplier account is auto-created */}
+      {/* Credentials Modal - shown after every supplier add */}
       <AnimatePresence>
         {newCredentials && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -274,44 +289,65 @@ export default function InventoryPage() {
                   <CheckCircle className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t("inventory.cred_title")}</h2>
-                  <p className="text-xs text-slate-500">{newCredentials.name} {t("inventory.cred_can_login")}</p>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">{newCredentials.name}</h2>
+                  <p className="text-xs text-slate-500">
+                    {newCredentials.email
+                      ? t("inventory.cred_can_login")
+                      : "Supplier added — add an email to enable portal login"}
+                  </p>
                 </div>
               </div>
-              <div className="space-y-3 mb-5">
-                <div className="p-4 bg-slate-900 rounded-xl">
-                  <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">{t("inventory.cred_login_url")}</p>
-                  <code className="text-blue-400 text-sm font-mono break-all">{typeof window !== 'undefined' ? `${window.location.origin}/login` : ''}</code>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-4 bg-slate-900 rounded-xl">
-                    <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">{t("inventory.cred_email")}</p>
-                    <code className="text-emerald-400 text-sm font-mono break-all select-all">{newCredentials.email}</code>
+
+              {newCredentials.email ? (
+                <>
+                  <div className="space-y-3 mb-5">
+                    <div className="p-4 bg-slate-900 rounded-xl">
+                      <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">{t("inventory.cred_login_url")}</p>
+                      <code className="text-blue-400 text-sm font-mono break-all">{typeof window !== 'undefined' ? `${window.location.origin}/login` : ''}</code>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-4 bg-slate-900 rounded-xl">
+                        <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">{t("inventory.cred_email")}</p>
+                        <code className="text-emerald-400 text-sm font-mono break-all select-all">{newCredentials.email}</code>
+                      </div>
+                      <div className="p-4 bg-slate-900 rounded-xl">
+                        <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">{t("inventory.cred_password")}</p>
+                        <code className="text-amber-400 text-sm font-mono select-all">{newCredentials.password}</code>
+                      </div>
+                    </div>
                   </div>
-                  <div className="p-4 bg-slate-900 rounded-xl">
-                    <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">{t("inventory.cred_password")}</p>
-                    <code className="text-amber-400 text-sm font-mono select-all">{newCredentials.password}</code>
+                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl mb-4">
+                    <p className="text-xs text-amber-700 dark:text-amber-400 font-medium flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      {t("inventory.cred_share_notice")}
+                    </p>
                   </div>
-                </div>
-              </div>
-              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl mb-4">
-                <p className="text-xs text-amber-700 dark:text-amber-400 font-medium flex items-center gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  {t("inventory.cred_share_notice")}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => handleSendCredentials(newCredentials.supplier_id, newCredentials.name)}
-                  disabled={sendingCreds}
-                  className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
-                  {sendingCreds ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  {t("inventory.cred_send_email")}
-                </button>
-                <button onClick={() => { setNewCredentials(null); showToast(t("inventory.toast_supplier_added_login")); }}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition-all">
-                  {t("inventory.cred_done_btn")}
-                </button>
-              </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleSendCredentials(newCredentials.supplier_id, newCredentials.name)}
+                      disabled={sendingCreds}
+                      className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+                      {sendingCreds ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      {t("inventory.cred_send_email")}
+                    </button>
+                    <button onClick={() => { setNewCredentials(null); showToast(t("inventory.toast_supplier_added_login")); }}
+                      className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition-all">
+                      {t("inventory.cred_done_btn")}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl mb-5">
+                    <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
+                      To enable supplier portal login, edit this supplier and add their email address. A login account will be created automatically.
+                    </p>
+                  </div>
+                  <button onClick={() => { setNewCredentials(null); showToast(t("inventory.toast_supplier_added")); }}
+                    className="w-full py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition-all">
+                    {t("inventory.cred_done_btn")}
+                  </button>
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}

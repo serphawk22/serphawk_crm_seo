@@ -58,7 +58,7 @@ def register_sent_emails_endpoint(app, get_session):
 import hashlib
 import re
 from datetime import datetime, timedelta, date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Form, UploadFile, File, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -6939,13 +6939,6 @@ def respond_nps(survey_id: int, body: NPSRespondRequest, session: Session = Depe
 def invoice_pdf(invoice_id: int, provider: Optional[str] = None, session: Session = Depends(get_session)):
     """Generate a professional PDF for an invoice."""
     from fastapi.responses import StreamingResponse
-    import io
-    import os
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.utils import ImageReader
 
     inv = session.get(Invoice, invoice_id)
     if not inv:
@@ -6956,178 +6949,22 @@ def invoice_pdf(invoice_id: int, provider: Optional[str] = None, session: Sessio
         user = session.get(User, client.userId) if client.userId else None
         client_name = client.companyName or (user.name if user else f"Client #{client.id}")
 
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=40, bottomMargin=40, leftMargin=40, rightMargin=40)
-    styles = getSampleStyleSheet()
-    
-    # Custom Styles
-    title_style = ParagraphStyle("Title", fontName="Helvetica-Bold", fontSize=22, leading=26, textColor=colors.HexColor("#000000"))
-    normal_b = ParagraphStyle("NormalB", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10, textColor=colors.HexColor("#111111"))
-    normal = ParagraphStyle("NormalR", parent=styles["Normal"], fontName="Helvetica", fontSize=10, textColor=colors.HexColor("#333333"))
-    small = ParagraphStyle("Small", parent=normal, fontSize=8, textColor=colors.HexColor("#555555"))
-    h3 = ParagraphStyle("H3", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=12, spaceAfter=8)
-
-    els = []
-    
-    is_dapros = (provider == "DAPROS")
-    
-    if is_dapros:
-        curr = "$"
-        title_text = "INVOICE"
-        logo_el = Paragraph("DaPros", ParagraphStyle("RightB", parent=title_style, alignment=2, fontSize=28, leading=32, textColor=colors.HexColor("#000000")))
-        contact_info = [
-             Paragraph("+52 33 5018 8216 | contacto@dapros.com.mx", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("DaPros, Web Design in Guadalajara", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("Canarias 1178, 44620 Guadalajara", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("Jal., Mexico", ParagraphStyle("Right", parent=normal, alignment=2))
-        ]
-        payment_name = "DaPros"
-        place = "Guadalajara"
-    else:
-        curr = "₹"
-        title_text = "PROFORMA INVOICE"
-        logo_path = os.path.join(os.path.dirname(__file__), "logo.jpg")
-        if os.path.exists(logo_path):
-            img_reader = ImageReader(logo_path)
-            img_w, img_h = img_reader.getSize()
-            aspect = img_h / float(img_w)
-            logo_el = Image(logo_path, width=120, height=120 * aspect)
-        else:
-            logo_el = Paragraph("SERP HAWK", ParagraphStyle("RightB", parent=title_style, alignment=2, fontSize=16))
-
-        contact_info = [
-             Paragraph("089213 81769 | info@serphawk.com", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("B, 2nd Floor, Bannerghatta Slip Rd, KEB Colony", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("New Gurappana Palya, 1st Stage, BTM 1st Stage", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("Bengaluru, Karnataka 560029", ParagraphStyle("Right", parent=normal, alignment=2))
-        ]
-        payment_name = "SERP HAWK"
-        place = "Bengaluru"
-
-    # Header Section
-    header_data = [
-        [
-            Paragraph(title_text, title_style),
-            logo_el
-        ],
-        [
-            [Paragraph(f"Invoice Number: {inv.invoice_number}", normal),
-             Paragraph(f"Date: {inv.created_at.strftime('%B %d, %Y') if inv.created_at else '—'}", normal)],
-            contact_info
-        ]
-    ]
-    header_table = Table(header_data, colWidths=[260, 255])
-    header_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 25),
-        ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
-    ]))
-    els.append(header_table)
-    els.append(Spacer(1, 30))
-
-    # Info Section
-    info_data = [
-        [Paragraph("BILL TO:", h3), Paragraph("SHIP TO:", h3), Paragraph("SHIPPING DETAILS:", h3)],
-        [
-            [Paragraph(client_name or "—", normal_b), Paragraph("Client Address", normal)],
-            [Paragraph(client_name or "—", normal_b), Paragraph("Client Address", normal)],
-            [Paragraph("Freight type - Digital", normal), Paragraph(f"Due Date - {inv.due_date or 'N/A'}", normal)]
-        ]
-    ]
-    info_table = Table(info_data, colWidths=[171, 171, 173])
-    info_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    els.append(info_table)
-    els.append(Spacer(1, 30))
-
-    # Line Items Table
-    items_header = ["ITEM", "DESCRIPTION", "PROVIDER", "PRICE", "AMOUNT"]
-    items_data = [items_header]
-    
-    for idx, li in enumerate(inv.line_items or [], 1):
-        amt = float(li.get('amount', 0))
-        prov = li.get('provider', 'Custom')
-        desc = li.get('description', '')
-        items_data.append([str(idx) + ".", desc, prov, f"{curr}{amt:.2f}", f"{curr}{amt:.2f}"])
-        
-    lt = Table(items_data, colWidths=[40, 195, 100, 90, 90])
-    
-    # Base table style
-    ts = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#5472d3")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("PADDING", (0, 0), (-1, -1), 10),
-        ("ALIGN", (3, 0), (4, -1), "RIGHT"),
-        ("ALIGN", (0, 0), (0, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]
-    
-    # Alternating row colors
-    for i in range(1, len(items_data)):
-        bg = colors.HexColor("#f8f9fa") if i % 2 != 0 else colors.white
-        ts.append(("BACKGROUND", (0, i), (-1, i), bg))
-        
-    lt.setStyle(TableStyle(ts))
-    els.append(lt)
-    els.append(Spacer(1, 15))
-    
-    # Totals Section
-    totals_data = [
-        ["", "Sub Total:", f"{curr}{inv.amount:.2f}"],
-        ["", "Tax:", f"{curr}{inv.tax:.2f}"],
-        ["", "Freight:", f"{curr}0.00"],
-    ]
-    tt = Table(totals_data, colWidths=[295, 110, 110])
-    tt.setStyle(TableStyle([
-        ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
-        ("ALIGN", (1, 0), (2, -1), "RIGHT"),
-        ("PADDING", (0, 0), (-1, -1), 5),
-    ]))
-    els.append(tt)
-    els.append(Spacer(1, 10))
-    
-    grand_total_data = [["", f"TOTAL: {curr}{inv.total:.2f}"]]
-    gt = Table(grand_total_data, colWidths=[295, 220])
-    gt.setStyle(TableStyle([
-        ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#f1f5f9")),
-        ("FONTNAME", (1, 0), (1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (1, 0), (1, 0), 16),
-        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ("PADDING", (1, 0), (1, 0), 10),
-    ]))
-    els.append(gt)
-    els.append(Spacer(1, 40))
-    
-    # Footer Section
-    footer_data = [
-        [Paragraph("PAYMENT INFORMATION:", h3), Paragraph("SIGNATURE/STAMP", h3)],
-        [
-            [Paragraph("<b>Bank:</b> ___________________", normal), 
-             Paragraph(f"<b>Name:</b> {payment_name}", normal), 
-             Paragraph("<b>Account:</b> ___________________", normal)],
-            [Paragraph(f"Place: {place}", normal), Paragraph("Date: ____________", normal)]
-        ]
-    ]
-    ft = Table(footer_data, colWidths=[257, 258])
-    ft.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    els.append(ft)
-    
-    els.append(Spacer(1, 20))
-    els.append(Paragraph("<b>TERM AND CONDITIONS:</b>", normal))
-    els.append(Paragraph("Payment is due 30 days from the invoice date.", normal))
-    
-    doc.build(els)
-    buf.seek(0)
-    return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f"inline; filename=Invoice_{inv.invoice_number}.pdf"
+    from modules.pdf_export import invoice_pdf as _invoice_pdf
+    pdf = _invoice_pdf({
+        "invoice_number": inv.invoice_number,
+        "client_name": client_name,
+        "currency": inv.currency or "$",
+        "amount": inv.amount,
+        "tax": inv.tax,
+        "total": inv.total,
+        "status": inv.status,
+        "due_date": inv.due_date,
+        "notes": inv.notes,
+        "line_items": inv.line_items or [],
+        "created_at": inv.created_at,
+    })
+    return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="invoice-{inv.invoice_number}.pdf"'
     })
 
 
@@ -7410,12 +7247,28 @@ async def upload_file_to_server(
     upload_dir = os.path.join("static", "uploads")
     file_path = os.path.join(upload_dir, unique_name)
 
-    contents = await file.read()
-    with open(file_path, "wb") as fh:
-        fh.write(contents)
+    # Stream chunks to disk in a worker thread (never block the event loop,
+    # never buffer the whole file in RAM), enforcing a 10 MB cap mid-stream.
+    import asyncio, shutil
+    _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+    def _write():
+        file.file.seek(0)
+        total = 0
+        with open(file_path, "wb") as fh:
+            while True:
+                chunk = file.file.read(1024 * 256)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > _MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Image must be under 10 MB")
+                fh.write(chunk)
+        return total
+
+    file_size = await asyncio.to_thread(_write)
 
     file_url = f"/static/uploads/{unique_name}"
-    file_size = len(contents)
 
     record = ClientFileUpload(
         client_id=client_id,
@@ -7452,9 +7305,26 @@ async def upload_image(file: UploadFile = File(...)):
     os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, unique_name)
 
-    contents = await file.read()
-    with open(file_path, "wb") as fh:
-        fh.write(contents)
+    # Stream chunks to disk in a worker thread (never block the event loop),
+    # enforcing a 10 MB cap mid-stream.
+    import asyncio
+    _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+    def _write_sync():
+        file.file.seek(0)
+        total = 0
+        with open(file_path, "wb") as fh:
+            while True:
+                chunk = file.file.read(1024 * 256)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > _MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Image must be under 10 MB")
+                fh.write(chunk)
+        return total
+
+    await asyncio.to_thread(_write_sync)
 
     return {"file_url": f"/static/uploads/{unique_name}"}
 def upload_client_file(
@@ -7572,94 +7442,6 @@ def delete_ranking(entry_id: int, session: Session = Depends(get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 # PDF Generation — Invoices & Proposals
 # ─────────────────────────────────────────────────────────────────────────────
-
-@app.get("/invoices/{invoice_id}/pdf")
-def invoice_pdf(invoice_id: int, session: Session = Depends(get_session)):
-    """Generate a professional PDF for an invoice."""
-    from fastapi.responses import StreamingResponse
-    import io
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-
-    inv = session.get(Invoice, invoice_id)
-    if not inv:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    client = session.get(ClientProfile, inv.client_id) if inv.client_id else None
-    client_name = ""
-    if client:
-        user = session.get(User, client.userId) if client.userId else None
-        client_name = client.companyName or (user.name if user else f"Client #{client.id}")
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=50, bottomMargin=40)
-    styles = getSampleStyleSheet()
-    title_s = ParagraphStyle("ITitle", parent=styles["Title"], fontSize=24, textColor=colors.HexColor("#1e293b"))
-    h2 = ParagraphStyle("IH2", parent=styles["Heading2"], fontSize=13, textColor=colors.HexColor("#334155"), spaceBefore=18)
-    normal = styles["Normal"]
-    small = ParagraphStyle("Small", parent=normal, fontSize=9, textColor=colors.grey)
-
-    els = []
-    els.append(Paragraph("INVOICE", title_s))
-    els.append(Spacer(1, 6))
-    els.append(Paragraph(f"<b>{inv.invoice_number}</b>", ParagraphStyle("Num", parent=normal, fontSize=14, textColor=colors.HexColor("#4f46e5"))))
-    els.append(Spacer(1, 12))
-
-    # Info table
-    info = [
-        ["Bill To:", client_name or "—"],
-        ["Date:", inv.created_at.strftime("%B %d, %Y") if inv.created_at else "—"],
-        ["Due Date:", inv.due_date or "—"],
-        ["Status:", inv.status],
-    ]
-    it = Table(info, colWidths=[100, 350])
-    it.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("PADDING", (0, 0), (-1, -1), 6),
-        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#64748b")),
-    ]))
-    els.append(it)
-    els.append(Spacer(1, 18))
-
-    # Line items
-    els.append(Paragraph("Line Items", h2))
-    curr = "₹" if getattr(inv, 'currency', 'MXN') == "INR" else "$"
-    items_data = [["#", "Description", "Amount"]]
-    for idx, li in enumerate(inv.line_items or [], 1):
-        items_data.append([str(idx), li.get("description", ""), f"{curr}{float(li.get('amount', 0)):.2f}"])
-    items_data.append(["", "Subtotal", f"{curr}{inv.amount:.2f}"])
-    items_data.append(["", "Tax", f"{curr}{inv.tax:.2f}"])
-    items_data.append(["", "TOTAL", f"{curr}{inv.total:.2f}"])
-
-    lt = Table(items_data, colWidths=[40, 310, 100])
-    lt.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTNAME", (1, -1), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("PADDING", (0, 0), (-1, -1), 8),
-        ("GRID", (0, 0), (-1, -2), 0.5, colors.HexColor("#e2e8f0")),
-        ("LINEABOVE", (0, -3), (-1, -3), 1, colors.HexColor("#cbd5e1")),
-        ("LINEABOVE", (0, -1), (-1, -1), 1.5, colors.HexColor("#1e293b")),
-        ("ALIGN", (2, 0), (2, -1), "RIGHT"),
-    ]))
-    els.append(lt)
-
-    if inv.notes:
-        els.append(Spacer(1, 14))
-        els.append(Paragraph("Notes", h2))
-        els.append(Paragraph(inv.notes, normal))
-
-    els.append(Spacer(1, 30))
-    els.append(Paragraph("— SERP Hawk | Team DaPros", small))
-
-    doc.build(els)
-    buf.seek(0)
-    return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f'attachment; filename="{inv.invoice_number}.pdf"'
-    })
 
 
 @app.get("/proposals/{proposal_id}/pdf")
@@ -11260,243 +11042,69 @@ def get_quote(quote_id: int, session: Session = Depends(get_session)):
 def quote_pdf(quote_id: int, provider: Optional[str] = None, session: Session = Depends(get_session)):
     """Generate a professional PDF for a quote."""
     from fastapi.responses import StreamingResponse
-    import io
-    import os
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.utils import ImageReader
 
     q = session.get(CRMQuote, quote_id)
     if not q:
         raise HTTPException(status_code=404, detail="Quote not found")
         
     client_name = ""
+    client_company = ""
+    client_email = ""
+    client_phone = ""
+    client_address = ""
     if q.client_id:
         c = session.get(ClientProfile, q.client_id)
         if c: 
             user = session.get(User, c.userId) if c.userId else None
             client_name = c.companyName or (user.name if user else f"Client #{c.id}")
+            client_company = c.companyName or ""
+            client_email = user.email if user else ""
+            client_phone = c.phone or ""
+            client_address = c.address or ""
     elif q.lead_id:
         l = session.get(Lead, q.lead_id)
-        if l: client_name = l.company_name or l.contact_name or f"Lead #{l.id}"
+        if l:
+            client_name = l.company_name or l.email or f"Lead #{l.id}"
+            client_company = l.company_name or ""
+            client_email = l.email or ""
+            client_phone = l.phone or ""
+            client_address = l.address or ""
 
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=40, bottomMargin=40, leftMargin=40, rightMargin=40)
-    styles = getSampleStyleSheet()
-    
-    # Custom Styles
-    title_style = ParagraphStyle("Title", fontName="Helvetica-Bold", fontSize=22, leading=26, textColor=colors.HexColor("#000000"))
-    normal_b = ParagraphStyle("NormalB", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10, textColor=colors.HexColor("#111111"))
-    normal = ParagraphStyle("NormalR", parent=styles["Normal"], fontName="Helvetica", fontSize=10, textColor=colors.HexColor("#333333"))
-    small = ParagraphStyle("Small", parent=normal, fontSize=8, textColor=colors.HexColor("#555555"))
-    h3 = ParagraphStyle("H3", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=12, spaceAfter=8)
-
-    els = []
-    
-    is_dapros = (provider == "DAPROS")
-    
-    if is_dapros:
-        curr = "$"
-        title_text = "COTIZACIÓN"
-        logo_el = Paragraph("DaPros", ParagraphStyle("RightB", parent=title_style, alignment=2, fontSize=28, leading=32, textColor=colors.HexColor("#000000")))
-        contact_info = [
-             Paragraph("+52 33 5018 8216 | contacto@dapros.com.mx", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("DaPros, Diseño Web en Guadalajara", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("Canarias 1178, 44620 Guadalajara", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("Jal., México", ParagraphStyle("Right", parent=normal, alignment=2))
-        ]
-        payment_name = "DaPros"
-        place = "Guadalajara"
-        
-        lbl_quote_for = "COTIZACIÓN PARA:"
-        lbl_quote_details = "DETALLES:"
-        lbl_quote_num = "No. Cotización:"
-        lbl_date = "Fecha:"
-        lbl_valid = "Válido Hasta:"
-        lbl_status = "Estado -"
-        lbl_title = "Título -"
-        lbl_item = "ARTÍCULO"
-        lbl_desc = "DESCRIPCIÓN"
-        lbl_qty = "CANT."
-        lbl_price = "PRECIO U."
-        lbl_total = "TOTAL"
-        lbl_subtotal = "Subtotal:"
-        lbl_tax = "Impuestos:"
-        lbl_notes = "NOTAS Y TÉRMINOS:"
-        lbl_approval = "INFORMACIÓN DE APROBACIÓN:"
-        lbl_signature = "FIRMA/SELLO"
-        lbl_prepared = "Preparado Por:"
-        lbl_place = "Lugar:"
-    else:
-        curr = "₹"
-        title_text = "PROFORMA QUOTATION"
-        logo_path = os.path.join(os.path.dirname(__file__), "logo.jpg")
-        if os.path.exists(logo_path):
-            img_reader = ImageReader(logo_path)
-            img_w, img_h = img_reader.getSize()
-            aspect = img_h / float(img_w)
-            logo_el = Image(logo_path, width=120, height=120 * aspect)
-        else:
-            logo_el = Paragraph("SERP HAWK", ParagraphStyle("RightB", parent=title_style, alignment=2, fontSize=16))
-
-        contact_info = [
-             Paragraph("089213 81769 | info@serphawk.com", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("B, 2nd Floor, Bannerghatta Slip Rd, KEB Colony", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("New Gurappana Palya, 1st Stage, BTM 1st Stage", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("Bengaluru, Karnataka 560029", ParagraphStyle("Right", parent=normal, alignment=2))
-        ]
-        payment_name = "SERP HAWK"
-        place = "Bengaluru"
-
-        lbl_quote_for = "QUOTE FOR:"
-        lbl_quote_details = "QUOTE DETAILS:"
-        lbl_quote_num = "Quote Number:"
-        lbl_date = "Date:"
-        lbl_valid = "Valid Until:"
-        lbl_status = "Status -"
-        lbl_title = "Title -"
-        lbl_item = "ITEM"
-        lbl_desc = "DESCRIPTION"
-        lbl_qty = "QTY"
-        lbl_price = "UNIT PRICE"
-        lbl_total = "TOTAL"
-        lbl_subtotal = "Sub Total:"
-        lbl_tax = "Tax:"
-        lbl_notes = "NOTES & TERMS:"
-        lbl_approval = "APPROVAL INFORMATION:"
-        lbl_signature = "SIGNATURE/STAMP"
-        lbl_prepared = "Prepared By:"
-        lbl_place = "Place:"
-
-    # Header Section
-    header_data = [
-        [
-            Paragraph(title_text, title_style),
-            logo_el
-        ],
-        [
-            [Paragraph(f"{lbl_quote_num} {q.quote_number or q.id}", normal),
-             Paragraph(f"{lbl_date} {q.created_at.strftime('%B %d, %Y') if q.created_at else '—'}", normal),
-             Paragraph(f"{lbl_valid} {q.valid_until or '—'}", normal)],
-            contact_info
-        ]
-    ]
-    header_table = Table(header_data, colWidths=[260, 255])
-    header_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 25),
-        ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
-    ]))
-    els.append(header_table)
-    els.append(Spacer(1, 30))
-
-    # Info Section
-    info_data = [
-        [Paragraph(lbl_quote_for, h3), Paragraph("", h3), Paragraph(lbl_quote_details, h3)],
-        [
-            [Paragraph(client_name or "—", normal_b), Paragraph("Address / Dirección", normal)],
-            "",
-            [Paragraph(f"{lbl_status} {q.status}", normal), Paragraph(f"{lbl_title} {q.title}", normal)]
-        ]
-    ]
-    info_table = Table(info_data, colWidths=[171, 171, 173])
-    info_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    els.append(info_table)
-    els.append(Spacer(1, 30))
-
-    # Line Items Table
-    items_header = [lbl_item, lbl_desc, lbl_qty, lbl_price, lbl_total]
-    items_data = [items_header]
-    
     quote_items = session.exec(select(QuoteItem).where(QuoteItem.quote_id == q.id)).all()
-    for idx, li in enumerate(quote_items, 1):
+    items = []
+    for li in quote_items:
         amt = float(li.unit_price or 0)
         qty = li.quantity or 1
-        desc = li.description or ''
-        items_data.append([str(idx) + ".", desc, str(qty), f"{curr}{amt:.2f}", f"{curr}{(amt*qty):.2f}"])
-        
-    if not quote_items:
-        items_data.append(["-", "No items added", "-", "-", "-"])
-        
-    lt = Table(items_data, colWidths=[40, 220, 60, 90, 105])
-    
-    # Base table style
-    ts = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#5472d3")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("PADDING", (0, 0), (-1, -1), 10),
-        ("ALIGN", (2, 0), (4, -1), "RIGHT"),
-        ("ALIGN", (0, 0), (0, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]
-    
-    # Alternating row colors
-    for i in range(1, len(items_data)):
-        bg = colors.HexColor("#f8f9fa") if i % 2 != 0 else colors.white
-        ts.append(("BACKGROUND", (0, i), (-1, i), bg))
-        
-    lt.setStyle(TableStyle(ts))
-    els.append(lt)
-    els.append(Spacer(1, 15))
-    
-    # Totals Section
-    totals_data = [
-        ["", lbl_subtotal, f"{curr}{q.grand_total:.2f}"],
-        ["", lbl_tax, f"{curr}0.00"],
-    ]
-    tt = Table(totals_data, colWidths=[295, 110, 110])
-    tt.setStyle(TableStyle([
-        ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
-        ("ALIGN", (1, 0), (2, -1), "RIGHT"),
-        ("PADDING", (0, 0), (-1, -1), 5),
-    ]))
-    els.append(tt)
-    els.append(Spacer(1, 10))
-    
-    grand_total_data = [["", f"{lbl_total}: {curr}{q.grand_total:.2f}"]]
-    gt = Table(grand_total_data, colWidths=[295, 220])
-    gt.setStyle(TableStyle([
-        ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#f1f5f9")),
-        ("FONTNAME", (1, 0), (1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (1, 0), (1, 0), 16),
-        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ("PADDING", (1, 0), (1, 0), 10),
-    ]))
-    els.append(gt)
-    els.append(Spacer(1, 40))
-    
-    if q.notes:
-        els.append(Paragraph(f"<b>{lbl_notes}</b>", normal))
-        els.append(Paragraph(q.notes, normal))
-        els.append(Spacer(1, 40))
-    
-    # Footer Section
-    footer_data = [
-        [Paragraph(lbl_approval, h3), Paragraph(lbl_signature, h3)],
-        [
-            [Paragraph(f"<b>{lbl_prepared}</b> {payment_name}", normal), 
-             Paragraph(f"<b>{lbl_date}</b> ___________________", normal)],
-            [Paragraph(f"{lbl_place} {place}", normal), Paragraph(f"{lbl_date} ____________", normal)]
-        ]
-    ]
-    ft = Table(footer_data, colWidths=[257, 258])
-    ft.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    els.append(ft)
-    
-    doc.build(els)
-    buf.seek(0)
-    return StreamingResponse(buf, media_type="application/pdf", headers={
+        items.append({
+            "description": li.description or "",
+            "quantity": qty,
+            "unit_price": amt,
+            "total": amt * qty,
+        })
+
+    from modules.pdf_export import quote_pdf as _quote_pdf
+    pdf = _quote_pdf({
+        "quote_number": q.quote_number or str(q.id),
+        "title": q.title,
+        "status": q.status,
+        "client_name": client_name,
+        "client_company": client_company,
+        "client_email": client_email,
+        "client_phone": client_phone,
+        "client_address": client_address,
+        "currency": q.currency or "$",
+        "items": items,
+        "subtotal": float(q.subtotal) if q.subtotal else None,
+        "tax_rate": 0,
+        "grand_total": float(q.grand_total),
+        "valid_until": q.valid_until,
+        "created_at": q.created_at,
+        "notes": q.notes,
+        "terms": q.terms,
+        "payment_terms": getattr(q, "payment_terms", None) or "",
+        "delivery": getattr(q, "delivery", None) or "",
+    })
+    return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf", headers={
         "Content-Disposition": f'attachment; filename="quote-{q.quote_number or q.id}.pdf"'
     })
 
@@ -11550,8 +11158,12 @@ def list_sales_orders(status: Optional[str] = None, client_id: Optional[int] = N
 
 def _so_dict(o: SalesOrder, session: Session) -> dict:
     client = session.get(ClientProfile, o.client_id) if o.client_id else None
+    lead = session.get(Lead, o.lead_id) if o.lead_id else None
     d = o.model_dump()
-    d["client_name"] = client.companyName if client else None
+    d["client_name"] = (
+        (client.companyName if client else None)
+        or (lead.company_name if lead else None)
+    )
     return d
 
 @app.post("/sales-orders")
@@ -11640,6 +11252,12 @@ def delete_purchase_order(order_id: int, session: Session = Depends(get_session)
     session.delete(o)
     session.commit()
     return {"ok": True}
+
+
+# ── PDF Export Request Model ──────────────────────────────────────────────
+
+class ExportPdfRequest(BaseModel):
+    email: Optional[str] = None
 
 
 # ── Sales Order PDF Export ───────────────────────────────────────────────
@@ -11747,6 +11365,50 @@ def export_single_purchase_order_pdf(order_id: int, session: Session = Depends(g
         content=pdf,
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+# ── POS Receipt PDF Export ───────────────────────────────────────────────
+
+class PosReceiptRequest(BaseModel):
+    companyName: str = "SERPHAWK"
+    ticketNumber: Optional[Union[str, int]] = None
+    date: Optional[str] = None
+    customer: str = "Público en General"
+    products: list = []
+    subtotal: Optional[float] = None
+    taxRate: Optional[float] = 0
+    taxAmount: Optional[float] = None
+    total: Optional[float] = None
+    paymentMethod: str = "Efectivo"
+    amountPaid: Optional[float] = None
+    change: Optional[float] = None
+    currency: str = "$"
+    taxIncluded: bool = True
+    taxLabel: str = "IVA"
+    email: Optional[str] = None
+
+@app.post("/export-pdf/receipt")
+def export_pos_receipt_pdf(body: PosReceiptRequest):
+    """Generate a clean A4 POS receipt (Serphawk) and return it as a PDF download."""
+    from fastapi.responses import Response
+    from modules.pdf_export import pos_receipt_pdf, send_pdf_email
+    pdf = pos_receipt_pdf(body.model_dump())
+    ticket = body.ticketNumber
+    filename = f"receipt_{ticket}.pdf" if ticket is not None and str(ticket) not in ("", "None") else "receipt.pdf"
+    if body.email:
+        try:
+            send_pdf_email(
+                body.email, f"Your receipt ({body.companyName})",
+                "<p>Your receipt is attached.</p>", pdf, filename
+            )
+            return {"sent": True, "recipient": body.email}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
 
@@ -13689,9 +13351,6 @@ def get_inventory(session: Session = Depends(get_session)):
         })
     return {"items": result, "total": len(result)}
 
-class ExportPdfRequest(BaseModel):
-    email: Optional[str] = None
-
 @app.post("/inventory/export-pdf")
 def export_inventory_pdf(body: ExportPdfRequest, session: Session = Depends(get_session)):
     import io
@@ -13845,10 +13504,20 @@ def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session =
     
     # Auto-create supplier login if email provided
     if data.supplier_email:
+        generated_password = _generate_unique_password()
+        hashed = _hash_password(generated_password)
         existing_user = session.exec(select(User).where(User.email == data.supplier_email)).first()
-        if not existing_user:
-            generated_password = _generate_unique_password()
-            hashed = _hash_password(generated_password)
+        if existing_user:
+            # Update role + reset password so we always have fresh credentials to show
+            existing_user.role = "Supplier"
+            existing_user.password = hashed
+            existing_user.hashed_password = hashed
+            existing_user.is_active = True
+            existing_user.status = "Active"
+            session.add(existing_user)
+            session.commit()
+            supplier_user_id = existing_user.id
+        else:
             supplier_user = User(
                 email=data.supplier_email,
                 password=hashed,
@@ -13862,14 +13531,7 @@ def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session =
             session.commit()
             session.refresh(supplier_user)
             supplier_user_id = supplier_user.id
-            credentials_created = True
-        else:
-            # Update role to Supplier if not already
-            if existing_user.role != "Supplier":
-                existing_user.role = "Supplier"
-                session.add(existing_user)
-                session.commit()
-            supplier_user_id = existing_user.id
+        credentials_created = True
     
     supplier = InventorySupplier(item_id=item_id, supplier_user_id=supplier_user_id, **data.dict())
     if generated_password:

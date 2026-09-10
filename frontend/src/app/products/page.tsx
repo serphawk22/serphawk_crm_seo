@@ -68,6 +68,11 @@ export default function ProductsPage() {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Image must be under 10 MB');
+      if (e.target) e.target.value = '';
+      return;
+    }
     setUploadingPhoto(true);
     try {
       const fd = new FormData();
@@ -391,6 +396,7 @@ export default function ProductsPage() {
                     <input id="catalogPhotoChange" type="file" accept="image/*" className="hidden" onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      if (file.size > 10 * 1024 * 1024) { alert('Image must be under 10 MB'); if (e.target) e.target.value = ''; return; }
                       const fd = new FormData();
                       fd.append('file', file);
                       const res = await fetch(`${API_BASE_URL}/upload-image`, { method: 'POST', body: fd });
