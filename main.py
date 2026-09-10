@@ -3658,6 +3658,20 @@ async def generate_client_swot(client_id: int, session: Session = Depends(get_se
     return {"ok": True, "swot_analysis": swot_data}
 
 
+
+@app.post("/leads/{lead_id}/assign-employee")
+def assign_employee_lead(
+    lead_id: int, body: AssignEmployeeRequest, session: Session = Depends(get_session)
+):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    lead.owner_id = body.employee_id
+    session.add(lead)
+    session.commit()
+    return {"ok": True}
+
+
 @app.post("/clients/{client_id}/assign-employee")
 def assign_employee(
     client_id: int, body: AssignEmployeeRequest, session: Session = Depends(get_session)
