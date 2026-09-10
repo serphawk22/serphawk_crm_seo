@@ -34,10 +34,11 @@ const TABS = [
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
   { key: 'tasks',          label: 'Tasks',           icon: CheckSquare     },
   { key: 'tickets',        label: 'Tickets',         icon: Ticket          },
-
+  { key: 'opportunities',  label: 'Opportunities',   icon: Target          },
   { key: 'files',          label: 'Files',           icon: FolderOpen      },
   { key: 'health',         label: 'Health',          icon: HeartPulse      },
   { key: 'conversations',  label: 'Conversations',   icon: MessageSquare   },
+  { key: 'api-intelligence', label: 'API Intelligence', icon: BrainCircuit },
 ];
 
 // ─── Loading Skeleton ────────────────────────────────────────────────────────
@@ -973,7 +974,7 @@ export default function AdminClientDetailPage() {
         onAddNote={() => switchTab('notes')}
         onAddConversation={() => switchTab('conversations')}
         onCreateTask={() => switchTab('tasks')}
-        onScheduleMeeting={() => switchTab('conversations')}
+        onScheduleMeeting={() => router.push('/meetings')}
         onSendEmail={() => client?.email ? window.location.href = `mailto:${client.email}` : alert(language === 'es' ? 'No hay correo' : 'No email found for this client')}
         onUploadFile={() => switchTab('files')}
         onCreateOpportunity={() => switchTab('opportunities')}
