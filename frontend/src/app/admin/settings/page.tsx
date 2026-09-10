@@ -26,15 +26,11 @@ import EmailTrackerTab from "./components/EmailTrackerTab";
 import SMTPSettingsTab from "./components/SMTPSettingsTab";
 import { useLanguage } from "@/context/LanguageContext";
 
-type Tab = "profile" | "security" | "notifications" | "appearance" | "smtp" | "integrations";
+type Tab = "profile" | "security";
 
 const TABS: { id: Tab; label: string; icon: typeof User }[] = [
   { id: "profile", label: "Profile", icon: User },
   { id: "security", label: "Security", icon: Shield },
-  { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "appearance", label: "Appearance", icon: Palette },
-  { id: "smtp", label: "SMTP Settings", icon: Mail },
-  { id: "integrations", label: "Email Integrations", icon: Mail },
 ];
 
 function SaveButton({
@@ -130,9 +126,6 @@ export default function SettingsPage() {
   const TABS: { id: Tab; label: string; icon: typeof User }[] = [
     { id: "profile", label: t("settings.tab_profile"), icon: User },
     { id: "security", label: t("settings.tab_security"), icon: Shield },
-    { id: "notifications", label: t("settings.tab_notifications"), icon: Bell },
-    { id: "appearance", label: t("settings.tab_appearance"), icon: Palette },
-    { id: "smtp", label: t("settings.tab_smtp"), icon: Mail },
   ];
 
   // Profile

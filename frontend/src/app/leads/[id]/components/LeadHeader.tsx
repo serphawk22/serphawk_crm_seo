@@ -113,12 +113,6 @@ export default function LeadHeader({
                 </motion.button>
               ))}
             </div>
-            <button
-              onClick={onToggleDarkMode}
-              className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 hover:text-indigo-600 hover:bg-slate-100 dark:bg-zinc-800 hover:border-slate-300 dark:border-zinc-600 transition-all shadow-sm"
-            >
-              {darkMode ? <Sun size={15} /> : <Moon size={15} />}
-            </button>
           </div>
         </div>
 
