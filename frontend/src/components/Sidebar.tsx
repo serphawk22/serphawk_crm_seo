@@ -90,7 +90,6 @@ const defaultSidebarSections = [
     heading: "AI AGENTS",
     items: [
       { id: "item-email-agent", name: "Email Agent", icon: "Mail", href: "/email-agent", roles: ["Admin", "Demo"] },
-      { id: "item-radar-analysis", name: "Radar Analysis", icon: "Radar", href: "/admin/radar", roles: ["Admin", "Demo", "SalesManager"] },
     ],
   },
   {
@@ -118,6 +117,7 @@ const defaultSidebarSections = [
     heading: "SYSTEM",
     items: [
       { id: "item-import", name: "Import Data", icon: "FileBarChart2", href: "/import", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-api-intelligence", name: "API Intelligence", icon: "Activity", href: "/admin/api-intelligence", roles: ["Admin", "SuperAdmin"] },
       { id: "item-demo-accounts", name: "Demo Account Data", icon: "Users", href: "/admin/telemetry", roles: ["Admin", "SuperAdmin"] },
     ],
   },
@@ -396,8 +396,8 @@ export function Sidebar({ role }: SidebarProps) {
                 if (defaultItemRef) {
                   return { ...savedItem, roles: defaultItemRef.roles, icon: defaultItemRef.icon, href: defaultItemRef.href, name: defaultItemRef.name };
                 }
-                return savedItem;
-              });
+                return null;
+              }).filter(Boolean);
 
               const defaultSec = defaultSidebarSections.find(s => s.id === savedSec.id);
               if (!defaultSec) return { ...savedSec, items: updatedSavedItems };

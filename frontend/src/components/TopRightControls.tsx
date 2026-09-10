@@ -2,12 +2,17 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Settings, LogOut, User, Sun, Moon, ChevronDown } from "lucide-react";
+import {
+  Settings, LogOut, User, Sun, Moon, ChevronDown,
+  Bell, CheckCheck, Trash2, ExternalLink,
+  Info, CheckCircle, AlertTriangle, XCircle, RefreshCw,
+} from "lucide-react";
 import { useRole, Role } from "@/context/RoleContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useNotifications } from "@/context/NotificationContext";
 
 const ROLE_BADGE: Record<string, { label: string; color: string }> = {
   Admin: { label: "Admin", color: "bg-indigo-100 text-indigo-700 border border-indigo-200" },
@@ -17,18 +22,38 @@ const ROLE_BADGE: Record<string, { label: string; color: string }> = {
   SalesManager: { label: "Sales Manager", color: "bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200" },
 };
 
+const TYPE_ICON: Record<string, { icon: any; color: string; bg: string }> = {
+  info:    { icon: Info,          color: "text-blue-500",    bg: "bg-blue-50 dark:bg-blue-900/30" },
+  success: { icon: CheckCircle,   color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-900/30" },
+  warning: { icon: AlertTriangle, color: "text-amber-500",   bg: "bg-amber-50 dark:bg-amber-900/30" },
+  error:   { icon: XCircle,       color: "text-red-500",     bg: "bg-red-50 dark:bg-red-900/30" },
+  alert:   { icon: AlertTriangle, color: "text-amber-500",   bg: "bg-amber-50 dark:bg-amber-900/30" },
+};
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
 export default function TopRightControls() {
   const { role, email, logout, user } = useRole();
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
+  const { unreadCount } = useNotifications();
+
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userRef = useRef<HTMLDivElement>(null);
 
+  // Close menus on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (userRef.current && !userRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-      }
+      if (userRef.current && !userRef.current.contains(e.target as Node)) setUserMenuOpen(false);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -37,7 +62,7 @@ export default function TopRightControls() {
   const badge = ROLE_BADGE[role as string];
 
   return (
-    <div className="fixed top-4 right-6 z-[60] flex items-center gap-3">
+    <div className="fixed top-6 right-6 z-[60] flex flex-col items-center gap-3">
       {/* Theme Toggle */}
       <motion.button
         whileHover={{ scale: 1.05 }}
@@ -64,6 +89,8 @@ export default function TopRightControls() {
           <Settings className="w-4 h-4" />
         </motion.button>
       </Link>
+
+
 
       {/* Profile Menu */}
       <div className="relative" ref={userRef}>
@@ -109,6 +136,18 @@ export default function TopRightControls() {
                 <Link href="/admin/settings" onClick={() => setUserMenuOpen(false)}>
                   <div className="flex items-center gap-3 w-full px-4 py-2 text-[13px] font-medium text-slate-600 dark:text-zinc-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-zinc-800 transition-all cursor-pointer">
                     <Settings className="w-4 h-4" /> Settings
+                  </div>
+                </Link>
+                <Link href="/notifications" onClick={() => setUserMenuOpen(false)}>
+                  <div className="flex items-center justify-between gap-3 w-full px-4 py-2 text-[13px] font-medium text-slate-600 dark:text-zinc-300 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-zinc-800 transition-all cursor-pointer">
+                    <div className="flex items-center gap-3">
+                      <Bell className="w-4 h-4" /> Notifications
+                    </div>
+                    {unreadCount > 0 && (
+                      <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                        {unreadCount}
+                      </span>
+                    )}
                   </div>
                 </Link>
               </div>

@@ -733,17 +733,22 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # ─────────────────────────────────────────────────────────────────────────────
 def _send_notification_email(to_email: str, subject: str, body_html: str):
     """Best-effort email notification. Fails silently so it never blocks API responses."""
-    try:
-        from modules.email_sender import send_email_outlook
-        sender = os.environ.get("EMAIL_SENDER") or os.environ.get("OUTLOOK_EMAIL") or ""
-        password = os.environ.get("EMAIL_PASSWORD") or os.environ.get("OUTLOOK_PASSWORD") or ""
-        smtp_server = os.environ.get("EMAIL_HOST") or os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-        smtp_port = int(os.environ.get("EMAIL_PORT") or os.environ.get("SMTP_PORT", 587))
-        if sender and password:
-            send_email_outlook(to_email, subject, body_html, sender, password,
-                               smtp_server=smtp_server, smtp_port=smtp_port)
-    except Exception as e:
-        print(f"[Notification email failed] {e}")
+    def _send():
+        try:
+            from modules.email_sender import send_email_outlook
+            import os
+            sender = os.environ.get("EMAIL_SENDER") or os.environ.get("OUTLOOK_EMAIL") or ""
+            password = os.environ.get("EMAIL_PASSWORD") or os.environ.get("OUTLOOK_PASSWORD") or ""
+            smtp_server = os.environ.get("EMAIL_HOST") or os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+            smtp_port = int(os.environ.get("EMAIL_PORT") or os.environ.get("SMTP_PORT", 587))
+            if sender and password:
+                send_email_outlook(to_email, subject, body_html, sender, password,
+                                   smtp_server=smtp_server, smtp_port=smtp_port)
+        except Exception as e:
+            print(f"[Notification email failed] {e}")
+            
+    import threading
+    threading.Thread(target=_send).start()
 
 
 
@@ -2830,6 +2835,17 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     session.commit()
     session.refresh(cp)
     
+    try:
+        _notify_admins(
+            session, current_tenant_id.get(),
+            title=f"🏢 New Client: {cp.companyName}",
+            message=f"Status: {cp.status} | Website: {cp.websiteUrl or 'N/A'}",
+            notif_type="success",
+            link=f"/admin/clients/{cp.id}"
+        )
+    except Exception:
+        pass
+    
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
@@ -3118,11 +3134,44 @@ def export_clients_csv(session: Session = Depends(get_session)):
     clients_list = session.exec(q.order_by(ClientProfile.id.asc())).all()
     output = _io.StringIO()
     writer = _csv.writer(output)
-    writer.writerow(["ID", "Company Name", "Email", "Phone", "Website", "Status", "Industry", "Address", "Services Offered", "Target Keywords", "Deal Value", "Payment Status"])
+    def _format_json(val):
+        if not val:
+            return ""
+        if isinstance(val, str):
+            if val.startswith("[") or val.startswith("{"):
+                import json
+                try:
+                    val = json.loads(val)
+                except Exception:
+                    return val
+            else:
+                return val
+        if isinstance(val, list):
+            parts = []
+            for item in val:
+                if isinstance(item, dict) and "name" in item:
+                    parts.append(item["name"])
+                else:
+                    parts.append(str(item))
+            return ", ".join(parts)
+        if isinstance(val, dict):
+            return ", ".join([f"{k}: {v}" for k, v in val.items()])
+        return str(val)
+
+    writer.writerow([
+        "ID", "Company Name", "Email", "Phone", "Website", "Status", "Industry", 
+        "Address", "Services Offered", "Target Keywords", "Deal Value", "Payment Status",
+        "Lead Score", "Lead Source", "Revenue Range", "Employee Count", 
+        "Google Rating", "Google Reviews", "SWOT Analysis", "AI Call Pitch", "Discovered Via"
+    ])
     for c in clients_list:
         user = session.get(User, c.userId) if c.userId else None
         client_email = c.email if hasattr(c, 'email') and c.email else (user.email if user else "")
-        keywords = ", ".join(c.targetKeywords) if isinstance(c.targetKeywords, list) else (c.targetKeywords or "")
+        
+        swot_text = _format_json(c.swot_analysis)
+        services_text = _format_json(c.services_offered)
+        keywords_text = _format_json(c.targetKeywords)
+
         writer.writerow([
             c.id,
             c.companyName or "",
@@ -3132,10 +3181,19 @@ def export_clients_csv(session: Session = Depends(get_session)):
             c.status or "",
             c.industry or "",
             c.address or "",
-            c.services_offered or "",
-            keywords,
+            services_text,
+            keywords_text,
             c.deal_value or "",
-            c.payment_status or ""
+            c.payment_status or "",
+            c.lead_score or "",
+            c.lead_source or "",
+            c.revenue_range or "",
+            c.employee_count or "",
+            c.google_rating or "",
+            c.google_reviews or "",
+            swot_text,
+            c.call_pitch_text or "",
+            c.discovered_via or ""
         ])
     output.seek(0)
     return StreamingResponse(
@@ -4219,29 +4277,41 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
             MarketplaceService.is_active == True,
         )
     ).all()
-    existing_names = {s.service_name.lower() for s in existing}
+    existing_by_name = {s.service_name.lower(): s for s in existing}
 
     added = 0
+    updated = 0
     for svc in services:
         svc_name = svc.get("name", "").strip()
-        if not svc_name or svc_name.lower() in existing_names:
+        if not svc_name:
             continue
-        ms = MarketplaceService(
-            service_name=svc_name,
-            normalized_name=svc_name,
-            category=svc.get("category"),
-            description=svc.get("brief"),
-            estimated_cost=float(svc.get("approx_cost", 0)),
-            cost_is_estimated=svc.get("cost_is_estimated", True),
-            provider_name=company_name,
-            provider_client_id=client_id,
-            provider_industry=cp.industry,
-            provider_address=cp.address,
-            source=scrape_method,
-        )
-        session.add(ms)
-        existing_names.add(svc_name.lower())
-        added += 1
+        key = svc_name.lower()
+        if key in existing_by_name:
+            # Update existing entry
+            ms = existing_by_name[key]
+            ms.description = svc.get("brief") or ms.description
+            ms.category = svc.get("category") or ms.category
+            ms.estimated_cost = float(svc.get("approx_cost", 0)) or ms.estimated_cost
+            ms.source = scrape_method
+            session.add(ms)
+            updated += 1
+        else:
+            ms = MarketplaceService(
+                service_name=svc_name,
+                normalized_name=svc_name,
+                category=svc.get("category"),
+                description=svc.get("brief"),
+                estimated_cost=float(svc.get("approx_cost", 0)),
+                cost_is_estimated=svc.get("cost_is_estimated", True),
+                provider_name=company_name,
+                provider_client_id=client_id,
+                provider_industry=cp.industry,
+                provider_address=cp.address,
+                source=scrape_method,
+            )
+            session.add(ms)
+            existing_by_name[key] = ms
+            added += 1
 
     session.commit()
 
@@ -4251,7 +4321,8 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
         "services": services,
         "scrape_method": scrape_method,
         "marketplace_entries_added": added,
-        "message": f"Extracted {len(services)} services via {method_label}. Added {added} to Marketplace.",
+        "marketplace_entries_updated": updated,
+        "message": f"Extracted {len(services)} services via {method_label}. Added {added} new + updated {updated} existing in Marketplace.",
     }
 
 
@@ -4477,6 +4548,17 @@ def create_project(body: ProjectCreateRequest, session: Session = Depends(get_se
     session.add(p)
     session.commit()
     session.refresh(p)
+    
+    try:
+        _notify_admins(
+            session, current_tenant_id.get(),
+            title=f"📁 New Project: {p.name}",
+            message=f"Status: {p.status} | Progress: {p.progress}%",
+            notif_type="info",
+            link=f"/projects/{p.id}"
+        )
+    except Exception:
+        pass
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -6335,6 +6417,27 @@ def delete_task(task_id: int, session: Session = Depends(get_session)):
     return {"ok": True}
 
 
+@app.delete("/notifications/clear-all/{user_id}")
+def clear_all_notifications(user_id: int, session: Session = Depends(get_session)):
+    notifs = session.exec(
+        select(Notification).where(Notification.user_id == user_id)
+    ).all()
+    for n in notifs:
+        session.delete(n)
+    session.commit()
+    return {"ok": True, "cleared": len(notifs)}
+
+
+@app.delete("/notifications/{notification_id}")
+def delete_notification(notification_id: int, session: Session = Depends(get_session)):
+    n = session.get(Notification, notification_id)
+    if not n:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    session.delete(n)
+    session.commit()
+    return {"ok": True}
+
+
 @app.post("/tasks/{task_id}/comments")
 def add_task_comment(
     task_id: int, body: TaskCommentCreateRequest, session: Session = Depends(get_session)
@@ -6934,7 +7037,7 @@ def respond_nps(survey_id: int, body: NPSRespondRequest, session: Session = Depe
     return {"ok": True}
 
 
-# ─────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────
 @app.get("/invoices/{invoice_id}/pdf")
 def invoice_pdf(invoice_id: int, provider: Optional[str] = None, session: Session = Depends(get_session)):
     """Generate a professional PDF for an invoice."""
@@ -9409,6 +9512,79 @@ def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_ses
     leads = session.exec(query.order_by(Lead.created_at.desc())).all()
     return {"leads": leads}
 
+@app.get("/leads/export-csv")
+def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(get_session)):
+    from fastapi.responses import StreamingResponse
+    import io as _io
+    import csv as _csv
+
+    query = select(Lead)
+    if owner_id is not None:
+        query = query.where(Lead.owner_id == owner_id)
+    tenant_id = current_tenant_id.get()
+    if tenant_id and tenant_id != 1:
+        query = query.where(Lead.tenant_id == tenant_id)
+    leads = session.exec(query.order_by(Lead.created_at.desc())).all()
+    
+    output = _io.StringIO()
+    writer = _csv.writer(output)
+    
+    def _format_json(val):
+        if not val:
+            return ""
+        if isinstance(val, str):
+            if val.startswith("[") or val.startswith("{"):
+                import json
+                try:
+                    val = json.loads(val)
+                except Exception:
+                    return val
+            else:
+                return val
+        if isinstance(val, list):
+            parts = []
+            for item in val:
+                if isinstance(item, dict) and "name" in item:
+                    parts.append(item["name"])
+                else:
+                    parts.append(str(item))
+            return ", ".join(parts)
+        if isinstance(val, dict):
+            return ", ".join([f"{k}: {v}" for k, v in val.items()])
+        return str(val)
+
+    writer.writerow([
+        "ID", "Company Name", "Website", "Industry", "Email", "Phone", 
+        "Address", "Source", "Status", "Notes", "Last Activity", 
+        "AI Analysis Results", "SWOT Analysis"
+    ])
+    
+    for l in leads:
+        ai_text = _format_json(l.ai_analysis_results)
+        swot_text = _format_json(l.swot_analysis)
+        writer.writerow([
+            l.id,
+            l.company_name or "",
+            l.website or "",
+            l.industry or "",
+            l.email or "",
+            l.phone or "",
+            l.address or "",
+            l.source or "",
+            l.status or "",
+            l.notes or "",
+            l.last_activity or "",
+            ai_text,
+            swot_text
+        ])
+        
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=serphawk_leads.csv"}
+    )
+
 @app.post("/leads")
 def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
@@ -9423,6 +9599,17 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
     session.add(lead)
     session.commit()
     session.refresh(lead)
+    
+    try:
+        _notify_admins(
+            session, current_tenant_id.get(),
+            title=f"🎯 New Lead: {lead.company_name or lead.first_name}",
+            message=f"Status: {lead.status} | Value: ${lead.estimated_value or 0}",
+            notif_type="warning",
+            link=f"/leads/{lead.id}"
+        )
+    except Exception:
+        pass
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -10655,6 +10842,18 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
     session.commit()
     session.refresh(m)
 
+    try:
+        dt_str = m.scheduled_at.strftime("%b %d, %I:%M %p") if m.scheduled_at else "TBD"
+        _notify_admins(
+            session, current_tenant_id.get(),
+            title=f"📅 Meeting Scheduled: {m.title}",
+            message=f"Time: {dt_str} | Status: {m.status}",
+            notif_type="info",
+            link=f"/meetings"
+        )
+    except Exception:
+        pass
+
     # ── EMAIL NOTIFICATION TO ATTENDEES ──
     dt_str = m.scheduled_at.strftime("%Y-%m-%d %H:%M") if m.scheduled_at else "TBD"
     subject = f"Meeting Scheduled: {m.title}"
@@ -11803,14 +12002,48 @@ def list_cases(status: Optional[str] = None, priority: Optional[str] = None, cli
     cases = session.exec(q).all()
     return {"cases": [_case_dict(c, session) for c in cases]}
 
+def _notify_admins(session, tenant_id, title, message, notif_type="info", link=None):
+    from database import User, Notification
+    from sqlmodel import select
+    admins = session.exec(select(User).where(User.role.in_(["admin", "Admin"]))).all()
+    for admin in admins:
+        if tenant_id and admin.tenant_id and admin.tenant_id != tenant_id:
+            continue
+        n = Notification(
+            user_id=admin.id,
+            title=title,
+            message=message,
+            type=notif_type,
+            is_read=False,
+            link=link
+        )
+        if tenant_id:
+            n.tenant_id = tenant_id
+        session.add(n)
+    session.commit()
+
 @app.post("/cases")
 def create_case(body: CaseCreateRequest, session: Session = Depends(get_session)):
     import random, string
+    tenant_id = current_tenant_id.get()
     c = Case(**body.model_dump())
+    if tenant_id:
+        c.tenant_id = tenant_id
     c.case_number = "CASE-" + "".join(random.choices(string.digits, k=5))
     session.add(c)
     session.commit()
     session.refresh(c)
+    # Notify admins
+    try:
+        _notify_admins(
+            session, tenant_id,
+            title=f"🎫 New Case Raised: {c.case_number}",
+            message=f"{c.subject} — Priority: {c.priority} | Type: {c.case_type or 'Bug'}",
+            notif_type="warning",
+            link=f"/support/cases"
+        )
+    except Exception:
+        pass
     return {"case": _case_dict(c, session)}
 
 @app.get("/cases/{case_id}")
@@ -11825,7 +12058,9 @@ def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depend
     c = session.get(Case, case_id)
     if not c:
         raise HTTPException(status_code=404, detail="Case not found")
+    tenant_id = current_tenant_id.get() or c.tenant_id
     updates = body.model_dump(exclude_unset=True)
+    old_status = c.status
     if updates.get("status") in ("Resolved", "Closed") and not c.resolved_at:
         c.resolved_at = datetime.utcnow()
     for k, v in updates.items():
@@ -11834,6 +12069,20 @@ def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depend
     session.add(c)
     session.commit()
     session.refresh(c)
+    # Notify on status change
+    new_status = updates.get("status")
+    if new_status and new_status != old_status:
+        try:
+            icon = "✅" if new_status in ("Resolved", "Closed") else "🔄"
+            _notify_admins(
+                session, tenant_id,
+                title=f"{icon} Case {c.case_number}: {new_status}",
+                message=f"{c.subject} — Status changed from {old_status} → {new_status}",
+                notif_type="success" if new_status in ("Resolved", "Closed") else "info",
+                link=f"/support/cases"
+            )
+        except Exception:
+            pass
     return {"case": _case_dict(c, session)}
 
 @app.delete("/cases/{case_id}")

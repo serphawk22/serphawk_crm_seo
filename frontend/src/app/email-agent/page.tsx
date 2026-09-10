@@ -12,6 +12,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import PageGuide from "@/components/PageGuide";
 import { ResultCard, ResearchResultData, SendEmailResult, CopyButton } from "@/components/email-agent/ResultCard";
 import GmailAgentLoop from "./GmailAgentLoop";
+import { useRole } from "@/context/RoleContext";
 
 
 
@@ -50,6 +51,7 @@ function BottomUpFillMail() {
 
 
 export default function EmailAgentPage() {
+  const { role } = useRole();
   const { t } = useLanguage();
   const [mode, setMode] = useState<"single" | "bulk">("single");
   const [companyName, setCompanyName] = useState("");
@@ -110,31 +112,25 @@ export default function EmailAgentPage() {
       fetch(`${API_BASE_URL}/sent-emails?limit=30`, { cache: 'no-store' })
         .then((r) => r.json())
         .then((data) => {
+          let ts = 0, auto = 0, man = 0;
+          let em: any[] = [];
           if (data && typeof data === 'object' && !Array.isArray(data) && 'totalSent' in data) {
-            setEmailTotals({
-              totalSent: data.totalSent,
-              autoCount: data.autoCount,
-              manualCount: data.manualCount
-            });
-            return setSentEmails(data.emails || []);
+             ts = data.totalSent; auto = data.autoCount; man = data.manualCount;
+             em = data.emails || [];
+          } else if (Array.isArray(data)) {
+             ts = data.length; man = data.filter(e => e.manual).length; auto = data.length - man;
+             em = data;
+          } else if (data?.emails && Array.isArray(data.emails)) {
+             ts = data.emails.length; man = data.emails.filter((e: any) => e.manual).length; auto = data.emails.length - man;
+             em = data.emails;
           }
-          if (Array.isArray(data)) {
-            setEmailTotals({
-              totalSent: data.length,
-              manualCount: data.filter(e => e.manual).length,
-              autoCount: data.length - data.filter(e => e.manual).length
-            });
-            return setSentEmails(data);
+          
+          if (role === 'Demo' && ts === 0) {
+            ts = 1420; auto = 1150; man = 270;
           }
-          if (data?.emails && Array.isArray(data.emails)) {
-            setEmailTotals({
-              totalSent: data.emails.length,
-              manualCount: data.emails.filter((e: any) => e.manual).length,
-              autoCount: data.emails.length - data.emails.filter((e: any) => e.manual).length
-            });
-            return setSentEmails(data.emails);
-          }
-          return setSentEmails([]);
+          
+          setEmailTotals({ totalSent: ts, autoCount: auto, manualCount: man });
+          setSentEmails(em);
         })
         .catch(() => setSentEmails([]))
         .finally(() => setEmailsLoading(false));
