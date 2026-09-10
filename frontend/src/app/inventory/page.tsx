@@ -281,7 +281,7 @@ export default function InventoryPage() {
               <div className="space-y-3 mb-5">
                 <div className="p-4 bg-slate-900 rounded-xl">
                   <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">{t("inventory.cred_login_url")}</p>
-                  <code className="text-blue-400 text-sm font-mono">crm-dapros.vercel.app/login</code>
+                  <code className="text-blue-400 text-sm font-mono break-all">{typeof window !== 'undefined' ? `${window.location.origin}/login` : ''}</code>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-4 bg-slate-900 rounded-xl">

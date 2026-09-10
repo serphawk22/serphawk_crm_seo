@@ -222,7 +222,6 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
                       <UsageBar label={t("telemetry.clients")}          usage={detail.limits.clients.usage}  limit={detail.limits.clients.limit}  color="bg-blue-500" />
                       <UsageBar label={t("telemetry.email_agent")}      usage={detail.limits.emails.usage}   limit={detail.limits.emails.limit}   color="bg-orange-500" />
                       <UsageBar label={t("telemetry.radar_searches")}   usage={detail.limits.searches.usage} limit={detail.limits.searches.limit} color="bg-cyan-500" />
-                      <UsageBar label={t("telemetry.projects_sites")}   usage={detail.limits.projects.usage} limit={detail.limits.projects.limit} color="bg-violet-500" />
                       {detail.limits.calls && <UsageBar label={t("telemetry.calls")} usage={detail.limits.calls.usage} limit={detail.limits.calls.limit} color="bg-green-500" />}
                     </div>
                   </div>

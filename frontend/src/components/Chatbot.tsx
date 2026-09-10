@@ -46,22 +46,35 @@ export function Chatbot() {
   const [isListening, setIsListening] = useState(false);
   
   useEffect(() => {
-    let storedSession = localStorage.getItem('chatbot_session_id');
+    let storedSession: string;
+    try {
+      storedSession = localStorage.getItem('chatbot_session_id') || '';
+    } catch {
+      storedSession = '';
+    }
     if (!storedSession) {
       storedSession = Math.random().toString(36).substring(2, 15);
-      localStorage.setItem('chatbot_session_id', storedSession);
+      try { localStorage.setItem('chatbot_session_id', storedSession); } catch {}
     }
     setSessionId(storedSession);
     
     // Fetch History
     fetch(`${API_BASE_URL}/chatbot/history/${storedSession}`)
-      .then(async res => { if (!res.ok) throw new Error("Failed to fetch history"); return res.json(); })
+      .then(async res => {
+        if (!res.ok) {
+          console.warn(`Chatbot history fetch failed: ${res.status} ${res.statusText} – ${API_BASE_URL}/chatbot/history/${storedSession}`);
+          return null;
+        }
+        return res.json();
+      })
       .then(data => {
-        if (data.ok && data.history && data.history.length > 0) {
+        if (data?.ok && data.history?.length > 0) {
           setMessages(data.history);
         }
       })
-      .catch(console.error);
+      .catch(err => {
+        console.warn('Chatbot history fetch error:', err?.message || err);
+      });
   }, []);
 
   const isClientRoute = role === 'Client';

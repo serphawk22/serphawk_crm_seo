@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, use, useCallback } from 'react';
+import React, { useEffect, useState, use, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -33,6 +33,7 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
   const [addSuccess, setAddSuccess] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [manualQuery, setManualQuery] = useState("");
+  const autoFlowRanRef = useRef(false);
 
   useEffect(() => {
     setMapReady(true);
@@ -101,8 +102,9 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
       }
     };
 
-    if (id && loadingStep === 'fetching_client') {
-       runFullRadarFlow();
+    if (id && loadingStep === 'fetching_client' && !autoFlowRanRef.current) {
+      autoFlowRanRef.current = true;
+      runFullRadarFlow();
     }
   }, [id, client, loadingStep]);
 

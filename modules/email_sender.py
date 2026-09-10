@@ -1,10 +1,79 @@
 import smtplib
 import imaplib
+import io
+import os
+import re
+import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from email.utils import formatdate, make_msgid
+
+# ── SerpHawk logo (used in every HTML email) ────────────────────────────────
+_logo_lock = threading.Lock()
+_logo_bytes_cache = None
+_LOGO_FILENAME = "Serp Hwak Logo.png"
+
+
+def _serphawk_logo_bytes():
+    """Load + resize the SerpHawk logo from the project folder, cached, as PNG bytes."""
+    global _logo_bytes_cache
+    if _logo_bytes_cache is not None:
+        return _logo_bytes_cache
+    with _logo_lock:
+        if _logo_bytes_cache is not None:
+            return _logo_bytes_cache
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        path = os.path.join(project_root, _LOGO_FILENAME)
+        try:
+            from PIL import Image, ImageChops
+            with Image.open(path) as im:
+                im = im.convert("RGB")
+                bg = Image.new("RGB", im.size, (252, 252, 252))
+                bbox = ImageChops.difference(im, bg).getbbox()
+                if bbox:
+                    im = im.crop(bbox)
+                w, h = im.size
+                target = 170
+                scale = min(1.0, target / max(w, h))
+                if scale < 1.0:
+                    im = im.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
+                buf = io.BytesIO()
+                im.save(buf, format="PNG", optimize=True)
+                _logo_bytes_cache = buf.getvalue()
+        except Exception as e:
+            print(f"[SerpHawk logo load failed] {e}")
+            _logo_bytes_cache = None
+    return _logo_bytes_cache
+
+
+def _logo_img_html(alt="SERP Hawk"):
+    return (
+        f'<img src="cid:serphawk_logo" alt="{alt}" width="150" height="150" '
+        'style="display:block;width:150px;height:150px;border-radius:12px;background:#ffffff;padding:4px;box-sizing:border-box" />'
+    )
+
+
+def _inject_logo(html):
+    """Insert the SerpHawk logo into an HTML email body."""
+    if "cid:serphawk_logo" in html:
+        return html
+    img = _logo_img_html()
+    replacements = [
+        ('<strong style="font-size:18px">🦅 SERP Hawk CRM</strong>', img),
+        ('<strong style="font-size:18px">🦅 SERP Hawk Supplier Portal</strong>', _logo_img_html("SERP Hawk Supplier Portal")),
+        ('<strong style="font-size:18px">SerpHawk CRM</strong>', img),
+        ('<p style="margin:0;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#93c5fd">SerpHawk CRM</p>', img),
+    ]
+    for old, new in replacements:
+        if old in html:
+            return html.replace(old, new)
+    block = f'<div style="text-align:center;background:#ffffff;padding:18px 18px 4px">{img}</div>'
+    m = re.search(r"(<body[^>]*>)", html, re.I)
+    if m:
+        return html[: m.end()] + block + html[m.end():]
+    return block + html
 
 # Folder names (by provider) where a copy of the sent mail is archived via IMAP.
 _ARCHIVE_FOLDERS = [
@@ -73,8 +142,26 @@ def send_email_outlook(
     msg["Date"] = formatdate(localtime=True)
     msg["Message-ID"] = make_msgid()
 
-    body_part = MIMEText(body, "html" if (isinstance(body, str) and body.lstrip().startswith("<")) else "plain")
-    msg.attach(body_part)
+    is_html = isinstance(body, str) and body.lstrip().startswith("<")
+
+    if is_html:
+        logo_bytes = _serphawk_logo_bytes()
+        if logo_bytes:
+            body = _inject_logo(body)
+            body_part = MIMEText(body, "html")
+            related = MIMEMultipart("related")
+            related.attach(body_part)
+            img_part = MIMEBase("image", "png")
+            img_part.set_payload(logo_bytes)
+            encoders.encode_base64(img_part)
+            img_part.add_header("Content-ID", "<serphawk_logo>")
+            img_part.add_header("Content-Disposition", "inline", filename="serphawk_logo.png")
+            related.attach(img_part)
+            msg.attach(related)
+        else:
+            msg.attach(MIMEText(body, "html"))
+    else:
+        msg.attach(MIMEText(body, "plain"))
 
     for filename, data, mime_type in (attachments or []):
         part = MIMEBase(*mime_type.split("/", 1))
@@ -122,6 +209,7 @@ def send_password_reset_email(to_email: str, reset_url: str):
         <p style="color:#475569;line-height:1.6;margin:0 0 20px">We received a request to reset the password for your account. Click the button below to choose a new password. This link expires in <strong>1 hour</strong>.</p>
         <a href="{reset_url}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:600">Set a new password</a>
         <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">If you did not request this, you can safely ignore this email. The link may only be used once.</p>
+        <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
       </div>
     </div>
     """
@@ -163,6 +251,7 @@ def send_otp_email(to_email: str, otp_code: str, purpose: str = "email verificat
           <span style="font-size:32px;font-weight:800;letter-spacing:6px;color:#1e293b">{otp_code}</span>
         </div>
         <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">If you did not request this, you can safely ignore this email.</p>
+        <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
       </div>
     </div>
     """

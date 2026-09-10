@@ -76,7 +76,16 @@ function AppContent({ children }: { children: React.ReactNode }) {
     // Global fetch interceptor for LIMIT_REACHED
     const originalFetch = window.fetch;
     window.fetch = async (...args) => {
-      const response = await originalFetch(...args);
+      let response: Response;
+      try {
+        response = await originalFetch(...args);
+      } catch (netErr) {
+        console.warn('[API] Request failed (network):', netErr instanceof Error ? netErr.message : netErr);
+        return new Response(
+          JSON.stringify({ ok: false, message: 'Network error. Please try again.', status: 'network_error' }),
+          { status: 503, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
       if (response.status === 403) {
         try {
           const cloned = response.clone();
