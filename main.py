@@ -2696,7 +2696,7 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
         converted_leads_count = len(session.exec(select(Lead).where(Lead.owner_id == user.id, Lead.is_converted == True)).all())
         
         # Current active tasks
-        active_tasks = session.exec(select(Task).where(Task.assigned_to == user.id, Task.status != "Done")).all()
+        active_tasks = session.exec(select(Task).where(Task.assigned_to == user.id, Task.status.notin_(["approved", "rejected"]))).all()
         
         return {
             "type": "sales",
