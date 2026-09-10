@@ -476,7 +476,7 @@ export default function SignupPage() {
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
                   focusedField === "name"
                     ? "border-blue-500 shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                    : "border-gray-200 hover:border-gray-300"
+                    : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/60"
                 }`}
               >
                 <div className="absolute left-4 w-4 h-4 text-gray-400">👤</div>
@@ -501,7 +501,7 @@ export default function SignupPage() {
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
                   focusedField === "email"
                     ? "border-blue-500 shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                    : "border-gray-200 hover:border-gray-300"
+                    : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/60"
                 }`}
               >
                 <Mail
@@ -542,7 +542,7 @@ export default function SignupPage() {
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
                   focusedField === "password"
                     ? "border-blue-500 shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                    : "border-gray-200 hover:border-gray-300"
+                    : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/60"
                 }`}
               >
                 <Lock
