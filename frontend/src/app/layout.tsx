@@ -24,6 +24,7 @@ import Script from "next/script";
 import TopRightControls from "@/components/TopRightControls";
 import GoogleProviderWrapper from "@/components/GoogleProviderWrapper";
 import { GlobalLimitModal } from "@/components/GlobalLimitModal";
+import { NotificationProvider } from "@/context/NotificationContext";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
@@ -33,7 +34,7 @@ function AdminMainContent({ children }: { children: React.ReactNode }) {
   return (
     <main className={`relative z-10 min-h-screen transition-all duration-300 ${collapsed ? "ml-[72px]" : "ml-[280px]"}`}>
       <TopRightControls />
-      <div className={isClientDetail ? "w-full h-full" : "p-6 md:p-8 max-w-[1600px] mx-auto h-full"}>
+      <div className={isClientDetail ? "w-full h-full pr-20" : "p-6 md:p-8 pr-20 md:pr-24 max-w-[1600px] mx-auto h-full"}>
         {children}
       </div>
     </main>
@@ -228,12 +229,14 @@ export default function RootLayout({
             <I18nProvider>
               <LanguageProvider>
                 <RoleProvider>
-                  <TelemetryTracker />
-                  <SpaceAtmosphere />
-                  <AppContent>{children}</AppContent>
-                  <OmniSearch />
-                  <QuickAddFab />
-                  <GlobalLimitModal />
+                  <NotificationProvider>
+                    <TelemetryTracker />
+                    <SpaceAtmosphere />
+                    <AppContent>{children}</AppContent>
+                    <OmniSearch />
+                    <QuickAddFab />
+                    <GlobalLimitModal />
+                  </NotificationProvider>
                 </RoleProvider>
               </LanguageProvider>
             </I18nProvider>

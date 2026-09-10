@@ -2,7 +2,7 @@
 import { API_BASE_URL } from "@/config";
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, Filter, MoreVertical, Building2, Globe, Mail, Phone, Upload, X, Loader2, ChevronDown, ArrowUpRight, CheckCircle2, Clock, Zap, Edit2, Trash2, Tag } from "lucide-react";
+import { Search, Plus, Filter, MoreVertical, Building2, Globe, Mail, Phone, Upload, Download, X, Loader2, ChevronDown, ArrowUpRight, CheckCircle2, Clock, Zap, Edit2, Trash2, Tag } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ViewSwitcher, ViewType } from "@/components/ViewSwitcher";
@@ -225,6 +225,32 @@ export default function LeadsPage() {
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Manage your prospects and opportunities</p>
           </div>
           <div className="flex items-center gap-2">
+            <button 
+              onClick={async () => {
+                try {
+                  const token = localStorage.getItem('token');
+                  const res = await fetch(`${API_BASE_URL}/leads/export-csv`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                  });
+                  if (!res.ok) throw new Error("Export failed");
+                  const blob = await res.blob();
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'serphawk_leads.csv';
+                  document.body.appendChild(a);
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                  a.remove();
+                } catch (err) {
+                  console.error(err);
+                  alert("Failed to export leads.");
+                }
+              }} 
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Download className="w-4 h-4" /> Export CSV
+            </button>
             <Link href="/import" className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
               <Upload className="w-4 h-4" /> Import
             </Link>
