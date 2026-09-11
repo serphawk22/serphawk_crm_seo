@@ -7,8 +7,15 @@ import { API_BASE_URL } from "@/config";
 
 interface SalesOrder { id: number; order_number?: string; status: string; grand_total: number; currency: string; client_name?: string; delivery_date?: string; created_at: string; recipient_email?: string; recipient_name?: string; }
 interface Lead { id: number; company_name: string; email?: string; }
-const STATUSES = ["Pending", "Processing", "Fulfilled", "Cancelled"];
-const STATUS_COLORS: Record<string, string> = { Pending: "bg-amber-500/10 text-amber-600", Processing: "bg-blue-500/10 text-blue-600", Fulfilled: "bg-emerald-500/10 text-emerald-600", Cancelled: "bg-red-500/10 text-red-500" };
+const STATUSES = ["Draft", "Sent", "Paid", "Overdue", "Partial", "Cancelled"];
+const STATUS_COLORS: Record<string, string> = {
+  Draft: "bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400",
+  Sent: "bg-blue-500/10 text-blue-600",
+  Paid: "bg-emerald-500/10 text-emerald-600",
+  Overdue: "bg-red-500/10 text-red-500",
+  Partial: "bg-amber-500/10 text-amber-600",
+  Cancelled: "bg-slate-100 text-slate-400",
+};
 
 export default function SalesOrdersPage() {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
@@ -18,7 +25,7 @@ export default function SalesOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ linked_to: "lead" as "lead" | "client", lead_id: "" as string | number, client_id: "" as string | number, status: "Pending", grand_total: "", currency: "USD", delivery_date: "", notes: "" });
+  const [form, setForm] = useState({ linked_to: "lead" as "lead" | "client", lead_id: "" as string | number, client_id: "" as string | number, status: "Draft", grand_total: "", currency: "USD", delivery_date: "", notes: "" });
   const [clients, setClients] = useState<any[]>([]);
   const [emailModal, setEmailModal] = useState<{ orderId: number; orderNumber: string } | null>(null);
   const [emailAddr, setEmailAddr] = useState("");
@@ -26,6 +33,7 @@ export default function SalesOrdersPage() {
   const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [preview, setPreview] = useState<{ id: number; name: string; url: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [sendPrompt, setSendPrompt] = useState<{ id: number; name: string; email: string } | null>(null);
 
   const notify = (type: "ok" | "err", text: string) => { setToast({ type, text }); setTimeout(() => setToast(null), 3000); };
 
@@ -69,7 +77,13 @@ export default function SalesOrdersPage() {
         notify("err", err.detail || "Failed to create order");
         return;
       }
+      const d = await res.json().catch(() => ({}));
+      const created = d.order || {};
       setShowModal(false); load();
+      if (created.id) {
+        const recEmail = created.recipient_email || "";
+        setSendPrompt({ id: created.id, name: created.order_number || `SO-${created.id}`, email: recEmail });
+      }
     } catch { notify("err", "Network error"); }
     finally { setSaving(false); }
   };
@@ -152,9 +166,9 @@ export default function SalesOrdersPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "Total Orders", value: orders.length, c: "text-blue-500" },
-          { label: "Pending", value: orders.filter(o => o.status === "Pending").length, c: "text-amber-500" },
-          { label: "Fulfilled", value: orders.filter(o => o.status === "Fulfilled").length, c: "text-emerald-500" },
-          { label: "Total Revenue", value: `$${orders.filter(o => o.status === "Fulfilled").reduce((s, o) => s + o.grand_total, 0).toFixed(0)}`, c: "text-indigo-500" },
+          { label: "Draft", value: orders.filter(o => o.status === "Draft").length, c: "text-slate-500" },
+          { label: "Paid", value: orders.filter(o => o.status === "Paid").length, c: "text-emerald-500" },
+          { label: "Total Revenue", value: `$${orders.filter(o => o.status === "Paid").reduce((s, o) => s + o.grand_total, 0).toFixed(0)}`, c: "text-indigo-500" },
         ].map(s => (
           <div key={s.label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm">
             <p className="text-2xl font-black text-slate-800 dark:text-zinc-100">{loading ? "—" : s.value}</p>
@@ -302,6 +316,37 @@ export default function SalesOrdersPage() {
                 <button onClick={handleSendEmail} disabled={!emailAddr.trim() || sending}
                   className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
                   {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} Send
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Send Email Prompt (after create) */}
+      <AnimatePresence>
+        {sendPrompt && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2"><Mail className="w-4 h-4 text-blue-600" /> Order Created</h2>
+                <button onClick={() => setSendPrompt(null)}><X className="w-4 h-4" /></button>
+              </div>
+              <p className="text-sm text-slate-600 dark:text-zinc-300">
+                <span className="font-bold">{sendPrompt.name}</span> was created successfully. Send the PDF by email?
+              </p>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 mt-5 block">Recipient Email</label>
+              <input type="email" value={sendPrompt.email} onChange={e => setSendPrompt(p => p ? { ...p, email: e.target.value } : p)}
+                placeholder="recipient@example.com"
+                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <p className="text-[11px] text-slate-400 mt-1.5">Leave blank to send later or skip now.</p>
+              <div className="flex gap-3 mt-5">
+                <button onClick={() => setSendPrompt(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-bold text-sm hover:bg-slate-200 transition-all">Skip</button>
+                <button
+                  onClick={() => { setEmailModal({ orderId: sendPrompt.id, orderNumber: sendPrompt.name }); setEmailAddr(sendPrompt.email); setSendPrompt(null); }}
+                  disabled={!sendPrompt.email.trim()}
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+                  <Mail className="w-4 h-4" /> Send Email
                 </button>
               </div>
             </motion.div>

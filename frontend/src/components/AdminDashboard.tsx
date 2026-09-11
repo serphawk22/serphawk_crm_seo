@@ -331,6 +331,63 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
         </div>
       </motion.div>
 
+      {/* BILLING SNAPSHOT */}
+      <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
+        <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
+          <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <DollarSign className="w-5 h-5 text-emerald-500"/> {t("admin_dashboard.billing_overview")}
+          </h3>
+          <Link href="/billing" className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-bold rounded-lg hover:opacity-90 transition-all flex items-center gap-1.5">
+            <ArrowUpRight className="w-3.5 h-3.5" /> {t("admin_dashboard.manage_billing")}
+          </Link>
+        </div>
+        <div className="p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <Link href="/billing" className="p-4 rounded-xl border border-[var(--border)] hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all group">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-600">{t("admin_dashboard.quotes")}</span>
+              <ArrowUpRight className="w-4 h-4 text-[var(--text-secondary)] group-hover:text-emerald-500 transition-colors" />
+            </div>
+            <p className="text-xl font-bold text-[var(--text-primary)]">${(adminStats?.totalQuotesValue || 0).toLocaleString()}</p>
+            <p className="text-[11px] font-medium text-[var(--text-secondary)] mt-1">
+              {t("admin_dashboard.accepted")}: <span className="text-emerald-600 font-bold">${(adminStats?.acceptedQuotesValue || 0).toLocaleString()}</span>
+              <span className="mx-1">·</span>{adminStats?.totalQuotesCount || 0} {t("admin_dashboard.total")}
+            </p>
+          </Link>
+          <Link href="/orders" className="p-4 rounded-xl border border-[var(--border)] hover:border-blue-500/50 hover:bg-blue-500/5 transition-all group">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600">{t("admin_dashboard.sales_orders")}</span>
+              <ArrowUpRight className="w-4 h-4 text-[var(--text-secondary)] group-hover:text-blue-500 transition-colors" />
+            </div>
+            <p className="text-xl font-bold text-[var(--text-primary)]">${(adminStats?.totalSalesOrdersValue || 0).toLocaleString()}</p>
+            <p className="text-[11px] font-medium text-[var(--text-secondary)] mt-1">
+              {t("admin_dashboard.fulfilled")}: <span className="text-emerald-600 font-bold">${(adminStats?.fulfilledSalesOrdersValue || 0).toLocaleString()}</span>
+              <span className="mx-1">·</span>{adminStats?.totalSalesOrdersCount || 0} {t("admin_dashboard.total")}
+            </p>
+          </Link>
+          <Link href="/orders" className="p-4 rounded-xl border border-[var(--border)] hover:border-violet-500/50 hover:bg-violet-500/5 transition-all group">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-violet-600">{t("admin_dashboard.purchase_orders")}</span>
+              <ArrowUpRight className="w-4 h-4 text-[var(--text-secondary)] group-hover:text-violet-500 transition-colors" />
+            </div>
+            <p className="text-xl font-bold text-[var(--text-primary)]">${(adminStats?.totalPurchaseOrdersValue || 0).toLocaleString()}</p>
+            <p className="text-[11px] font-medium text-[var(--text-secondary)] mt-1">
+              {t("admin_dashboard.received")}: <span className="text-emerald-600 font-bold">${(adminStats?.receivedPurchaseOrdersValue || 0).toLocaleString()}</span>
+              <span className="mx-1">·</span>{adminStats?.totalPurchaseOrdersCount || 0} {t("admin_dashboard.total")}
+            </p>
+          </Link>
+          <Link href="/billing" className="p-4 rounded-xl border border-[var(--border)] hover:border-teal-500/50 hover:bg-teal-500/5 transition-all group">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-teal-600">{t("admin_dashboard.invoice_revenue")}</span>
+              <ArrowUpRight className="w-4 h-4 text-[var(--text-secondary)] group-hover:text-teal-500 transition-colors" />
+            </div>
+            <p className="text-xl font-bold text-[var(--text-primary)]">${(adminStats?.revenue || 0).toLocaleString()}</p>
+            <p className="text-[11px] font-medium text-[var(--text-secondary)] mt-1">
+              {t("admin_dashboard.paid_invoices")} · {t("admin_dashboard.total_revenue")}
+            </p>
+          </Link>
+        </div>
+      </motion.div>
+
       {/* TEAM ENGAGEMENT & ACTIVITY */}
       <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         

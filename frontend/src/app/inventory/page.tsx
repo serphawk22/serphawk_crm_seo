@@ -233,7 +233,7 @@ export default function InventoryPage() {
     if (!showRFQModal || !rfqForm.supplier_email.trim()) return;
     setSaving(true);
     try {
-      await fetch(`${API_BASE_URL}/rfq`, {
+      const res = await fetch(`${API_BASE_URL}/rfq`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           item_id: showRFQModal.item.id,
@@ -243,8 +243,19 @@ export default function InventoryPage() {
           notes: rfqForm.notes
         })
       });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        const detail = d?.detail;
+        const msg = Array.isArray(detail)
+          ? detail.map((e: { loc?: unknown[]; msg?: string }) => `${(e.loc || []).slice(1).join(".")}: ${e.msg}`).join(" · ")
+          : detail || t("inventory.toast_rfq_send_failed");
+        showToast(msg, "err");
+        return;
+      }
       setShowRFQModal(null);
       showToast(t("inventory.toast_rfq_sent"));
+    } catch {
+      showToast(t("inventory.toast_rfq_send_failed"), "err");
     } finally { setSaving(false); }
   };
 

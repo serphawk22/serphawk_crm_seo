@@ -731,6 +731,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # ─────────────────────────────────────────────────────────────────────────────
 # Email Notification Helper
 # ─────────────────────────────────────────────────────────────────────────────
+EMAIL_FORMAT_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+
+def _is_valid_email(email: Optional[str]) -> bool:
+    """Format check for an email address. Empty/None => invalid."""
+    return bool(email and EMAIL_FORMAT_RE.match(email.strip()))
+
+
 def _send_notification_email(to_email: str, subject: str, body_html: str):
     """Best-effort email notification. Fails silently so it never blocks API responses."""
     def _send():
@@ -5892,8 +5899,21 @@ def dashboard_stats(
         call_chart.append(sum(1 for c in all_calls_list if c.createdAt and day_start <= c.createdAt < day_end))
 
     import calendar
+    from database import CRMQuote, SalesOrder, PurchaseOrder
     all_invoices = session.exec(select(Invoice)).all()
     all_service_reqs = session.exec(select(ServiceRequest)).all()
+    all_quotes = session.exec(select(CRMQuote)).all()
+    all_sales_orders = session.exec(select(SalesOrder)).all()
+    all_purchase_orders = session.exec(select(PurchaseOrder)).all()
+
+    # ── Billing stats ──────────────────────────────────────────────────────
+    total_quotes_value = sum(q.grand_total or 0 for q in all_quotes)
+    accepted_quotes_value = sum(q.grand_total or 0 for q in all_quotes if q.status == "Accepted")
+    pending_quotes_value = sum(q.grand_total or 0 for q in all_quotes if q.status in ("Draft", "Sent"))
+    total_sales_orders = sum(o.grand_total or 0 for o in all_sales_orders)
+    fulfilled_sales_orders = sum(o.grand_total or 0 for o in all_sales_orders if o.status == "Paid")
+    total_purchase_orders = sum(o.grand_total or 0 for o in all_purchase_orders)
+    received_purchase_orders = sum(o.grand_total or 0 for o in all_purchase_orders if o.status == "Paid")
 
     revenue_data = []
     today = datetime.utcnow()
@@ -5913,7 +5933,7 @@ def dashboard_stats(
         month_end = datetime(next_year, next_month, 1)
         
         rev = sum(inv.total for inv in all_invoices if inv.status == "Paid" and inv.created_at and month_start <= inv.created_at < month_end)
-        exp = sum(inv.total for inv in all_invoices if inv.status == "Sent" and inv.created_at and month_start <= inv.created_at < month_end) * 0.3
+        exp = sum(o.grand_total or 0 for o in all_purchase_orders if o.status == "Paid" and o.created_at and month_start <= o.created_at < month_end)
         revenue_data.append({"name": calendar.month_abbr[target_month], "revenue": rev, "expenses": exp})
         
     pipeline_data = [
@@ -5946,6 +5966,16 @@ def dashboard_stats(
         "totalCalls": total_calls,
         "totalEmailsSent": total_emails_sent,
         "totalMarketplaceServices": total_marketplace,
+        "totalQuotesValue": total_quotes_value,
+        "acceptedQuotesValue": accepted_quotes_value,
+        "pendingQuotesValue": pending_quotes_value,
+        "totalQuotesCount": len(all_quotes),
+        "totalSalesOrdersValue": total_sales_orders,
+        "fulfilledSalesOrdersValue": fulfilled_sales_orders,
+        "totalSalesOrdersCount": len(all_sales_orders),
+        "totalPurchaseOrdersValue": total_purchase_orders,
+        "receivedPurchaseOrdersValue": received_purchase_orders,
+        "totalPurchaseOrdersCount": len(all_purchase_orders),
         "revenueData": revenue_data,
         "pipelineData": pipeline_data,
         "chartLabels": labels,
@@ -7296,13 +7326,71 @@ def list_proposals(
     return {"proposals": [_proposal_dict_fast(p, clients_map, users_map, leads_map) for p in proposals]}
 
 
+def _proposal_recipient(session: Session, p: Proposal) -> dict:
+    """Resolve who a proposal was sent to (client's linked user, or lead)."""
+    if p.client_id:
+        cp = session.get(ClientProfile, p.client_id)
+        if cp:
+            user = session.get(User, cp.userId) if cp.userId else None
+            return {
+                "email": (user.email if user else None) or None,
+                "name": (user.name if user and user.name else None) or cp.companyName or cp.contact_person or "there",
+                "user_id": cp.userId or None,
+            }
+    lead_id = getattr(p, "lead_id", None)
+    if lead_id:
+        lead = session.get(Lead, lead_id)
+        if lead:
+            return {
+                "email": lead.email or None,
+                "name": lead.company_name or lead.contact_name or "there",
+                "user_id": None,
+            }
+    return {"email": None, "name": "there", "user_id": None}
+
+
+def _notify_proposal_sent(session: Session, p: Proposal) -> dict:
+    """Notify + email the recipient when a proposal is marked Sent. Best-effort, never raises."""
+    try:
+        recipient = _proposal_recipient(session, p)
+        email = recipient.get("email")
+        if not _is_valid_email(email):
+            return {"email_sent": False, "email_recipient": email,
+                    "email_error": "Recipient has no valid email address"}
+        name = recipient.get("name") or "there"
+        if recipient.get("user_id"):
+            session.add(Notification(
+                user_id=recipient["user_id"],
+                title="New Proposal Ready",
+                message=f"A proposal '{p.title}' has been sent for your review.",
+                type="info",
+                link=f"/proposals/{p.id}",
+            ))
+            session.commit()
+        _send_notification_email(
+            email,
+            f"New Proposal: {p.title} — DaPros",
+            f"<h2>Proposal Ready for Review</h2><p>Hi {name},</p>"
+            f"<p>A new proposal <strong>{p.title}</strong> has been sent for your review.</p>"
+            f"<p>Please log in to your dashboard to accept or decline.</p><p>— Team DaPros</p>",
+        )
+        return {"email_sent": True, "email_recipient": email, "email_error": None}
+    except Exception as e:
+        return {"email_sent": False, "email_recipient": None, "email_error": str(e)}
+
+
 @app.post("/proposals")
 def create_proposal(body: ProposalCreateRequest, session: Session = Depends(get_session)):
     p = Proposal(**body.model_dump())
+    if not p.created_by:
+        p.created_by = current_salesperson_id.get()
     session.add(p)
     session.commit()
     session.refresh(p)
-    return {"proposal": _proposal_dict(p, session)}
+    email_result = {"email_sent": False, "email_recipient": None, "email_error": None}
+    if body.status == "Sent":
+        email_result = _notify_proposal_sent(session, p)
+    return {"proposal": _proposal_dict(p, session), **email_result}
 
 
 @app.get("/proposals/{proposal_id}")
@@ -7328,27 +7416,10 @@ def update_proposal(
     session.add(p)
     session.commit()
     session.refresh(p)
-    # Notify client when proposal is sent
-    if body.status == "Sent" and p.client_id:
-        cp = session.get(ClientProfile, p.client_id)
-        if cp and cp.userId:
-            notif = Notification(
-                user_id=cp.userId,
-                title="New Proposal Ready",
-                message=f"A proposal '{p.title}' has been sent for your review.",
-                type="info",
-                link=f"/proposals/{p.id}",
-            )
-            session.add(notif)
-            session.commit()
-            # Email notification
-            user = session.get(User, cp.userId)
-            if user and user.email:
-                _send_notification_email(
-                    user.email,
-                    f"New Proposal: {p.title} — DaPros",
-                    f"<h2>Proposal Ready for Review</h2><p>Hi {cp.companyName or 'there'},</p><p>A new proposal <strong>{p.title}</strong> has been sent for your review.</p><p>Please log in to your dashboard to accept or decline.</p><p>— Team DaPros</p>",
-                )
+    # Notify recipient when proposal is sent
+    email_result = {"email_sent": False, "email_recipient": None, "email_error": None}
+    if body.status == "Sent":
+        email_result = _notify_proposal_sent(session, p)
     # Notify admins when client responds to a proposal
     if body.status in ("Accepted", "Rejected", "Demo Requested") and p.client_id:
         cp = session.get(ClientProfile, p.client_id)
@@ -7365,7 +7436,7 @@ def update_proposal(
             )
             session.add(notif)
         session.commit()
-    return {"proposal": _proposal_dict(p, session)}
+    return {"proposal": _proposal_dict(p, session), **email_result}
 
 
 @app.post("/proposals/{proposal_id}/sign")
@@ -11102,6 +11173,129 @@ def list_quotes(status: Optional[str] = None, client_id: Optional[int] = None, l
     return {"quotes": result}
 
 
+@app.get("/quotes/billing-export")
+def billing_export_pdf(session: Session = Depends(get_session)):
+    """Export all quotes as a PDF billing report."""
+    from fastapi.responses import StreamingResponse
+    import io
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import mm
+
+    quotes = session.exec(select(CRMQuote).order_by(CRMQuote.created_at.desc())).all()
+    # Batch-load related records
+    cids  = list({qt.client_id for qt in quotes if qt.client_id})
+    lids  = list({qt.lead_id   for qt in quotes if qt.lead_id})
+    qids  = [qt.id for qt in quotes]
+    cps   = session.exec(select(ClientProfile).where(ClientProfile.id.in_(cids))).all() if cids else []
+    leads = session.exec(select(Lead).where(Lead.id.in_(lids))).all() if lids else []
+    items = session.exec(select(QuoteItem).where(QuoteItem.quote_id.in_(qids))).all() if qids else []
+    cp_map   = {cp.id: cp for cp in cps}
+    lead_map = {l.id: l   for l in leads}
+    items_map: dict = {}
+    for it in items:
+        items_map.setdefault(it.quote_id, []).append(it)
+
+    output = io.BytesIO()
+    doc = SimpleDocTemplate(output, pagesize=landscape(A4), rightMargin=28, leftMargin=28, topMargin=30, bottomMargin=30)
+    elements = []
+    styles = getSampleStyleSheet()
+    style_normal = styles["Normal"]
+    style_normal.wordWrap = 'CJK'
+
+    # Title
+    elements.append(Paragraph("<b>Billing Report – All Quotes</b>", styles['Title']))
+    elements.append(Spacer(1, 8))
+
+    # Summary stats
+    total_value = sum(qt.grand_total or 0 for qt in quotes)
+    draft   = sum(1 for qt in quotes if qt.status == "Draft")
+    sent    = sum(1 for qt in quotes if qt.status == "Sent")
+    accepted = sum(1 for qt in quotes if qt.status == "Accepted")
+    rejected = sum(1 for qt in quotes if qt.status == "Rejected")
+    expired  = sum(1 for qt in quotes if qt.status == "Expired")
+    summary_data = [
+        ["Total Quotes", str(len(quotes)), "Total Value", f"${total_value:,.2f}",
+         "Draft", str(draft), "Sent", str(sent), "Accepted", str(accepted), "Rejected", str(rejected), "Expired", str(expired)],
+    ]
+    summary_table = Table(summary_data, colWidths=[60]*26)
+    summary_table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (4, 0), (4, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (6, 0), (6, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (8, 0), (8, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (10, 0), (10, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (12, 0), (12, 0), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor("#334155")),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ('INNERPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 14))
+
+    # Quotes table
+    def truncate(text, max_len=45):
+        if not text: return ""
+        text = str(text).strip()
+        return text if len(text) <= max_len else text[:max_len-3] + "..."
+
+    header = ["#", "Title", "Contact", "Status", "Items", "Amount", "Valid Until", "Created"]
+    data = [header]
+
+    for qt in quotes:
+        cp   = cp_map.get(qt.client_id)
+        lead = lead_map.get(qt.lead_id)
+        contact = cp.companyName if cp else (lead.company_name if lead else "—")
+        num_items = len(items_map.get(qt.id, []))
+        created_str = qt.created_at.strftime("%d %b %Y") if qt.created_at else "—"
+        data.append([
+            Paragraph(qt.quote_number or f"#{qt.id}", style_normal),
+            Paragraph(truncate(qt.title, 45), style_normal),
+            Paragraph(truncate(contact, 35), style_normal),
+            Paragraph(qt.status, style_normal),
+            str(num_items),
+            f"{qt.currency or 'MXN'} {qt.grand_total:,.2f}",
+            str(qt.valid_until or "—"),
+            created_str,
+        ])
+
+    col_widths = [70, 200, 150, 65, 40, 110, 80, 80]
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+        ('TEXTCOLOR',     (0, 0), (-1, 0), colors.white),
+        ('ALIGN',         (0, 0), (-1, 0), 'LEFT'),
+        ('FONTNAME',      (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE',      (0, 0), (-1, 0), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 9),
+        ('TOPPADDING',    (0, 0), (-1, 0), 9),
+        ('BACKGROUND',    (0, 1), (-1, -1), colors.white),
+        ('TEXTCOLOR',     (0, 1), (-1, -1), colors.HexColor("#334155")),
+        ('FONTNAME',      (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE',      (0, 1), (-1, -1), 8),
+        ('ALIGN',         (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN',         (4, 0), (4, -1), 'CENTER'),
+        ('ALIGN',         (5, 0), (5, -1), 'RIGHT'),
+        ('GRID',          (0, 0), (-1, -1), 0.4, colors.HexColor("#e2e8f0")),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+        ('ROWBACKGROUNDS',(0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+    ]))
+    elements.append(table)
+    doc.build(elements)
+    output.seek(0)
+
+    return StreamingResponse(
+        output,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=billing-report.pdf"}
+    )
+
+
 def _quote_dict(qt: CRMQuote, session: Session) -> dict:
     client = session.get(ClientProfile, qt.client_id) if qt.client_id else None
     lead = session.get(Lead, qt.lead_id) if qt.lead_id else None
@@ -11460,7 +11654,7 @@ class SalesOrderCreateRequest(BaseModel):
     quote_id: Optional[int] = None
     lead_id: Optional[int] = None
     client_id: Optional[int] = None
-    status: str = "Pending"
+    status: str = "Draft"
     grand_total: float = 0.0
     currency: str = "USD"
     delivery_date: Optional[str] = None
@@ -11781,6 +11975,46 @@ def export_single_purchase_order_pdf(order_id: int, session: Session = Depends(g
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@app.post("/purchase-orders/{order_id}/send-pdf")
+def send_single_purchase_order_pdf_email(order_id: int, body: ExportPdfRequest, session: Session = Depends(get_session)):
+    """Email a single purchase order as a PDF attachment. Uses the provided email
+    or falls back to the vendor email."""
+    from modules.pdf_export import single_purchase_order_pdf
+    o = session.get(PurchaseOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    default_email = (o.vendor_email or "").strip() or None
+    recipient = (body.email or "").strip() or default_email
+    if not recipient:
+        raise HTTPException(status_code=400, detail="No recipient email. Provide an email or add a vendor email.")
+    pdf = single_purchase_order_pdf(o.model_dump())
+    filename = f"{o.po_number or f'PO-{o.id}'}.pdf"
+    subject = f"Purchase Order {o.po_number or o.id} — {o.vendor_name}".strip()
+    body_html = (
+        f"<p>Please find your purchase order <strong>{o.po_number or o.id}</strong> attached.</p>"
+        f"<p>Grand Total: <strong>{o.currency or 'USD'} {o.grand_total:,.2f}</strong></p>"
+        "<p>Thank you.</p>"
+    )
+    sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
+    if not sender or not password:
+        raise HTTPException(status_code=500, detail="SMTP not configured. Add email settings in the Mail Settings page.")
+    try:
+        from modules.email_sender import send_email_outlook
+        send_email_outlook(
+            to_email=recipient,
+            subject=subject,
+            body=body_html,
+            sender_email=sender,
+            sender_password=password,
+            smtp_server=smtp_server,
+            smtp_port=int(smtp_port),
+            attachments=[(filename, pdf, "application/pdf")],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return {"sent": True, "recipient": recipient, "default_recipient": default_email, "po_number": o.po_number}
 
 
 # ── POS Receipt PDF Export ───────────────────────────────────────────────
@@ -14227,17 +14461,103 @@ def create_rfq(data: RFQCreate, session: Session = Depends(get_session)):
     session.add(rfq)
     session.commit()
     session.refresh(rfq)
-    return {"id": rfq.id, "token": token, "status": rfq.status}
+
+    item = session.get(InventoryItem, data.item_id)
+    item_name = item.name if item else f"Item #{data.item_id}"
+    item_code = item.code if item else ""
+
+    email_sent = False
+    if data.supplier_email:
+        try:
+            frontend_url = (os.environ.get("FRONTEND_URL") or "https://crm-seo.allytechcourses.com").rstrip("/")
+            respond_url = f"{frontend_url}/rfq/{rfq.id}?token={token}"
+            subject = f"RFQ Request: {item_name}"
+            html = f"""
+            <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+              <div style="background:#1e293b;color:#fff;padding:22px 28px">
+                <strong style="font-size:18px">🦅 SERP Hawk — Request for Quotation</strong>
+              </div>
+              <div style="padding:28px">
+                <h2 style="color:#0f172a;font-size:20px;margin:0 0 12px">Quotation requested: {item_name}</h2>
+                <p style="color:#475569;line-height:1.6;margin:0 0 20px">
+                  Hello <strong>{data.supplier_name or 'Supplier'}</strong>,<br/><br/>
+                  We would like a quotation for <strong>{item_name}</strong>{f" ({item_code})" if item_code else ""}.
+                  {f"We are looking for a quantity of <strong>{data.quantity:g}</strong>." if data.quantity else ""}
+                  Click the button below to submit your unit price and delivery timeline.
+                </p>
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin:0 0 20px">
+                  <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Item</div>
+                  <div style="color:#0f172a;font-weight:600">{item_name}{f" · {item_code}" if item_code else ""}</div>
+                  {f'<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px">Quantity</div><div style="color:#0f172a;font-weight:600">{data.quantity:g}</div>' if data.quantity else ""}
+                  {f'<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px">Notes</div><div style="color:#475569">{data.notes}</div>' if data.notes else ""}
+                </div>
+                <a href="{respond_url}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:600">Submit Quotation</a>
+                <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">
+                  If the button does not work, copy and paste this link into your browser:<br/>
+                  <a href="{respond_url}" style="color:#2563eb;word-break:break-all">{respond_url}</a>
+                </p>
+                <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
+              </div>
+            </div>
+            """
+            from modules.email_sender import send_email_outlook
+            sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
+            if sender and password:
+                send_email_outlook(
+                    data.supplier_email, subject, html, sender, password,
+                    smtp_server=smtp_server or "mail.serphawk.in", smtp_port=smtp_port or 587
+                )
+                email_sent = True
+        except Exception as e:
+            print(f"[RFQ email failed] {e}")
+            email_sent = False
+
+    return {"id": rfq.id, "token": token, "status": rfq.status, "email_sent": email_sent}
+
+@app.get("/rfq/{rfq_id}")
+def get_rfq_detail(rfq_id: int, token: str = None, session: Session = Depends(get_session)):
+    """Public, token-gated RFQ detail used by the supplier response page."""
+    rfq = session.exec(
+        select(RFQRequest).where(RFQRequest.id == rfq_id).execution_options(skip_tenant=True)
+    ).first()
+    if not rfq:
+        raise HTTPException(status_code=404, detail="RFQ not found")
+    if token is None or rfq.token is None or token != rfq.token:
+        raise HTTPException(status_code=403, detail="Invalid or missing token")
+    if rfq.status == "Responded":
+        raise HTTPException(status_code=410, detail="This RFQ has already been responded to")
+    item = session.exec(
+        select(InventoryItem).where(InventoryItem.id == rfq.item_id).execution_options(skip_tenant=True)
+    ).first()
+    return {
+        "id": rfq.id,
+        "item_id": rfq.item_id,
+        "item_name": item.name if item else "—",
+        "item_code": item.code if item else "—",
+        "supplier_name": rfq.supplier_name,
+        "supplier_email": rfq.supplier_email,
+        "quantity": rfq.quantity,
+        "notes": rfq.notes,
+        "status": rfq.status,
+    }
 
 @app.post("/rfq/{rfq_id}/respond")
 def respond_to_rfq(rfq_id: int, data: RFQResponseCreate, token: str = None, session: Session = Depends(get_session)):
-    rfq = session.get(RFQRequest, rfq_id)
+    rfq = session.exec(
+        select(RFQRequest).where(RFQRequest.id == rfq_id).execution_options(skip_tenant=True)
+    ).first()
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
+    if token is None or rfq.token is None or token != rfq.token:
+        raise HTTPException(status_code=403, detail="Invalid or missing token")
+    if rfq.status == "Responded":
+        raise HTTPException(status_code=410, detail="This RFQ has already been responded to")
     response = RFQResponse(rfq_id=rfq_id, **data.dict())
     session.add(response)
-    rfq.status = "Responded"
-    session.add(rfq)
+    from sqlmodel import update
+    session.exec(
+        update(RFQRequest).where(RFQRequest.id == rfq_id).values(status="Responded").execution_options(skip_tenant=True)
+    )
     session.commit()
     return {"ok": True}
 

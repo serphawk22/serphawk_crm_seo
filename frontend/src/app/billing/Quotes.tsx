@@ -7,6 +7,7 @@ import {
   BadgeDollarSign, User2, Download, Eye
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
+import * as XLSX from "xlsx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface QuoteItem {
@@ -48,6 +49,9 @@ type ModalStep = "form" | "cart";
 
 export interface QuotesHandle {
   openCreate: () => void;
+  exportCSV: () => void;
+  exportExcel: () => void;
+  exportPDF: () => void;
 }
 
 const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function QuotesPage(
@@ -217,7 +221,94 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
     loadModalData();
   };
 
-  useImperativeHandle(ref, () => ({ openCreate }));
+  useImperativeHandle(ref, () => ({
+    openCreate,
+    exportCSV,
+    exportExcel,
+    exportPDF,
+  }));
+
+  // ── Export helpers ────────────────────────────────────────────────────────
+  interface ExportRow {
+    "#": number;
+    "Quote Number": string;
+    "Title": string;
+    "Lead / Client": string;
+    "Status": string;
+    "Currency": string;
+    "Amount": number;
+    "Valid Until": string;
+    "Created": string;
+    "Notes": string;
+  }
+  function exportRows(): ExportRow[] {
+    return quotes.map((q, i) => ({
+      "#": i + 1,
+      "Quote Number": q.quote_number || `#${q.id}`,
+      "Title": q.title,
+      "Lead / Client": q.client_name || q.lead_name || "",
+      "Status": q.status,
+      "Currency": q.currency || "MXN",
+      "Amount": q.grand_total || 0,
+      "Valid Until": q.valid_until || "",
+      "Created": q.created_at ? new Date(q.created_at).toLocaleDateString("en-IN") : "",
+      "Notes": q.notes || "",
+    }));
+  }
+
+  function triggerDownload(content: BlobPart, filename: string, type: string) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportCSV() {
+    const rows = exportRows();
+    if (rows.length === 0) return;
+    const cols = Object.keys(rows[0]);
+    const esc = (v: any) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [cols.join(","), ...rows.map(r => cols.map(c => esc(r[c as keyof ExportRow])).join(","))];
+    triggerDownload(lines.join("\n"), `billing-quotes-${new Date().toISOString().slice(0, 10)}.csv`, "text/csv;charset=utf-8;");
+  }
+
+  function exportExcel() {
+    const rows = exportRows();
+    if (rows.length === 0) return;
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = Object.keys(rows[0]).map((_, idx) => ({ wch: idx === 1 ? 26 : 18 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Quotes");
+    XLSX.writeFile(wb, `billing-quotes-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
+  function exportPDF() {
+    // Authenticated fetch injects X-User-ID / X-Tenant-ID headers (see RoleContext)
+    fetch(`${API_BASE_URL}/quotes/billing-export`)
+      .then(res => {
+        if (!res.ok) throw new Error(`PDF export failed (${res.status})`);
+        return res.blob();
+      })
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `billing-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      })
+      .catch(err => console.error(err));
+  }
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const canSave = () => {

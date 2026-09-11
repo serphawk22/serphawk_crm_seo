@@ -112,7 +112,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
     return <GlobalLoader />;
   }
 
-  if (pathname === "/login" || pathname === "/signup" || pathname === "/demo_showcase" || pathname === "/reset-password" || pathname?.startsWith("/demo_showcase")) {
+  if (pathname === "/login" || pathname === "/signup" || pathname === "/demo_showcase" || pathname === "/reset-password" || pathname?.startsWith("/demo_showcase") || pathname?.startsWith("/rfq/")) {
     return <main className="h-screen w-full">{children}</main>;
   }
 

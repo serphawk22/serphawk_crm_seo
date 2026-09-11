@@ -53,7 +53,7 @@ interface CatalogItem {
   current_stock: number;
 }
 
-interface Client { id: number; companyName: string; projectName?: string; }
+interface Client { id: number; companyName: string; projectName?: string; email?: string; name?: string; }
 interface Lead   { id: number; company_name?: string; contact_name?: string; email?: string; }
 
 // ─── Wizard Steps ───────────────────────────────────────────────────────────
@@ -181,6 +181,18 @@ export default function ProposalsPage() {
     return l?.company_name || l?.contact_name || "";
   }
 
+  function recipientEmail() {
+    if (recipientType === "client") {
+      return clients.find(c => c.id === selectedClientId)?.email || "";
+    }
+    return leads.find(l => l.id === selectedLeadId)?.email || "";
+  }
+
+  function recipientEmailValid() {
+    const email = recipientEmail();
+    return !!email && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+  }
+
   const cartTotal = useMemo(() => {
     const mxn = cart.reduce((s, li) => s + li.quantity * li.unit_price, 0);
     return currency === "INR" ? mxn * INR_RATE : mxn;
@@ -234,6 +246,11 @@ export default function ProposalsPage() {
 
   async function submitQuote() {
     setSaving(true);
+    if (sendStatus === "Sent" && !recipientEmailValid()) {
+      alert(t("proposals.wizard_email_invalid"));
+      setSaving(false);
+      return;
+    }
     const totalMXN = currency === "INR" ? cartTotal / INR_RATE : cartTotal;
     const autoTitle = quoteTitle.trim() ||
       `Quotation for ${recipientName()} – ${new Date().toLocaleDateString("en-IN")}`;
@@ -956,7 +973,10 @@ export default function ProposalsPage() {
                       {recipientType === "lead"
                         ? <User2 className="w-4 h-4 text-amber-500" />
                         : <Building2 className="w-4 h-4 text-blue-500" />}
-                      <p className="font-semibold text-slate-900 dark:text-white text-sm">{recipientName()}</p>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900 dark:text-white text-sm">{recipientName()}</p>
+                        {recipientEmail() && <p className="text-xs text-slate-500 truncate">{recipientEmail()}</p>}
+                      </div>
                     </div>
                     <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 rounded-full font-medium">
                       {recipientType === "lead" ? "Lead" : "Client"}
@@ -1008,10 +1028,15 @@ export default function ProposalsPage() {
                                 : "border-slate-400 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
                               : "border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300"
                           }`}>
-                          {s === "Draft" ? t("proposals.wizard_save_draft") : t("proposals.wizard_send_client")}
+                          {s === "Draft" ? t("proposals.wizard_save_draft") : t("proposals.wizard_send_client", { name: recipientName() })}
                         </button>
                       ))}
                     </div>
+                    {sendStatus === "Sent" && (
+                      recipientEmailValid()
+                        ? <p className="text-xs text-emerald-600 mt-2">{t("proposals.wizard_email_hint", { email: recipientEmail() })}</p>
+                        : <p className="text-xs text-amber-600 mt-2">{t("proposals.wizard_email_invalid")}</p>
+                    )}
                   </div>
                 </div>
 

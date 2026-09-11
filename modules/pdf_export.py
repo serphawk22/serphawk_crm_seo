@@ -376,12 +376,16 @@ def send_pdf_email(to_email, subject, body, pdf_bytes, filename):
     password = os.environ.get("EMAIL_PASSWORD") or os.environ.get("OUTLOOK_PASSWORD") or ""
     if not sender or not password:
         raise RuntimeError("SMTP not configured (missing EMAIL_SENDER/EMAIL_PASSWORD)")
+    smtp_server = os.environ.get("EMAIL_HOST") or os.environ.get("SMTP_SERVER") or "mail.serphawk.in"
+    smtp_port = int(os.environ.get("EMAIL_PORT") or os.environ.get("SMTP_PORT") or 587)
     send_email_outlook(
         to_email=to_email,
         subject=subject,
         body=body,
         sender_email=sender,
         sender_password=password,
+        smtp_server=smtp_server,
+        smtp_port=smtp_port,
         attachments=[(filename, pdf_bytes, "application/pdf")],
     )
 
