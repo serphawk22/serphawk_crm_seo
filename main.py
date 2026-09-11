@@ -9807,7 +9807,14 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
 
     # ── Step 3: Save to Lead ai_analysis_results (simulate services_offered) ────────
     if lead.ai_analysis_results:
-        analysis_data = dict(lead.ai_analysis_results)
+        if isinstance(lead.ai_analysis_results, str):
+            try:
+                import json as _j
+                analysis_data = _j.loads(lead.ai_analysis_results)
+            except:
+                analysis_data = {}
+        else:
+            analysis_data = dict(lead.ai_analysis_results)
     else:
         analysis_data = {}
     analysis_data["product_portfolio"] = services
