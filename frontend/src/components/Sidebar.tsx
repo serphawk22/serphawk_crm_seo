@@ -610,29 +610,49 @@ export function Sidebar({ role }: SidebarProps) {
                   <span className="block font-bold text-[14px] leading-tight tracking-tight truncate" style={{ color: "var(--text-primary)" }}>SERP Hawk</span>
                   <span className="block text-[10px] font-medium truncate" style={{ color: "var(--text-secondary)" }}>{t("sidebar.corporate_hq")}</span>
                 </div>
-                <button 
-                  onClick={() => setIsEditMode(!isEditMode)} 
-                  className={cn("p-1.5 rounded-lg transition-colors", isEditMode ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800")}
-                  title={t("sidebar.customize_sidebar")}
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={toggleTheme}
+                    className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                  >
+                    {theme === "dark" ? <Sun className="w-3.5 h-3.5 text-yellow-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-500" />}
+                  </button>
+                  <button 
+                    onClick={() => setIsEditMode(!isEditMode)} 
+                    className={cn("p-1.5 rounded-lg transition-colors", isEditMode ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800")}
+                    title={t("sidebar.customize_sidebar")}
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
 
         {/* ── LANGUAGE TOGGLE (top-left, below branding) ── */}
-        <div className={cn("shrink-0 pb-1.5", collapsed ? "flex justify-center px-2" : "px-3")}>
+        <div className={cn("shrink-0 pb-1.5", collapsed ? "flex flex-col items-center gap-2 px-2" : "px-3")}>
           {collapsed ? (
-            // Collapsed: single flag, click cycles EN ↔ ES
-<button
-                  onClick={() => switchLanguage(activeLang === "en" ? "es" : "en")}
-                  title={activeLang === "en" ? t("sidebar.switch_es") : t("sidebar.switch_en")}
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-lg hover:bg-white/10 transition-all"
-            >
-              {activeLang === "en" ? "🇺🇸" : "🇪🇸"}
-            </button>
+            <>
+              {/* Collapsed: single flag, click cycles EN ↔ ES */}
+              <button
+                onClick={() => switchLanguage(activeLang === "en" ? "es" : "en")}
+                title={activeLang === "en" ? t("sidebar.switch_es") : t("sidebar.switch_en")}
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-lg hover:bg-white/10 transition-all"
+              >
+                {activeLang === "en" ? "🇺🇸" : "🇪🇸"}
+              </button>
+              
+              {/* Collapsed: Theme Toggle */}
+              <button
+                onClick={toggleTheme}
+                title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-white/10 transition-all"
+              >
+                {theme === "dark" ? <Sun className="w-4 h-4 text-yellow-500" /> : <Moon className="w-4 h-4 text-indigo-500" />}
+              </button>
+            </>
           ) : (
             // Expanded: full pill toggle
             <div

@@ -4120,6 +4120,91 @@ def auto_research_client(client_id: int, session: Session = Depends(get_session)
         raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
 
 
+@app.post("/clients/{client_id}/extract-services")
+def extract_services(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+    
+    context = f"Company Name: {cp.companyName}\n"
+    if cp.industry:
+        context += f"Industry: {cp.industry}\n"
+    if cp.notes:
+        context += f"Notes: {cp.notes}\n"
+    if research and research.company_overview:
+        context += f"Overview: {research.company_overview}\n"
+        
+    try:
+        prompt = f"""Analyze the following company data and extract a list of services they offer.
+For each service, provide a name, a brief description, and an estimated approximate cost (in dollars, e.g. 1500).
+Return a JSON array of objects with keys: name, description, approx_cost.
+Data:
+{context}"""
+        import json
+        from modules.llm_engine import get_openai_client
+        
+        client_openai = get_openai_client()
+        response = client_openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a data extraction AI. Output raw JSON array of objects. No markdown formatting, just the raw JSON array. If you cannot find services, guess based on the industry."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
+        )
+        raw_res = response.choices[0].message.content
+        
+        try:
+            services_data = json.loads(raw_res)
+        except:
+            if "```json" in raw_res:
+                raw_res = raw_res.split("```json")[1].split("```")[0].strip()
+                services_data = json.loads(raw_res)
+            else:
+                services_data = []
+                
+        if not isinstance(services_data, list):
+            services_data = []
+            
+        added_count = 0
+        from database import MarketplaceService
+        for srv in services_data:
+            if not srv.get("name"): continue
+            
+            # Try parsing approx_cost as float
+            cost = 0.0
+            raw_cost = str(srv.get("approx_cost", 0)).replace('$', '').replace(',', '').strip()
+            try:
+                cost = float(raw_cost)
+            except:
+                cost = 0.0
+                
+            ms = MarketplaceService(
+                service_name=srv["name"],
+                description=srv.get("description", ""),
+                estimated_cost=cost,
+                cost_is_estimated=True,
+                provider_client_id=cp.id,
+                provider_name=cp.companyName or "Unknown Provider",
+                category=cp.industry or "General",
+                status="Active",
+                visibility="Private"
+            )
+            session.add(ms)
+            added_count += 1
+            
+        cp.services_offered = json.dumps(services_data)
+        session.add(cp)
+        session.commit()
+        
+        return {"ok": True, "services": services_data, "marketplace_entries_added": added_count}
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/clients/{client_id}/generate-outbound-draft")
 def generate_outbound_draft(client_id: int, session: Session = Depends(get_session)):
     check_tenant_limit(session, "emails")

@@ -63,35 +63,6 @@ export default function TopRightControls() {
 
   return (
     <div className="fixed top-6 right-6 z-[60] flex flex-col items-center gap-3">
-      {/* Theme Toggle */}
-      <motion.button
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={toggleTheme}
-        className="p-2 rounded-xl transition-all shadow-sm border bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800"
-        title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
-      >
-        {theme === "dark" ? (
-          <Sun className="w-4 h-4 text-yellow-500" />
-        ) : (
-          <Moon className="w-4 h-4 text-indigo-500" />
-        )}
-      </motion.button>
-
-      {/* Settings Link */}
-      <Link href="/admin/settings">
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="p-2 rounded-xl transition-all shadow-sm border bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-slate-500 hover:text-indigo-600"
-          title="Settings"
-        >
-          <Settings className="w-4 h-4" />
-        </motion.button>
-      </Link>
-
-
-
       {/* Profile Menu */}
       <div className="relative" ref={userRef}>
         <motion.button
