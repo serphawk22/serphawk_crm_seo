@@ -16,13 +16,12 @@
 
 ▲ Next.js 16.1.6 (Turbopack)
 - Local:         http://localhost:3000
-- Network:       http://192.168.1.7:3000
+- Network:       http://10.217.233.254:3000
 
 ✓ Starting...
-✓ Ready in 900ms
- GET / 200 in 721ms (compile: 420ms, render: 301ms)
- GET /leads 200 in 128ms (compile: 39ms, render: 89ms)
- GET /inventory 200 in 72ms (compile: 46ms, render: 26ms)
- GET / 200 in 26ms (compile: 3ms, render: 23ms)
-✓ Compiled in 613ms
-✓ Compiled in 71ms
+✓ Ready in 1764ms
+ GET / 200 in 2.3s (compile: 1052ms, render: 1269ms)
+ GET /orders 200 in 220ms (compile: 62ms, render: 158ms)
+ GET /billing 200 in 136ms (compile: 68ms, render: 68ms)
+ GET /proposals 200 in 31ms (compile: 14ms, render: 17ms)
+ GET /billing 200 in 21ms (compile: 5ms, render: 16ms)

@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Truck, Plus, X, Search, Loader2, Trash2, Building2, Download, Mail } from "lucide-react";
+import { Truck, Plus, X, Search, Loader2, Trash2, Building2, Download, Mail, Eye } from "lucide-react";
 import { ExportActions } from "@/components/ExportActions";
 import { API_BASE_URL } from "@/config";
 
@@ -21,6 +21,8 @@ export default function PurchaseOrdersPage() {
   const [emailAddr, setEmailAddr] = useState("");
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [preview, setPreview] = useState<{ id: number; name: string; url: string } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const notify = (type: "ok" | "err", text: string) => { setToast({ type, text }); setTimeout(() => setToast(null), 3000); };
 
@@ -36,8 +38,16 @@ export default function PurchaseOrdersPage() {
   const handleSave = async () => {
     if (!form.vendor_name.trim()) return;
     setSaving(true);
-    await fetch(`${API_BASE_URL}/purchase-orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, grand_total: parseFloat(form.grand_total) || 0 }) });
-    setSaving(false); setShowModal(false); load();
+    try {
+      const res = await fetch(`${API_BASE_URL}/purchase-orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, grand_total: parseFloat(form.grand_total) || 0 }) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        notify("err", err.detail || "Failed to create order");
+        return;
+      }
+      setShowModal(false); load();
+    } catch { notify("err", "Network error"); }
+    finally { setSaving(false); }
   };
   const handleDelete = async (id: number) => { if (!confirm("Delete PO?")) return; await fetch(`${API_BASE_URL}/purchase-orders/${id}`, { method: "DELETE" }); load(); };
   const handleStatus = async (o: PO, status: string) => {
@@ -58,6 +68,23 @@ export default function PurchaseOrdersPage() {
       URL.revokeObjectURL(url);
       notify("ok", "PDF downloaded");
     } catch { notify("err", "Network error"); }
+  };
+
+  const handlePreview = async (id: number, poNumber: string) => {
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/purchase-orders/${id}/pdf`);
+      if (!res.ok) { notify("err", "Preview failed"); setPreviewLoading(false); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      setPreview({ id, name: poNumber || `PO-${id}`, url });
+    } catch { notify("err", "Network error"); }
+    finally { setPreviewLoading(false); }
+  };
+
+  const closePreview = () => {
+    if (preview) URL.revokeObjectURL(preview.url);
+    setPreview(null);
   };
 
   const handleSendEmail = async () => {
@@ -136,6 +163,7 @@ export default function PurchaseOrdersPage() {
               {STATUSES.map(s => <option key={s}>{s}</option>)}
             </select>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+              <button onClick={() => handlePreview(o.id, o.po_number || `PO-${o.id}`)} disabled={previewLoading} title="Preview PDF" className="p-1.5 rounded-lg bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 transition-all"><Eye className="w-3.5 h-3.5" /></button>
               <button onClick={() => handleDownloadPdf(o.id, o.po_number || `PO-${o.id}`)} title="Download PDF" className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 transition-all"><Download className="w-3.5 h-3.5" /></button>
               <button onClick={() => setEmailModal({ orderId: o.id, poNumber: o.po_number || `PO-${o.id}` })} title="Email PDF" className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all"><Mail className="w-3.5 h-3.5" /></button>
             </div>
@@ -171,6 +199,30 @@ export default function PurchaseOrdersPage() {
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />} Create PO
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Preview Modal */}
+      <AnimatePresence>
+        {preview && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden" style={{ height: "85vh" }}>
+              <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-200 dark:border-zinc-700">
+                <h2 className="text-base font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2 truncate">
+                  <Eye className="w-4 h-4 text-purple-500 shrink-0" /> {preview.name}
+                </h2>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => handleDownloadPdf(preview.id, preview.name)} title="Download PDF"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-bold hover:bg-teal-700 transition-all">
+                    <Download className="w-3.5 h-3.5" /> Download
+                  </button>
+                  <button onClick={closePreview} title="Close" className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 transition-all"><X className="w-4 h-4" /></button>
+                </div>
+              </div>
+              <iframe src={preview.url} className="flex-1 w-full border-0 bg-white" title="Purchase Order Preview" />
             </motion.div>
           </motion.div>
         )}

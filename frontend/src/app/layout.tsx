@@ -55,7 +55,7 @@ function ClientLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], preload: false });
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const { role, loading } = useRole();

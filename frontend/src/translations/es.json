@@ -2644,6 +2644,8 @@
     "empty": "Aún no hay cotizaciones",
     "create_first": "Crea tu primera cotización",
     "download_pdf": "Descargar PDF",
+    "preview_pdf": "Vista previa PDF",
+    "pdf_error": "No se pudo cargar la vista previa del PDF",
     "delete": "Eliminar",
     "valid_until": "Válida hasta",
     "update_status": "Actualizar Estado",
