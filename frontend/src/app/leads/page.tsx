@@ -9,6 +9,7 @@ import { ViewSwitcher, ViewType } from "@/components/ViewSwitcher";
 import DemoLimits from "@/components/DemoLimits";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useLanguage } from "@/context/LanguageContext";
+import SalesAssignModal from "@/components/SalesAssignModal";
 
 interface Lead {
   id: number;
@@ -86,6 +87,8 @@ export default function LeadsPage() {
   const [noteLead, setNoteLead] = useState<Lead | null>(null);
   const [noteText, setNoteText] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
+  const [showSalesAssign, setShowSalesAssign] = useState(false);
+  const [pendingLeadForm, setPendingLeadForm] = useState<any>(null);
 
   useEffect(() => { fetchLeads(); fetchActivities(); }, []);
 
@@ -175,19 +178,35 @@ export default function LeadsPage() {
     setSaving(true);
     try {
       if (editLead) {
+        // Edit: save directly, no sales assign needed
         await fetch(`${API_BASE_URL}/leads/${editLead.id}`, {
           method: "PUT", headers: { "Content-Type": "application/json" },
           body: JSON.stringify(form),
         });
+        setShowModal(false);
+        fetchLeads();
       } else {
-        await fetch(`${API_BASE_URL}/leads`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
-        });
+        // New lead: show sales assign modal
+        setPendingLeadForm({ ...form });
+        setShowModal(false);
+        setShowSalesAssign(true);
       }
-      setShowModal(false);
-      fetchLeads();
     } finally { setSaving(false); }
+  };
+
+  const doCreateLead = async (employeeId: number | null, _employeeName: string | null) => {
+    setShowSalesAssign(false);
+    if (!pendingLeadForm) return;
+    try {
+      const payload = { ...pendingLeadForm };
+      if (employeeId) payload.owner_id = employeeId;
+      await fetch(`${API_BASE_URL}/leads`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setPendingLeadForm(null);
+      fetchLeads();
+    } catch (e) { console.error(e); }
   };
 
   const handleDelete = async (id: number, e: React.MouseEvent) => {
@@ -719,6 +738,14 @@ export default function LeadsPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Sales Assignment Modal */}
+      <SalesAssignModal
+        isOpen={showSalesAssign}
+        onClose={() => { setShowSalesAssign(false); setPendingLeadForm(null); }}
+        onAssign={doCreateLead}
+        entityType="lead"
+      />
     </div>
   );
 }

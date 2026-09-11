@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { useLanguage } from '@/context/LanguageContext';
 import { useRole } from '@/context/RoleContext';
 import PageGuide from '@/components/PageGuide';
+import SalesAssignModal from '@/components/SalesAssignModal';
 import dynamic from 'next/dynamic';
 import { ContextMenu } from '@/components/ContextMenu';
 import { ViewSwitcher, ViewType } from '@/components/ViewSwitcher';
@@ -333,6 +334,8 @@ export default function ClientsPage() {
   };
 
   const [addLoading, setAddLoading] = useState(false);
+  const [showSalesAssign, setShowSalesAssign] = useState(false);
+  const [pendingFormData, setPendingFormData] = useState<any>(null);
   const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (addLoading) return;
@@ -350,20 +353,28 @@ export default function ClientsPage() {
       }
     }
 
+    // Store form data and open sales assign modal
+    setPendingFormData({
+      ...formData,
+      targetKeywords: formData.targetKeywords.split(',').map((k: string) => k.trim())
+    });
+    setIsModalOpen(false);
+    setShowSalesAssign(true);
+  };
+
+  const doCreateClient = async (employeeId: number | null, _employeeName: string | null) => {
+    setShowSalesAssign(false);
+    if (!pendingFormData) return;
     setAddLoading(true);
     try {
+      const payload = { ...pendingFormData };
+      if (employeeId) payload.assigned_employee_id = employeeId;
       const res = await fetch(`${API_BASE_URL}/clients`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ...formData,
-          targetKeywords: formData.targetKeywords.split(',').map(k => k.trim())
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
-        setIsModalOpen(false);
         fetchClients();
         setFormData({
           companyName: '',
@@ -375,6 +386,7 @@ export default function ClientsPage() {
           tagline: '',
           targetKeywords: ''
         });
+        setPendingFormData(null);
       }
     } catch (err) {
       console.error(err);
@@ -1286,6 +1298,14 @@ export default function ClientsPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Sales Assignment Modal */}
+      <SalesAssignModal
+        isOpen={showSalesAssign}
+        onClose={() => { setShowSalesAssign(false); setPendingFormData(null); }}
+        onAssign={doCreateClient}
+        entityType="client"
+      />
 
     </div>
   );

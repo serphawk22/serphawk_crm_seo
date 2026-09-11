@@ -2755,6 +2755,44 @@ def list_employees(session: Session = Depends(get_session)):
     return {"employees": [_user_dict(u) for u in employees]}
 
 
+@app.get("/employees/workload")
+def get_employees_workload(session: Session = Depends(get_session)):
+    """Return each sales team member with their active client and active lead counts."""
+    query = select(User).where(User.role.in_(["Employee", "Admin", "SalesManager"]))
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        query = query.where(User.tenant_id == tenant_id)
+    employees = session.exec(query).all()
+
+    result = []
+    for emp in employees:
+        # Count active clients assigned to this employee
+        client_count = len(session.exec(
+            select(ClientProfile).where(
+                ClientProfile.assignedEmployeeId == emp.id,
+                ClientProfile.status != "Inactive"
+            )
+        ).all())
+        # Count active (non-converted) leads owned by this employee
+        lead_count = len(session.exec(
+            select(Lead).where(
+                Lead.owner_id == emp.id,
+                Lead.is_converted == False,
+                Lead.status != "Lost"
+            )
+        ).all())
+
+        d = _user_dict(emp)
+        d["active_clients"] = client_count
+        d["active_leads"] = lead_count
+        d["total_active"] = client_count + lead_count
+        result.append(d)
+
+    # Sort by total workload ascending (least busy first)
+    result.sort(key=lambda x: x["total_active"])
+    return {"employees": result}
+
+
 @app.get("/interns")
 def list_interns(session: Session = Depends(get_session)):
     query = select(User).where(User.role == "Intern")
