@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useGoogleLogin } from "@react-oauth/google";
 import { useRole } from "@/context/RoleContext";
 import { API_BASE_URL } from "@/config";
-import { Lock, Mail, Loader2, Eye, EyeOff, ArrowRight, Globe, ChevronDown, Check, Sparkles } from "lucide-react";
+import { Lock, Mail, Loader2, Eye, EyeOff, ArrowRight, Globe, ChevronDown, Check, Sparkles, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import "@/i18n/config";
