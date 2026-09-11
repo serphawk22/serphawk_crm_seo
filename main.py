@@ -4136,10 +4136,8 @@ def extract_services(client_id: int, session: Session = Depends(get_session)):
     research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
     
     context = f"Company Name: {cp.companyName}\n"
-    if cp.industry:
-        context += f"Industry: {cp.industry}\n"
-    if cp.notes:
-        context += f"Notes: {cp.notes}\n"
+
+
     if research and research.company_overview:
         context += f"Overview: {research.company_overview}\n"
         
