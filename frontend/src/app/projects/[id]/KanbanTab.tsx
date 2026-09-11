@@ -42,6 +42,7 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
   const [activeTab, setActiveTab] = useState<'details'|'history'|'notes'>('details');
   const [selectedTicket, setSelectedTicket] = useState<ProjectTicket | null>(null);
   const [sortOption, setSortOption] = useState<'newest'|'oldest'|'fastest'|'longest'>('newest');
+  const [teamMembers, setTeamMembers] = useState<{id: number; name: string; email: string}[]>([]);
   
   const [revertPrompt, setRevertPrompt] = useState<{isOpen: boolean; ticketId?: number; task?: string; newStatus?: string; reason: string}>({isOpen: false, reason: ""});
 
@@ -76,6 +77,19 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     fetchTickets();
+    // Fetch project team members for the assignee dropdown
+    fetch(`${API_BASE_URL}/projects/${projectId}`)
+      .then(r => r.json())
+      .then(d => {
+        const team = d.team || {};
+        const all = [
+          ...(team.employees || []),
+          ...(team.interns || []),
+          ...(team.projectMembers || []),
+        ];
+        setTeamMembers(all);
+      })
+      .catch(() => {});
   }, [projectId]);
 
   const sortedTickets = useMemo(() => {
@@ -415,8 +429,21 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                 <div className="space-y-5 bg-slate-50/50 dark:bg-zinc-900/30 p-6 rounded-3xl border border-slate-100 dark:border-zinc-800/50">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Owner Name</label>
-                      <input type="text" value={form.current_owner || ''} onChange={e => setForm({...form, current_owner: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Assign To (Owner)</label>
+                      {teamMembers.length > 0 ? (
+                        <select
+                          value={form.current_owner || ''}
+                          onChange={e => setForm({...form, current_owner: e.target.value})}
+                          className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                        >
+                          <option value="">— Unassigned —</option>
+                          {teamMembers.map(m => (
+                            <option key={m.id} value={m.name}>{m.name} ({m.email})</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input type="text" value={form.current_owner || ''} onChange={e => setForm({...form, current_owner: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="No team members yet — type name" />
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Owner Role</label>
