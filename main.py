@@ -2714,7 +2714,7 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
         if not user.name:
             tickets = []
         else:
-            tickets = session.exec(select(ProjectTicket).where(ProjectTicket.current_owner == user.name)).all()
+            tickets = session.exec(select(ProjectTicket).where(ProjectTicket.current_owner.ilike(user.name))).all()
             
         total_tickets = len(tickets)
         in_dev = sum(1 for t in tickets if t.current_state == "In Dev")
@@ -12263,7 +12263,7 @@ def get_work_queue(
         if is_admin or (user and user.role in ["ProjectMember", "Intern"]):
             tickets_q = session.query(ProjectTicket)
             if not is_admin and user and user.name:
-                tickets_q = tickets_q.filter(ProjectTicket.current_owner == user.name)
+                tickets_q = tickets_q.filter(ProjectTicket.current_owner.ilike(user.name))
             tickets = tickets_q.all()
         
         return {

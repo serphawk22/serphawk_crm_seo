@@ -1124,7 +1124,7 @@ export default function AdminClientDetailPage() {
                 >
                   <option value="">{language === 'es' ? 'Seleccionar vendedor' : 'Select salesperson'}</option>
                   <option value="create_new" className="font-bold text-indigo-600">➕ {language === 'es' ? 'Crear Nuevo Vendedor' : 'Create New Salesperson'}</option>
-                  {employees.map((e: any) => (
+                  {employees.filter((e: any) => ["Employee", "Admin", "SalesManager"].includes(e.role)).map((e: any) => (
                     <option key={e.id} value={e.id}>{e.name} — {e.role}</option>
                   ))}
                 </select>
