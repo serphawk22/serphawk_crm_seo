@@ -22,19 +22,14 @@ import {
   Loader2,
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
-import EmailTrackerTab from "./components/EmailTrackerTab";
-import SMTPSettingsTab from "./components/SMTPSettingsTab";
+
 import { useLanguage } from "@/context/LanguageContext";
 
-type Tab = "profile" | "security" | "notifications" | "appearance" | "smtp" | "integrations";
+type Tab = "profile" | "security";
 
 const TABS: { id: Tab; label: string; icon: typeof User }[] = [
   { id: "profile", label: "Profile", icon: User },
   { id: "security", label: "Security", icon: Shield },
-  { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "appearance", label: "Appearance", icon: Palette },
-  { id: "smtp", label: "SMTP Settings", icon: Mail },
-  { id: "integrations", label: "Email Integrations", icon: Mail },
 ];
 
 function SaveButton({
@@ -130,10 +125,6 @@ export default function SettingsPage() {
   const TABS: { id: Tab; label: string; icon: typeof User }[] = [
     { id: "profile", label: t("settings.tab_profile"), icon: User },
     { id: "security", label: t("settings.tab_security"), icon: Shield },
-    { id: "notifications", label: t("settings.tab_notifications"), icon: Bell },
-    { id: "appearance", label: t("settings.tab_appearance"), icon: Palette },
-    { id: "smtp", label: t("settings.tab_smtp"), icon: Mail },
-    { id: "integrations", label: t("settings.tab_integrations"), icon: Mail },
   ];
 
   // Profile
@@ -158,13 +149,7 @@ export default function SettingsPage() {
   const [pwSaving, setPwSaving] = useState(false);
   const [pwSaved, setPwSaved] = useState(false);
 
-  // Notifications
-  const [notifs, setNotifs] = useState({
-    emailAlerts: true,
-    taskReminders: true,
-    clientUpdates: false,
-    weeklyReport: true,
-  });
+
 
   const [tab, setTab] = useState<Tab>("profile");
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -508,102 +493,7 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* ── NOTIFICATIONS TAB ── */}
-          {tab === "notifications" && (
-            <div
-              className="rounded-2xl p-6 space-y-5"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
-            >
-              <h2 className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>
-                {t("settings.notification_prefs")}
-              </h2>
-              {(
-                [
-                  { key: "emailAlerts", label: t("settings.notif_email"), desc: t("settings.notif_email_desc") },
-                  { key: "taskReminders", label: t("settings.notif_tasks"), desc: t("settings.notif_tasks_desc") },
-                  { key: "clientUpdates", label: t("settings.notif_client"), desc: t("settings.notif_client_desc") },
-                  { key: "weeklyReport", label: t("settings.notif_weekly"), desc: t("settings.notif_weekly_desc") },
-                ] as const
-              ).map(({ key, label, desc }) => (
-                <div key={key} className="flex items-center justify-between gap-4 py-2">
-                  <div>
-                    <p className="font-semibold text-[13.5px]" style={{ color: "var(--text-primary)" }}>{label}</p>
-                    <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>{desc}</p>
-                  </div>
-                  <button
-                    onClick={() => setNotifs((n) => ({ ...n, [key]: !n[key] }))}
-                    className={`relative w-11 h-6 rounded-full transition-all duration-300 shrink-0 ${
-                      notifs[key] ? "bg-blue-600" : "bg-gray-200"
-                    }`}
-                  >
-                    <div
-                      className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all duration-300 ${
-                        notifs[key] ? "left-[22px]" : "left-1"
-                      }`}
-                    />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
 
-          {/* ── APPEARANCE TAB ── */}
-          {tab === "appearance" && (
-            <div
-              className="rounded-2xl p-6 space-y-5"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
-            >
-              <h2 className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>
-                {t("settings.appearance")}
-              </h2>
-              <div>
-                <p className="text-[13px] font-semibold mb-3" style={{ color: "var(--text-primary)" }}>{t("settings.theme")}</p>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { value: "light", label: t("settings.theme_light"), preview: "#ffffff", border: "#e5e7eb" },
-                    { value: "dark", label: t("settings.theme_dark"), preview: "#111827", border: "#374151" },
-                    { value: "system", label: t("settings.theme_system"), preview: "linear-gradient(135deg, #ffffff 50%, #111827 50%)", border: "#6366f1" },
-                  ].map((th) => (
-                    <button
-                      key={th.value}
-                      className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all hover:border-blue-400"
-                      style={{ borderColor: "var(--border)", background: "var(--background)" }}
-                    >
-                      <div
-                        className="w-12 h-8 rounded-lg border"
-                        style={{ background: th.preview, borderColor: th.border }}
-                      />
-                      <span className="text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
-                        {th.label}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <p className="text-[13px] font-semibold mb-3" style={{ color: "var(--text-primary)" }}>{t("settings.accent_color")}</p>
-                <div className="flex gap-3">
-                  {[
-                    "#2563eb", "#7c3aed", "#0891b2", "#10b981", "#f59e0b", "#ef4444",
-                  ].map((color) => (
-                    <button
-                      key={color}
-                      className="w-8 h-8 rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform"
-                      style={{ background: color }}
-                      title={color}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* ── SMTP SETTINGS TAB ── */}
-          {tab === "smtp" && <SMTPSettingsTab />}
-
-          {/* ── EMAIL INTEGRATIONS TAB ── */}
-          {tab === "integrations" && <EmailTrackerTab />}
         </motion.div>
       </div>
 

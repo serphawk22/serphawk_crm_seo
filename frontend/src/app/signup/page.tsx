@@ -78,18 +78,18 @@ function SignupLanguageSwitcher() {
         className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border text-sm font-semibold ${
           isOpen
             ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-            : "hover:bg-slate-50 border-transparent text-slate-600 hover:border-slate-200"
+            : "hover:bg-zinc-900 border-transparent text-zinc-400 hover:border-zinc-800"
         }`}
       >
-        <Globe className="w-4 h-4 text-slate-400" />
+        <Globe className="w-4 h-4 text-zinc-500" />
         <span className="hidden sm:block">Language</span>
         <div className="flex items-center gap-1.5 ml-1">
           <span className="text-base leading-none">{current.flag}</span>
-          <span className="uppercase text-[10px] font-black tracking-wider text-slate-400">
+          <span className="uppercase text-[10px] font-black tracking-wider text-zinc-500">
             {current.code}
           </span>
         </div>
-        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+        <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
       </motion.button>
 
       <AnimatePresence>
@@ -99,10 +99,10 @@ function SignupLanguageSwitcher() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.97 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full mt-2 w-52 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50"
+            className="absolute right-0 top-full mt-2 w-52 bg-[#0a0a0a] border border-zinc-800 rounded-2xl shadow-xl overflow-hidden z-50"
           >
-            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+            <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900">
+              <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">
                 Select Language
               </p>
             </div>
@@ -116,7 +116,7 @@ function SignupLanguageSwitcher() {
                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-left ${
                       isActive
                         ? "bg-indigo-50 text-indigo-700"
-                        : "hover:bg-slate-50 text-slate-700"
+                        : "hover:bg-zinc-900 text-zinc-300"
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -125,7 +125,7 @@ function SignupLanguageSwitcher() {
                         <span className={`text-sm font-semibold leading-tight ${isActive ? "text-indigo-700" : "group-hover:text-indigo-600"}`}>
                           {lang.nativeName}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-medium">{lang.name}</span>
+                        <span className="text-[10px] text-zinc-500 font-medium">{lang.name}</span>
                       </div>
                     </div>
                     {isActive && <Check className="w-4 h-4 text-indigo-600" />}
@@ -286,7 +286,7 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex overflow-hidden font-sans">
+    <div className="min-h-screen flex overflow-hidden font-sans bg-[#0a0a0a] text-zinc-100 selection:bg-indigo-500/30">
       {/* ── LEFT PANEL – Visual branding ── */}
       <div
         className="hidden lg:flex lg:w-[55%] relative flex-col items-center justify-center overflow-hidden p-12"
@@ -411,8 +411,8 @@ export default function SignupPage() {
 
       {/* ── RIGHT PANEL – Login form ── */}
       <div
-        className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12 relative"
-        style={{ background: "#ffffff" }}
+        className="flex-1 flex flex-col justify-center relative z-20 px-6 sm:px-12 lg:px-24 xl:px-32"
+        
       >
         {/* Language selector in top right — English + Spanish only */}
         <div className="absolute top-5 right-6 z-20">
@@ -431,7 +431,7 @@ export default function SignupPage() {
               <circle cx="12" cy="12" r="2" fill="white" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold text-gray-900">SERP Hawk CRM</h2>
+          <h2 className="text-xl font-bold text-white">SERP Hawk CRM</h2>
         </div>
 
         <motion.div
@@ -442,10 +442,10 @@ export default function SignupPage() {
         >
           {/* Header */}
           <div className="mb-8">
-            <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">
+            <h2 className="text-3xl font-extrabold text-white tracking-tight mb-2">
               Create Demo Account
             </h2>
-            <p className="text-gray-500 text-[15px] font-medium">
+            <p className="text-zinc-400 text-[15px] font-medium">
               Join the SERP Hawk CRM showcase
             </p>
           </div>
@@ -455,7 +455,7 @@ export default function SignupPage() {
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl border border-slate-200 bg-slate-50/60 p-6"
+              className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6"
             >
               <EmailOTPVerification
                 email={email}
@@ -469,14 +469,14 @@ export default function SignupPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Name */}
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
+              <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
                 Full Name
               </label>
               <div
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
                   focusedField === "name"
                     ? "border-blue-500 shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                    : "border-gray-200 hover:border-gray-300"
+                    : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/60"
                 }`}
               >
                 <div className="absolute left-4 w-4 h-4 text-gray-400">👤</div>
@@ -487,21 +487,21 @@ export default function SignupPage() {
                   onChange={(e) => setName(e.target.value)}
                   onFocus={() => setFocusedField("name")}
                   onBlur={() => setFocusedField(null)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-transparent border-none text-[15px] font-medium text-gray-900 placeholder:text-gray-400 focus:ring-0 outline-none"
+                  className="w-full pl-11 pr-4 py-3.5 bg-transparent border-none text-[15px] font-medium text-white placeholder:text-gray-400 focus:ring-0 outline-none"
                   placeholder="John Doe"
                 />
               </div>
             </div>
             {/* Email */}
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
+              <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
                 Email Address
               </label>
               <div
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
                   focusedField === "email"
                     ? "border-blue-500 shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                    : "border-gray-200 hover:border-gray-300"
+                    : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/60"
                 }`}
               >
                 <Mail
@@ -516,7 +516,7 @@ export default function SignupPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   onFocus={() => setFocusedField("email")}
                   onBlur={() => setFocusedField(null)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-transparent text-gray-900 placeholder-gray-400 text-[15px] outline-none rounded-xl"
+                  className="w-full pl-11 pr-4 py-3.5 bg-transparent text-white placeholder-gray-400 text-[15px] outline-none rounded-xl"
                   placeholder="name@company.com"
                 />
               </div>
@@ -525,13 +525,13 @@ export default function SignupPage() {
             {/* Password */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest">
+                <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest">
                   Password
                 </label>
                 <button
                   type="button"
                   onClick={useSuggestedPassword}
-                  className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors"
+                  className="flex items-center gap-1.5 text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
                   title="Suggest a strong password"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
@@ -542,7 +542,7 @@ export default function SignupPage() {
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
                   focusedField === "password"
                     ? "border-blue-500 shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                    : "border-gray-200 hover:border-gray-300"
+                    : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/60"
                 }`}
               >
                 <Lock
@@ -557,7 +557,7 @@ export default function SignupPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   onFocus={() => setFocusedField("password")}
                   onBlur={() => setFocusedField(null)}
-                  className="w-full pl-11 pr-12 py-3.5 bg-transparent text-gray-900 placeholder-gray-400 text-[15px] outline-none rounded-xl"
+                  className="w-full pl-11 pr-12 py-3.5 bg-transparent text-white placeholder-gray-400 text-[15px] outline-none rounded-xl"
                   placeholder="Enter your password"
                 />
                 <button
@@ -577,7 +577,7 @@ export default function SignupPage() {
             <div className="flex justify-end">
               <button
                 type="button"
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
               >
                 Forgot password?
               </button>
@@ -633,7 +633,7 @@ export default function SignupPage() {
                   type="button"
                   whileHover={{ scale: 1.01, y: -1 }}
                   whileTap={{ scale: 0.98 }}
-                  className="relative w-full h-full py-4 rounded-xl font-bold text-slate-700 bg-white border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-[15px] flex items-center justify-center gap-2.5 transition-all shadow-sm"
+                  className="w-full h-full py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center"
                 >
                   Sign In Instead
                   <ArrowRight className="w-4 h-4 opacity-50" />
@@ -643,9 +643,9 @@ export default function SignupPage() {
 
             {/* Divider */}
             <div className="relative flex py-5 items-center">
-              <div className="flex-grow border-t border-slate-200"></div>
-              <span className="flex-shrink-0 mx-4 text-slate-400 text-sm font-medium">Or continue with</span>
-              <div className="flex-grow border-t border-slate-200"></div>
+              <div className="flex-grow border-t border-zinc-800"></div>
+              <span className="flex-shrink-0 mx-4 text-zinc-500 text-sm font-medium">Or continue with</span>
+              <div className="flex-grow border-t border-zinc-800"></div>
             </div>
 
             {/* Google Button */}
@@ -653,10 +653,10 @@ export default function SignupPage() {
               type="button"
               onClick={() => googleLogin()}
               disabled={googleSubmitting}
-              className="w-full relative py-3.5 rounded-xl font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 text-[15px] flex items-center justify-center gap-3 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
             >
               {googleSubmitting ? (
-                <Loader2 className="w-5 h-5 animate-spin text-slate-500" />
+                <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
               ) : (
                 <svg viewBox="0 0 24 24" className="w-5 h-5" xmlns="http://www.w3.org/2000/svg">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -675,7 +675,7 @@ export default function SignupPage() {
             Authorized personnel only.{" "}
             <a
               href="mailto:support@serphawk.com"
-              className="text-blue-600 font-semibold hover:underline"
+              className="text-indigo-400 font-semibold hover:underline"
             >
               Contact Support
             </a>

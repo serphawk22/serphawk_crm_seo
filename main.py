@@ -2680,6 +2680,57 @@ def list_users(role: Optional[str] = None, session: Session = Depends(get_sessio
     return {"users": [_user_dict(u) for u in users]}
 
 
+
+@app.get("/users/{user_id}/stats")
+def get_user_stats(user_id: int, session: Session = Depends(get_session)):
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    # Sales team stats
+    if user.role in ["Admin", "SalesManager", "Employee"]:
+        # Clients handling
+        clients_count = len(session.exec(select(ClientProfile).where(ClientProfile.assignedEmployeeId == user.id)).all())
+        
+        # Leads converted
+        converted_leads_count = len(session.exec(select(Lead).where(Lead.owner_id == user.id, Lead.is_converted == True)).all())
+        
+        # Current active tasks
+        active_tasks = session.exec(select(Task).where(Task.assigned_to == user.id, Task.status.notin_(["approved", "rejected"]))).all()
+        
+        return {
+            "type": "sales",
+            "clients_handling": clients_count,
+            "leads_converted": converted_leads_count,
+            "active_tasks": [
+                {"id": t.id, "title": t.title, "status": t.status, "priority": t.priority} 
+                for t in active_tasks
+            ]
+        }
+        
+    # Dev team stats
+    elif user.role in ["ProjectMember", "Intern"]:
+        if not user.name:
+            tickets = []
+        else:
+            tickets = session.exec(select(ProjectTicket).where(ProjectTicket.current_owner == user.name)).all()
+            
+        total_tickets = len(tickets)
+        in_dev = sum(1 for t in tickets if t.current_state == "In Dev")
+        in_qa = sum(1 for t in tickets if t.current_state == "Given to QA")
+        in_prod = sum(1 for t in tickets if t.current_state == "Prod Release")
+        
+        return {
+            "type": "dev",
+            "total_tickets": total_tickets,
+            "in_dev": in_dev,
+            "in_qa": in_qa,
+            "in_prod": in_prod
+        }
+        
+    return {"type": "unknown"}
+
+
 @app.delete("/users/{user_id}")
 def delete_user(user_id: int, session: Session = Depends(get_session)):
     user = session.get(User, user_id)
@@ -3126,62 +3177,80 @@ async def _auto_research_client_bg(client_id: int, website: str):
 @app.get("/clients/export-csv")
 def export_clients_csv(session: Session = Depends(get_session)):
     from fastapi.responses import StreamingResponse
+    import json as _json
 
     tenant_id = current_tenant_id.get()
     q = select(ClientProfile)
     if tenant_id and tenant_id > 0:
         q = q.where(ClientProfile.tenant_id == tenant_id)
     clients_list = session.exec(q.order_by(ClientProfile.id.asc())).all()
+
+    # Build employee lookup
+    all_emp_ids = list({c.assignedEmployeeId for c in clients_list if c.assignedEmployeeId})
+    emp_by_id = {}
+    if all_emp_ids:
+        emps = session.exec(select(User).where(User.id.in_(all_emp_ids))).all()
+        emp_by_id = {e.id: e for e in emps}
+
     output = _io.StringIO()
     writer = _csv.writer(output)
-    def _format_json(val):
+
+    def _flatten(val):
         if not val:
             return ""
-        if isinstance(val, str):
-            if val.startswith("[") or val.startswith("{"):
-                import json
-                try:
-                    val = json.loads(val)
-                except Exception:
-                    return val
-            else:
-                return val
-        if isinstance(val, list):
-            parts = []
-            for item in val:
-                if isinstance(item, dict) and "name" in item:
-                    parts.append(item["name"])
+        try:
+            if isinstance(val, str):
+                if val.startswith("[") or val.startswith("{"):
+                    val = _json.loads(val)
                 else:
-                    parts.append(str(item))
-            return ", ".join(parts)
-        if isinstance(val, dict):
-            return ", ".join([f"{k}: {v}" for k, v in val.items()])
-        return str(val)
+                    return val
+            def extract(obj):
+                if isinstance(obj, dict):
+                    return [x for v in obj.values() for x in extract(v)]
+                elif isinstance(obj, list):
+                    return [x for v in obj for x in extract(v)]
+                else:
+                    return [str(obj)] if obj and str(obj).strip() else []
+            return ", ".join(extract(val))
+        except Exception:
+            pass
+        return str(val)[:500]
 
     writer.writerow([
-        "ID", "Company Name", "Email", "Phone", "Website", "Status", "Industry", 
-        "Address", "Services Offered", "Target Keywords", "Deal Value", "Payment Status",
-        "Lead Score", "Lead Source", "Revenue Range", "Employee Count", 
-        "Google Rating", "Google Reviews", "SWOT Analysis", "AI Call Pitch", "Discovered Via"
+        "ID", "Company Name", "Contact Person", "Email", "Phone", "Website",
+        "Status", "Industry", "Address", "Assigned Employee",
+        "Services Offered", "Services Requested", "Target Keywords",
+        "Deal Value", "Payment Status", "Lead Score", "Lead Source",
+        "Revenue Range", "Employee Count", "Next Milestone", "Next Milestone Date",
+        "Last Activity", "Last Contact Date", "Next Follow-up Date",
+        "Google Rating", "Google Reviews", "SWOT Analysis", "AI Call Pitch",
+        "Discovered Via", "CMS Type", "Sitemap URL", "LinkedIn URL"
     ])
+
     for c in clients_list:
         user = session.get(User, c.userId) if c.userId else None
         client_email = c.email if hasattr(c, 'email') and c.email else (user.email if user else "")
-        
-        swot_text = _format_json(c.swot_analysis)
-        services_text = _format_json(c.services_offered)
-        keywords_text = _format_json(c.targetKeywords)
+        emp = emp_by_id.get(c.assignedEmployeeId)
+        emp_name = emp.name if emp else ""
+
+        swot_text = _flatten(c.swot_analysis)
+        services_text = _flatten(c.services_offered)
+        services_req_text = _flatten(c.services_requested)
+        keywords_text = _flatten(c.targetKeywords)
 
         writer.writerow([
             c.id,
             c.companyName or "",
+            c.contact_person or "",
             client_email,
             c.phone or "",
             c.websiteUrl or "",
             c.status or "",
             c.industry or "",
             c.address or "",
+            emp_name,
             services_text,
+            services_req_text,
             keywords_text,
             c.deal_value or "",
             c.payment_status or "",
@@ -3189,11 +3258,19 @@ def export_clients_csv(session: Session = Depends(get_session)):
             c.lead_source or "",
             c.revenue_range or "",
             c.employee_count or "",
+            c.nextMilestone or "",
+            c.nextMilestoneDate or "",
+            c.lastActivity or "",
+            c.last_contact_date or "",
+            c.next_followup_date or "",
             c.google_rating or "",
             c.google_reviews or "",
             swot_text,
-            c.call_pitch_text or "",
-            c.discovered_via or ""
+            (c.call_pitch_text or "")[:300],
+            c.discovered_via or "",
+            c.cms_type or "",
+            c.sitemap_url or "",
+            c.linkedin_url or "",
         ])
     output.seek(0)
     return StreamingResponse(
@@ -3569,6 +3646,20 @@ async def generate_client_swot(client_id: int, session: Session = Depends(get_se
     session.commit()
     session.refresh(cp)
     return {"ok": True, "swot_analysis": swot_data}
+
+
+
+@app.post("/leads/{lead_id}/assign-employee")
+def assign_employee_lead(
+    lead_id: int, body: AssignEmployeeRequest, session: Session = Depends(get_session)
+):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    lead.owner_id = body.employee_id
+    session.add(lead)
+    session.commit()
+    return {"ok": True}
 
 
 @app.post("/clients/{client_id}/assign-employee")
@@ -4301,13 +4392,14 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
                 normalized_name=svc_name,
                 category=svc.get("category"),
                 description=svc.get("brief"),
-                estimated_cost=float(svc.get("approx_cost", 0)),
+                estimated_cost=float(str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip() if str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip().replace(".","").isdigit() else 0),
                 cost_is_estimated=svc.get("cost_is_estimated", True),
                 provider_name=company_name,
                 provider_client_id=client_id,
                 provider_industry=cp.industry,
                 provider_address=cp.address,
                 source=scrape_method,
+                tenant_id=current_tenant_id.get(),
             )
             session.add(ms)
             existing_by_name[key] = ms
@@ -8596,6 +8688,15 @@ def list_marketplace_services(
     user: User = Depends(lambda session: _require_roles(session, ["Admin"])),
 ):
     query = select(MarketplaceService).where(MarketplaceService.is_active == True)
+    # Filter by tenant so each account only sees their own extracted services
+    tenant_id = current_tenant_id.get()
+    if tenant_id and tenant_id > 0:
+        query = query.where(
+            or_(
+                MarketplaceService.tenant_id == tenant_id,
+                MarketplaceService.tenant_id == None,
+            )
+        )
 
     if search:
         like = f"%{search}%"
@@ -9299,6 +9400,7 @@ def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(
     from fastapi.responses import StreamingResponse
     import io as _io
     import csv as _csv
+    import json as _json
 
     query = select(Lead)
     if owner_id is not None:
@@ -9307,43 +9409,57 @@ def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(
     if tenant_id and tenant_id != 1:
         query = query.where(Lead.tenant_id == tenant_id)
     leads = session.exec(query.order_by(Lead.created_at.desc())).all()
+
+    # Build user lookup for owner names
+    all_user_ids = list({l.owner_id for l in leads if l.owner_id})
+    users_by_id = {}
+    if all_user_ids:
+        users = session.exec(select(User).where(User.id.in_(all_user_ids))).all()
+        users_by_id = {u.id: u for u in users}
     
     output = _io.StringIO()
     writer = _csv.writer(output)
-    
-    def _format_json(val):
+
+    def _flatten_ai(val):
+        """Convert AI analysis JSON into readable plain text."""
         if not val:
             return ""
-        if isinstance(val, str):
-            if val.startswith("[") or val.startswith("{"):
-                import json
-                try:
-                    val = json.loads(val)
-                except Exception:
-                    return val
-            else:
-                return val
-        if isinstance(val, list):
-            parts = []
-            for item in val:
-                if isinstance(item, dict) and "name" in item:
-                    parts.append(item["name"])
+        try:
+            if isinstance(val, str):
+                val = _json.loads(val)
+            def extract(obj):
+                if isinstance(obj, dict):
+                    return [x for v in obj.values() for x in extract(v)]
+                elif isinstance(obj, list):
+                    return [x for v in obj for x in extract(v)]
                 else:
-                    parts.append(str(item))
-            return ", ".join(parts)
-        if isinstance(val, dict):
-            return ", ".join([f"{k}: {v}" for k, v in val.items()])
-        return str(val)
+                    return [str(obj)] if obj and str(obj).strip() else []
+            return ", ".join(extract(val))
+        except Exception:
+            pass
+        return str(val)[:500]
 
     writer.writerow([
-        "ID", "Company Name", "Website", "Industry", "Email", "Phone", 
-        "Address", "Source", "Status", "Notes", "Last Activity", 
-        "AI Analysis Results", "SWOT Analysis"
+        "ID", "Company Name", "Website", "Industry", "Email", "Phone",
+        "Address", "Source", "Status", "Lead Score", "Deal Value",
+        "Assigned To", "Is Converted", "Notes", "Last Activity",
+        "Created At", "AI Analysis Summary", "SWOT Analysis"
     ])
-    
+
     for l in leads:
-        ai_text = _format_json(l.ai_analysis_results)
-        swot_text = _format_json(l.swot_analysis)
+        owner = users_by_id.get(l.owner_id)
+        owner_name = owner.name if owner else ""
+
+        # Flatten AI analysis into readable text
+        ai_text = _flatten_ai(l.ai_analysis_results)
+
+        # Clean SWOT
+        swot_raw = l.swot_analysis or ""
+        if swot_raw.startswith("{") or swot_raw.startswith("["):
+            swot_text = _flatten_ai(swot_raw)
+        else:
+            swot_text = swot_raw[:800]
+
         writer.writerow([
             l.id,
             l.company_name or "",
@@ -9354,12 +9470,17 @@ def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(
             l.address or "",
             l.source or "",
             l.status or "",
-            l.notes or "",
+            l.lead_score if hasattr(l, "lead_score") and l.lead_score is not None else "",
+            l.deal_value if hasattr(l, "deal_value") and l.deal_value is not None else "",
+            owner_name,
+            "Yes" if l.is_converted else "No",
+            (l.notes or "")[:300],
             l.last_activity or "",
-            ai_text,
-            swot_text
+            l.created_at.strftime("%Y-%m-%d %H:%M") if l.created_at else "",
+            ai_text[:800],
+            swot_text,
         ])
-        
+
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
@@ -9625,13 +9746,14 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
             normalized_name=svc_name,
             category=svc.get("category"),
             description=svc.get("brief"),
-            estimated_cost=float(svc.get("approx_cost", 0)),
+            estimated_cost=float(str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip() if str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip().replace(".","").isdigit() else 0),
             cost_is_estimated=svc.get("cost_is_estimated", True),
             provider_name=company_name,
             provider_client_id=None,
             provider_industry=lead.industry,
             provider_address=lead.address,
             source=scrape_method,
+            tenant_id=current_tenant_id.get(),
         )
         session.add(ms)
         existing_names.add(svc_name.lower())

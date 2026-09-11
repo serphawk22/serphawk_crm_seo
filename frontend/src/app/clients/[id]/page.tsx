@@ -306,7 +306,7 @@ export default function ClientDetailPage() {
   const handleAssignEmployee = async (employeeId: number) => {
     try {
       const res = await fetch(`${API_BASE_URL}/clients/${id}/assign-employee`, {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employee_id: employeeId })
       });

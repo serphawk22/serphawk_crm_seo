@@ -34,7 +34,6 @@ const TABS = [
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
   { key: 'tasks',          label: 'Tasks',           icon: CheckSquare     },
   { key: 'tickets',        label: 'Tickets',         icon: Ticket          },
-  { key: 'opportunities',  label: 'Opportunities',   icon: Target          },
   { key: 'files',          label: 'Files',           icon: FolderOpen      },
   { key: 'health',         label: 'Health',          icon: HeartPulse      },
   { key: 'conversations',  label: 'Conversations',   icon: MessageSquare   },
@@ -582,16 +581,7 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
           );
         }})()}
 
-        {/* Opportunities Section moved here */}
-        <div style={{ marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 24 }}>
-          <OpportunitiesTab
-            lead={lead}
-            timeline={timeline}
-            serviceRequests={serviceRequests}
-            research={research}
-            emails={emails}
-          />
-        </div>
+
       </CollapsibleSection>
 
       {/* SWOT Section */}
@@ -986,7 +976,6 @@ export default function LeadDetailsPage() {
         onScheduleMeeting={() => router.push('/meetings')}
         onSendEmail={() => lead?.email ? window.location.href = `mailto:${lead.email}` : alert(language === 'es' ? 'No hay correo' : 'No email found for this client')}
         onUploadFile={() => switchTab('files')}
-        onCreateOpportunity={() => switchTab('opportunities')}
         darkMode={darkMode}
         onToggleDarkMode={toggleDarkMode}
       />
@@ -1135,7 +1124,7 @@ export default function LeadDetailsPage() {
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ employee_id: Number(val) }),
                     });
-                    fetchClient();
+                    fetchLead();
                   }}
                   className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-zinc-700 
                              bg-slate-50 dark:bg-zinc-950  text-slate-800 dark:text-zinc-100 
