@@ -31,10 +31,10 @@ import TicketsTab from './components/tabs/TicketsTab';
 // ─── Tab definitions ───────────────────────────────────────────────────────────
 const TABS = [
   { key: 'overview',       label: 'Overview',       icon: LayoutDashboard },
+  { key: 'opportunities',  label: 'Opportunities',  icon: Target          },
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
   { key: 'tasks',          label: 'Tasks',           icon: CheckSquare     },
   { key: 'tickets',        label: 'Tickets',         icon: Ticket          },
-  { key: 'opportunities',  label: 'Opportunities',   icon: Target          },
   { key: 'files',          label: 'Files',           icon: FolderOpen      },
   { key: 'health',         label: 'Health',          icon: HeartPulse      },
   { key: 'conversations',  label: 'Conversations',   icon: MessageSquare   },
@@ -575,16 +575,6 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
           );
         }})()}
 
-        {/* Opportunities Section moved here */}
-        <div style={{ marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 24 }}>
-          <OpportunitiesTab
-            client={client}
-            timeline={timeline}
-            serviceRequests={serviceRequests}
-            research={research}
-            emails={emails}
-          />
-        </div>
       </CollapsibleSection>
 
       {/* SWOT Section */}
@@ -792,7 +782,7 @@ export default function AdminClientDetailPage() {
       const fetchJson = (url: string) => fetch(url).then(r => { if (!r.ok) throw new Error(`Fetch failed for ${url}`); return r.json(); });
       const [clientRes, empRes, actRes, emailRes, svcRes, tlRes, notesRes, convRes, taskRes, filesRes, researchRes] = await Promise.allSettled([
         fetchJson(`${API_BASE_URL}/clients/${id}`),
-        fetchJson(`${API_BASE_URL}/employees`),
+        fetchJson(`${API_BASE_URL}/users`),
         fetchJson(`${API_BASE_URL}/clients/${id}/activities`),
         fetchJson(`${API_BASE_URL}/clients/${id}/emails`),
         fetchJson(`${API_BASE_URL}/services/requests`),
@@ -805,7 +795,7 @@ export default function AdminClientDetailPage() {
       ]);
 
       if (clientRes.status === 'fulfilled') setClient(clientRes.value.client || clientRes.value);
-      if (empRes.status === 'fulfilled') setEmployees(empRes.value.employees || []);
+      if (empRes.status === 'fulfilled') setEmployees(empRes.value.users || []);
       if (actRes.status === 'fulfilled') setActivities(actRes.value.activities || []);
       if (emailRes.status === 'fulfilled') setEmails(emailRes.value.emails || []);
       if (svcRes.status === 'fulfilled') setServiceRequests((svcRes.value.requests || []).filter((r: any) => String(r.client_id) === String(id)));
@@ -977,7 +967,7 @@ export default function AdminClientDetailPage() {
         onScheduleMeeting={() => router.push('/meetings')}
         onSendEmail={() => client?.email ? window.location.href = `mailto:${client.email}` : alert(language === 'es' ? 'No hay correo' : 'No email found for this client')}
         onUploadFile={() => switchTab('files')}
-        onCreateOpportunity={() => switchTab('opportunities')}
+        onCreateOpportunity={() => {}}
         darkMode={darkMode}
         onToggleDarkMode={toggleDarkMode}
       />
@@ -1042,6 +1032,15 @@ export default function AdminClientDetailPage() {
                     handleGenerateAnalysis={handleGenerateAnalysis}
                     isGeneratingResearch={isGeneratingResearch}
                     onRefresh={fetchClient}
+                  />
+                )}
+                {activeTab === 'opportunities' && (
+                  <OpportunitiesTab
+                    client={client}
+                    timeline={timeline}
+                    serviceRequests={serviceRequests}
+                    research={research}
+                    emails={emails}
                   />
                 )}
                 {activeTab === 'timeline' && (
@@ -1135,7 +1134,7 @@ export default function AdminClientDetailPage() {
                 >
                   <option value="">{language === 'es' ? 'Seleccionar vendedor' : 'Select salesperson'}</option>
                   <option value="create_new" className="font-bold text-indigo-600">➕ {language === 'es' ? 'Crear Nuevo Vendedor' : 'Create New Salesperson'}</option>
-                  {employees.map((e: any) => (
+                  {employees.filter((e: any) => ["Employee", "Admin", "SalesManager"].includes(e.role)).map((e: any) => (
                     <option key={e.id} value={e.id}>{e.name} — {e.role}</option>
                   ))}
                 </select>

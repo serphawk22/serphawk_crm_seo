@@ -27,9 +27,32 @@ export default function GmailAgentLoop() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const extractUrls = (text: string): string[] => {
-    const urlRegex = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi;
-    const matches = text.match(urlRegex) || [];
-    return Array.from(new Set(matches.map((u) => u.trim())));
+    const seen = new Set<string>();
+    const results: string[] = [];
+
+    // 1. Extract full URLs with http/https
+    const httpRegex = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi;
+    const httpMatches = text.match(httpRegex) || [];
+    httpMatches.forEach(u => {
+      const clean = u.trim().replace(/[,;'"]+$/, '');
+      if (!seen.has(clean)) { seen.add(clean); results.push(clean); }
+    });
+
+    // 2. Extract bare domains (e.g. "example.com" from CSV columns)
+    const bareRegex = /(?:^|[\s,;\t"'])(((?:www\.)?[a-zA-Z0-9][-a-zA-Z0-9]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?(?:\/[^\s,;"']*)?))(?=[\s,;"'\n]|$)/gm;
+    let m;
+    while ((m = bareRegex.exec(text)) !== null) {
+      const domain = m[1].trim().replace(/[,;'"]+$/, '');
+      // Filter out common non-URL patterns
+      if (!domain || domain.includes('@') || /^\d+$/.test(domain)) continue;
+      const withHttp = `https://${domain}`;
+      if (!seen.has(withHttp) && !seen.has(`http://${domain}`)) {
+        seen.add(withHttp);
+        results.push(withHttp);
+      }
+    }
+
+    return results;
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -57,7 +80,8 @@ export default function GmailAgentLoop() {
         const workbook = xlsx.read(arrayBuffer, { type: "array" });
         workbook.SheetNames.forEach(sheetName => {
           const sheet = workbook.Sheets[sheetName];
-          text += xlsx.utils.sheet_to_txt(sheet) + " ";
+          // Use CSV export to preserve cell-by-cell values (better for URL columns)
+          text += xlsx.utils.sheet_to_csv(sheet) + "\n";
         });
       } else if (extension === "txt" || extension === "csv") {
         text = await file.text();
@@ -67,6 +91,10 @@ export default function GmailAgentLoop() {
       }
 
       const urls = extractUrls(text);
+      if (urls.length === 0) {
+        alert("No URLs found in the file. Make sure the file contains website URLs (e.g. https://example.com or example.com).");
+        return;
+      }
       const newTasks = urls.map(url => ({
         id: Math.random().toString(36).substring(7),
         url,

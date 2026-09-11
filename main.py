@@ -1615,10 +1615,10 @@ class TaskCreateRequest(BaseModel):
     priority: str = "Medium"
     due_date: Optional[str] = None
     client_id: Optional[int] = None
+    lead_id: Optional[int] = None
     project_id: Optional[int] = None
     assigned_to: Optional[int] = None
     created_by: Optional[int] = None
-
 
 class TaskUpdateRequest(BaseModel):
     title: Optional[str] = None
@@ -1627,6 +1627,7 @@ class TaskUpdateRequest(BaseModel):
     priority: Optional[str] = None
     due_date: Optional[str] = None
     assigned_to: Optional[int] = None
+    lead_id: Optional[int] = None
 
 
 class TaskCommentCreateRequest(BaseModel):
@@ -2720,7 +2721,7 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
         if not user.name:
             tickets = []
         else:
-            tickets = session.exec(select(ProjectTicket).where(ProjectTicket.current_owner == user.name)).all()
+            tickets = session.exec(select(ProjectTicket).where(ProjectTicket.current_owner.ilike(user.name))).all()
             
         total_tickets = len(tickets)
         in_dev = sum(1 for t in tickets if t.current_state == "In Dev")
@@ -4124,6 +4125,91 @@ def auto_research_client(client_id: int, session: Session = Depends(get_session)
         return {"ok": True, "message": "Research started in background"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
+
+
+@app.post("/clients/{client_id}/extract-services")
+def extract_services(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+    
+    context = f"Company Name: {cp.companyName}\n"
+    if cp.industry:
+        context += f"Industry: {cp.industry}\n"
+    if cp.notes:
+        context += f"Notes: {cp.notes}\n"
+    if research and research.company_overview:
+        context += f"Overview: {research.company_overview}\n"
+        
+    try:
+        prompt = f"""Analyze the following company data and extract a list of services they offer.
+For each service, provide a name, a brief description, and an estimated approximate cost (in dollars, e.g. 1500).
+Return a JSON array of objects with keys: name, description, approx_cost.
+Data:
+{context}"""
+        import json
+        from modules.llm_engine import get_openai_client
+        
+        client_openai = get_openai_client()
+        response = client_openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a data extraction AI. Output raw JSON array of objects. No markdown formatting, just the raw JSON array. If you cannot find services, guess based on the industry."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
+        )
+        raw_res = response.choices[0].message.content
+        
+        try:
+            services_data = json.loads(raw_res)
+        except:
+            if "```json" in raw_res:
+                raw_res = raw_res.split("```json")[1].split("```")[0].strip()
+                services_data = json.loads(raw_res)
+            else:
+                services_data = []
+                
+        if not isinstance(services_data, list):
+            services_data = []
+            
+        added_count = 0
+        from database import MarketplaceService
+        for srv in services_data:
+            if not srv.get("name"): continue
+            
+            # Try parsing approx_cost as float
+            cost = 0.0
+            raw_cost = str(srv.get("approx_cost", 0)).replace('$', '').replace(',', '').strip()
+            try:
+                cost = float(raw_cost)
+            except:
+                cost = 0.0
+                
+            ms = MarketplaceService(
+                service_name=srv["name"],
+                description=srv.get("description", ""),
+                estimated_cost=cost,
+                cost_is_estimated=True,
+                provider_client_id=cp.id,
+                provider_name=cp.companyName or "Unknown Provider",
+                category=cp.industry or "General",
+                status="Active",
+                visibility="Private"
+            )
+            session.add(ms)
+            added_count += 1
+            
+        cp.services_offered = json.dumps(services_data)
+        session.add(cp)
+        session.commit()
+        
+        return {"ok": True, "services": services_data, "marketplace_entries_added": added_count}
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/clients/{client_id}/generate-outbound-draft")
@@ -6414,6 +6500,7 @@ def _task_dict(t: Task, session: Session) -> dict:
         "priority": t.priority,
         "due_date": t.due_date,
         "client_id": t.client_id,
+        "lead_id": t.lead_id,
         "client_name": client_user.name if client_user else (client.companyName if client else None),
         "project_id": t.project_id,
         "assigned_to": t.assigned_to,
@@ -6430,6 +6517,7 @@ def list_tasks(
     status: Optional[str] = None,
     assigned_to: Optional[int] = None,
     client_id: Optional[int] = None,
+    lead_id: Optional[int] = None,
     project_id: Optional[int] = None,
     session: Session = Depends(get_session),
 ):
@@ -6444,6 +6532,8 @@ def list_tasks(
         q = q.where(Task.assigned_to == assigned_to)
     if client_id:
         q = q.where(Task.client_id == client_id)
+    if lead_id:
+        q = q.where(Task.lead_id == lead_id)
     if project_id:
         q = q.where(Task.project_id == project_id)
     tasks = session.exec(q).all()
@@ -12452,7 +12542,7 @@ def get_work_queue(
         # 1. Tasks
         tasks_q = session.query(Task).filter(Task.due_date >= start_dt, Task.due_date <= end_dt)
         if not is_admin:
-            tasks_q = tasks_q.filter(Task.assignee_id == user_id)
+            tasks_q = tasks_q.filter(Task.assigned_to == user_id)
         tasks = tasks_q.all()
         
         # 2. Meetings
@@ -12486,6 +12576,15 @@ def get_work_queue(
             deals_q = deals_q.filter(Deal.owner_id == user_id)
         deals = deals_q.all()
         
+        # 7. Tickets (Dev Team)
+        user = session.get(User, user_id)
+        tickets = []
+        if is_admin or (user and user.role in ["ProjectMember", "Intern"]):
+            tickets_q = session.query(ProjectTicket)
+            if not is_admin and user and user.name:
+                tickets_q = tickets_q.filter(ProjectTicket.current_owner.ilike(user.name))
+            tickets = tickets_q.all()
+        
         return {
             "ok": True,
             "date": target_date.isoformat(),
@@ -12494,7 +12593,8 @@ def get_work_queue(
             "calls": calls,
             "leads": leads,
             "contacts": contacts,
-            "deals": deals
+            "deals": deals,
+            "tickets": tickets
         }
     except Exception as e:
         print("Work Queue Error:", e)

@@ -61,15 +61,6 @@ export default function ClientHeader({
   const leadScore = client?.lead_score ?? 0;
   const dealValue = client?.deal_value ? `$${Number(client.deal_value).toLocaleString()}` : '—';
 
-  const quickActions = [
-    { icon: MessageSquare, label: language === 'es' ? 'Añadir Nota' : 'Add Note',        onClick: onAddNote,          color: 'text-violet-600 ', bg: 'hover:bg-violet-50 ' },
-    { icon: Phone,         label: language === 'es' ? 'Registrar Llamada' : 'Log Call',  onClick: onAddConversation,  color: 'text-blue-600 ',     bg: 'hover:bg-blue-50 '   },
-    { icon: CheckSquare,   label: language === 'es' ? 'Crear Tarea' : 'Create Task',     onClick: onCreateTask,       color: 'text-emerald-600 ', bg: 'hover:bg-emerald-50 ' },
-    { icon: Calendar,      label: language === 'es' ? 'Agendar' : 'Schedule',            onClick: onScheduleMeeting,  color: 'text-amber-600 ',   bg: 'hover:bg-amber-50 ' },
-    { icon: Mail,          label: language === 'es' ? 'Enviar Correo' : 'Send Email',    onClick: onSendEmail,        color: 'text-sky-600 ',       bg: 'hover:bg-sky-50 '     },
-    { icon: Upload,        label: language === 'es' ? 'Subir Archivo' : 'Upload File',   onClick: onUploadFile,       color: 'text-pink-600 ',     bg: 'hover:bg-pink-50 '   },
-    { icon: Target,        label: language === 'es' ? 'Nueva Oportunidad' : 'New Opportunity', onClick: onCreateOpportunity, color: 'text-indigo-600 ', bg: 'hover:bg-indigo-50 ' },
-  ];
 
   // Contact info pills for display in header
   const contactChips = [
@@ -99,29 +90,6 @@ export default function ClientHeader({
           >
             <ArrowLeft size={16} className="text-slate-400" /> {language === 'es' ? 'Volver a Clientes' : 'Back to Clients'}
           </button>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 overflow-x-auto mr-2">
-              {quickActions.map(({ icon: Icon, label, onClick, color, bg }) => (
-                <motion.button
-                  key={label}
-                  whileHover={{ y: -1 }}
-                  whileTap={{ scale: 0.96 }}
-                  onClick={onClick}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold
-                             transition-all whitespace-nowrap ${color} ${bg}`}
-                >
-                  <Icon size={12} />
-                  {label}
-                </motion.button>
-              ))}
-            </div>
-            <button
-              onClick={onToggleDarkMode}
-              className="p-2 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400 hover:text-indigo-600 hover:bg-slate-100 dark:bg-zinc-800 hover:border-slate-300 dark:border-zinc-600 transition-all shadow-sm"
-            >
-              {darkMode ? <Sun size={15} /> : <Moon size={15} />}
-            </button>
-          </div>
         </div>
 
         {/* Row 2: Main header - Company identity + Contact Info + Score */}

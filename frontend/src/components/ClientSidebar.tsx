@@ -20,8 +20,10 @@ import {
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import { useSidebar } from "@/context/SidebarContext";
+import { useTheme } from "@/context/ThemeContext";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { Sun, Moon } from "lucide-react";
 
 const NAV_ITEMS = [
   { icon: Grid3x3, href: "/", labelKey: "navigation.home" },
@@ -42,6 +44,7 @@ export function ClientSidebar() {
   const router = useRouter();
   const { user, logout } = useRole();
   const { collapsed, setCollapsed } = useSidebar();
+  const { theme, toggleTheme } = useTheme();
   const { t } = useTranslation();
 
   const handleLogout = async () => {
@@ -76,10 +79,19 @@ export function ClientSidebar() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -8 }}
                 transition={{ duration: 0.18 }}
-                className="flex flex-col overflow-hidden"
+                className="flex flex-col overflow-hidden flex-1"
               >
-                <span className="font-black text-base leading-tight tracking-tight" style={{ color: "var(--text-primary)" }}>SERP Hawk</span>
-                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">{t("clients.clientPortal", "Client Portal")}</span>
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-base leading-tight tracking-tight" style={{ color: "var(--text-primary)" }}>SERP Hawk</span>
+                  <button
+                    onClick={toggleTheme}
+                    className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                  >
+                    {theme === "dark" ? <Sun className="w-3.5 h-3.5 text-yellow-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-500" />}
+                  </button>
+                </div>
+                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest -mt-1">{t("clients.clientPortal", "Client Portal")}</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -166,6 +178,17 @@ export function ClientSidebar() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {collapsed && (
+            <button
+              onClick={toggleTheme}
+              title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-white/5 transition-all text-slate-400 mb-2"
+            >
+              {theme === "dark" ? <Sun className="w-5 h-5 text-yellow-500" /> : <Moon className="w-5 h-5 text-indigo-500" />}
+            </button>
+          )}
+
           <button
             onClick={handleLogout}
             className={cn(

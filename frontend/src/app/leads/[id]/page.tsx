@@ -790,7 +790,7 @@ export default function LeadDetailsPage() {
       const fetchJson = (url: string) => fetch(url, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => { if (!r.ok) throw new Error(`Fetch failed for ${url}`); return r.json(); });
       const [leadRes, empRes, actRes, emailRes, svcRes, tlRes, notesRes, convRes, taskRes, filesRes, researchRes] = await Promise.allSettled([
         fetchJson(`${API_BASE_URL}/leads/${id}`),
-        fetchJson(`${API_BASE_URL}/employees`),
+        fetchJson(`${API_BASE_URL}/users`),
         fetchJson(`${API_BASE_URL}/leads/${id}/activities`),
         fetchJson(`${API_BASE_URL}/leads/${id}/sent-emails`),
         fetchJson(`${API_BASE_URL}/services/requests`),
@@ -803,7 +803,7 @@ export default function LeadDetailsPage() {
       ]);
 
       if (leadRes.status === 'fulfilled') setLead(leadRes.value.client || leadRes.value);
-      if (empRes.status === 'fulfilled') setEmployees(empRes.value.employees || []);
+      if (empRes.status === 'fulfilled') setEmployees(empRes.value.users || []);
       if (actRes.status === 'fulfilled') setActivities(actRes.value.activities || []);
       if (emailRes.status === 'fulfilled') setEmails(emailRes.value.emails || []);
       if (svcRes.status === 'fulfilled') setServiceRequests((svcRes.value.requests || []).filter((r: any) => String(r.lead_id) === String(id)));
@@ -1132,7 +1132,7 @@ export default function LeadDetailsPage() {
                 >
                   <option value="">{language === 'es' ? 'Seleccionar vendedor' : 'Select salesperson'}</option>
                   <option value="create_new" className="font-bold text-indigo-600">➕ {language === 'es' ? 'Crear Nuevo Vendedor' : 'Create New Salesperson'}</option>
-                  {employees.map((e: any) => (
+                  {employees.filter((e: any) => ["Employee", "Admin", "SalesManager"].includes(e.role)).map((e: any) => (
                     <option key={e.id} value={e.id}>{e.name} — {e.role}</option>
                   ))}
                 </select>
