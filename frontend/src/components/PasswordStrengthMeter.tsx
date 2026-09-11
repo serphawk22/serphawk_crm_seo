@@ -32,9 +32,9 @@ export default function PasswordStrengthMeter({ password, compact = false }: Pas
   if (!strength || !password) return null;
 
   return (
-    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+    <div className="mt-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/60 dark:bg-zinc-900/50 p-3">
       <div className="flex items-center gap-2 mb-1">
-        <div className="h-1.5 flex-1 rounded-full bg-gray-200 overflow-hidden">
+        <div className="h-1.5 flex-1 rounded-full bg-slate-200 dark:bg-zinc-800 overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-300"
             style={{ width: strength.bar, background: strength.color }}
@@ -56,7 +56,7 @@ export default function PasswordStrengthMeter({ password, compact = false }: Pas
                 style={{ color: "#10b981" }}
               />
             ) : (
-              <Circle className="w-3.5 h-3.5 shrink-0 text-slate-300" />
+              <Circle className="w-3.5 h-3.5 shrink-0 text-slate-300 dark:text-zinc-600" />
             )}
             <span
               className={`text-[11px] font-medium ${

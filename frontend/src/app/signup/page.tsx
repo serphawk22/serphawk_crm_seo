@@ -286,10 +286,10 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex overflow-hidden font-sans bg-[#0a0a0a] text-zinc-100 selection:bg-indigo-500/30">
+    <div className="min-h-screen w-full flex bg-slate-50 dark:bg-[#0a0a0a] text-slate-900 dark:text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-hidden">
       {/* ── LEFT PANEL – Visual branding ── */}
       <div
-        className="hidden lg:flex lg:w-[55%] relative flex-col items-center justify-center overflow-hidden p-12"
+        className="hidden lg:flex lg:w-[55%] relative flex-col items-center justify-center overflow-hidden p-12 bg-slate-100 dark:bg-[#050505] border-r border-slate-200 dark:border-zinc-800"
         style={{
           background: "linear-gradient(135deg, #0f1729 0%, #111827 40%, #0d1f5c 100%)",
         }}
@@ -370,7 +370,7 @@ export default function SignupPage() {
           </motion.div>
 
           <div>
-            <h1 className="text-5xl font-extrabold text-white tracking-tight leading-none mb-3">
+            <h1 className="text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none mb-3">
               SERP Hawk
               <span
                 className="block mt-1 text-3xl font-bold"
@@ -383,7 +383,7 @@ export default function SignupPage() {
                 Growth Platform
               </span>
             </h1>
-            <p className="text-blue-200/70 text-lg font-medium max-w-xs mx-auto leading-relaxed">
+            <p className="text-blue-900/70 dark:text-blue-200/70 text-lg font-medium max-w-xs mx-auto leading-relaxed">
               The all-in-one CRM for SEO agencies that want to dominate their market.
             </p>
           </div>
@@ -401,8 +401,8 @@ export default function SignupPage() {
               { value: "3x", label: "Revenue Growth" },
             ].map((stat) => (
               <div key={stat.label} className="text-center">
-                <p className="text-2xl font-extrabold text-white">{stat.value}</p>
-                <p className="text-xs font-medium text-blue-300/60 mt-0.5">{stat.label}</p>
+                <p className="text-2xl font-extrabold text-slate-900 dark:text-white">{stat.value}</p>
+                <p className="text-xs font-medium text-slate-500 dark:text-blue-300/60 mt-0.5">{stat.label}</p>
               </div>
             ))}
           </motion.div>
@@ -411,8 +411,7 @@ export default function SignupPage() {
 
       {/* ── RIGHT PANEL – Login form ── */}
       <div
-        className="flex-1 flex flex-col justify-center relative z-20 px-6 sm:px-12 lg:px-24 xl:px-32"
-        
+        className="flex-1 flex flex-col justify-center relative z-20 px-6 sm:px-12 lg:px-24 xl:px-32 bg-slate-50 dark:bg-[#0a0a0a]"
       >
         {/* Language selector in top right — English + Spanish only */}
         <div className="absolute top-5 right-6 z-20">
@@ -431,7 +430,7 @@ export default function SignupPage() {
               <circle cx="12" cy="12" r="2" fill="white" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold text-white">SERP Hawk CRM</h2>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">SERP Hawk CRM</h2>
         </div>
 
         <motion.div
@@ -442,10 +441,10 @@ export default function SignupPage() {
         >
           {/* Header */}
           <div className="mb-8">
-            <h2 className="text-3xl font-extrabold text-white tracking-tight mb-2">
+            <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-2">
               Create Demo Account
             </h2>
-            <p className="text-zinc-400 text-[15px] font-medium">
+            <p className="text-slate-500 dark:text-zinc-400 text-[15px] font-medium">
               Join the SERP Hawk CRM showcase
             </p>
           </div>
@@ -455,7 +454,7 @@ export default function SignupPage() {
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6"
+              className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 p-6"
             >
               <EmailOTPVerification
                 email={email}
@@ -469,14 +468,14 @@ export default function SignupPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Name */}
             <div>
-              <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
+              <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-2">
                 Full Name
               </label>
               <div
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
                   focusedField === "name"
                     ? "border-blue-500 shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                    : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/60"
+                    : "border-slate-300 dark:border-zinc-800 hover:border-slate-400 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900/60"
                 }`}
               >
                 <div className="absolute left-4 w-4 h-4 text-gray-400">👤</div>
@@ -487,21 +486,21 @@ export default function SignupPage() {
                   onChange={(e) => setName(e.target.value)}
                   onFocus={() => setFocusedField("name")}
                   onBlur={() => setFocusedField(null)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-transparent border-none text-[15px] font-medium text-white placeholder:text-gray-400 focus:ring-0 outline-none"
+                  className="w-full pl-11 pr-4 py-3.5 bg-transparent border-none text-[15px] font-medium text-slate-900 dark:text-white placeholder:text-gray-400 focus:ring-0 outline-none"
                   placeholder="John Doe"
                 />
               </div>
             </div>
             {/* Email */}
             <div>
-              <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
+              <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-2">
                 Email Address
               </label>
               <div
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
                   focusedField === "email"
                     ? "border-blue-500 shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                    : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/60"
+                    : "border-slate-300 dark:border-zinc-800 hover:border-slate-400 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900/60"
                 }`}
               >
                 <Mail
@@ -516,7 +515,7 @@ export default function SignupPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   onFocus={() => setFocusedField("email")}
                   onBlur={() => setFocusedField(null)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-transparent text-white placeholder-gray-400 text-[15px] outline-none rounded-xl"
+                  className="w-full pl-11 pr-4 py-3.5 bg-transparent text-slate-900 dark:text-white placeholder-gray-400 text-[15px] outline-none rounded-xl"
                   placeholder="name@company.com"
                 />
               </div>
@@ -525,13 +524,13 @@ export default function SignupPage() {
             {/* Password */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">
                   Password
                 </label>
                 <button
                   type="button"
                   onClick={useSuggestedPassword}
-                  className="flex items-center gap-1.5 text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+                  className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
                   title="Suggest a strong password"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
@@ -542,7 +541,7 @@ export default function SignupPage() {
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
                   focusedField === "password"
                     ? "border-blue-500 shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                    : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/60"
+                    : "border-slate-300 dark:border-zinc-800 hover:border-slate-400 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900/60"
                 }`}
               >
                 <Lock
@@ -557,7 +556,7 @@ export default function SignupPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   onFocus={() => setFocusedField("password")}
                   onBlur={() => setFocusedField(null)}
-                  className="w-full pl-11 pr-12 py-3.5 bg-transparent text-white placeholder-gray-400 text-[15px] outline-none rounded-xl"
+                  className="w-full pl-11 pr-12 py-3.5 bg-transparent text-slate-900 dark:text-white placeholder-gray-400 text-[15px] outline-none rounded-xl"
                   placeholder="Enter your password"
                 />
                 <button
@@ -577,7 +576,7 @@ export default function SignupPage() {
             <div className="flex justify-end">
               <button
                 type="button"
-                className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
               >
                 Forgot password?
               </button>
@@ -633,7 +632,7 @@ export default function SignupPage() {
                   type="button"
                   whileHover={{ scale: 1.01, y: -1 }}
                   whileTap={{ scale: 0.98 }}
-                  className="w-full h-full py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center"
+                  className="w-full h-full py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center"
                 >
                   Sign In Instead
                   <ArrowRight className="w-4 h-4 opacity-50" />
@@ -643,9 +642,9 @@ export default function SignupPage() {
 
             {/* Divider */}
             <div className="relative flex py-5 items-center">
-              <div className="flex-grow border-t border-zinc-800"></div>
-              <span className="flex-shrink-0 mx-4 text-zinc-500 text-sm font-medium">Or continue with</span>
-              <div className="flex-grow border-t border-zinc-800"></div>
+              <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
+              <span className="flex-shrink-0 mx-4 text-slate-500 dark:text-zinc-500 text-sm font-medium">Or continue with</span>
+              <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
             </div>
 
             {/* Google Button */}
@@ -653,10 +652,10 @@ export default function SignupPage() {
               type="button"
               onClick={() => googleLogin()}
               disabled={googleSubmitting}
-              className="w-full py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
+              className="w-full py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
             >
               {googleSubmitting ? (
-                <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
+                <Loader2 className="w-5 h-5 animate-spin text-slate-400 dark:text-zinc-400" />
               ) : (
                 <svg viewBox="0 0 24 24" className="w-5 h-5" xmlns="http://www.w3.org/2000/svg">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -671,26 +670,18 @@ export default function SignupPage() {
           )}
 
           {/* Footer */}
-          <p className="text-center text-gray-400 text-sm font-medium mt-8">
-            Authorized personnel only.{" "}
-            <a
-              href="mailto:support@serphawk.com"
-              className="text-indigo-400 font-semibold hover:underline"
-            >
-              Contact Support
-            </a>
-          </p>
-
-          {/* Security badges */}
-          <div className="flex items-center justify-center gap-4 mt-8">
-            {["🔒 SSL Secured", "🛡️ SOC 2", "🔑 2FA Ready"].map((badge) => (
-              <span
-                key={badge}
-                className="text-[11px] font-medium text-gray-400"
-              >
-                {badge}
-              </span>
-            ))}
+          <div className="mt-8 text-center text-[11px] font-medium text-slate-500 dark:text-zinc-500">
+            <p>
+              Authorized personnel only.{" "}
+              <Link href="/contact" className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">
+                Contact Support
+              </Link>
+            </p>
+            <div className="flex items-center justify-center gap-4 mt-3">
+              <span className="flex items-center gap-1.5"><Lock className="w-3 h-3 text-slate-400 dark:text-zinc-600" /> SSL Secured</span>
+              <span className="flex items-center gap-1.5"><ShieldCheck className="w-3 h-3 text-slate-400 dark:text-zinc-600" /> SOC 2</span>
+              <span className="flex items-center gap-1.5"><span className="text-[10px]">🔑</span> 2FA Ready</span>
+            </div>
           </div>
         </motion.div>
       </div>
