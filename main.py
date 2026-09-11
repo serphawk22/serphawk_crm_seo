@@ -1372,6 +1372,7 @@ class ClientCreateRequest(BaseModel):
     tagline: Optional[str] = None
     websiteUrl: Optional[str] = None
     targetKeywords: Optional[list[str]] = None
+    assigned_employee_id: Optional[int] = None
 
 
 class ClientUpdateRequest(BaseModel):
@@ -2920,6 +2921,7 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
         tagline=body.tagline,
         websiteUrl=body.websiteUrl,
         targetKeywords=body.targetKeywords,
+        assignedEmployeeId=body.assigned_employee_id,
     )
     session.add(cp)
     session.commit()
