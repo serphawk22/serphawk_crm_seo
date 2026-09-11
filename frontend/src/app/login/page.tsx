@@ -87,10 +87,10 @@ export default function LoginPage() {
     setError("Demo credentials applied.");
   };
 
-  if (!mounted) return <div className="min-h-screen bg-[#0a0a0a]" />;
+  if (!mounted) return <div className="min-h-screen bg-slate-50 dark:bg-[#0a0a0a]" />;
 
   return (
-    <div className="min-h-screen w-full flex bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-hidden">
+    <div className="min-h-screen w-full flex bg-slate-50 dark:bg-[#0a0a0a] text-slate-900 dark:text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-hidden">
       
       {/* ── LEFT PANEL (Form) ── */}
       <div className="flex-1 flex flex-col justify-center relative z-20 px-6 sm:px-12 lg:px-24 xl:px-32">
@@ -98,34 +98,34 @@ export default function LoginPage() {
           
           {/* Logo */}
           <div className="flex items-center gap-3 mb-12">
-            <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-slate-900 dark:bg-zinc-100 flex items-center justify-center">
               <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="#0a0a0a" />
+                <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" className="fill-white dark:fill-[#0a0a0a]" />
               </svg>
             </div>
-            <span className="text-xl font-semibold tracking-tight text-zinc-100">SERPHawk</span>
+            <span className="text-xl font-semibold tracking-tight text-slate-900 dark:text-zinc-100">SERPHawk</span>
           </div>
 
           <div className="mb-8">
-            <h1 className="text-3xl font-semibold tracking-tight text-zinc-100 mb-2">Log in to your account</h1>
-            <p className="text-zinc-400 text-sm">Enter your details to access your workspace.</p>
+            <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-zinc-100 mb-2">Log in to your account</h1>
+            <p className="text-slate-500 dark:text-zinc-400 text-sm">Enter your details to access your workspace.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             <div className="space-y-4">
               {/* Email */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">Email</label>
+                <label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Email</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Mail className="h-4 w-4 text-zinc-500" />
+                    <Mail className="h-4 w-4 text-slate-400 dark:text-zinc-500" />
                   </div>
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/50 border border-zinc-800 rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-zinc-900/50 border border-slate-300 dark:border-zinc-800 rounded-lg text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
                     placeholder="name@company.com"
                   />
                 </div>
@@ -134,21 +134,21 @@ export default function LoginPage() {
               {/* Password */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-zinc-400">Password</label>
-                  <button type="button" onClick={handleDemoLogin} className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+                  <label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Password</label>
+                  <button type="button" onClick={handleDemoLogin} className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">
                     Use Demo Login
                   </button>
                 </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Lock className="h-4 w-4 text-zinc-500" />
+                    <Lock className="h-4 w-4 text-slate-400 dark:text-zinc-500" />
                   </div>
                   <input
                     type="password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/50 border border-zinc-800 rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-zinc-900/50 border border-slate-300 dark:border-zinc-800 rounded-lg text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
                     placeholder="••••••••••••"
                   />
                 </div>
@@ -175,7 +175,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex-1 py-2.5 bg-zinc-100 hover:bg-white text-zinc-900 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
+                className="flex-1 py-2.5 bg-slate-900 dark:bg-zinc-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-zinc-900 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
               >
                 {isSubmitting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -190,7 +190,7 @@ export default function LoginPage() {
               <Link href="/signup" className="flex-1">
                 <button
                   type="button"
-                  className="w-full h-full py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center"
+                  className="w-full h-full py-2.5 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center"
                 >
                   Create Demo
                 </button>
@@ -198,19 +198,19 @@ export default function LoginPage() {
             </div>
 
             <div className="relative flex items-center py-4">
-              <div className="flex-grow border-t border-zinc-800"></div>
-              <span className="flex-shrink-0 mx-4 text-zinc-500 text-xs">OR</span>
-              <div className="flex-grow border-t border-zinc-800"></div>
+              <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
+              <span className="flex-shrink-0 mx-4 text-slate-500 dark:text-zinc-500 text-xs">OR</span>
+              <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
             </div>
 
             <button
               type="button"
               onClick={() => googleLogin()}
               disabled={googleSubmitting}
-              className="w-full py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
+              className="w-full py-2.5 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-lg text-sm text-slate-700 dark:text-zinc-300 font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
             >
               {googleSubmitting ? (
-                <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
+                <Loader2 className="w-4 h-4 animate-spin text-slate-400 dark:text-zinc-400" />
               ) : (
                 <svg viewBox="0 0 24 24" className="w-4 h-4" xmlns="http://www.w3.org/2000/svg">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -223,9 +223,9 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="mt-8 text-center text-sm text-zinc-500">
+          <p className="mt-8 text-center text-sm text-slate-500 dark:text-zinc-500">
             Don't have an account?{" "}
-            <Link href="/signup" className="text-zinc-300 hover:text-white underline underline-offset-4 transition-colors">
+            <Link href="/signup" className="text-slate-900 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-white underline underline-offset-4 transition-colors">
               Request access
             </Link>
           </p>
@@ -233,30 +233,30 @@ export default function LoginPage() {
       </div>
 
       {/* ── RIGHT PANEL (Visual/Abstract) ── */}
-      <div className="relative hidden lg:flex flex-1 items-center justify-center overflow-hidden border-l border-zinc-800 bg-[#0f0f11]">
+      <div className="relative hidden lg:flex flex-1 items-center justify-center overflow-hidden border-l border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-[#0f0f11]">
         
         {/* Subtle mesh background */}
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.15] mix-blend-overlay z-10 pointer-events-none" />
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.05] dark:opacity-[0.15] mix-blend-overlay z-10 pointer-events-none" />
         
         {/* Elegant abstract glow */}
-        <div className="absolute w-[800px] h-[800px] rounded-full bg-indigo-500/10 blur-[100px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-        <div className="absolute w-[600px] h-[600px] rounded-full bg-violet-500/10 blur-[100px] top-1/2 left-1/2 -translate-x-1/2 translate-y-1/4" />
+        <div className="absolute w-[800px] h-[800px] rounded-full bg-indigo-500/20 dark:bg-indigo-500/10 blur-[100px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+        <div className="absolute w-[600px] h-[600px] rounded-full bg-violet-500/20 dark:bg-violet-500/10 blur-[100px] top-1/2 left-1/2 -translate-x-1/2 translate-y-1/4" />
 
         {/* Clean central graphic or quote */}
         <div className="relative z-20 max-w-md w-full px-8 flex flex-col items-start gap-8">
-          <div className="w-full rounded-2xl bg-zinc-900/40 border border-zinc-800/60 p-8 backdrop-blur-sm shadow-2xl">
+          <div className="w-full rounded-2xl bg-white/60 dark:bg-zinc-900/40 border border-slate-200/60 dark:border-zinc-800/60 p-8 backdrop-blur-sm shadow-2xl">
             <div className="flex items-center gap-3 mb-6">
-              <CheckCircle2 className="w-5 h-5 text-indigo-400" />
-              <span className="text-sm font-medium text-zinc-400 uppercase tracking-widest">Enterprise Ready</span>
+              <CheckCircle2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <span className="text-sm font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-widest">Enterprise Ready</span>
             </div>
-            <p className="text-xl font-medium text-zinc-200 leading-relaxed mb-8">
+            <p className="text-xl font-medium text-slate-900 dark:text-zinc-200 leading-relaxed mb-8">
               "SERPHawk transformed our agency's workflow. We closed 40% more deals in our first quarter by having our entire pipeline intelligently managed in one place."
             </p>
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-zinc-800" />
+              <div className="w-10 h-10 rounded-full bg-slate-300 dark:bg-zinc-800" />
               <div>
-                <p className="text-sm font-semibold text-zinc-200">Sarah Jenkins</p>
-                <p className="text-xs text-zinc-500">Director of Growth, Horizon SEO</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-zinc-200">Sarah Jenkins</p>
+                <p className="text-xs text-slate-500 dark:text-zinc-500">Director of Growth, Horizon SEO</p>
               </div>
             </div>
           </div>
