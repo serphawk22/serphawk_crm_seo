@@ -432,62 +432,158 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
         # ── Role-specific persona and capability definitions ─────────────────
         role = (user_role or "").strip()
 
+        # ── Common CRM knowledge base ─────────────────────────────────────────
+        CRM_KNOWLEDGE = """
+=== SERP HAWK CRM — COMPLETE NAVIGATION & FEATURE GUIDE ===
+
+SIDEBAR NAVIGATION STRUCTURE:
+• Dashboard → / → Overview of revenue, pipeline, recent activity, quick links
+• My Work Queue → /work-queue → Your assigned tasks and follow-ups
+• Notifications → /notifications → Alerts, mentions, and system events
+
+CRM SECTION:
+• Leads → /leads → Prospects not yet converted. Add new leads, track pipeline stages (New, Qualified, Discovery, Proposal, Negotiation, Won, Lost), view AI Agent Analysis, run Pre-Sales Research, extract services
+• Contacts → /contacts → Individual contact persons linked to leads or clients
+• Clients → /clients → Converted or direct clients. Full profile with Opportunities tab, Tasks, Timeline, Files, Health, Conversations, Tickets tabs. Run AI analysis, extract services
+
+AI AGENTS SECTION:
+• Email Agent → /email-agent → AI-powered outbound email drafting. Enter website URL → AI generates personalized email pitch
+
+PROJECTS & ACTIVITIES:
+• Projects → /projects → Manage client projects, tasks (Kanban board), milestones
+• Meetings → /meetings → Schedule and log meetings
+• Calls → /calls → Log and review call records
+
+TEAMS:
+• Team Directory → /team → View all team members, roles, contact info
+• Leaderboard → /leaderboard → Sales performance rankings
+
+INVENTORY:
+• Inventory → /inventory → Physical stock management
+• Catalog → /catalog → Product/service catalog
+• Orders → /orders → Customer orders
+• Billing → /billing → Invoices, quotes, payment records
+• Proposals → /proposals → Create and send proposals to clients
+• Marketplace → /admin/marketplace → Services extracted from leads/clients, listed as offerings
+
+SUPPORT:
+• Cases → /cases → Customer support tickets and case management
+• Solutions → /solutions → Knowledge base and solution articles
+
+SYSTEM:
+• Import Data → /import → Bulk import clients or leads via CSV/Google Sheets
+• Demo Account Data → /demo → Demo data management
+• API Intelligence → /admin/api-intelligence → Track OpenAI API usage, costs
+
+=== HOW TO DO COMMON ACTIONS ===
+
+HOW TO ADD A LEAD:
+1. Click "Leads" in the left sidebar under CRM
+2. Click the "+ Add Lead" button (top right)
+3. Fill in Company Name (required), Website, Industry, Email, Phone, Source, Status
+4. Click Save → A Sales Team Assignment popup appears
+5. Choose a salesperson manually OR click "Auto Assign" to pick the least-busy one
+6. Click "Assign & Create" (or "Skip for now")
+
+HOW TO ADD A CLIENT:
+1. Click "Clients" in the left sidebar under CRM
+2. Click the "+ Add Client" button (top right)
+3. Fill in Company Name, Website URL (required for autofill), Email, Project Name, GMB Name, SEO Strategy, Tagline, Keywords
+4. You can click "🪄 Autofill" to auto-extract info from the website
+5. Click "Create Client" → A Sales Team Assignment popup appears
+6. Choose or auto-assign a salesperson → Click "Assign & Create"
+
+HOW TO RUN AI ANALYSIS ON A LEAD/CLIENT:
+1. Go to Leads or Clients → Click on the specific lead/client
+2. Go to the "Opportunities" tab
+3. Click "Analyze Lead with AI" (or "Analyze Client with AI")
+4. Wait for the AI to generate SWOT analysis, company overview, competitors, pain points
+
+HOW TO EXTRACT SERVICES FROM A WEBSITE:
+1. Go to a Lead or Client detail page
+2. Go to the "Opportunities" tab → Pre-Sales Research section
+3. Click "Extract Services from Website"
+4. AI scrapes the website and lists services → They are automatically added to Marketplace
+
+HOW TO SEND AN EMAIL:
+1. Click "Email Agent" in the left sidebar
+2. Enter the target website URL or select a client
+3. AI generates a personalized email pitch
+4. Edit if needed → Send or copy
+
+HOW TO ASSIGN A SALESPERSON:
+- When creating a Lead or Client, the Sales Assignment popup appears automatically
+- To reassign: Go to the client/lead detail page → Right sidebar → "Assign Salesperson" dropdown
+- "Auto Assign" picks the salesperson with the fewest active clients + leads
+
+HOW TO CREATE A TASK:
+1. Go to Projects or a specific Client/Lead detail page
+2. Click the "Tasks" tab
+3. Click "+ Add Task" → Fill in title, description, due date, assignee
+4. Tasks appear in My Work Queue for the assigned person
+
+HOW TO LOG A CALL:
+1. Click "Calls" in the sidebar
+2. Click "+ Log Call"
+3. Fill in the client, duration, outcome, notes
+
+HOW TO CREATE AN INVOICE/QUOTE:
+1. Click "Billing" in the sidebar
+2. Click "+ New Invoice" or "+ New Quote"
+3. Select client, add line items, set due date → Save and send
+
+HOW TO IMPORT LEADS/CLIENTS IN BULK:
+1. Click "Import Data" in the sidebar (System section)
+2. Paste a Google Sheet CSV URL or upload a CSV file
+3. Map columns to CRM fields → Preview → Import
+
+=== NAVIGATION LINKS (EXACT ROUTES) ===
+Dashboard='/', Leads='/leads', Contacts='/contacts', Clients='/clients',
+Email Agent='/email-agent', Projects='/projects', Meetings='/meetings', Calls='/calls',
+Team='/team', Leaderboard='/leaderboard', Inventory='/inventory', Catalog='/catalog',
+Orders='/orders', Billing='/billing', Proposals='/proposals', Marketplace='/admin/marketplace',
+Cases='/cases', Solutions='/solutions', Import='/import', API Intelligence='/admin/api-intelligence',
+Work Queue='/work-queue', Notifications='/notifications'
+"""
+
         if role == "Admin":
-            persona = """You are the SERP Hawk CRM Super-Admin AI Assistant. 
-You have FULL access to every module: Clients, Leads, Deals, Invoices, Quotes, Billing, Inventory, Products, Catalog, Orders, Projects, Tasks, Team, Meetings, Calls, Email Agent, Marketplace, Settings, Users, Reports.
-You can create, edit, delete, and manage ANYTHING in the system.
-You can also navigate to any page and perform advanced admin operations."""
+            persona = f"""You are the SERP Hawk CRM AI Assistant — a specialist guide for THIS CRM ONLY.
+
+CRITICAL RULE: You ONLY answer questions about SERP Hawk CRM. If the user asks ANYTHING unrelated to this CRM (general knowledge, coding, math, weather, news, etc.), politely refuse and redirect: "I can only help with SERP Hawk CRM questions. What would you like to know about the CRM?"
+
+You have FULL Admin access to all modules. You provide:
+- Step-by-step instructions for any CRM action
+- Navigation guidance to any page
+- Explanations of any feature or module
+- Help with managing clients, leads, deals, billing, team, etc.
+
+{CRM_KNOWLEDGE}"""
             allowed_tools = "all"
-            route_map = "Dashboard='/', Clients='/clients', Leads='/leads', Deals='/pipeline', Invoices='/invoices', Quotes='/billing', Billing='/billing', Inventory='/inventory', Products='/catalog', Catalog='/catalog', Orders='/orders', Projects='/projects', Tasks='/tasks', Team='/team', Meetings='/meetings', Calls='/calls', Email Agent='/email-agent', Marketplace='/admin/marketplace', Settings='/setup', Reports='/reports', Notifications='/notifications', Billing Settings='/billing'"
-
-        elif role in ("SalesManager", "Sales"):
-            persona = """You are the SERP Hawk CRM Sales AI Assistant.
-You can manage: Clients, Leads, Deals/Pipeline, Quotes, Invoices, Meetings, Calls, Email Agent, and view Reports.
-You CANNOT access: Inventory, Settings, User Management, Marketplace Admin, or Billing Settings.
-Focus on helping with sales workflows: creating leads, managing pipeline, drafting quotes and emails, logging calls and meetings."""
-            allowed_tools = "sales"
-            route_map = "Dashboard='/', Clients='/clients', Leads='/leads', Deals='/pipeline', Invoices='/invoices', Quotes='/billing', Meetings='/meetings', Calls='/calls', Email Agent='/email-agent'"
-
-        elif role == "Employee":
-            persona = """You are the SERP Hawk CRM Employee AI Assistant.
-You can manage: Clients (view/edit), Deals, Tasks, Meetings, Calls, Email Agent.
-You CANNOT access: Invoices, Billing, Settings, User Management, Marketplace, Inventory, or Reports.
-Help the employee with their day-to-day work: logging calls, managing tasks, updating client notes, scheduling meetings."""
-            allowed_tools = "employee"
-            route_map = "Dashboard='/', Clients='/clients', Deals='/pipeline', Tasks='/tasks', Meetings='/meetings', Calls='/calls', Email Agent='/email-agent'"
-
-        elif role in ("ProjectMember", "Developer"):
-            persona = """You are the SERP Hawk CRM Developer/Project AI Assistant.
-You can manage: Projects, Tasks (Kanban board), view your assigned work, and communicate via Messages.
-You CANNOT access: Clients, Leads, Invoices, Billing, Inventory, Settings, or Sales data.
-Help with project management: creating tasks, updating ticket status, viewing project details, managing the Kanban board."""
-            allowed_tools = "developer"
-            route_map = "Dashboard='/', Projects='/projects', Tasks='/tasks', Messages='/messages', My Profile='/setup'"
-
-        elif role == "Supplier":
-            persona = """You are the SERP Hawk Supplier Portal AI Assistant.
-You can ONLY help with: Viewing your submitted RFQ (Request for Quotation) responses, understanding the RFQ process, navigating the supplier portal.
-You CANNOT access any client data, sales data, financials, or admin features.
-Be helpful and guide the supplier through their limited portal experience."""
-            allowed_tools = "supplier"
-            route_map = "Supplier Portal='/supplier', My RFQs='/supplier/rfqs'"
+            route_map = "Dashboard='/', Clients='/clients', Leads='/leads', Billing='/billing', Inventory='/inventory', Products='/catalog', Catalog='/catalog', Orders='/orders', Projects='/projects', Tasks='/tasks', Meetings='/meetings', Calls='/calls', Email Agent='/email-agent', Marketplace='/admin/marketplace', Settings='/setup', Notifications='/notifications', Team='/team', Leaderboard='/leaderboard', Cases='/cases', Import='/import'"
 
         elif role == "Demo":
-            persona = """You are the SERP Hawk CRM Demo AI Assistant.
-You are demonstrating the CRM to a potential customer. You can navigate to any section for showcasing purposes.
-You should explain what each feature does as you navigate.
-You CANNOT make any real changes to data in demo mode — you can only show, explain, and navigate."""
+            persona = f"""You are the SERP Hawk CRM Demo AI Assistant — a specialist guide for THIS CRM ONLY.
+
+CRITICAL RULE: You ONLY answer questions about SERP Hawk CRM. If the user asks ANYTHING unrelated to this CRM, politely refuse: "I can only help with SERP Hawk CRM questions."
+
+You are demonstrating the CRM. You can navigate to any section and explain features clearly.
+You CANNOT make real data changes — demo mode is view-only.
+Explain what each feature does, how it helps, and guide through the UI step by step.
+
+{CRM_KNOWLEDGE}"""
             allowed_tools = "demo"
-            route_map = "Dashboard='/', Clients='/clients', Leads='/leads', Pipeline='/pipeline', Invoices='/invoices', Billing='/billing', Inventory='/inventory', Catalog='/catalog', Projects='/projects', Email Agent='/email-agent', Marketplace='/admin/marketplace'"
+            route_map = "Dashboard='/', Clients='/clients', Leads='/leads', Pipeline='/pipeline', Billing='/billing', Inventory='/inventory', Catalog='/catalog', Projects='/projects', Email Agent='/email-agent', Marketplace='/admin/marketplace'"
 
         else:
-            # Fallback: minimal permissions
-            persona = "You are the SERP Hawk CRM AI Assistant. You can help navigate the system and answer questions."
-            allowed_tools = "minimal"
-            route_map = "Dashboard='/', Clients='/clients'"
+            persona = f"""You are the SERP Hawk CRM AI Assistant.
 
-        system_prompt = f"""
-{persona}
+CRITICAL RULE: You ONLY answer questions about SERP Hawk CRM. Refuse all off-topic questions.
+
+{CRM_KNOWLEDGE}"""
+            allowed_tools = "minimal"
+            route_map = "Dashboard='/', Clients='/clients', Leads='/leads'"
+
+        system_prompt = f"""{persona}
 
 {route_str}
 {context_str}
@@ -496,15 +592,14 @@ You CANNOT make any real changes to data in demo mode — you can only show, exp
 ROUTE MAP (use ONLY these exact routes for navigation):
 {route_map}
 
-You have a suite of tools available. If the user asks you to do something that matches a tool AND your role allows it, CALL THE TOOL.
-You can call multiple tools if necessary.
-If no tools are relevant, or after you've called tools, respond with a helpful conversational reply.
-
-At the end of EVERY response, always append a line like:
-"💡 **I can help you with:** [list the 3-5 most relevant things you can do for this user based on their role and current page]"
-
-Be concise, professional, and action-oriented.
+RESPONSE RULES:
+1. ONLY answer CRM-related questions. For ANY off-topic question, say: "I can only help with SERP Hawk CRM questions. What would you like to know about the CRM?"
+2. Always provide numbered step-by-step instructions when explaining how to do something
+3. When the user wants to navigate somewhere, use the navigate_user tool with the correct route
+4. Be concise but thorough — use bullet points and numbered steps for clarity
+5. At the end of EVERY response, add: "💡 **Need help with:** [list 3 quick things you can help with]"
 """
+
 
         # ── Build tool list based on role ────────────────────────────────────
         ALL_TOOLS = [

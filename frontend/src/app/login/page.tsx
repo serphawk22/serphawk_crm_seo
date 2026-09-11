@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useGoogleLogin } from "@react-oauth/google";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
-import { Loader2, ArrowRight, ShieldCheck, Mail, Lock, CheckCircle2 } from "lucide-react";
+import { Loader2, ArrowRight, ShieldCheck, Mail, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import AuthThemeToggle from "@/components/AuthThemeToggle";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -17,7 +17,6 @@ export default function LoginPage() {
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { login } = useRole();
-  const router = useRouter();
 
   useEffect(() => {
     setMounted(true);
@@ -84,48 +83,57 @@ export default function LoginPage() {
   const handleDemoLogin = () => {
     setEmail("admin@serphawk.com");
     setPassword("Admin123!");
-    setError("Demo credentials applied.");
+    setError("");
   };
 
-  if (!mounted) return <div className="min-h-screen bg-slate-50 dark:bg-[#0a0a0a]" />;
+  if (!mounted) return <div className="min-h-screen bg-[#fafafa] dark:bg-[#0a0a0b]" />;
 
   return (
-    <div className="min-h-screen w-full flex bg-slate-50 dark:bg-[#0a0a0a] text-slate-900 dark:text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-hidden">
+    <div className="min-h-screen w-full flex items-center justify-center bg-[#fafafa] dark:bg-[#0a0a0b] text-slate-900 dark:text-zinc-100 font-sans relative overflow-hidden">
       
-      {/* ── LEFT PANEL (Form) ── */}
-      <div className="flex-1 flex flex-col justify-center relative z-20 px-6 sm:px-12 lg:px-24 xl:px-32">
-        <div className="w-full max-w-[440px] mx-auto flex flex-col">
+      {/* Background Subtle Elements */}
+      <div className="absolute inset-0 pointer-events-none opacity-40 dark:opacity-20 transition-opacity duration-500">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-200 dark:bg-indigo-900/40 rounded-full mix-blend-multiply dark:mix-blend-lighten filter blur-3xl opacity-50 animate-blob" />
+        <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-blue-200 dark:bg-blue-900/40 rounded-full mix-blend-multiply dark:mix-blend-lighten filter blur-3xl opacity-50 animate-blob animation-delay-2000" />
+      </div>
+
+      <div className="absolute top-6 right-6 z-50">
+        <AuthThemeToggle />
+      </div>
+
+      <motion.div 
+        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        className="w-full max-w-[420px] px-6 relative z-10"
+      >
+        <div className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border border-white/20 dark:border-zinc-800 shadow-2xl rounded-3xl p-8 sm:p-10">
           
-          {/* Logo */}
-          <div className="flex items-center gap-3 mb-12">
-            <div className="w-8 h-8 rounded-lg bg-slate-900 dark:bg-zinc-100 flex items-center justify-center">
-              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" className="fill-white dark:fill-[#0a0a0a]" />
+          <div className="flex flex-col items-center mb-8 text-center">
+            <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center mb-5 shadow-lg shadow-indigo-600/20">
+              <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" className="fill-white" />
               </svg>
             </div>
-            <span className="text-xl font-semibold tracking-tight text-slate-900 dark:text-zinc-100">SERPHawk</span>
-          </div>
-
-          <div className="mb-8">
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-zinc-100 mb-2">Log in to your account</h1>
-            <p className="text-slate-500 dark:text-zinc-400 text-sm">Enter your details to access your workspace.</p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">Welcome back</h1>
+            <p className="text-slate-500 dark:text-zinc-400 text-sm">Sign in to your SERP Hawk workspace.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             <div className="space-y-4">
               {/* Email */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Email</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Mail className="h-4 w-4 text-slate-400 dark:text-zinc-500" />
+                <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase">Email Address</label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                    <Mail className="h-4 w-4 text-slate-400 dark:text-zinc-500 group-focus-within:text-indigo-500 transition-colors" />
                   </div>
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-zinc-900/50 border border-slate-300 dark:border-zinc-800 rounded-lg text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-zinc-950/50 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all shadow-sm"
                     placeholder="name@company.com"
                   />
                 </div>
@@ -134,21 +142,21 @@ export default function LoginPage() {
               {/* Password */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Password</label>
-                  <button type="button" onClick={handleDemoLogin} className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">
-                    Use Demo Login
-                  </button>
+                  <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase">Password</label>
+                  <Link href="/forgot-password" className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">
+                    Forgot password?
+                  </Link>
                 </div>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Lock className="h-4 w-4 text-slate-400 dark:text-zinc-500" />
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                    <Lock className="h-4 w-4 text-slate-400 dark:text-zinc-500 group-focus-within:text-indigo-500 transition-colors" />
                   </div>
                   <input
                     type="password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-zinc-900/50 border border-slate-300 dark:border-zinc-800 rounded-lg text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-zinc-950/50 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all shadow-sm"
                     placeholder="••••••••••••"
                   />
                 </div>
@@ -163,43 +171,32 @@ export default function LoginPage() {
                   exit={{ opacity: 0, height: 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="mt-2 text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3 py-2 rounded-lg flex items-center gap-2">
+                  <div className="mt-1 text-sm text-rose-500 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3 py-2.5 rounded-lg flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 shrink-0" />
-                    <span>{error}</span>
+                    <span className="font-medium">{error}</span>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            <div className="flex flex-col sm:flex-row gap-3 mt-2">
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="flex-1 py-2.5 bg-slate-900 dark:bg-zinc-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-zinc-900 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
-              >
-                {isSubmitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    Sign in
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-              
-              <Link href="/signup" className="flex-1">
-                <button
-                  type="button"
-                  className="w-full h-full py-2.5 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center"
-                >
-                  Create Demo
-                </button>
-              </Link>
-            </div>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full mt-2 py-3 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 rounded-xl text-sm font-bold tracking-wide transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-70 disabled:scale-100 active:scale-[0.98]"
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  Sign in
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
 
-            <div className="relative flex items-center py-4">
+            <div className="relative flex items-center py-2">
               <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
-              <span className="flex-shrink-0 mx-4 text-slate-500 dark:text-zinc-500 text-xs">OR</span>
+              <span className="flex-shrink-0 mx-4 text-slate-400 dark:text-zinc-600 text-xs font-medium uppercase tracking-widest">Or</span>
               <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
             </div>
 
@@ -207,10 +204,10 @@ export default function LoginPage() {
               type="button"
               onClick={() => googleLogin()}
               disabled={googleSubmitting}
-              className="w-full py-2.5 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-lg text-sm text-slate-700 dark:text-zinc-300 font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
+              className="w-full py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-xl text-sm text-slate-700 dark:text-zinc-300 font-semibold transition-all shadow-sm flex items-center justify-center gap-2.5 disabled:opacity-70 active:scale-[0.98]"
             >
               {googleSubmitting ? (
-                <Loader2 className="w-4 h-4 animate-spin text-slate-400 dark:text-zinc-400" />
+                <Loader2 className="w-4 h-4 animate-spin text-slate-400 dark:text-zinc-500" />
               ) : (
                 <svg viewBox="0 0 24 24" className="w-4 h-4" xmlns="http://www.w3.org/2000/svg">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -223,53 +220,23 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="mt-8 text-center text-sm text-slate-500 dark:text-zinc-500">
-            Don't have an account?{" "}
-            <Link href="/signup" className="text-slate-900 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-white underline underline-offset-4 transition-colors">
-              Request access
-            </Link>
-          </p>
-        </div>
-      </div>
-
-      {/* ── RIGHT PANEL (Visual/Abstract) ── */}
-      <div className="relative hidden lg:flex flex-1 items-center justify-center overflow-hidden border-l border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-[#0f0f11]">
-        
-        {/* Subtle mesh background */}
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.05] dark:opacity-[0.15] mix-blend-overlay z-10 pointer-events-none" />
-        
-        {/* Elegant abstract glow */}
-        <div className="absolute w-[800px] h-[800px] rounded-full bg-indigo-500/20 dark:bg-indigo-500/10 blur-[100px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-        <div className="absolute w-[600px] h-[600px] rounded-full bg-violet-500/20 dark:bg-violet-500/10 blur-[100px] top-1/2 left-1/2 -translate-x-1/2 translate-y-1/4" />
-
-        {/* Clean central graphic or quote */}
-        <div className="relative z-20 max-w-md w-full px-8 flex flex-col items-start gap-8">
-          <div className="w-full rounded-2xl bg-white/60 dark:bg-zinc-900/40 border border-slate-200/60 dark:border-zinc-800/60 p-8 backdrop-blur-sm shadow-2xl">
-            <div className="flex items-center gap-3 mb-6">
-              <CheckCircle2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              <span className="text-sm font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-widest">Enterprise Ready</span>
-            </div>
-            <p className="text-xl font-medium text-slate-900 dark:text-zinc-200 leading-relaxed mb-8">
-              "SERPHawk transformed our agency's workflow. We closed 40% more deals in our first quarter by having our entire pipeline intelligently managed in one place."
+          <div className="mt-8 pt-6 border-t border-slate-100 dark:border-zinc-800/60 flex flex-col items-center gap-3">
+            <button 
+              onClick={handleDemoLogin}
+              className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
+            >
+              Try the Admin Demo Account
+            </button>
+            <p className="text-center text-sm text-slate-500 dark:text-zinc-500">
+              New to SERP Hawk?{" "}
+              <Link href="/signup" className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                Create a demo workspace
+              </Link>
             </p>
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-slate-300 dark:bg-zinc-800" />
-              <div>
-                <p className="text-sm font-semibold text-slate-900 dark:text-zinc-200">Sarah Jenkins</p>
-                <p className="text-xs text-slate-500 dark:text-zinc-500">Director of Growth, Horizon SEO</p>
-              </div>
-            </div>
           </div>
-          
-          <div className="flex gap-6 opacity-40 ml-2">
-            {/* Abstract geometric accents */}
-            <div className="w-2 h-2 rounded-full bg-zinc-500" />
-            <div className="w-2 h-2 rounded-full bg-zinc-700" />
-            <div className="w-2 h-2 rounded-full bg-zinc-700" />
-          </div>
-        </div>
-      </div>
 
+        </div>
+      </motion.div>
     </div>
   );
 }
