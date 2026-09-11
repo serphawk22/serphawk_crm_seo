@@ -2644,6 +2644,8 @@
     "empty": "No quotations yet",
     "create_first": "Create your first quote",
     "download_pdf": "Download PDF",
+    "preview_pdf": "Preview PDF",
+    "pdf_error": "Could not load PDF preview",
     "delete": "Delete",
     "valid_until": "Valid until",
     "update_status": "Update Status",

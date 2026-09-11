@@ -7593,7 +7593,7 @@ def proposal_pdf(proposal_id: int, session: Session = Depends(get_session)):
     light_bg = colors.HexColor("#f1f5f9")
 
     title_s = ParagraphStyle("PTitle", parent=styles["Normal"], fontSize=26, fontName="Helvetica-Bold",
-                             textColor=dark, spaceAfter=2)
+                             textColor=dark, leading=28, spaceAfter=2)
     sub_s = ParagraphStyle("PSub", parent=styles["Normal"], fontSize=11, textColor=mid)
     h2 = ParagraphStyle("PH2", parent=styles["Normal"], fontSize=11, fontName="Helvetica-Bold",
                         textColor=dark, spaceBefore=14, spaceAfter=4)
@@ -7606,7 +7606,7 @@ def proposal_pdf(proposal_id: int, session: Session = Depends(get_session)):
     # ── HEADER ────────────────────────────────────────────────────────────────
     header_data = [
         [Paragraph("QUOTATION", title_s), Paragraph(f"# Q-{prop.id:04d}", title_s)],
-        [Paragraph("SERP Hawk | Team DaPros", sub_s), Paragraph(f"Currency: {currency}", sub_s)],
+        [Paragraph("SERP Hawk", sub_s), Paragraph(f"Currency: {currency}", sub_s)],
     ]
     header_tbl = Table(header_data, colWidths=[90*mm, 80*mm])
     header_tbl.setStyle(TableStyle([
@@ -7697,7 +7697,7 @@ def proposal_pdf(proposal_id: int, session: Session = Depends(get_session)):
     els.append(Spacer(1, 20))
     els.append(HRFlowable(width="100%", thickness=0.5, color=mid))
     els.append(Spacer(1, 6))
-    els.append(Paragraph("SERP Hawk | Team DaPros — Thank you for your business!", footer_s))
+    els.append(Paragraph("SERP Hawk — Thank you for your business!", footer_s))
 
     doc.build(els)
     buf.seek(0)
@@ -11355,6 +11355,43 @@ def list_sales_orders(status: Optional[str] = None, client_id: Optional[int] = N
     orders = session.exec(q).all()
     return {"orders": [_so_dict(o, session) for o in orders]}
 
+def _sales_order_recipient(o: SalesOrder, session: Session):
+    """Resolve the recipient (email, name) for a sales order.
+    Priority: lead → client's linked account user → contact linked to the client."""
+    recipient_email = None
+    recipient_name = None
+
+    if o.lead_id:
+        lead = session.get(Lead, o.lead_id)
+        if lead and lead.email:
+            recipient_email = lead.email
+            recipient_name = lead.company_name or lead.email
+
+    if not recipient_email and o.client_id:
+        client = session.get(ClientProfile, o.client_id)
+        if client:
+            if client.userId:
+                user = session.get(User, client.userId)
+                if user and getattr(user, "email", None):
+                    recipient_email = user.email
+                    recipient_name = client.companyName
+            if not recipient_email:
+                contact = session.exec(
+                    select(Contact).where(Contact.client_id == o.client_id, Contact.email.is_not(None)).limit(1)
+                ).first()
+                if contact and contact.email:
+                    recipient_email = contact.email
+                    recipient_name = (
+                        contact.full_name
+                        or f"{contact.first_name or ''} {contact.last_name or ''}".strip()
+                        or client.companyName
+                    )
+            if recipient_email and not recipient_name:
+                recipient_name = client.companyName
+
+    return recipient_email, recipient_name
+
+
 def _so_dict(o: SalesOrder, session: Session) -> dict:
     client = session.get(ClientProfile, o.client_id) if o.client_id else None
     lead = session.get(Lead, o.lead_id) if o.lead_id else None
@@ -11363,6 +11400,9 @@ def _so_dict(o: SalesOrder, session: Session) -> dict:
         (client.companyName if client else None)
         or (lead.company_name if lead else None)
     )
+    recipient_email, recipient_name = _sales_order_recipient(o, session)
+    d["recipient_email"] = recipient_email
+    d["recipient_name"] = recipient_name
     return d
 
 @app.post("/sales-orders")
@@ -11520,6 +11560,60 @@ def export_single_sales_order_pdf(order_id: int, session: Session = Depends(get_
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@app.post("/sales-orders/{order_id}/send-pdf")
+def send_single_sales_order_pdf_email(order_id: int, body: ExportPdfRequest, session: Session = Depends(get_session)):
+    """Email a single sales order as a PDF attachment. Uses the provided email
+    or falls back to the linked lead/client email."""
+    from modules.pdf_export import single_sales_order_pdf
+    from database import ClientProfile, Lead
+    o = session.get(SalesOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    default_email, default_name = _sales_order_recipient(o, session)
+    recipient = (body.email or "").strip() or default_email
+    if not recipient:
+        raise HTTPException(status_code=400, detail="No recipient email. Provide an email or link this order to a lead/client that has one.")
+    client_name = None
+    lead_name = None
+    if o.client_id:
+        c = session.get(ClientProfile, o.client_id)
+        if c:
+            client_name = c.companyName
+    if o.lead_id:
+        l = session.get(Lead, o.lead_id)
+        if l:
+            lead_name = l.company_name
+    pdf = single_sales_order_pdf(o.model_dump(), client_name=client_name, lead_name=lead_name)
+    filename = f"{o.order_number or f'SO-{o.id}'}.pdf"
+    subject = f"Sales Order {o.order_number or o.id} — {client_name or lead_name or ''}".strip()
+    name_line = f"Hi {default_name}," if default_name else ""
+    body_html = (
+        f"<p>{name_line}</p>"
+        f"<p>Please find your sales order <strong>{o.order_number or o.id}</strong> attached.</p>"
+        f"<p>Grand Total: <strong>{o.currency or 'USD'} {o.grand_total:,.2f}</strong></p>"
+        "<p>Thank you.</p>"
+    )
+    # Resolve SMTP the same way quote emails do: per-tenant EmailSettings, then env vars.
+    sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
+    if not sender or not password:
+        raise HTTPException(status_code=500, detail="SMTP not configured. Add email settings in the Mail Settings page.")
+    try:
+        from modules.email_sender import send_email_outlook
+        send_email_outlook(
+            to_email=recipient,
+            subject=subject,
+            body=body_html,
+            sender_email=sender,
+            sender_password=password,
+            smtp_server=smtp_server,
+            smtp_port=int(smtp_port),
+            attachments=[(filename, pdf, "application/pdf")],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return {"sent": True, "recipient": recipient, "default_recipient": default_email, "order_number": o.order_number}
 
 
 # ── Purchase Order PDF Export ────────────────────────────────────────────
@@ -13874,10 +13968,10 @@ def send_supplier_credentials(supplier_id: int, session: Session = Depends(get_s
     sent = False
     try:
         from modules.email_sender import send_email_outlook
-        sender = os.environ.get("EMAIL_SENDER") or os.environ.get("OUTLOOK_EMAIL") or ""
-        password = os.environ.get("EMAIL_PASSWORD") or os.environ.get("OUTLOOK_PASSWORD") or ""
+        sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
         if sender and password:
-            send_email_outlook(s.supplier_email, subject, html, sender, password)
+            send_email_outlook(s.supplier_email, subject, html, sender, password,
+                               smtp_server=smtp_server or "mail.serphawk.in", smtp_port=smtp_port or 587)
             sent = True
     except Exception as e:
         print(f"[Supplier credentials email failed] {e}")

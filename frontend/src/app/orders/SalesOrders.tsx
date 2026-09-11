@@ -1,11 +1,11 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ShoppingCart, Plus, X, Search, Loader2, Trash2, Building2, Download, Mail } from "lucide-react";
+import { ShoppingCart, Plus, X, Search, Loader2, Trash2, Building2, Download, Mail, Eye } from "lucide-react";
 import { ExportActions } from "@/components/ExportActions";
 import { API_BASE_URL } from "@/config";
 
-interface SalesOrder { id: number; order_number?: string; status: string; grand_total: number; currency: string; client_name?: string; delivery_date?: string; created_at: string; }
+interface SalesOrder { id: number; order_number?: string; status: string; grand_total: number; currency: string; client_name?: string; delivery_date?: string; created_at: string; recipient_email?: string; recipient_name?: string; }
 interface Lead { id: number; company_name: string; email?: string; }
 const STATUSES = ["Pending", "Processing", "Fulfilled", "Cancelled"];
 const STATUS_COLORS: Record<string, string> = { Pending: "bg-amber-500/10 text-amber-600", Processing: "bg-blue-500/10 text-blue-600", Fulfilled: "bg-emerald-500/10 text-emerald-600", Cancelled: "bg-red-500/10 text-red-500" };
@@ -24,6 +24,8 @@ export default function SalesOrdersPage() {
   const [emailAddr, setEmailAddr] = useState("");
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [preview, setPreview] = useState<{ id: number; name: string; url: string } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const notify = (type: "ok" | "err", text: string) => { setToast({ type, text }); setTimeout(() => setToast(null), 3000); };
 
@@ -92,11 +94,28 @@ export default function SalesOrdersPage() {
     } catch { notify("err", "Network error"); }
   };
 
+  const handlePreview = async (id: number, orderNumber: string) => {
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/sales-orders/${id}/pdf`);
+      if (!res.ok) { notify("err", "Preview failed"); setPreviewLoading(false); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+      setPreview({ id, name: orderNumber || `SO-${id}`, url });
+    } catch { notify("err", "Network error"); }
+    finally { setPreviewLoading(false); }
+  };
+
+  const closePreview = () => {
+    if (preview) URL.revokeObjectURL(preview.url);
+    setPreview(null);
+  };
+
   const handleSendEmail = async () => {
     if (!emailModal || !emailAddr.trim()) return;
     setSending(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/sales-orders/export-pdf`, {
+      const res = await fetch(`${API_BASE_URL}/sales-orders/${emailModal.orderId}/send-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: emailAddr.trim() }),
@@ -168,8 +187,9 @@ export default function SalesOrdersPage() {
               {STATUSES.map(s => <option key={s}>{s}</option>)}
             </select>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+              <button onClick={() => handlePreview(o.id, o.order_number || `SO-${o.id}`)} disabled={previewLoading} title="Preview PDF" className="p-1.5 rounded-lg bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 transition-all"><Eye className="w-3.5 h-3.5" /></button>
               <button onClick={() => handleDownloadPdf(o.id, o.order_number || `SO-${o.id}`)} title="Download PDF" className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 transition-all"><Download className="w-3.5 h-3.5" /></button>
-              <button onClick={() => setEmailModal({ orderId: o.id, orderNumber: o.order_number || `SO-${o.id}` })} title="Email PDF" className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all"><Mail className="w-3.5 h-3.5" /></button>
+              <button onClick={() => { setEmailModal({ orderId: o.id, orderNumber: o.order_number || `SO-${o.id}` }); setEmailAddr(o.recipient_email || ""); }} title="Email PDF" className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all"><Mail className="w-3.5 h-3.5" /></button>
             </div>
             <button onClick={() => handleDelete(o.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
           </motion.div>
@@ -235,6 +255,30 @@ export default function SalesOrdersPage() {
         )}
       </AnimatePresence>
 
+      {/* Preview Modal */}
+      <AnimatePresence>
+        {preview && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden" style={{ height: "85vh" }}>
+              <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-200 dark:border-zinc-700">
+                <h2 className="text-base font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2 truncate">
+                  <Eye className="w-4 h-4 text-purple-500 shrink-0" /> {preview.name}
+                </h2>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => handleDownloadPdf(preview.id, preview.name)} title="Download PDF"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-all">
+                    <Download className="w-3.5 h-3.5" /> Download
+                  </button>
+                  <button onClick={closePreview} title="Close" className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 transition-all"><X className="w-4 h-4" /></button>
+                </div>
+              </div>
+              <iframe src={preview.url} className="flex-1 w-full border-0 bg-white" title="Sales Order Preview" />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Email Modal */}
       <AnimatePresence>
         {emailModal && (
@@ -250,6 +294,9 @@ export default function SalesOrdersPage() {
                 onKeyDown={e => e.key === "Enter" && handleSendEmail()}
                 placeholder="recipient@example.com"
                 className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              {emailAddr && (
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1.5">Client/Lead email pre-filled: <span className="font-bold">{emailAddr}</span> — edit if needed</p>
+              )}
               <div className="flex gap-3 mt-5">
                 <button onClick={() => setEmailModal(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-bold text-sm hover:bg-slate-200 transition-all">Cancel</button>
                 <button onClick={handleSendEmail} disabled={!emailAddr.trim() || sending}
