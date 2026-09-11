@@ -4182,15 +4182,14 @@ Data:
                 cost = 0.0
                 
             ms = MarketplaceService(
+                tenant_id=cp.tenant_id,
                 service_name=srv["name"],
                 description=srv.get("description", ""),
                 estimated_cost=cost,
                 cost_is_estimated=True,
                 provider_client_id=cp.id,
                 provider_name=cp.companyName or "Unknown Provider",
-                category=cp.industry or "General",
-                status="Active",
-                visibility="Private"
+                category=cp.industry or "General"
             )
             session.add(ms)
             added_count += 1
