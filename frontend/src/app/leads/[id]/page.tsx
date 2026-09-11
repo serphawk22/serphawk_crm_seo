@@ -581,16 +581,7 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
           );
         }})()}
 
-        {/* Opportunities Section moved here */}
-        <div style={{ marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 24 }}>
-          <OpportunitiesTab
-            lead={lead}
-            timeline={timeline}
-            serviceRequests={serviceRequests}
-            research={research}
-            emails={emails}
-          />
-        </div>
+
       </CollapsibleSection>
 
       {/* SWOT Section */}
@@ -985,7 +976,6 @@ export default function LeadDetailsPage() {
         onScheduleMeeting={() => router.push('/meetings')}
         onSendEmail={() => lead?.email ? window.location.href = `mailto:${lead.email}` : alert(language === 'es' ? 'No hay correo' : 'No email found for this client')}
         onUploadFile={() => switchTab('files')}
-        onCreateOpportunity={() => switchTab('opportunities')}
         darkMode={darkMode}
         onToggleDarkMode={toggleDarkMode}
       />

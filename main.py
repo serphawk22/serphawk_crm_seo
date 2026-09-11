@@ -3204,24 +3204,14 @@ def export_clients_csv(session: Session = Depends(get_session)):
                     val = _json.loads(val)
                 else:
                     return val
-            if isinstance(val, list):
-                parts = []
-                for item in val:
-                    if isinstance(item, dict):
-                        parts.append(item.get("name") or item.get("service_name") or str(item))
-                    else:
-                        parts.append(str(item))
-                return ", ".join(parts)
-            if isinstance(val, dict):
-                parts = []
-                for k, v in val.items():
-                    key_label = k.replace("_", " ").title()
-                    if isinstance(v, list):
-                        v_str = ", ".join(str(i) for i in v)
-                    else:
-                        v_str = str(v)
-                    parts.append(f"{key_label}: {v_str}")
-                return " | ".join(parts)
+            def extract(obj):
+                if isinstance(obj, dict):
+                    return [x for v in obj.values() for x in extract(v)]
+                elif isinstance(obj, list):
+                    return [x for v in obj for x in extract(v)]
+                else:
+                    return [str(obj)] if obj and str(obj).strip() else []
+            return ", ".join(extract(val))
         except Exception:
             pass
         return str(val)[:500]
@@ -4402,7 +4392,7 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
                 normalized_name=svc_name,
                 category=svc.get("category"),
                 description=svc.get("brief"),
-                estimated_cost=float(svc.get("approx_cost", 0)),
+                estimated_cost=float(str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip() if str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip().replace(".","").isdigit() else 0),
                 cost_is_estimated=svc.get("cost_is_estimated", True),
                 provider_name=company_name,
                 provider_client_id=client_id,
@@ -9655,20 +9645,14 @@ def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(
         try:
             if isinstance(val, str):
                 val = _json.loads(val)
-            if isinstance(val, dict):
-                parts = []
-                for k, v in val.items():
-                    key_label = k.replace("_", " ").title()
-                    if isinstance(v, list):
-                        v_str = ", ".join(str(i.get("name", i) if isinstance(i, dict) else i) for i in v)
-                    elif isinstance(v, dict):
-                        v_str = "; ".join(f"{kk}: {vv}" for kk, vv in v.items())
-                    else:
-                        v_str = str(v)
-                    parts.append(f"{key_label}: {v_str}")
-                return " | ".join(parts)
-            if isinstance(val, list):
-                return ", ".join(str(i.get("name", i) if isinstance(i, dict) else i) for i in val)
+            def extract(obj):
+                if isinstance(obj, dict):
+                    return [x for v in obj.values() for x in extract(v)]
+                elif isinstance(obj, list):
+                    return [x for v in obj for x in extract(v)]
+                else:
+                    return [str(obj)] if obj and str(obj).strip() else []
+            return ", ".join(extract(val))
         except Exception:
             pass
         return str(val)[:500]
@@ -9980,7 +9964,7 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
             normalized_name=svc_name,
             category=svc.get("category"),
             description=svc.get("brief"),
-            estimated_cost=float(svc.get("approx_cost", 0)),
+            estimated_cost=float(str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip() if str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip().replace(".","").isdigit() else 0),
             cost_is_estimated=svc.get("cost_is_estimated", True),
             provider_name=company_name,
             provider_client_id=None,
