@@ -1608,10 +1608,10 @@ class TaskCreateRequest(BaseModel):
     priority: str = "Medium"
     due_date: Optional[str] = None
     client_id: Optional[int] = None
+    lead_id: Optional[int] = None
     project_id: Optional[int] = None
     assigned_to: Optional[int] = None
     created_by: Optional[int] = None
-
 
 class TaskUpdateRequest(BaseModel):
     title: Optional[str] = None
@@ -1620,6 +1620,7 @@ class TaskUpdateRequest(BaseModel):
     priority: Optional[str] = None
     due_date: Optional[str] = None
     assigned_to: Optional[int] = None
+    lead_id: Optional[int] = None
 
 
 class TaskCommentCreateRequest(BaseModel):
@@ -6384,6 +6385,7 @@ def _task_dict(t: Task, session: Session) -> dict:
         "priority": t.priority,
         "due_date": t.due_date,
         "client_id": t.client_id,
+        "lead_id": t.lead_id,
         "client_name": client_user.name if client_user else (client.companyName if client else None),
         "project_id": t.project_id,
         "assigned_to": t.assigned_to,
@@ -6400,6 +6402,7 @@ def list_tasks(
     status: Optional[str] = None,
     assigned_to: Optional[int] = None,
     client_id: Optional[int] = None,
+    lead_id: Optional[int] = None,
     project_id: Optional[int] = None,
     session: Session = Depends(get_session),
 ):
@@ -6414,6 +6417,8 @@ def list_tasks(
         q = q.where(Task.assigned_to == assigned_to)
     if client_id:
         q = q.where(Task.client_id == client_id)
+    if lead_id:
+        q = q.where(Task.lead_id == lead_id)
     if project_id:
         q = q.where(Task.project_id == project_id)
     tasks = session.exec(q).all()
@@ -12218,7 +12223,7 @@ def get_work_queue(
         # 1. Tasks
         tasks_q = session.query(Task).filter(Task.due_date >= start_dt, Task.due_date <= end_dt)
         if not is_admin:
-            tasks_q = tasks_q.filter(Task.assignee_id == user_id)
+            tasks_q = tasks_q.filter(Task.assigned_to == user_id)
         tasks = tasks_q.all()
         
         # 2. Meetings
@@ -12252,6 +12257,15 @@ def get_work_queue(
             deals_q = deals_q.filter(Deal.owner_id == user_id)
         deals = deals_q.all()
         
+        # 7. Tickets (Dev Team)
+        user = session.get(User, user_id)
+        tickets = []
+        if is_admin or (user and user.role in ["ProjectMember", "Intern"]):
+            tickets_q = session.query(ProjectTicket)
+            if not is_admin and user and user.name:
+                tickets_q = tickets_q.filter(ProjectTicket.current_owner == user.name)
+            tickets = tickets_q.all()
+        
         return {
             "ok": True,
             "date": target_date.isoformat(),
@@ -12260,7 +12274,8 @@ def get_work_queue(
             "calls": calls,
             "leads": leads,
             "contacts": contacts,
-            "deals": deals
+            "deals": deals,
+            "tickets": tickets
         }
     except Exception as e:
         print("Work Queue Error:", e)
