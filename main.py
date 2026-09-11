@@ -15098,7 +15098,14 @@ def get_lead_research(lead_id: int, session: Session = Depends(get_session)):
     research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
     if not research:
         return {"research": None}
-    return {"research": research}
+    return {"research": {
+        "id": research.id, "company_overview": research.company_overview,
+        "competitors": research.competitors, "tech_stack": research.tech_stack,
+        "recent_news": research.recent_news, "pain_points": research.pain_points,
+        "business_goals": research.business_goals, "key_decision_makers": research.key_decision_makers,
+        "email_agent_data": research.email_agent_data,
+        "updated_at": research.updated_at.isoformat(),
+    }}
 
 @app.get("/leads/{lead_id}/sent-emails")
 def get_lead_sent_emails(lead_id: int, session: Session = Depends(get_session)):
@@ -15110,9 +15117,3 @@ def get_lead_sent_emails(lead_id: int, session: Session = Depends(get_session)):
     ).all()
     return {"emails": [e.dict() for e in emails]}
 
-@app.get("/clients/{client_id}/research")
-def get_client_research(client_id: int, session: Session = Depends(get_session)):
-    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
-    if not research:
-        return {"research": None}
-    return {"research": research}
