@@ -781,7 +781,7 @@ export default function AdminClientDetailPage() {
       const fetchJson = (url: string) => fetch(url).then(r => { if (!r.ok) throw new Error(`Fetch failed for ${url}`); return r.json(); });
       const [clientRes, empRes, actRes, emailRes, svcRes, tlRes, notesRes, convRes, taskRes, filesRes, researchRes] = await Promise.allSettled([
         fetchJson(`${API_BASE_URL}/clients/${id}`),
-        fetchJson(`${API_BASE_URL}/employees`),
+        fetchJson(`${API_BASE_URL}/users`),
         fetchJson(`${API_BASE_URL}/clients/${id}/activities`),
         fetchJson(`${API_BASE_URL}/clients/${id}/emails`),
         fetchJson(`${API_BASE_URL}/services/requests`),
@@ -794,7 +794,7 @@ export default function AdminClientDetailPage() {
       ]);
 
       if (clientRes.status === 'fulfilled') setClient(clientRes.value.client || clientRes.value);
-      if (empRes.status === 'fulfilled') setEmployees(empRes.value.employees || []);
+      if (empRes.status === 'fulfilled') setEmployees(empRes.value.users || []);
       if (actRes.status === 'fulfilled') setActivities(actRes.value.activities || []);
       if (emailRes.status === 'fulfilled') setEmails(emailRes.value.emails || []);
       if (svcRes.status === 'fulfilled') setServiceRequests((svcRes.value.requests || []).filter((r: any) => String(r.client_id) === String(id)));

@@ -810,6 +810,7 @@ class Task(SQLModel, table=True):
     priority: str = Field(default="Medium")  # Low, Medium, High, Urgent
     due_date: Optional[str] = None
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     project_id: Optional[int] = Field(default=None, foreign_key="projects.id")
     assigned_to: Optional[int] = Field(default=None, foreign_key="users.id")
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")
@@ -1381,6 +1382,7 @@ def create_db_and_tables():
         "ALTER TABLE client_research ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
         "ALTER TABLE sent_emails ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
         "ALTER TABLE activity_logs ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
+        "ALTER TABLE tasks ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
         "ALTER TABLE whatsappsession ADD COLUMN active_live_chat_session VARCHAR",
         "ALTER TABLE whatsappsession ALTER COLUMN pending_action DROP NOT NULL",
         "ALTER TABLE whatsappsession ALTER COLUMN action_data DROP NOT NULL",
