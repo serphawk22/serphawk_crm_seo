@@ -4187,7 +4187,7 @@ Data:
                 cost_is_estimated=True,
                 provider_client_id=cp.id,
                 provider_name=cp.companyName or "Unknown Provider",
-                category=cp.industry or "General"
+                category="General"
             )
             session.add(ms)
             added_count += 1
@@ -8772,8 +8772,8 @@ def list_marketplace_services(
     page: int = 1,
     per_page: int = 18,
     session: Session = Depends(get_session),
-    user: User = Depends(lambda session: _require_roles(session, ["Admin"])),
 ):
+    _require_roles(session, ["Admin"])
     query = select(MarketplaceService).where(MarketplaceService.is_active == True)
     # Filter by tenant so each account only sees their own extracted services
     tenant_id = current_tenant_id.get()
@@ -8820,8 +8820,8 @@ def list_marketplace_services(
 def create_marketplace_service(
     body: MarketplaceServiceCreate,
     session: Session = Depends(get_session),
-    user: User = Depends(lambda session: _require_roles(session, ["Admin"])),
 ):
+    _require_roles(session, ["Admin"])
     # Auto-fill provider info from CRM if client_id given
     provider_name = body.provider_name
     provider_industry = None
@@ -8855,8 +8855,8 @@ def update_marketplace_service(
     service_id: int,
     body: MarketplaceServiceUpdate,
     session: Session = Depends(get_session),
-    user: User = Depends(lambda session: _require_roles(session, ["Admin"])),
 ):
+    _require_roles(session, ["Admin"])
     svc = session.get(MarketplaceService, service_id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
@@ -8873,8 +8873,8 @@ def update_marketplace_service(
 def delete_marketplace_service(
     service_id: int,
     session: Session = Depends(get_session),
-    user: User = Depends(lambda session: _require_roles(session, ["Admin"])),
 ):
+    _require_roles(session, ["Admin"])
     svc = session.get(MarketplaceService, service_id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
@@ -8888,8 +8888,8 @@ def delete_marketplace_service(
 @app.get("/marketplace/categories")
 def list_marketplace_categories(
     session: Session = Depends(get_session),
-    user: User = Depends(lambda session: _require_roles(session, ["Admin"])),
 ):
+    _require_roles(session, ["Admin"])
     rows = session.exec(
         select(MarketplaceService.category)
         .where(MarketplaceService.is_active == True)
@@ -8904,8 +8904,8 @@ def list_marketplace_categories(
 def ai_categorize_marketplace_service(
     service_id: int,
     session: Session = Depends(get_session),
-    user: User = Depends(lambda session: _require_roles(session, ["Admin"])),
 ):
+    _require_roles(session, ["Admin"])
     svc = session.get(MarketplaceService, service_id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
