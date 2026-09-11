@@ -31,6 +31,7 @@ import TicketsTab from './components/tabs/TicketsTab';
 // ─── Tab definitions ───────────────────────────────────────────────────────────
 const TABS = [
   { key: 'overview',       label: 'Overview',       icon: LayoutDashboard },
+  { key: 'opportunities',  label: 'Opportunities',  icon: Target          },
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
   { key: 'tasks',          label: 'Tasks',           icon: CheckSquare     },
   { key: 'tickets',        label: 'Tickets',         icon: Ticket          },
@@ -1031,6 +1032,15 @@ export default function AdminClientDetailPage() {
                     handleGenerateAnalysis={handleGenerateAnalysis}
                     isGeneratingResearch={isGeneratingResearch}
                     onRefresh={fetchClient}
+                  />
+                )}
+                {activeTab === 'opportunities' && (
+                  <OpportunitiesTab
+                    client={client}
+                    timeline={timeline}
+                    serviceRequests={serviceRequests}
+                    research={research}
+                    emails={emails}
                   />
                 )}
                 {activeTab === 'timeline' && (

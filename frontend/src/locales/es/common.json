@@ -21,7 +21,17 @@
     "ranking": "Clasificaciones",
     "store": "Tienda",
     "pricing": "Precios",
-    "myFiles": "Mis Archivos"
+    "myFiles": "Mis Archivos",
+    "core": "Espacio de trabajo principal",
+    "growth_engine": "Motor de Crecimiento",
+    "revenue": "Ingresos y Ventas",
+    "organization": "Organización",
+    "tools": "Herramientas y Análisis",
+    "services_overview": "Resumen de Servicios",
+    "request_board": "Tablero de Solicitudes",
+    "interns": "Pasantías",
+    "employees": "Empleados",
+    "services": "Servicios"
   },
   "common": {
     "save": "Guardar",
@@ -137,7 +147,9 @@
     "page": "Página",
     "perPage": "por página",
     "showing": "Mostrando",
-    "entries": "registros"
+    "entries": "registros",
+    "searchPlaceholder": "Buscar clientes, proyectos, tareas, facturas...",
+    "profile": "Perfil"
   },
   "auth": {
     "login": "Iniciar Sesión",
@@ -278,7 +290,8 @@
     "newOpportunity": "Nueva Oportunidad",
     "active": "Activo",
     "hold": "En Espera",
-    "inactive": "Inactivo"
+    "inactive": "Inactivo",
+    "clientPortal": "Portal del Cliente"
   },
   "conversations": {
     "title": "Conversaciones",
@@ -552,7 +565,11 @@
     "errorOccurred": "Ocurrió un error. Por favor, inténtelo de nuevo.",
     "networkError": "Error de red. Por favor, verifique su conexión.",
     "unauthorized": "No está autorizado para realizar esta acción.",
-    "confirmDelete": "Esta acción no se puede deshacer. ¿Está seguro?"
+    "confirmDelete": "Esta acción no se puede deshacer. ¿Está seguro?",
+    "unread": "no leído",
+    "allCaughtUp": "¡Todo al día!",
+    "noNotifications": "Sin nuevas notificaciones",
+    "viewAll": "Ver todas las notificaciones"
   },
   "forms": {
     "required": "Este campo es obligatorio",
@@ -632,5 +649,52 @@
     "passwordTooShort": "La contraseña debe tener al menos 6 caracteres.",
     "invalidToken": "Este enlace de restablecimiento no es válido o ha caducado.",
     "resetSuccess": "Su contraseña ha sido actualizada correctamente."
+  },
+  "sidebar": {
+    "section_crm": "CRM",
+    "section_projects_activities": "PROYECTOS Y ACTIVIDADES",
+    "section_teams": "EQUIPOS",
+    "section_ai_agents": "AGENTES DE IA",
+    "section_inventory": "INVENTARIO",
+    "section_support": "SOPORTE",
+    "section_system": "SISTEMA",
+    "dashboard": "Tablero",
+    "leads": "Clientes potenciales",
+    "clients": "Clientes",
+    "work_queue": "Cola de trabajo",
+    "projects": "Proyectos",
+    "tasks": "Tareas",
+    "team_directory": "Directorio del equipo",
+    "interns": "Pasantías",
+    "email_agent": "Agente de correo electrónico",
+    "catalog": "Catálogo de Productos",
+    "orders": "Órdenes",
+    "billing": "Facturación",
+    "proposals": "Propuestas",
+    "marketplace": "Mercado",
+    "cases": "Casos",
+    "solutions": "Soluciones",
+    "import_data": "Importar datos",
+    "api_intelligence": "Inteligencia de API",
+    "demo_accounts": "Datos de la Cuenta de Demostración",
+    "corporate_hq": "Sede Corporativa",
+    "customize_sidebar": "Personalizar barra lateral",
+    "switch_en": "Cambiar a inglés",
+    "switch_es": "Cambiar a español"
+  },
+  "work_queue": {
+    "tab_combined": "Todas las tareas",
+    "tab_tasks": "Tareas",
+    "tab_tickets": "Entradas",
+    "tab_meetings": "Reuniones",
+    "tab_calls": "Llamadas",
+    "tab_leads": "Clientes potenciales",
+    "tab_contacts": "Contactos",
+    "tab_deals": "Ofertas",
+    "no_description": "No se proporcionó descripción",
+    "meeting": "Reunión",
+    "scheduled_call": "Llamada programada",
+    "follow_up": "Seguimiento",
+    "no_tasks": "No se encontraron elementos para este período."
   }
 }
