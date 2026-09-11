@@ -32,6 +32,7 @@ import TicketsTab from './components/tabs/TicketsTab';
 const TABS = [
   { key: 'overview',       label: 'Overview',       icon: LayoutDashboard },
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
+  { key: 'opportunities',  label: 'Opportunities',   icon: Lightbulb       },
   { key: 'tasks',          label: 'Tasks',           icon: CheckSquare     },
   { key: 'tickets',        label: 'Tickets',         icon: Ticket          },
   { key: 'files',          label: 'Files',           icon: FolderOpen      },
@@ -1047,6 +1048,15 @@ export default function LeadDetailsPage() {
                     timeline={timeline}
                     timelineFilter={timelineFilter}
                     onFilterChange={setTimelineFilter}
+                  />
+                )}
+                {activeTab === 'opportunities' && (
+                  <OpportunitiesTab
+                    lead={lead}
+                    timeline={timeline}
+                    serviceRequests={serviceRequests}
+                    research={research}
+                    emails={emails}
                   />
                 )}
                 {activeTab === 'conversations' && (
