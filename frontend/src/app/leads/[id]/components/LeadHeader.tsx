@@ -61,13 +61,6 @@ export default function LeadHeader({
   const leadScore = lead?.lead_score ?? 0;
   const dealValue = lead?.deal_value ? `$${Number(lead.deal_value).toLocaleString()}` : '—';
 
-  const quickActions = [
-    { icon: MessageSquare, label: language === 'es' ? 'Añadir Nota' : 'Add Note',        onClick: onAddNote,          color: 'text-violet-600 ', bg: 'hover:bg-violet-50 ' },
-    { icon: Phone,         label: language === 'es' ? 'Registrar Llamada' : 'Log Call',  onClick: onAddConversation,  color: 'text-blue-600 ',     bg: 'hover:bg-blue-50 '   },
-    { icon: CheckSquare,   label: language === 'es' ? 'Crear Tarea' : 'Create Task',     onClick: onCreateTask,       color: 'text-emerald-600 ', bg: 'hover:bg-emerald-50 ' },
-    { icon: Calendar,      label: language === 'es' ? 'Agendar' : 'Schedule',            onClick: onScheduleMeeting,  color: 'text-amber-600 ',   bg: 'hover:bg-amber-50 ' },
-    { icon: Mail,          label: language === 'es' ? 'Enviar Correo' : 'Send Email',    onClick: onSendEmail,        color: 'text-sky-600 ',       bg: 'hover:bg-sky-50 '     },
-  ];
 
   // Contact info pills for display in header
   const contactChips = [
@@ -97,23 +90,6 @@ export default function LeadHeader({
           >
             <ArrowLeft size={16} className="text-slate-400" /> {language === 'es' ? 'Volver a Clientes' : 'Back to Leads'}
           </button>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 overflow-x-auto mr-2">
-              {quickActions.map(({ icon: Icon, label, onClick, color, bg }) => (
-                <motion.button
-                  key={label}
-                  whileHover={{ y: -1 }}
-                  whileTap={{ scale: 0.96 }}
-                  onClick={onClick}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold
-                             transition-all whitespace-nowrap ${color} ${bg}`}
-                >
-                  <Icon size={12} />
-                  {label}
-                </motion.button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Row 2: Main header - Company identity + Contact Info + Score */}
