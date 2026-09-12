@@ -62,6 +62,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
+  const [activeTab, setActiveTab] = useState<"items" | "suppliers">("items");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [showItemModal, setShowItemModal] = useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState<{ itemId: number } | null>(null);
@@ -275,6 +276,24 @@ export default function InventoryPage() {
 
   const categories = ["All", ...Array.from(new Set(items.map(i => i.category || "Other")))];
 
+  // Group suppliers by email or name
+  const groupedSuppliers = items.reduce((acc, item) => {
+    item.suppliers.forEach(sup => {
+      const key = sup.supplier_email || sup.supplier_name;
+      if (!acc[key]) {
+        acc[key] = {
+          name: sup.supplier_name,
+          email: sup.supplier_email,
+          brand: sup.supplier_brand,
+          items: []
+        };
+      }
+      acc[key].items.push({ ...item, supplier_details: sup });
+    });
+    return acc;
+  }, {} as Record<string, any>);
+  const uniqueSuppliers = Object.values(groupedSuppliers);
+
   return (
     <div className="flex flex-col h-full bg-[#f8fafc] dark:bg-black min-h-screen">
       {/* Toast */}
@@ -405,8 +424,23 @@ export default function InventoryPage() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="px-6 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-black">
+        <div className="flex bg-slate-100 dark:bg-zinc-900 p-1 rounded-2xl w-fit">
+          <button onClick={() => setActiveTab("items")}
+            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === "items" ? "bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 hover:bg-slate-200/50 dark:hover:bg-zinc-800/50"}`}>
+            Items
+          </button>
+          <button onClick={() => setActiveTab("suppliers")}
+            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === "suppliers" ? "bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 hover:bg-slate-200/50 dark:hover:bg-zinc-800/50"}`}>
+            Suppliers
+          </button>
+        </div>
+      </div>
+
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-black border-b border-slate-200 dark:border-slate-800 flex-wrap gap-3">
+      {activeTab === "items" && (
+        <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-black border-b border-slate-200 dark:border-slate-800 flex-wrap gap-3">
         <div className="relative w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input type="text" placeholder={t("inventory.search_placeholder")} value={search} onChange={e => setSearch(e.target.value)}
@@ -421,8 +455,10 @@ export default function InventoryPage() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Item List */}
+      {activeTab === "items" && (
       <div className="flex-1 overflow-auto p-6">
         {loading ? (
           <div className="flex items-center justify-center h-64">
@@ -568,6 +604,63 @@ export default function InventoryPage() {
           </div>
         )}
       </div>
+      )}
+
+      {/* Supplier List */}
+      {activeTab === "suppliers" && (
+        <div className="flex-1 overflow-auto p-6 bg-slate-50 dark:bg-black/50">
+          {uniqueSuppliers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-center">
+              <Building2 className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3" />
+              <p className="text-slate-500 dark:text-slate-400 font-medium">{t("inventory.no_suppliers") || "No suppliers found"}</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              {uniqueSuppliers.map((supplier: any) => (
+                <div key={supplier.email || supplier.name} className="bg-white dark:bg-[#111] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-md">
+                        <Building2 className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white">{supplier.name}</h3>
+                        {supplier.email && <p className="text-sm text-slate-500 font-medium">{supplier.email}</p>}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Items Supplied by this Supplier */}
+                  <div className="mt-4">
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Items ({supplier.items.length})</h4>
+                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                      {supplier.items.map((it: any) => (
+                        <div key={it.id} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center overflow-hidden">
+                              {it.photo_url ? <img src={it.photo_url} alt={it.name} className="w-full h-full object-cover" /> : <Package className="w-5 h-5 text-slate-400" />}
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-slate-900 dark:text-white">{it.name}</p>
+                              <p className="text-xs text-slate-500">{it.code}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-emerald-600">
+                              {it.supplier_details.unit_cost ? `${it.supplier_details.currency} ${it.supplier_details.unit_cost}` : "No Price"}
+                            </p>
+                            <p className="text-xs text-slate-400">{it.supplier_details.lead_time_days ? `${it.supplier_details.lead_time_days} days` : "Unknown lead time"}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ─── ADD/EDIT ITEM MODAL ─── */}
       <AnimatePresence>

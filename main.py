@@ -3519,8 +3519,11 @@ def get_client(client_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Client not found")
     return {"client": _client_dict(cp, session)}
 
+class SimulateCallRequest(BaseModel):
+    context: Optional[str] = None
+
 @app.post("/clients/{client_id}/simulate-call")
-def simulate_client_call(client_id: int, session: Session = Depends(get_session)):
+def simulate_client_call(client_id: int, req: Optional[SimulateCallRequest] = None, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
     if not cp: raise HTTPException(status_code=404, detail="Client not found")
     
@@ -3556,6 +3559,9 @@ Instructions:
 4. Make it conversational, persuasive, and professional.
 5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
 6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
+
+    if req and req.context:
+        prompt += f"\n\nAdditional Custom Context / Instructions from the Sales Rep:\n{req.context}\n(Please ensure you incorporate this custom instruction closely into the script)."
 
     from modules.llm_engine import get_openai_client
     try:
@@ -12421,7 +12427,7 @@ def mark_solution_helpful(solution_id: int, session: Session = Depends(get_sessi
     return {"helpful_count": s.helpful_count}
 
 @app.post("/leads/{lead_id}/simulate-call")
-def simulate_lead_call(lead_id: int, session: Session = Depends(get_session)):
+def simulate_lead_call(lead_id: int, req: Optional[SimulateCallRequest] = None, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
     if not lead: raise HTTPException(status_code=404, detail="Lead not found")
     
@@ -12465,6 +12471,9 @@ Instructions:
 5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
 6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
 
+    if req and req.context:
+        prompt += f"\n\nAdditional Custom Context / Instructions from the Sales Rep:\n{req.context}\n(Please ensure you incorporate this custom instruction closely into the script)."
+
     from modules.llm_engine import get_openai_client
     try:
         openai_client = get_openai_client()
@@ -12492,7 +12501,7 @@ Instructions:
     return {"ok": True, "call_id": call.id, "pitch": pitch}
 
 @app.post("/contacts/{contact_id}/simulate-call")
-def simulate_contact_call(contact_id: int, session: Session = Depends(get_session)):
+def simulate_contact_call(contact_id: int, req: Optional[SimulateCallRequest] = None, session: Session = Depends(get_session)):
     contact = session.get(Contact, contact_id)
     if not contact: raise HTTPException(status_code=404, detail="Contact not found")
     
@@ -12535,6 +12544,9 @@ Instructions:
 4. Make it conversational, persuasive, and professional.
 5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
 6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
+
+    if req and req.context:
+        prompt += f"\n\nAdditional Custom Context / Instructions from the Sales Rep:\n{req.context}\n(Please ensure you incorporate this custom instruction closely into the script)."
 
     from modules.llm_engine import get_openai_client
     try:
@@ -14483,6 +14495,65 @@ def send_supplier_credentials(supplier_id: int, session: Session = Depends(get_s
     if not sent:
         raise HTTPException(status_code=500, detail="Email could not be sent. Check SMTP configuration.")
     return {"ok": True, "email_sent": True, "recipient": s.supplier_email}
+class SupplierAddItemRequest(BaseModel):
+    supplier_name: str
+    supplier_email: str
+    code: str
+    name: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = []
+    photo_url: Optional[str] = None
+    unit: Optional[str] = None
+    min_stock: float = 0
+    current_stock: float = 0
+    unit_cost: Optional[float] = None
+    currency: str = "USD"
+    lead_time_days: Optional[int] = None
+    lot_number: Optional[str] = None
+    notes: Optional[str] = None
+
+@app.post("/supplier/inventory/add-item")
+def supplier_add_item(req: SupplierAddItemRequest, session: Session = Depends(get_session)):
+    tenant_id = current_tenant_id.get()
+    
+    # Create the item
+    item = InventoryItem(
+        tenant_id=tenant_id,
+        code=req.code,
+        name=req.name,
+        description=req.description,
+        category=req.category,
+        tags=req.tags or [],
+        photo_url=req.photo_url,
+        unit=req.unit,
+        min_stock=req.min_stock,
+        current_stock=req.current_stock
+    )
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    
+    # Check if a user for this supplier exists to grab ID
+    user = session.exec(select(User).where(User.email == req.supplier_email).where(User.tenant_id == tenant_id)).first()
+    supplier_user_id = user.id if user else None
+
+    # Attach this supplier to the item
+    supplier = InventorySupplier(
+        item_id=item.id,
+        supplier_name=req.supplier_name,
+        supplier_email=req.supplier_email,
+        supplier_user_id=supplier_user_id,
+        unit_cost=req.unit_cost,
+        currency=req.currency,
+        lead_time_days=req.lead_time_days,
+        lot_number=req.lot_number,
+        notes=req.notes
+    )
+    session.add(supplier)
+    session.commit()
+    
+    return {"ok": True, "item_id": item.id}
 
 @app.get("/supplier/inventory")
 def get_supplier_inventory(email: str, session: Session = Depends(get_session)):
