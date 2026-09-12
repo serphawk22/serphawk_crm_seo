@@ -66,6 +66,7 @@ export default function InventoryPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [showItemModal, setShowItemModal] = useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState<{ itemId: number } | null>(null);
+  const [isNewSupplier, setIsNewSupplier] = useState(false);
   const [showRFQModal, setShowRFQModal] = useState<{ item: InventoryItem } | null>(null);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [itemForm, setItemForm] = useState({ ...emptyItem });
@@ -78,6 +79,10 @@ export default function InventoryPage() {
   const [newCredentials, setNewCredentials] = useState<{ supplier_id: number; email: string; password: string; name: string } | null>(null);
   const [sendingCreds, setSendingCreds] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const uniqueSuppliers = Array.from(new Map(
+    items.flatMap(i => i.suppliers).map(s => [s.supplier_name, s])
+  ).values());
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -194,6 +199,7 @@ export default function InventoryPage() {
         return;
       }
       setShowSupplierModal(null);
+      setIsNewSupplier(false);
       setSupplierForm({ ...emptySupplier });
       await fetchItems();
       if (data.credentials_created && data.login_email) {
@@ -538,7 +544,7 @@ export default function InventoryPage() {
                         <div className="p-4">
                           <div className="flex items-center justify-between mb-3">
                             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{t("inventory.section_suppliers_cost")}</h4>
-                            <button onClick={() => { setShowSupplierModal({ itemId: item.id }); setSupplierForm({ ...emptySupplier }); }}
+                            <button onClick={() => { setShowSupplierModal({ itemId: item.id }); setIsNewSupplier(false); setSupplierForm({ ...emptySupplier }); }}
                               className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
                               <Plus className="w-3 h-3" /> {t("inventory.btn_add_supplier")}
                             </button>
@@ -822,8 +828,40 @@ export default function InventoryPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_supplier_name")} <span className="text-red-500">*</span></label>
-                    <input autoFocus value={supplierForm.supplier_name} onChange={e => setSupplierForm(f => ({ ...f, supplier_name: e.target.value }))} placeholder="Supplier Co."
-                      className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    {!isNewSupplier && uniqueSuppliers.length > 0 ? (
+                      <div className="flex gap-2">
+                        <select 
+                          className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          value={supplierForm.supplier_name}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val === "__NEW__") {
+                              setIsNewSupplier(true);
+                              setSupplierForm(f => ({ ...f, supplier_name: "", supplier_brand: "", supplier_email: "" }));
+                            } else {
+                              const existing = uniqueSuppliers.find(s => s.supplier_name === val);
+                              if (existing) {
+                                setSupplierForm(f => ({ ...f, supplier_name: existing.supplier_name, supplier_brand: existing.supplier_brand || "", supplier_email: existing.supplier_email || "", currency: existing.currency || "USD" }));
+                              }
+                            }
+                          }}
+                        >
+                          <option value="" disabled>Select a supplier...</option>
+                          {uniqueSuppliers.map(s => (
+                            <option key={s.id} value={s.supplier_name}>{s.supplier_name}</option>
+                          ))}
+                          <option value="__NEW__" className="font-bold text-blue-600">+ Create New Supplier</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input autoFocus value={supplierForm.supplier_name} onChange={e => setSupplierForm(f => ({ ...f, supplier_name: e.target.value }))} placeholder="Supplier Co."
+                          className="flex-1 w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        {uniqueSuppliers.length > 0 && (
+                          <button type="button" onClick={() => setIsNewSupplier(false)} className="px-3 py-2 text-xs font-bold text-slate-500 hover:text-blue-600 bg-slate-100 dark:bg-slate-800 rounded-xl">Cancel</button>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_brand")}</label>
