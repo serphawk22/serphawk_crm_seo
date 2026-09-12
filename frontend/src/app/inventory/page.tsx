@@ -80,7 +80,7 @@ export default function InventoryPage() {
   const [sendingCreds, setSendingCreds] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const uniqueSuppliers = Array.from(new Map(
+  const dropdownSuppliers = Array.from(new Map(
     items.flatMap(i => i.suppliers).map(s => [s.supplier_name, s])
   ).values());
 
@@ -828,7 +828,7 @@ export default function InventoryPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_supplier_name")} <span className="text-red-500">*</span></label>
-                    {!isNewSupplier && uniqueSuppliers.length > 0 ? (
+                    {!isNewSupplier && dropdownSuppliers.length > 0 ? (
                       <div className="flex gap-2">
                         <select 
                           className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -839,7 +839,7 @@ export default function InventoryPage() {
                               setIsNewSupplier(true);
                               setSupplierForm(f => ({ ...f, supplier_name: "", supplier_brand: "", supplier_email: "" }));
                             } else {
-                              const existing = uniqueSuppliers.find(s => s.supplier_name === val);
+                              const existing = dropdownSuppliers.find(s => s.supplier_name === val);
                               if (existing) {
                                 setSupplierForm(f => ({ ...f, supplier_name: existing.supplier_name, supplier_brand: existing.supplier_brand || "", supplier_email: existing.supplier_email || "", currency: existing.currency || "USD" }));
                               }
@@ -847,7 +847,7 @@ export default function InventoryPage() {
                           }}
                         >
                           <option value="" disabled>Select a supplier...</option>
-                          {uniqueSuppliers.map(s => (
+                          {dropdownSuppliers.map(s => (
                             <option key={s.id} value={s.supplier_name}>{s.supplier_name}</option>
                           ))}
                           <option value="__NEW__" className="font-bold text-blue-600">+ Create New Supplier</option>
@@ -857,7 +857,7 @@ export default function InventoryPage() {
                       <div className="flex gap-2">
                         <input autoFocus value={supplierForm.supplier_name} onChange={e => setSupplierForm(f => ({ ...f, supplier_name: e.target.value }))} placeholder="Supplier Co."
                           className="flex-1 w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        {uniqueSuppliers.length > 0 && (
+                        {dropdownSuppliers.length > 0 && (
                           <button type="button" onClick={() => setIsNewSupplier(false)} className="px-3 py-2 text-xs font-bold text-slate-500 hover:text-blue-600 bg-slate-100 dark:bg-slate-800 rounded-xl">Cancel</button>
                         )}
                       </div>
