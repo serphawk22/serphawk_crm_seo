@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Package, DollarSign, Clock, Edit2, CheckCircle, Loader2, X,
-  AlertTriangle, Star, ShoppingCart, Tag, BarChart2, Save, ArrowUpDown
+  AlertTriangle, Star, ShoppingCart, Tag, BarChart2, Save, ArrowUpDown, Plus
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -41,6 +41,12 @@ export default function SupplierPortalPage() {
   const [editForm, setEditForm] = useState({
     unit_cost: 0, currency: "USD", lead_time_days: 0,
     lot_number: "", notes: "", current_stock: 0
+  });
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [addItemForm, setAddItemForm] = useState({
+    code: "", name: "", description: "", category: "", tags: "",
+    unit: "", min_stock: 0, current_stock: 0, unit_cost: 0,
+    currency: "USD", lead_time_days: 0
   });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
@@ -107,6 +113,44 @@ export default function SupplierPortalPage() {
     } finally { setSaving(false); }
   };
 
+  const handleAddItem = async () => {
+    if (!addItemForm.name || !addItemForm.code) {
+      showToast("Name and Code are required", "err");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/supplier/inventory/add-item`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supplier_name: user?.name || user?.email || "Unknown",
+          supplier_email: user?.email || "",
+          code: addItemForm.code,
+          name: addItemForm.name,
+          description: addItemForm.description,
+          category: addItemForm.category,
+          tags: addItemForm.tags.split(",").map(t => t.trim()).filter(Boolean),
+          unit: addItemForm.unit,
+          min_stock: addItemForm.min_stock,
+          current_stock: addItemForm.current_stock,
+          unit_cost: addItemForm.unit_cost,
+          currency: addItemForm.currency,
+          lead_time_days: addItemForm.lead_time_days
+        })
+      });
+      if (res.ok) {
+        setShowAddItem(false);
+        fetchItems();
+        showToast("Item added successfully");
+      } else {
+        showToast("Failed to add item", "err");
+      }
+    } catch {
+      showToast("Network error", "err");
+    } finally { setSaving(false); }
+  };
+
   const stockStatus = (item: SupplierItem) => {
     if (item.current_stock === 0) return { label: t("supplier.stock_out"), color: "text-red-500", bg: "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800" };
     if (item.current_stock <= item.min_stock) return { label: t("supplier.stock_low"), color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800" };
@@ -141,7 +185,11 @@ export default function SupplierPortalPage() {
               {" · "}{t("supplier.manage_inventory")}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setShowAddItem(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-sm hover:-translate-y-0.5 transition-transform">
+              <Plus className="w-4 h-4" /> {t("supplier.add_item") || "Add Item"}
+            </button>
             <div className="text-right">
               <p className="text-xs text-slate-400">{t("supplier.logged_in_as")}</p>
               <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">{user?.email}</p>
@@ -346,6 +394,90 @@ export default function SupplierPortalPage() {
                   className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/20">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   {t("supplier.save_changes")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Item Modal */}
+      <AnimatePresence>
+        {showAddItem && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.94, opacity: 0, y: 16 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.94, opacity: 0 }}
+              className="bg-white dark:bg-black rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 flex items-center justify-center">
+                    <Package className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Add New Item</h2>
+                    <p className="text-sm text-slate-500">Create an item and add it to your supply list</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowAddItem(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Item Name *</label>
+                    <input type="text" value={addItemForm.name} onChange={e => setAddItemForm(f => ({ ...f, name: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Item Code *</label>
+                    <input type="text" value={addItemForm.code} onChange={e => setAddItemForm(f => ({ ...f, code: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Description</label>
+                  <textarea value={addItemForm.description} onChange={e => setAddItemForm(f => ({ ...f, description: e.target.value }))} rows={2}
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Unit Cost</label>
+                    <input type="number" value={addItemForm.unit_cost} onChange={e => setAddItemForm(f => ({ ...f, unit_cost: parseFloat(e.target.value) || 0 }))}
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Currency</label>
+                    <select value={addItemForm.currency} onChange={e => setAddItemForm(f => ({ ...f, currency: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      {CURRENCIES.map(c => <option key={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Lead Time (Days)</label>
+                    <input type="number" value={addItemForm.lead_time_days} onChange={e => setAddItemForm(f => ({ ...f, lead_time_days: parseInt(e.target.value) || 0 }))}
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Initial Stock</label>
+                    <input type="number" value={addItemForm.current_stock} onChange={e => setAddItemForm(f => ({ ...f, current_stock: parseFloat(e.target.value) || 0 }))}
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex gap-3 px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 rounded-b-2xl">
+                <button onClick={() => setShowAddItem(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-sm hover:bg-slate-100 transition-all">
+                  Cancel
+                </button>
+                <button onClick={handleAddItem} disabled={saving}
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/20">
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Save Item
                 </button>
               </div>
             </motion.div>

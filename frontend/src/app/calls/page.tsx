@@ -307,6 +307,7 @@ export default function CallsPage() {
   const [generatedPitch, setGeneratedPitch] = useState("");
   const [genType, setGenType] = useState<"client" | "lead" | "contact">("client");
   const [genEntityId, setGenEntityId] = useState("");
+  const [aiContext, setAiContext] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [expandedSchedId, setExpandedSchedId] = useState<number | null>(null);
   const [aiCalling, setAiCalling] = useState(false);
@@ -584,6 +585,10 @@ export default function CallsPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
+            <button onClick={() => setShowGenerateModal(true)}
+              className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-2xl font-bold text-sm hover:-translate-y-0.5 transition-all shadow-lg">
+              <Zap className="w-4 h-4" /> {t("calls.generate_pitch_call")}
+            </button>
             <button onClick={() => setShowScheduleModal(true)}
               className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl font-bold shadow-lg hover:-translate-y-0.5 transition-all text-sm">
               <CalendarClock className="w-4 h-4" /> {t("calls.schedule_call")}
@@ -834,10 +839,6 @@ export default function CallsPage() {
                 <div className="flex flex-col items-center justify-center py-28 text-slate-400 gap-4">
                   <Bot className="w-14 h-14 opacity-30" />
                   <p className="font-bold text-lg">{t("calls.no_ai_calls")}</p>
-                  <button onClick={() => setShowGenerateModal(true)}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-2xl font-bold text-sm hover:-translate-y-0.5 transition-all shadow-lg">
-                    <Zap className="w-4 h-4" /> {t("calls.generate_pitch_call")}
-                  </button>
                 </div>
               ) : (
                 <AiCallResultsPanel 
@@ -1028,7 +1029,7 @@ export default function CallsPage() {
                     <div className="p-2 bg-amber-50 text-amber-600 rounded-xl"><Zap className="w-5 h-5" /></div>
                     {t("calls.generate_ai_pitch")}
                   </h2>
-                  <button onClick={() => { setShowGenerateModal(false); setGeneratedPitch(""); setGenEntityId(""); }} className="text-slate-400 hover:text-slate-700">
+                  <button onClick={() => { setShowGenerateModal(false); setGeneratedPitch(""); setGenEntityId(""); setAiContext(""); }} className="text-slate-400 hover:text-slate-700">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -1036,7 +1037,7 @@ export default function CallsPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.type")}</label>
-                      <select value={genType} onChange={(e) => { setGenType(e.target.value as "client" | "lead" | "contact"); setGenEntityId(""); setGeneratedPitch(""); }}
+                      <select value={genType} onChange={(e) => { setGenType(e.target.value as "client" | "lead" | "contact"); setGenEntityId(""); setGeneratedPitch(""); setAiContext(""); }}
                         className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30">
                         <option value="client">Client</option>
                         <option value="lead">Lead</option>
@@ -1045,7 +1046,7 @@ export default function CallsPage() {
                     </div>
                     <div>
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.select_entity").replace("{entity}", "")}</label>
-                      <select value={genEntityId} onChange={(e) => { setGenEntityId(e.target.value); setGeneratedPitch(""); }}
+                      <select value={genEntityId} onChange={(e) => { setGenEntityId(e.target.value); setGeneratedPitch(""); setAiContext(""); }}
                         className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30">
                         <option value="">{t("calls.select_placeholder")}</option>
                         {genType === "client" && clients.map((c) => <option key={c.id} value={c.id}>{c.companyName || c.projectName || c.email}</option>)}
@@ -1054,6 +1055,18 @@ export default function CallsPage() {
                       </select>
                     </div>
                   </div>
+
+                  {genEntityId && (
+                    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Additional Context / Questions (Optional)</label>
+                      <textarea
+                        value={aiContext}
+                        onChange={(e) => setAiContext(e.target.value)}
+                        placeholder="E.g., Focus on our new SEO package, or mention we saw their recent LinkedIn post..."
+                        className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30 resize-none h-24"
+                      />
+                    </div>
+                  )}
 
                   {genEntityId && genType !== "contact" && (
                     <div className={cn(
@@ -1074,7 +1087,11 @@ export default function CallsPage() {
                       if (!genEntityId) return;
                       setGenerating(true);
                       try {
-                        const res = await fetch(`${API_BASE_URL}/${genType}s/${genEntityId}/simulate-call`, { method: "POST" });
+                        const res = await fetch(`${API_BASE_URL}/${genType}s/${genEntityId}/simulate-call`, { 
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ context: aiContext })
+                        });
                         if (res.ok) { 
                           const data = await res.json(); 
                           setGeneratedPitch(data.pitch || ""); 
