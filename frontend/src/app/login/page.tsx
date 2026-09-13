@@ -1,13 +1,106 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useGoogleLogin } from "@react-oauth/google";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
-import { Loader2, ArrowRight, ShieldCheck, Mail, Lock } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
+import { Loader2, ArrowRight, ShieldCheck, Mail, Lock, CheckCircle2, Globe, ChevronDown, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import AuthThemeToggle from "@/components/AuthThemeToggle";
+
+const LANGUAGES = [
+  { code: "en", nativeName: "English", name: "English", flag: "🇺🇸" },
+  { code: "es", nativeName: "Español", name: "Spanish", flag: "🇪🇸" },
+] as const;
+
+function LoginLanguageSwitcher() {
+  const { language, setLanguage, t } = useLanguage();
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const currentCode = LANGUAGES.find((l) => l.code === language) ? language : "en";
+
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setIsOpen(false);
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, []);
+
+  const changeLanguage = (code: string) => {
+    setIsOpen(false);
+    setLanguage(code);
+    localStorage.setItem("crm-language", code);
+    localStorage.setItem("language", code);
+  };
+
+  const current = LANGUAGES.find((l) => l.code === currentCode) ?? LANGUAGES[0];
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <motion.button
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        onClick={() => setIsOpen((v) => !v)}
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border text-sm font-semibold ${
+          isOpen
+            ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+            : "hover:bg-zinc-800 border-transparent text-zinc-400 hover:border-zinc-700"
+        }`}
+      >
+        <Globe className="w-4 h-4 text-zinc-500" />
+        <span className="hidden sm:block">{t("auth.language")}</span>
+        <div className="flex items-center gap-1.5 ml-1">
+          <span className="text-base leading-none">{current.flag}</span>
+          <span className="uppercase text-[10px] font-black tracking-wider text-zinc-500">{current.code}</span>
+        </div>
+        <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+      </motion.button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.97 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 top-full mt-2 w-52 bg-[#0a0a0a] border border-zinc-800 rounded-2xl shadow-xl overflow-hidden z-50"
+          >
+            <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900">
+              <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{t("auth.select_language")}</p>
+            </div>
+            <div className="p-2 space-y-1">
+              {LANGUAGES.map((lang) => {
+                const isActive = lang.code === currentCode;
+                return (
+                  <button
+                    key={lang.code}
+                    onClick={() => changeLanguage(lang.code)}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-left ${
+                      isActive ? "bg-indigo-50 text-indigo-700" : "hover:bg-zinc-900 text-zinc-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg leading-none">{lang.flag}</span>
+                      <div className="flex flex-col">
+                        <span className={`text-sm font-semibold leading-tight ${isActive ? "text-indigo-700" : "group-hover:text-indigo-600"}`}>{lang.nativeName}</span>
+                        <span className="text-[10px] text-zinc-500 font-medium">{lang.name}</span>
+                      </div>
+                    </div>
+                    {isActive && <Check className="w-4 h-4 text-indigo-600" />}
+                  </button>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -17,6 +110,8 @@ export default function LoginPage() {
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { login } = useRole();
+  const router = useRouter();
+  const { t } = useLanguage();
 
   useEffect(() => {
     setMounted(true);
@@ -33,9 +128,9 @@ export default function LoginPage() {
           body: JSON.stringify({ access_token: tokenResponse.access_token }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Google login failed");
+        if (!res.ok) throw new Error(data.detail || t("auth.google_login_error"));
         if (!data.user || !data.user.email) {
-          throw new Error("No email found in Google account. Please verify your email.");
+          throw new Error(t("auth.google_no_email"));
         }
         
         localStorage.setItem("crm_user", JSON.stringify(data.user));
@@ -46,13 +141,13 @@ export default function LoginPage() {
           window.location.href = "/";
         }
       } catch (err: any) {
-        setError(err.message || "An error occurred with Google Login.");
+        setError(err.message || t("auth.google_login_error"));
       } finally {
         setGoogleSubmitting(false);
       }
     },
     onError: () => {
-      setError("Google Login failed. Please try again.");
+      setError(t("auth.google_failed"));
     }
   });
 
@@ -62,7 +157,12 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const result = await login(email, password);
+      const result = (await login(email, password)) as {
+        success: boolean;
+        message?: string;
+        error?: string;
+        is_new_user?: boolean;
+      };
       
       if (result.success) {
         if (result.is_new_user) {
@@ -71,10 +171,10 @@ export default function LoginPage() {
           window.location.href = "/";
         }
       } else {
-        setError(result.error || "Login failed");
+        setError(result.error || t("auth.login_failed"));
       }
     } catch (err: any) {
-      setError(err.message || "An unexpected error occurred.");
+      setError(err.message || t("auth.unexpected_error"));
     } finally {
       setIsSubmitting(false);
     }
@@ -83,58 +183,54 @@ export default function LoginPage() {
   const handleDemoLogin = () => {
     setEmail("admin@serphawk.com");
     setPassword("Admin123!");
-    setError("");
+    setError(t("auth.demo_credentials"));
   };
 
-  if (!mounted) return <div className="min-h-screen bg-[#fafafa] dark:bg-[#0a0a0b]" />;
+  if (!mounted) return <div className="min-h-screen bg-[#0a0a0a]" />;
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[#fafafa] dark:bg-[#0a0a0b] text-slate-900 dark:text-zinc-100 font-sans relative overflow-hidden">
+    <div className="min-h-screen w-full flex bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-hidden">
       
-      {/* Background Subtle Elements */}
-      <div className="absolute inset-0 pointer-events-none opacity-40 dark:opacity-20 transition-opacity duration-500">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-200 dark:bg-indigo-900/40 rounded-full mix-blend-multiply dark:mix-blend-lighten filter blur-3xl opacity-50 animate-blob" />
-        <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-blue-200 dark:bg-blue-900/40 rounded-full mix-blend-multiply dark:mix-blend-lighten filter blur-3xl opacity-50 animate-blob animation-delay-2000" />
-      </div>
-
-      <div className="absolute top-6 right-6 z-50">
-        <AuthThemeToggle />
-      </div>
-
-      <motion.div 
-        initial={{ opacity: 0, y: 10, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full max-w-[420px] px-6 relative z-10"
-      >
-        <div className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border border-white/20 dark:border-zinc-800 shadow-2xl rounded-3xl p-8 sm:p-10">
+      {/* ── LEFT PANEL (Form) ── */}
+      <div className="flex-1 flex flex-col justify-center relative z-20 px-6 sm:px-12 lg:px-24 xl:px-32">
+        <div className="w-full max-w-[440px] mx-auto flex flex-col">
           
-          <div className="flex flex-col items-center mb-8 text-center">
-            <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center mb-5 shadow-lg shadow-indigo-600/20">
-              <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" className="fill-white" />
+          {/* Language selector in top right */}
+          <div className="absolute top-5 right-6 z-20">
+            <LoginLanguageSwitcher />
+          </div>
+
+          {/* Logo */}
+          <div className="flex items-center gap-3 mb-12">
+            <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center">
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="#0a0a0a" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">Welcome back</h1>
-            <p className="text-slate-500 dark:text-zinc-400 text-sm">Sign in to your SERP Hawk workspace.</p>
+            <span className="text-xl font-semibold tracking-tight text-zinc-100">{t("auth.app_name")}</span>
+          </div>
+
+          <div className="mb-8">
+            <h1 className="text-3xl font-semibold tracking-tight text-zinc-100 mb-2">{t("auth.login_title")}</h1>
+            <p className="text-zinc-400 text-sm">{t("auth.login_subtitle")}</p>
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             <div className="space-y-4">
               {/* Email */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase">Email Address</label>
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                    <Mail className="h-4 w-4 text-slate-400 dark:text-zinc-500 group-focus-within:text-indigo-500 transition-colors" />
+                <label className="text-xs font-medium text-zinc-400">{t("auth.email_label")}</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Mail className="h-4 w-4 text-zinc-500" />
                   </div>
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-zinc-950/50 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all shadow-sm"
-                    placeholder="name@company.com"
+                    className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/50 border border-zinc-800 rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                    placeholder={t("auth.email_placeholder")}
                   />
                 </div>
               </div>
@@ -142,22 +238,27 @@ export default function LoginPage() {
               {/* Password */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase">Password</label>
-                  <Link href="/forgot-password" className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">
-                    Forgot password?
-                  </Link>
+                  <label className="text-xs font-medium text-zinc-400">{t("auth.password_label")}</label>
+                  <div className="flex items-center gap-3">
+                    <Link href="/forgot-password" className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+                      {t("auth.forgot_password")}
+                    </Link>
+                    <button type="button" onClick={handleDemoLogin} className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+                      {t("auth.demo_login")}
+                    </button>
+                  </div>
                 </div>
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                    <Lock className="h-4 w-4 text-slate-400 dark:text-zinc-500 group-focus-within:text-indigo-500 transition-colors" />
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Lock className="h-4 w-4 text-zinc-500" />
                   </div>
                   <input
                     type="password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-zinc-950/50 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all shadow-sm"
-                    placeholder="••••••••••••"
+                    className="w-full pl-10 pr-4 py-2.5 bg-zinc-900/50 border border-zinc-800 rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                    placeholder={t("auth.password_placeholder")}
                   />
                 </div>
               </div>
@@ -171,43 +272,54 @@ export default function LoginPage() {
                   exit={{ opacity: 0, height: 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="mt-1 text-sm text-rose-500 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3 py-2.5 rounded-lg flex items-center gap-2">
+                  <div className="mt-2 text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3 py-2 rounded-lg flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 shrink-0" />
-                    <span className="font-medium">{error}</span>
+                    <span>{error}</span>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full mt-2 py-3 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 rounded-xl text-sm font-bold tracking-wide transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-70 disabled:scale-100 active:scale-[0.98]"
-            >
-              {isSubmitting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <>
-                  Sign in
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3 mt-2">
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 bg-zinc-100 hover:bg-white text-zinc-900 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    {t("auth.sign_in")}
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+              
+              <Link href="/signup" className="flex-1">
+                <button
+                  type="button"
+                  className="w-full h-full py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center"
+                >
+                  {t("auth.create_demo")}
+                </button>
+              </Link>
+            </div>
 
-            <div className="relative flex items-center py-2">
-              <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
-              <span className="flex-shrink-0 mx-4 text-slate-400 dark:text-zinc-600 text-xs font-medium uppercase tracking-widest">Or</span>
-              <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
+            <div className="relative flex items-center py-4">
+              <div className="flex-grow border-t border-zinc-800"></div>
+              <span className="flex-shrink-0 mx-4 text-zinc-500 text-xs">{t("auth.or")}</span>
+              <div className="flex-grow border-t border-zinc-800"></div>
             </div>
 
             <button
               type="button"
               onClick={() => googleLogin()}
               disabled={googleSubmitting}
-              className="w-full py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-xl text-sm text-slate-700 dark:text-zinc-300 font-semibold transition-all shadow-sm flex items-center justify-center gap-2.5 disabled:opacity-70 active:scale-[0.98]"
+              className="w-full py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
             >
               {googleSubmitting ? (
-                <Loader2 className="w-4 h-4 animate-spin text-slate-400 dark:text-zinc-500" />
+                <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
               ) : (
                 <svg viewBox="0 0 24 24" className="w-4 h-4" xmlns="http://www.w3.org/2000/svg">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -216,27 +328,57 @@ export default function LoginPage() {
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                 </svg>
               )}
-              Continue with Google
+              {googleSubmitting ? t("auth.authenticating") : t("auth.continue_google")}
             </button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-slate-100 dark:border-zinc-800/60 flex flex-col items-center gap-3">
-            <button 
-              onClick={handleDemoLogin}
-              className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
-            >
-              Try the Admin Demo Account
-            </button>
-            <p className="text-center text-sm text-slate-500 dark:text-zinc-500">
-              New to SERP Hawk?{" "}
-              <Link href="/signup" className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-                Create a demo workspace
-              </Link>
-            </p>
-          </div>
-
+          <p className="mt-8 text-center text-sm text-zinc-500">
+            {t("auth.no_account")}{" "}
+            <Link href="/signup" className="text-zinc-300 hover:text-white underline underline-offset-4 transition-colors">
+              {t("auth.request_access")}
+            </Link>
+          </p>
         </div>
-      </motion.div>
+      </div>
+
+      {/* ── RIGHT PANEL (Visual/Abstract) ── */}
+      <div className="relative hidden lg:flex flex-1 items-center justify-center overflow-hidden border-l border-zinc-800 bg-[#0f0f11]">
+        
+        {/* Subtle mesh background */}
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.15] mix-blend-overlay z-10 pointer-events-none" />
+        
+        {/* Elegant abstract glow */}
+        <div className="absolute w-[800px] h-[800px] rounded-full bg-indigo-500/10 blur-[100px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+        <div className="absolute w-[600px] h-[600px] rounded-full bg-violet-500/10 blur-[100px] top-1/2 left-1/2 -translate-x-1/2 translate-y-1/4" />
+
+        {/* Clean central graphic or quote */}
+        <div className="relative z-20 max-w-md w-full px-8 flex flex-col items-start gap-8">
+          <div className="w-full rounded-2xl bg-zinc-900/40 border border-zinc-800/60 p-8 backdrop-blur-sm shadow-2xl">
+            <div className="flex items-center gap-3 mb-6">
+              <CheckCircle2 className="w-5 h-5 text-indigo-400" />
+              <span className="text-sm font-medium text-zinc-400 uppercase tracking-widest">{t("auth.enterprise_ready")}</span>
+            </div>
+            <p className="text-xl font-medium text-zinc-200 leading-relaxed mb-8">
+              {t("auth.testimonial")}
+            </p>
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-zinc-800" />
+              <div>
+                <p className="text-sm font-semibold text-zinc-200">{t("auth.testimonial_author")}</p>
+                <p className="text-xs text-zinc-500">{t("auth.testimonial_role")}</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex gap-6 opacity-40 ml-2">
+            {/* Abstract geometric accents */}
+            <div className="w-2 h-2 rounded-full bg-zinc-500" />
+            <div className="w-2 h-2 rounded-full bg-zinc-700" />
+            <div className="w-2 h-2 rounded-full bg-zinc-700" />
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }
