@@ -369,13 +369,15 @@ def catalog_pdf(products, currency="MXN"):
                                    footer_label="SERPHAWK · Catálogo de Productos")
 
 
-def send_pdf_email(to_email, subject, body, pdf_bytes, filename):
+def send_pdf_email(to_email, subject, body, pdf_bytes, filename, title=None):
     """Send a PDF attachment via the configured SMTP. Best-effort."""
-    from modules.email_sender import send_email_outlook
+    from modules.email_sender import send_email_outlook, branded_email_html
     sender = os.environ.get("EMAIL_SENDER") or os.environ.get("OUTLOOK_EMAIL") or ""
     password = os.environ.get("EMAIL_PASSWORD") or os.environ.get("OUTLOOK_PASSWORD") or ""
     if not sender or not password:
         raise RuntimeError("SMTP not configured (missing EMAIL_SENDER/EMAIL_PASSWORD)")
+    if isinstance(body, str) and body.lstrip().startswith("<") and "cid:serphawk_logo" not in body:
+        body = branded_email_html(title or subject, body)
     smtp_server = os.environ.get("EMAIL_HOST") or os.environ.get("SMTP_SERVER") or "mail.serphawk.in"
     smtp_port = int(os.environ.get("EMAIL_PORT") or os.environ.get("SMTP_PORT") or 587)
     send_email_outlook(

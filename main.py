@@ -738,6 +738,12 @@ def _is_valid_email(email: Optional[str]) -> bool:
     return bool(email and EMAIL_FORMAT_RE.match(email.strip()))
 
 
+def _branded_email(title: str, body_html: str, brand_text: str = "SERP Hawk CRM") -> str:
+    """Wrap notification content in the standard SERP Hawk CRM branded email template."""
+    from modules.email_sender import branded_email_html
+    return branded_email_html(title, body_html, brand_text)
+
+
 def _send_notification_email(to_email: str, subject: str, body_html: str):
     """Best-effort email notification. Fails silently so it never blocks API responses."""
     def _send():
@@ -1216,11 +1222,17 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
 
             # Send directly over SMTP from crm@serphawk.in so mail goes out even if n8n is down.
             if sender and password:
-                from modules.email_sender import send_email_outlook
+                from modules.email_sender import send_email_outlook, branded_email_html
+                import html as _html
+                text = full_body or body.english_body or body.spanish_body or ""
+                branded = branded_email_html(
+                    body.subject or "Hello",
+                    f"<p style='white-space:pre-wrap;margin:0'>{_html.escape(text)}</p>",
+                )
                 send_email_outlook(
                     to_email=body.to_email,
                     subject=body.subject,
-                    body=full_body or body.english_body or body.spanish_body or "",
+                    body=branded,
                     sender_email=sender,
                     sender_password=password,
                     smtp_server=smtp_server,
@@ -5399,17 +5411,24 @@ def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = D
     # Send email notification if entity_email provided
     if body.entity_email:
         try:
+            import html as _html
             dt_str = dt.strftime("%Y-%m-%d %H:%M") if dt else "TBD"
-            pitch_section = f"\n\n📋 Pitch Prepared:\n{body.pitch}" if body.pitch else ""
             subject = f"📞 Call Scheduled: {body.title}"
-            content = (
-                f"Hello {body.entity_name or ''},\n\n"
-                f"A call has been scheduled for you.\n\n"
-                f"📅 Date & Time: {dt_str}\n"
-                f"📌 Topic: {body.title}\n"
-                f"{pitch_section}\n\n"
-                f"Our team will reach out at the scheduled time.\n\n"
-                f"Thanks,\nSerpHawk CRM"
+            pitch_box = ""
+            if body.pitch:
+                pitch_box = (
+                    f"<div style='white-space:pre-wrap;margin-top:8px'>"
+                    f"<span style='font-weight:700;color:#64748b'>📋 Pitch Prepared:</span> {_html.escape(body.pitch)}</div>"
+                )
+            content = _branded_email(
+                "Call Scheduled",
+                f"<p style='margin:0 0 16px'>Hello {_html.escape(body.entity_name or '')},</p>"
+                f"<p style='margin:0 0 16px'>A call has been scheduled for you.</p>"
+                f"<div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin:0 0 16px'>"
+                f"<div style='margin-bottom:6px'><span style='font-weight:700;color:#64748b'>📅 Date &amp; Time:</span> {_html.escape(dt_str)}</div>"
+                f"<div><span style='font-weight:700;color:#64748b'>📌 Topic:</span> {_html.escape(body.title)}</div>"
+                f"{pitch_box}</div>"
+                f"<p style='margin:0'>Our team will reach out at the scheduled time.</p>",
             )
             _send_notification_email(body.entity_email, subject, content)
         except Exception as e:
@@ -5576,10 +5595,22 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
         # Only send the email if manual is False and all required fields are present
         if not body.manual and all([body.to_email, body.subject, body.body, sender, password]):
             try:
+                from modules.email_sender import send_email_outlook, branded_email_html
+                import html as _html
+                raw = body.body
+                if raw.lstrip().startswith("<") and "cid:serphawk_logo" not in raw:
+                    branded = branded_email_html(body.subject or "Hello", raw)
+                elif raw.lstrip().startswith("<"):
+                    branded = raw
+                else:
+                    branded = branded_email_html(
+                        body.subject or "Hello",
+                        f"<p style='white-space:pre-wrap;margin:0'>{_html.escape(raw)}</p>",
+                    )
                 send_email_outlook(
                     to_email=body.to_email,
                     subject=body.subject,
-                    body=body.body,
+                    body=branded,
                     sender_email=sender,
                     sender_password=password,
                     smtp_server=smtp_server,
@@ -6803,8 +6834,13 @@ def create_invoice(body: InvoiceCreateRequest, session: Session = Depends(get_se
             if user and user.email:
                 _send_notification_email(
                     user.email,
-                    f"New Invoice #{inv.invoice_number} from DaPros",
-                    f"<h2>New Invoice</h2><p>Hi {cp.companyName or 'there'},</p><p>A new invoice <strong>#{inv.invoice_number}</strong> for <strong>${inv.total}</strong> has been created.</p><p>Please log in to your dashboard to view details.</p><p>— Team DaPros</p>",
+                    f"New Invoice #{inv.invoice_number}",
+                    _branded_email(
+                        "New Invoice",
+                        f"<p style='margin:0 0 16px'>Hi {cp.companyName or 'there'},</p>"
+                        f"<p style='margin:0 0 16px'>A new invoice <strong>#{inv.invoice_number}</strong> for <strong>${inv.total}</strong> has been created.</p>"
+                        f"<p style='margin:0'>Please log in to your dashboard to view the details.</p>",
+                    ),
                 )
             notif = Notification(
                 user_id=cp.userId,
@@ -6889,8 +6925,13 @@ def update_invoice(
             if user and user.email:
                 _send_notification_email(
                     user.email,
-                    f"Invoice #{inv.invoice_number} Sent — DaPros",
-                    f"<h2>Invoice Ready for Payment</h2><p>Hi {cp.companyName or 'there'},</p><p>Invoice <strong>#{inv.invoice_number}</strong> for <strong>${inv.total}</strong> has been sent to you.</p><p>Due date: {inv.due_date or 'TBD'}</p><p>— Team DaPros</p>",
+                    f"Invoice #{inv.invoice_number} sent",
+                    _branded_email(
+                        "Invoice Ready for Payment",
+                        f"<p style='margin:0 0 16px'>Hi {cp.companyName or 'there'},</p>"
+                        f"<p style='margin:0 0 16px'>Invoice <strong>#{inv.invoice_number}</strong> for <strong>${inv.total}</strong> has been sent to you.</p>"
+                        f"<p style='margin:0'>Due date: {inv.due_date or 'TBD'}</p>",
+                    ),
                 )
 
     return {"invoice": _invoice_dict(inv, session)}
@@ -7210,8 +7251,13 @@ def update_milestone(
             if user and user.email:
                 _send_notification_email(
                     user.email,
-                    f"Milestone Achieved: {m.title} — DaPros",
-                    f"<h2>🎉 Milestone Achieved!</h2><p>Hi {cp.companyName or 'there'},</p><p>Great news! The milestone <strong>{m.title}</strong> has been completed.</p><p>Log in to see your progress.</p><p>— Team DaPros</p>",
+                    f"Milestone achieved: {m.title}",
+                    _branded_email(
+                        "Milestone Achieved! 🎉",
+                        f"<p style='margin:0 0 16px'>Hi {cp.companyName or 'there'},</p>"
+                        f"<p style='margin:0 0 16px'>Great news! The milestone <strong>{m.title}</strong> has been completed.</p>"
+                        f"<p style='margin:0'>Log in to see your progress.</p>",
+                    ),
                 )
 
     return {"milestone": _milestone_dict(m)}
@@ -7497,15 +7543,19 @@ def _notify_proposal_sent(session: Session, p: Proposal) -> dict:
                 title="New Proposal Ready",
                 message=f"A proposal '{p.title}' has been sent for your review.",
                 type="info",
-                link=f"/proposals/{p.id}",
+                link=f"/proposals",
             ))
             session.commit()
         _send_notification_email(
             email,
-            f"New Proposal: {p.title} — DaPros",
-            f"<h2>Proposal Ready for Review</h2><p>Hi {name},</p>"
-            f"<p>A new proposal <strong>{p.title}</strong> has been sent for your review.</p>"
-            f"<p>Please log in to your dashboard to accept or decline.</p><p>— Team DaPros</p>",
+            f"Proposal ready for review: {p.title}",
+            _branded_email(
+                "Proposal Ready for Review",
+                f"<p style='margin:0 0 16px'>Hi {name},</p>"
+                f"<p style='margin:0 0 16px'>A new proposal <strong>{p.title}</strong> has been sent for your review.</p>"
+                f"<p style='margin:0 0 20px'>Please log in to your dashboard to accept or decline.</p>"
+                f"<a href='https://crm-seo.allytechcourses.com/proposals' style='display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:600'>Review Proposal</a>",
+            ),
         )
         return {"email_sent": True, "email_recipient": email, "email_error": None}
     except Exception as e:
@@ -11003,7 +11053,7 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
         )
         if notes:
             plain += f"\n\nNotes:\n{notes}"
-        plain += "\n\nThanks,\nSerpHawk CRM"
+        plain += "\n\nThanks,\nSERP Hawk CRM"
 
         esc = _html.escape
         title = esc(m.title or "Meeting")
@@ -11048,7 +11098,7 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,0.08)">
           <tr>
             <td style="background:linear-gradient(135deg,#1e3a8a,#2563eb);padding:28px 32px">
-              <p style="margin:0;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#93c5fd">SerpHawk CRM</p>
+              <p style="margin:0;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#93c5fd">SERP Hawk CRM</p>
               <p style="margin:8px 0 0;font-size:22px;font-weight:800;color:#ffffff">📅 Meeting Scheduled</p>
             </td>
           </tr>
@@ -11063,7 +11113,7 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
           </tr>
           <tr>
             <td style="padding:16px 32px 24px;border-top:1px solid #eef2f7">
-              <p style="margin:0;color:#64748b;font-size:12px;line-height:1.5">Thanks,<br><span style="font-weight:700;color:#1d4ed8">SerpHawk CRM</span></p>
+              <p style="margin:0;color:#64748b;font-size:12px;line-height:1.5">Thanks,<br><span style="font-weight:700;color:#1d4ed8">SERP Hawk CRM</span></p>
               <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:14px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
             </td>
           </tr>
@@ -11596,7 +11646,7 @@ def _quote_email_content(q: CRMQuote, session: Session, recipient_name=None):
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
       <div style="background:#1e293b;color:#fff;padding:22px 28px">
-        <strong style="font-size:18px">SerpHawk CRM</strong>
+        <strong style="font-size:18px">SERP Hawk CRM</strong>
       </div>
       <div style="padding:28px">
         <h2 style="color:#0f172a;margin:0 0 8px">New Quote ready for you</h2>
@@ -11612,7 +11662,7 @@ def _quote_email_content(q: CRMQuote, session: Session, recipient_name=None):
         {'' if not items else "<h3 style='color:#0f172a;font-size:15px;margin:0 0 6px'>Items</h3><table style='width:100%;border-collapse:collapse'><tr><th style='padding:8px;text-align:left;color:#475569;border-bottom:2px solid #e2e8f0'>Description</th><th style='padding:8px;text-align:center;color:#475569;border-bottom:2px solid #e2e8f0'>Qty</th><th style='padding:8px;text-align:right;color:#475569;border-bottom:2px solid #e2e8f0'>Amount</th></tr>" + rows + "</table>"}
         {extra_section}
         <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">If you have any questions about this quote, just reply to this email or contact your account manager.</p>
-        <p style="color:#64748b;font-size:13px;line-height:1.6;margin:4px 0 0">This is an automated message from the SerpHawk CRM.</p>
+        <p style="color:#64748b;font-size:13px;line-height:1.6;margin:4px 0 0">This is an automated message from the SERP Hawk CRM.</p>
         <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
       </div>
     </div>
@@ -11979,7 +12029,7 @@ def export_sales_orders_pdf(body: ExportPdfRequest, session: Session = Depends(g
         try:
             send_pdf_email(
                 body.email, "Sales Orders PDF", "<p>The requested sales orders report is attached.</p>",
-                pdf, "sales_orders.pdf"
+                pdf, "sales_orders.pdf", title="Sales Orders Report"
             )
             return {"sent": True, "recipient": body.email, "count": len(data)}
         except Exception as e:
@@ -12044,12 +12094,12 @@ def send_single_sales_order_pdf_email(order_id: int, body: ExportPdfRequest, ses
     pdf = single_sales_order_pdf(o.model_dump(), client_name=client_name, lead_name=lead_name)
     filename = f"{o.order_number or f'SO-{o.id}'}.pdf"
     subject = f"Sales Order {o.order_number or o.id} — {client_name or lead_name or ''}".strip()
-    name_line = f"Hi {default_name}," if default_name else ""
-    body_html = (
-        f"<p>{name_line}</p>"
-        f"<p>Please find your sales order <strong>{o.order_number or o.id}</strong> attached.</p>"
-        f"<p>Grand Total: <strong>{o.currency or 'USD'} {o.grand_total:,.2f}</strong></p>"
-        "<p>Thank you.</p>"
+    name_line = f"Hello {default_name}," if default_name else ""
+    body_html = _branded_email(
+        "Sales Order",
+        f"{f'<p style=\"margin:0 0 16px\">{name_line}</p>' if name_line else ''}"
+        f"<p style='margin:0 0 16px'>Please find your sales order <strong>{o.order_number or o.id}</strong> attached.</p>"
+        f"<p style='margin:0'>Grand Total: <strong>{o.currency or 'USD'} {o.grand_total:,.2f}</strong></p>",
     )
     # Resolve SMTP the same way quote emails do: per-tenant EmailSettings, then env vars.
     sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
@@ -12089,7 +12139,7 @@ def export_purchase_orders_pdf(body: ExportPdfRequest, session: Session = Depend
         try:
             send_pdf_email(
                 body.email, "Purchase Orders PDF", "<p>The requested purchase orders report is attached.</p>",
-                pdf, "purchase_orders.pdf"
+                pdf, "purchase_orders.pdf", title="Purchase Orders Report"
             )
             return {"sent": True, "recipient": body.email, "count": len(data)}
         except Exception as e:
@@ -12132,10 +12182,10 @@ def send_single_purchase_order_pdf_email(order_id: int, body: ExportPdfRequest, 
     pdf = single_purchase_order_pdf(o.model_dump())
     filename = f"{o.po_number or f'PO-{o.id}'}.pdf"
     subject = f"Purchase Order {o.po_number or o.id} — {o.vendor_name}".strip()
-    body_html = (
-        f"<p>Please find your purchase order <strong>{o.po_number or o.id}</strong> attached.</p>"
-        f"<p>Grand Total: <strong>{o.currency or 'USD'} {o.grand_total:,.2f}</strong></p>"
-        "<p>Thank you.</p>"
+    body_html = _branded_email(
+        "Purchase Order",
+        f"<p style='margin:0 0 16px'>Please find your purchase order <strong>{o.po_number or o.id}</strong> attached.</p>"
+        f"<p style='margin:0'>Grand Total: <strong>{o.currency or 'USD'} {o.grand_total:,.2f}</strong></p>",
     )
     sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
     if not sender or not password:
@@ -12189,7 +12239,7 @@ def export_pos_receipt_pdf(body: PosReceiptRequest):
         try:
             send_pdf_email(
                 body.email, f"Your receipt ({body.companyName})",
-                "<p>Your receipt is attached.</p>", pdf, filename
+                "<p>Your receipt is attached.</p>", pdf, filename, title="Your Receipt"
             )
             return {"sent": True, "recipient": body.email}
         except Exception as e:
@@ -14227,7 +14277,7 @@ def export_inventory_pdf(body: ExportPdfRequest, session: Session = Depends(get_
         try:
             send_pdf_email(
                 body.email, "Inventory List PDF", "<p>The requested inventory list is attached.</p>",
-                pdf, "inventory_list.pdf"
+                pdf, "inventory_list.pdf", title="Inventory List Report"
             )
             return {"sent": True, "recipient": body.email, "count": len(data)}
         except Exception as e:
@@ -14443,40 +14493,29 @@ def send_supplier_credentials(supplier_id: int, session: Session = Depends(get_s
 
     login_url = (os.environ.get("FRONTEND_URL") or "https://crm-seo.allytechcourses.com").rstrip("/") + "/login"
     subject = "Your SERP Hawk Supplier Portal Login"
-    html = f"""
-    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
-      <div style="background:#1e293b;color:#fff;padding:22px 28px">
-        <strong style="font-size:18px">🦅 SERP Hawk Supplier Portal</strong>
-      </div>
-      <div style="padding:28px">
-        <h2 style="color:#0f172a;font-size:20px;margin:0 0 12px">Your supplier account is ready</h2>
-        <p style="color:#475569;line-height:1.6;margin:0 0 20px">
-          Hello <strong>{s.supplier_name}</strong>,<br/><br/>
-          An account has been created for you so you can update pricing, stock levels, lot numbers,
-          and delivery timelines for the items we source from you. Use the credentials below to sign in.
-        </p>
-        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin:0 0 20px">
-          <div style="margin-bottom:14px">
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Login URL</div>
-            <a href="{login_url}" style="color:#2563eb;font-weight:600;word-break:break-all">{login_url}</a>
-          </div>
-          <div style="margin-bottom:14px">
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Email</div>
-            <div style="color:#0f172a;font-weight:600;word-break:break-all">{s.supplier_email}</div>
-          </div>
-          <div>
-            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Password</div>
-            <div style="color:#0f172a;font-weight:800;font-family:monospace;font-size:16px;letter-spacing:1px">{s.login_password}</div>
-          </div>
-        </div>
-        <a href="{login_url}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:600">Open the Supplier Portal</a>
-        <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">
-          If you did not expect this email, you can safely ignore it. We recommend changing your password after your first login.
-        </p>
-        <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
-      </div>
-    </div>
-    """
+    html = _branded_email(
+        "Your supplier account is ready",
+        f"<p style='margin:0 0 20px'>"
+        f"Hello <strong>{s.supplier_name}</strong>,<br/><br/>"
+        f"An account has been created for you so you can update pricing, stock levels, lot numbers, "
+        f"and delivery timelines for the items we source from you. Use the credentials below to sign in."
+        f"</p>"
+        f"<div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin:0 0 20px'>"
+        f"<div style='margin-bottom:14px'>"
+        f"<div style='font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px'>Login URL</div>"
+        f"<a href=\"{login_url}\" style=\"color:#2563eb;font-weight:600;word-break:break-all\">{login_url}</a></div>"
+        f"<div style='margin-bottom:14px'>"
+        f"<div style='font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px'>Email</div>"
+        f"<div style='color:#0f172a;font-weight:600;word-break:break-all'>{s.supplier_email}</div></div>"
+        f"<div>"
+        f"<div style='font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px'>Password</div>"
+        f"<div style='color:#0f172a;font-weight:800;font-family:monospace;font-size:16px;letter-spacing:1px'>{s.login_password}</div></div>"
+        f"</div>"
+        f"<a href=\"{login_url}\" style=\"display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:600\">Open the Supplier Portal</a>"
+        f"<p style='margin:16px 0 0'>If you did not expect this email, you can safely ignore it. "
+        f"We recommend changing your password after your first login.</p>",
+        brand_text="SERP Hawk Supplier Portal",
+    )
     sent = False
     try:
         from modules.email_sender import send_email_outlook
@@ -14687,34 +14726,25 @@ def create_rfq(data: RFQCreate, session: Session = Depends(get_session)):
             frontend_url = (os.environ.get("FRONTEND_URL") or "https://crm-seo.allytechcourses.com").rstrip("/")
             respond_url = f"{frontend_url}/rfq/{rfq.id}?token={token}"
             subject = f"RFQ Request: {item_name}"
-            html = f"""
-            <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
-              <div style="background:#1e293b;color:#fff;padding:22px 28px">
-                <strong style="font-size:18px">🦅 SERP Hawk — Request for Quotation</strong>
-              </div>
-              <div style="padding:28px">
-                <h2 style="color:#0f172a;font-size:20px;margin:0 0 12px">Quotation requested: {item_name}</h2>
-                <p style="color:#475569;line-height:1.6;margin:0 0 20px">
-                  Hello <strong>{data.supplier_name or 'Supplier'}</strong>,<br/><br/>
-                  We would like a quotation for <strong>{item_name}</strong>{f" ({item_code})" if item_code else ""}.
-                  {f"We are looking for a quantity of <strong>{data.quantity:g}</strong>." if data.quantity else ""}
-                  Click the button below to submit your unit price and delivery timeline.
-                </p>
-                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin:0 0 20px">
-                  <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Item</div>
-                  <div style="color:#0f172a;font-weight:600">{item_name}{f" · {item_code}" if item_code else ""}</div>
-                  {f'<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px">Quantity</div><div style="color:#0f172a;font-weight:600">{data.quantity:g}</div>' if data.quantity else ""}
-                  {f'<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px">Notes</div><div style="color:#475569">{data.notes}</div>' if data.notes else ""}
-                </div>
-                <a href="{respond_url}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:600">Submit Quotation</a>
-                <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">
-                  If the button does not work, copy and paste this link into your browser:<br/>
-                  <a href="{respond_url}" style="color:#2563eb;word-break:break-all">{respond_url}</a>
-                </p>
-                <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
-              </div>
-            </div>
-            """
+            html = _branded_email(
+                f"Quotation requested: {item_name}",
+                f"<p style='margin:0 0 20px'>"
+                f"Hello <strong>{data.supplier_name or 'Supplier'}</strong>,<br/><br/>"
+                f"We would like a quotation for <strong>{item_name}</strong>{f' ({item_code})' if item_code else ''}."
+                f"{f' We are looking for a quantity of <strong>{data.quantity:g}</strong>.' if data.quantity else ''}"
+                f" Click the button below to submit your unit price and delivery timeline."
+                f"</p>"
+                f"<div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin:0 0 20px'>"
+                f"<div style='font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px'>Item</div>"
+                f"<div style='color:#0f172a;font-weight:600'>{item_name}{f' · {item_code}' if item_code else ''}</div>"
+                f"{f'<div style=\"font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px\">Quantity</div><div style=\"color:#0f172a;font-weight:600\">{data.quantity:g}</div>' if data.quantity else ''}"
+                f"{f'<div style=\"font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px\">Notes</div><div style=\"color:#475569\">{data.notes}</div>' if data.notes else ''}"
+                f"</div>"
+                f"<a href=\"{respond_url}\" style=\"display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:600\">Submit Quotation</a>"
+                f"<p style='margin:16px 0 0'>If the button does not work, copy and paste this link into your browser:<br/>"
+                f"<a href=\"{respond_url}\" style=\"color:#2563eb;word-break:break-all\">{respond_url}</a></p>",
+                brand_text="SERP Hawk Supplier Portal",
+            )
             from modules.email_sender import send_email_outlook
             sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
             if sender and password:

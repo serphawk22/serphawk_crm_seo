@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Shield, CheckCircle, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { API_BASE_URL } from "@/config";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface EmailOTPVerificationProps {
   email: string;
@@ -20,6 +21,7 @@ export default function EmailOTPVerification({
   onVerified,
   onCancel,
 }: EmailOTPVerificationProps) {
+  const { t } = useLanguage();
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -59,7 +61,7 @@ export default function EmailOTPVerification({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.detail || "Failed to send OTP");
+        setError(data.detail || t("auth.otp_send_failed"));
         return;
       }
       setSent(true);
@@ -68,7 +70,7 @@ export default function EmailOTPVerification({
         setDebugOtp(data.debug_otp);
       }
     } catch {
-      setError("Network error. Please try again.");
+      setError(t("auth.otp_network"));
     } finally {
       setSending(false);
     }
@@ -122,7 +124,7 @@ export default function EmailOTPVerification({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.detail || "Invalid OTP code");
+        setError(data.detail || t("auth.otp_invalid"));
         setOtp(["", "", "", "", "", ""]);
         document.getElementById("otp-0")?.focus();
         return;
@@ -130,7 +132,7 @@ export default function EmailOTPVerification({
       setVerified(true);
       setTimeout(() => onVerified(), 1200);
     } catch {
-      setError("Network error. Please try again.");
+      setError(t("auth.otp_network"));
     } finally {
       setVerifying(false);
     }
@@ -151,9 +153,9 @@ export default function EmailOTPVerification({
         >
           <CheckCircle className="w-8 h-8 text-emerald-500" />
         </motion.div>
-        <p className="font-bold text-lg text-slate-800 dark:text-zinc-100">Email Verified!</p>
+        <p className="font-bold text-lg text-slate-800 dark:text-zinc-100">{t("auth.otp_email_verified")}</p>
         <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">
-          {email} has been verified successfully.
+          {t("auth.otp_email_verified_desc", { email })}
         </p>
       </motion.div>
     );
@@ -167,9 +169,9 @@ export default function EmailOTPVerification({
           <Shield size={20} />
         </div>
         <div>
-          <h3 className="font-bold text-slate-900 dark:text-white">Verify Email Address</h3>
+          <h3 className="font-bold text-slate-900 dark:text-white">{t("auth.otp_title")}</h3>
           <p className="text-sm text-slate-500 dark:text-zinc-400">
-            We'll send a 6-digit code to <span className="font-semibold">{email}</span>
+            {t("auth.otp_desc_prefix")} <span className="font-semibold">{email}</span>
           </p>
         </div>
       </div>
@@ -186,7 +188,7 @@ export default function EmailOTPVerification({
           ) : (
             <Mail size={16} />
           )}
-          {sending ? "Sending verification code..." : "Send Verification Code"}
+          {sending ? t("auth.otp_sending") : t("auth.otp_send")}
         </button>
       )}
 
@@ -194,7 +196,7 @@ export default function EmailOTPVerification({
       {sent && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
           <p className="text-sm text-slate-600 dark:text-zinc-300 text-center">
-            Enter the 6-digit code sent to your email
+            {t("auth.otp_enter")}
           </p>
           <div className="flex justify-center gap-2">
             {otp.map((digit, i) => (
@@ -217,10 +219,10 @@ export default function EmailOTPVerification({
           {debugOtp && (
             <div className="px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
               <p className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1">
-                Demo mode: email delivery is not configured
+                {t("auth.otp_debug_title")}
               </p>
               <p className="text-sm text-amber-700 dark:text-amber-400">
-                Use this code to continue:{" "}
+                {t("auth.otp_debug_desc")}{" "}
                 <span className="font-mono font-bold tracking-widest text-lg">{debugOtp}</span>
               </p>
             </div>
@@ -229,7 +231,7 @@ export default function EmailOTPVerification({
           {verifying && (
             <div className="flex items-center justify-center gap-2 text-sm text-blue-600">
               <Loader2 size={14} className="animate-spin" />
-              Verifying...
+              {t("auth.otp_verifying")}
             </div>
           )}
 
@@ -237,7 +239,7 @@ export default function EmailOTPVerification({
           <div className="flex justify-center">
             {resendTimer > 0 ? (
               <p className="text-xs text-slate-400 dark:text-zinc-500">
-                Resend code in {resendTimer}s
+                {t("auth.otp_resend_in", { seconds: String(resendTimer) })}
               </p>
             ) : (
               <button
@@ -246,7 +248,7 @@ export default function EmailOTPVerification({
                 className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
               >
                 <RefreshCw size={12} />
-                Resend Code
+                {t("auth.otp_resend")}
               </button>
             )}
           </div>
@@ -274,7 +276,7 @@ export default function EmailOTPVerification({
           onClick={onCancel}
           className="w-full text-center text-sm font-semibold text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
         >
-          Cancel
+          {t("auth.otp_cancel")}
         </button>
       )}
     </div>
