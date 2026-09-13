@@ -3557,8 +3557,8 @@ Instructions:
 2. Directly reference their specific company name, their services/keywords, and especially any past notes or activities.
 3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
 4. Make it conversational, persuasive, and professional.
-5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
-6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
+5. Structure it logically but seamlessly.
+6. Output ONLY the spoken script as natural dialogue. Do NOT include markdown headings like **Introduction** or **Value Proposition**. It should read exactly like a transcript of someone speaking. Do not add any meta-commentary."""
 
     if req and req.context:
         prompt += f"\n\nAdditional Custom Context / Instructions from the Sales Rep:\n{req.context}\n(Please ensure you incorporate this custom instruction closely into the script)."
@@ -12468,8 +12468,8 @@ Instructions:
 2. Directly reference their specific company name, their industry, and any past notes or activities.
 3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
 4. Make it conversational, persuasive, and professional.
-5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
-6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
+5. Structure it logically but seamlessly.
+6. Output ONLY the spoken script as natural dialogue. Do NOT include markdown headings like **Introduction** or **Value Proposition**. It should read exactly like a transcript of someone speaking. Do not add any meta-commentary."""
 
     if req and req.context:
         prompt += f"\n\nAdditional Custom Context / Instructions from the Sales Rep:\n{req.context}\n(Please ensure you incorporate this custom instruction closely into the script)."
@@ -12542,8 +12542,8 @@ Instructions:
 2. Directly reference their specific name, their role/title, and any past notes.
 3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
 4. Make it conversational, persuasive, and professional.
-5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
-6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
+5. Structure it logically but seamlessly.
+6. Output ONLY the spoken script as natural dialogue. Do NOT include markdown headings like **Introduction** or **Value Proposition**. It should read exactly like a transcript of someone speaking. Do not add any meta-commentary."""
 
     if req and req.context:
         prompt += f"\n\nAdditional Custom Context / Instructions from the Sales Rep:\n{req.context}\n(Please ensure you incorporate this custom instruction closely into the script)."

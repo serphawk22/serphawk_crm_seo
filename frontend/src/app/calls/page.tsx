@@ -537,6 +537,8 @@ export default function CallsPage() {
   };
 
   const handleStartAiCall = async () => {
+    addToast("Coming soon: AI calling", "info");
+    return;
     if (!genEntityId || !generatedPitch) return;
     if (genType === "contact") {
       addToast(t("calls.ai_calling_only_clients"), "warning");
