@@ -12095,9 +12095,10 @@ def send_single_sales_order_pdf_email(order_id: int, body: ExportPdfRequest, ses
     filename = f"{o.order_number or f'SO-{o.id}'}.pdf"
     subject = f"Sales Order {o.order_number or o.id} — {client_name or lead_name or ''}".strip()
     name_line = f"Hello {default_name}," if default_name else ""
+    name_line_html = f"<p style='margin:0 0 16px'>{name_line}</p>" if name_line else ""
     body_html = _branded_email(
         "Sales Order",
-        f"{f'<p style=\"margin:0 0 16px\">{name_line}</p>' if name_line else ''}"
+        f"{name_line_html}"
         f"<p style='margin:0 0 16px'>Please find your sales order <strong>{o.order_number or o.id}</strong> attached.</p>"
         f"<p style='margin:0'>Grand Total: <strong>{o.currency or 'USD'} {o.grand_total:,.2f}</strong></p>",
     )
@@ -14726,6 +14727,8 @@ def create_rfq(data: RFQCreate, session: Session = Depends(get_session)):
             frontend_url = (os.environ.get("FRONTEND_URL") or "https://crm-seo.allytechcourses.com").rstrip("/")
             respond_url = f"{frontend_url}/rfq/{rfq.id}?token={token}"
             subject = f"RFQ Request: {item_name}"
+            qty_html = f"<div style='font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px'>Quantity</div><div style='color:#0f172a;font-weight:600'>{data.quantity:g}</div>" if data.quantity else ""
+            notes_html = f"<div style='font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px'>Notes</div><div style='color:#475569'>{data.notes}</div>" if data.notes else ""
             html = _branded_email(
                 f"Quotation requested: {item_name}",
                 f"<p style='margin:0 0 20px'>"
@@ -14737,8 +14740,8 @@ def create_rfq(data: RFQCreate, session: Session = Depends(get_session)):
                 f"<div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin:0 0 20px'>"
                 f"<div style='font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px'>Item</div>"
                 f"<div style='color:#0f172a;font-weight:600'>{item_name}{f' · {item_code}' if item_code else ''}</div>"
-                f"{f'<div style=\"font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px\">Quantity</div><div style=\"color:#0f172a;font-weight:600\">{data.quantity:g}</div>' if data.quantity else ''}"
-                f"{f'<div style=\"font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px\">Notes</div><div style=\"color:#475569\">{data.notes}</div>' if data.notes else ''}"
+                f"{qty_html}"
+                f"{notes_html}"
                 f"</div>"
                 f"<a href=\"{respond_url}\" style=\"display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:600\">Submit Quotation</a>"
                 f"<p style='margin:16px 0 0'>If the button does not work, copy and paste this link into your browser:<br/>"
