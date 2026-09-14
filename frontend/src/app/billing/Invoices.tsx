@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   Plus, X, Loader2, FileText, CheckCircle, Clock, AlertTriangle,
-  DollarSign, Send, Trash2, Download, RefreshCw
+  DollarSign, Send, Trash2, Download, RefreshCw, Eye
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { cn } from "@/lib/utils";
@@ -80,6 +80,10 @@ export default function InvoicesPage() {
   }
 
   function downloadInvoice(inv: Invoice) {
+    window.open(`${API_BASE_URL}/invoices/${inv.id}/pdf?download=true`, '_blank');
+  }
+
+  function previewInvoice(inv: Invoice) {
     window.open(`${API_BASE_URL}/invoices/${inv.id}/pdf`, '_blank');
   }
 
@@ -228,6 +232,10 @@ export default function InvoicesPage() {
                       <div className="flex items-center gap-2">
                         <button onClick={() => { setSelectedInvoice(inv); setShowDetailModal(true); }}
                           className="text-indigo-600 font-semibold text-xs hover:underline">View</button>
+                        <button onClick={() => previewInvoice(inv)}
+                          className="text-gray-500 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors" title="Preview PDF">
+                          <Eye className="w-4 h-4" />
+                        </button>
                         <button onClick={() => downloadInvoice(inv)}
                           className="text-gray-500 dark:text-zinc-400 hover:text-gray-800 dark:text-zinc-100 transition-colors" title="Download">
                           <Download className="w-4 h-4" />

@@ -108,21 +108,27 @@ export default function LeadDetailsPage() {
   };
 
   const handleRunAgent = async (agentType: string) => {
-    setLoadingAgent(agentType);
-    try {
-      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/ai/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent_type: agentType })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLead(data.lead);
-      }
-    } catch (error) {
-      console.error("Failed to run agent", error);
-    } finally {
-      setLoadingAgent(null);
+    switch(agentType) {
+      case "calling":
+        router.push(`/calls?leadId=${leadId}`);
+        break;
+      case "email":
+        router.push(`/email-agent?leadId=${leadId}`);
+        break;
+      case "radar":
+        router.push(`/admin/radar?leadId=${leadId}`);
+        break;
+      case "competitor":
+        router.push(`/rankings?leadId=${leadId}`);
+        break;
+      case "scanner":
+        router.push(`/map?leadId=${leadId}`);
+        break;
+      case "automations":
+        router.push(`/admin/automations`);
+        break;
+      default:
+        alert("Agent not configured yet.");
     }
   };
 
@@ -283,7 +289,7 @@ export default function LeadDetailsPage() {
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto p-6 relative">
+          <div id="tab-content-container" className="flex-1 overflow-y-auto p-6 relative">
             
             {activeTab === 'ai-agents' && (
               <div className="max-w-[1200px] flex flex-col gap-8 pb-12">
@@ -616,6 +622,32 @@ export default function LeadDetailsPage() {
                         </div>
                       )}
                       
+                      {aiResults.automations && (
+                        <div className="bg-white dark:bg-[#1e293b] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl p-8">
+                           <div className="flex items-center gap-4 mb-8">
+                             <div className="p-3 bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 rounded-xl">
+                               <Zap className="w-6 h-6" />
+                             </div>
+                             <div>
+                               <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">Active AI Automations</h3>
+                               <p className="text-sm text-slate-500">Automated workflows running for {lead.company_name}</p>
+                             </div>
+                             <span className="ml-auto px-3 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> {aiResults.automations.status}
+                             </span>
+                           </div>
+                           
+                           <div className="space-y-4">
+                             {aiResults.automations.workflows.map((wf: string, idx: number) => (
+                               <div key={idx} className="flex items-center gap-4 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+                                 <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />
+                                 <span className="text-base font-medium text-slate-800 dark:text-slate-200">{wf}</span>
+                               </div>
+                             ))}
+                           </div>
+                        </div>
+                      )}
+                      
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -623,7 +655,46 @@ export default function LeadDetailsPage() {
               </div>
             )}
             
-            {/* OTHER TABS OMITTED FOR BREVITY, BUT KEPT IN COMPONENT CODE FOR FUNCTIONALITY */}
+            {activeTab === 'timeline' && (
+              <div className="bg-white dark:bg-[#1e293b] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-8">
+                <h3 className="text-lg font-bold mb-4 text-slate-900 dark:text-white">Timeline</h3>
+                <p className="text-slate-500 dark:text-slate-400">Activity timeline will be available soon.</p>
+              </div>
+            )}
+            
+            {activeTab === 'notes' && (
+              <div className="bg-white dark:bg-[#1e293b] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-8">
+                <h3 className="text-lg font-bold mb-4 text-slate-900 dark:text-white">Notes</h3>
+                {lead.notes ? (
+                  <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{lead.notes}</p>
+                ) : (
+                  <p className="text-slate-500 dark:text-slate-400">No notes available for this lead.</p>
+                )}
+              </div>
+            )}
+            
+            {activeTab === 'contacts' && (
+              <div className="bg-white dark:bg-[#1e293b] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-8">
+                <h3 className="text-lg font-bold mb-4 text-slate-900 dark:text-white">Contacts</h3>
+                <div className="flex items-center gap-4 p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/50">
+                  <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-lg">
+                    {lead.company_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 dark:text-white">{lead.company_name}</h4>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">{lead.email || "No email provided"}</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">{lead.phone || "No phone provided"}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {activeTab === 'emails' && (
+              <div className="bg-white dark:bg-[#1e293b] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-8">
+                <h3 className="text-lg font-bold mb-4 text-slate-900 dark:text-white">Emails</h3>
+                <p className="text-slate-500 dark:text-slate-400">No email history found for this lead.</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

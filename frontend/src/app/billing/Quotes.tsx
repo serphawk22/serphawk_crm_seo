@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   FileText, Plus, X, Search, Loader2, Trash2, Building2,
   ShoppingCart, Package, Minus, CheckCircle, IndianRupee,
-  BadgeDollarSign, User2, Download
+  BadgeDollarSign, User2, Download, Eye
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 
@@ -53,6 +53,7 @@ export default function QuotesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadingQuote, setDownloadingQuote] = useState<Quote | null>(null);
+  const [downloadAction, setDownloadAction] = useState<'preview' | 'download'>('download');
 
   // Form
   const [form, setForm] = useState({
@@ -234,7 +235,8 @@ export default function QuotesPage() {
 
   function handleDownloadSelect(provider: 'SERP_HAWK' | 'DAPROS') {
     if (downloadingQuote) {
-      window.open(`${API_BASE_URL}/quotes/${downloadingQuote.id}/pdf?provider=${provider}`, '_blank');
+      const qs = downloadAction === 'download' ? '&download=true' : '';
+      window.open(`${API_BASE_URL}/quotes/${downloadingQuote.id}/pdf?provider=${provider}${qs}`, '_blank');
       setDownloadingQuote(null);
     }
   }
@@ -327,7 +329,11 @@ export default function QuotesPage() {
               {STATUSES.map(s => <option key={s}>{s}</option>)}
             </select>
             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
-              <button onClick={() => setDownloadingQuote(q)} title="Download PDF"
+              <button onClick={() => { setDownloadingQuote(q); setDownloadAction('preview'); }} title="Preview PDF"
+                className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20">
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => { setDownloadingQuote(q); setDownloadAction('download'); }} title="Download PDF"
                 className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20">
                 <Download className="w-3.5 h-3.5" />
               </button>
@@ -671,7 +677,9 @@ export default function QuotesPage() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
           <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-sm shadow-2xl p-6 relative overflow-hidden border border-zinc-200 dark:border-zinc-800">
             <button onClick={() => setDownloadingQuote(null)} className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800/50 rounded-full transition-colors"><X className="w-5 h-5"/></button>
-            <h3 className="text-xl font-black text-zinc-900 dark:text-white mb-2 tracking-tight">Download Quote</h3>
+            <h3 className="text-xl font-black text-zinc-900 dark:text-white mb-2 tracking-tight">
+              {downloadAction === 'preview' ? 'Preview Quote' : 'Download Quote'}
+            </h3>
             <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6 font-medium">Select the agency provider format for this PDF.</p>
             <div className="space-y-3">
               <button onClick={() => handleDownloadSelect('SERP_HAWK')} className="w-full flex items-center justify-between p-4 rounded-xl border-2 border-indigo-100 dark:border-indigo-900/30 bg-indigo-50/50 dark:bg-indigo-900/10 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-200 dark:hover:border-indigo-800 transition-all text-left group">

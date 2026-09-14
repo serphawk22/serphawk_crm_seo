@@ -2371,6 +2371,12 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
             if current_count >= tenant.limit_clients:
                 raise HTTPException(status_code=403, detail=f"Client limit reached. Maximum allowed: {tenant.limit_clients}")
     check_tenant_limit(session, "clients")
+    
+    if body.email:
+        existing_client = session.exec(select(ClientProfile).where(ClientProfile.email == body.email, ClientProfile.tenant_id == current_tenant_id.get())).first()
+        if existing_client:
+            raise HTTPException(status_code=400, detail="A client with this email already exists in your workspace.")
+            
     user = None
     if body.email:
         user = session.exec(select(User).where(User.email == body.email)).first()
@@ -5661,7 +5667,7 @@ def trigger_audit(body: dict = {}, session: Session = Depends(get_session)):
 
 
 @app.get("/audit/export")
-def export_audit_pdf(email: str = Query(""), domain: str = Query(""), session: Session = Depends(get_session)):
+def export_audit_pdf(email: str = Query(""), domain: str = Query(""), inline: bool = Query(False), session: Session = Depends(get_session)):
     """Generate PDF audit report."""
     from fastapi.responses import StreamingResponse
     import io
@@ -5720,8 +5726,10 @@ def export_audit_pdf(email: str = Query(""), domain: str = Query(""), session: S
 
     doc.build(elements)
     buf.seek(0)
+    
+    disposition = "inline" if inline else "attachment"
     return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f'attachment; filename="serphawk-audit-{(domain or "report").replace("https://","").replace("/","_")}.pdf"'
+        "Content-Disposition": f'{disposition}; filename="serphawk-audit-{(domain or "report").replace("https://","").replace("/","_")}.pdf"'
     })
 
 
@@ -6478,8 +6486,8 @@ def respond_nps(survey_id: int, body: NPSRespondRequest, session: Session = Depe
 
 
 # ─────────────────────────────────────────────────────────────
-@app.get("/invoices/{invoice_id}/pdf")
-def invoice_pdf(invoice_id: int, provider: Optional[str] = None, session: Session = Depends(get_session)):
+@app.get("/invoices/{invoice_id}/pdf_provider")
+def invoice_pdf_provider(invoice_id: int, provider: Optional[str] = None, download: bool = False, session: Session = Depends(get_session)):
     """Generate a professional PDF for an invoice."""
     from fastapi.responses import StreamingResponse
     import io
@@ -6669,8 +6677,9 @@ def invoice_pdf(invoice_id: int, provider: Optional[str] = None, session: Sessio
     
     doc.build(els)
     buf.seek(0)
+    disp = "attachment" if download else "inline"
     return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f"inline; filename=Invoice_{inv.invoice_number}.pdf"
+        "Content-Disposition": f'{disp}; filename="Invoice_{inv.invoice_number}.pdf"'
     })
 
 
@@ -7101,7 +7110,7 @@ def delete_ranking(entry_id: int, session: Session = Depends(get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/invoices/{invoice_id}/pdf")
-def invoice_pdf(invoice_id: int, session: Session = Depends(get_session)):
+def invoice_pdf(invoice_id: int, download: bool = False, session: Session = Depends(get_session)):
     """Generate a professional PDF for an invoice."""
     from fastapi.responses import StreamingResponse
     import io
@@ -7184,13 +7193,14 @@ def invoice_pdf(invoice_id: int, session: Session = Depends(get_session)):
 
     doc.build(els)
     buf.seek(0)
+    disp = "attachment" if download else "inline"
     return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f'attachment; filename="{inv.invoice_number}.pdf"'
+        "Content-Disposition": f'{disp}; filename="{inv.invoice_number}.pdf"'
     })
 
 
 @app.get("/proposals/{proposal_id}/pdf")
-def proposal_pdf(proposal_id: int, session: Session = Depends(get_session)):
+def proposal_pdf(proposal_id: int, download: bool = False, session: Session = Depends(get_session)):
     """Generate a professional itemized PDF quotation."""
     from fastapi.responses import StreamingResponse
     import io
@@ -7343,8 +7353,9 @@ def proposal_pdf(proposal_id: int, session: Session = Depends(get_session)):
 
     doc.build(els)
     buf.seek(0)
+    disp = "attachment" if download else "inline"
     return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f'attachment; filename="quotation-Q{prop.id:04d}.pdf"'
+        "Content-Disposition": f'{disp}; filename="quotation-Q{prop.id:04d}.pdf"'
     })
 
 
@@ -8937,6 +8948,16 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
             current_count = session.exec(select(func.count(Lead.id)).where(Lead.tenant_id == tenant_id)).one()
             if current_count >= tenant.limit_clients:
                 raise HTTPException(status_code=403, detail=f"Lead limit reached. Maximum allowed: {tenant.limit_clients}")
+    if body.email:
+        existing_lead = session.exec(select(Lead).where(Lead.email == body.email, Lead.tenant_id == current_tenant_id.get())).first()
+        if existing_lead:
+            raise HTTPException(status_code=400, detail="A lead with this email already exists in your workspace.")
+            
+    if body.company_name:
+        existing_company = session.exec(select(Lead).where(Lead.company_name == body.company_name, Lead.tenant_id == current_tenant_id.get())).first()
+        if existing_company:
+            raise HTTPException(status_code=400, detail="A lead with this company name already exists in your workspace.")
+            
     lead = Lead(**body.dict())
     lead.tenant_id = current_tenant_id.get()
     session.add(lead)
@@ -9316,6 +9337,12 @@ def get_contact_children(contact_id: int, session: Session = Depends(get_session
 def create_contact(body: ContactCreateRequest, session: Session = Depends(get_session)):
     contact_data = body.dict(exclude={"create_new_lead"})
     contact = Contact(**contact_data)
+    
+    if contact.email:
+        existing_contact = session.exec(select(Contact).where(Contact.email == contact.email, Contact.tenant_id == current_tenant_id.get())).first()
+        if existing_contact:
+            raise HTTPException(status_code=400, detail="A contact with this email already exists in your workspace.")
+            
     if contact.first_name and contact.last_name:
         contact.full_name = f"{contact.first_name} {contact.last_name}"
     elif contact.first_name:
@@ -9944,7 +9971,7 @@ def get_quote(quote_id: int, session: Session = Depends(get_session)):
     return {"quote": _quote_dict(q, session)}
 
 @app.get("/quotes/{quote_id}/pdf")
-def quote_pdf(quote_id: int, provider: Optional[str] = None, session: Session = Depends(get_session)):
+def quote_pdf(quote_id: int, provider: Optional[str] = None, download: bool = False, session: Session = Depends(get_session)):
     """Generate a professional PDF for a quote."""
     from fastapi.responses import StreamingResponse
     import io
@@ -10183,8 +10210,9 @@ def quote_pdf(quote_id: int, provider: Optional[str] = None, session: Session = 
     
     doc.build(els)
     buf.seek(0)
+    disp = "attachment" if download else "inline"
     return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f'attachment; filename="quote-{q.quote_number or q.id}.pdf"'
+        "Content-Disposition": f'{disp}; filename="quote-{q.quote_number or q.id}.pdf"'
     })
 
 @app.put("/quotes/{quote_id}")
@@ -10352,6 +10380,7 @@ class CaseUpdateRequest(BaseModel):
     category: Optional[str] = None
     assigned_to: Optional[int] = None
     resolution: Optional[str] = None
+    is_notified: Optional[bool] = None
 
 def _case_dict(c: Case, session: Session) -> dict:
     client = session.get(ClientProfile, c.client_id) if c.client_id else None
@@ -10362,6 +10391,7 @@ def _case_dict(c: Case, session: Session) -> dict:
     d["lead_name"] = lead.company_name if lead else None
     d["assignee_name"] = assignee.name if assignee else None
     d["resolved_at"] = c.resolved_at.isoformat() if c.resolved_at else None
+    d["is_notified"] = c.is_notified
     d["created_at"] = c.created_at.isoformat()
     d["updated_at"] = c.updated_at.isoformat()
     return d
@@ -10383,8 +10413,22 @@ def create_case(body: CaseCreateRequest, session: Session = Depends(get_session)
     import random, string
     c = Case(**body.model_dump())
     c.case_number = "CASE-" + "".join(random.choices(string.digits, k=5))
+    c.is_notified = True
     session.add(c)
     session.commit()
+    
+    # Create notification for assignee
+    if c.assignee_id:
+        n = Notification(
+            user_id=c.assignee_id,
+            title="New Support Case",
+            message=f"Case {c.case_number} has been created and assigned to you.",
+            type="info",
+            link=f"/support/cases/{c.id}"
+        )
+        session.add(n)
+        session.commit()
+
     session.refresh(c)
     return {"case": _case_dict(c, session)}
 
@@ -10401,11 +10445,38 @@ def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depend
     if not c:
         raise HTTPException(status_code=404, detail="Case not found")
     updates = body.model_dump(exclude_unset=True)
+    
+    status_changed = False
+    if "status" in updates and updates["status"] != c.status:
+        status_changed = True
+        
     if updates.get("status") in ("Resolved", "Closed") and not c.resolved_at:
         c.resolved_at = datetime.utcnow()
     for k, v in updates.items():
         setattr(c, k, v)
     c.updated_at = datetime.utcnow()
+    
+    if status_changed:
+        c.is_notified = True
+        if c.client_id:
+            n = Notification(
+                user_id=c.client_id,
+                title="Support Case Update",
+                message=f"Status for case {c.case_number} changed to {c.status}.",
+                type="info",
+                link=f"/support/cases/{c.id}"
+            )
+            session.add(n)
+        if c.assignee_id:
+            n2 = Notification(
+                user_id=c.assignee_id,
+                title="Support Case Update",
+                message=f"Status for case {c.case_number} changed to {c.status}.",
+                type="info",
+                link=f"/support/cases/{c.id}"
+            )
+            session.add(n2)
+            
     session.add(c)
     session.commit()
     session.refresh(c)
@@ -12426,6 +12497,17 @@ def request_demo_upgrade(session: Session = Depends(get_session)):
         session.add(n)
         
     session.commit()
+    
+    # Send email notification to admin
+    try:
+        from modules.email_sender import send_email_outlook
+        sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
+        if sender and password:
+            body_html = f"<p>Demo user <strong>{user.name}</strong> ({user.email}) has requested an account upgrade.</p>"
+            send_email_outlook("admin@serphawk.com", "Demo Account Upgrade Request", body_html, sender, password, smtp_server, smtp_port)
+    except Exception as e:
+        print(f"Failed to send admin upgrade email: {e}")
+        
     return {"success": True, "message": "Upgrade request sent to admin."}
 
 @app.get("/telemetry/demo-account/{user_id}")
@@ -12650,6 +12732,16 @@ def request_upgrade(
         session.add(notification)
         session.commit()
     
+    # Send email notification to admin
+    try:
+        from modules.email_sender import send_email_outlook
+        sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
+        if sender and password:
+            body_html = f"<p>Demo user <strong>{user.name}</strong> ({user.email}) has requested a full account upgrade.</p>"
+            send_email_outlook("admin@serphawk.com", "Demo Upgrade Request", body_html, sender, password, smtp_server, smtp_port)
+    except Exception as e:
+        print(f"Failed to send admin upgrade email: {e}")
+        
     return {"status": "success", "message": "Upgrade request sent to admin."}
 
 class EmailSettingsRequest(BaseModel):

@@ -76,7 +76,7 @@ if (typeof window !== 'undefined' && !(window as any)._fetchPatched) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('crm_user');
         if (window.location.pathname !== '/login') {
-            window.location.href = '/login';
+            window.location.href = '/showcase/index.html';
         }
       }
     }
@@ -146,7 +146,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setIsAuthenticated(false);
     localStorage.removeItem('crm_user');
-    router.replace('/login');
+    window.location.href = '/showcase/index.html';
   };
 
   return (

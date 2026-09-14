@@ -32,9 +32,10 @@ export default function AuditPage() {
     }
   };
 
-  const downloadReport = () => {
+  const exportReport = (inline = false) => {
     const d = auditData?.domain || domain || '';
-    window.open(`${API_BASE_URL}/audit/export?email=${encodeURIComponent(email || '')}&domain=${encodeURIComponent(d)}`, '_blank');
+    const url = `${API_BASE_URL}/audit/export?email=${encodeURIComponent(email || '')}&domain=${encodeURIComponent(d)}${inline ? '&inline=true' : ''}`;
+    window.open(url, '_blank');
   };
 
   const scoreColor = (score: number) =>
@@ -89,13 +90,22 @@ export default function AuditPage() {
             {running ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
             {running ? 'Scanning...' : 'Run Audit'}
           </button>
-          <button
-            onClick={downloadReport}
-            disabled={!auditData}
-            className="px-6 py-3 border border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-zinc-200 font-bold rounded-xl flex items-center gap-2 text-sm hover:bg-gray-50 dark:bg-zinc-950 disabled:opacity-40 transition-all"
-          >
-            <Download className="w-4 h-4" /> Export PDF
-          </button>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => exportReport(true)}
+              disabled={!auditData}
+              className="px-6 py-3 border border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-zinc-200 font-bold rounded-xl flex flex-1 items-center justify-center gap-2 text-sm hover:bg-gray-50 dark:bg-zinc-950 disabled:opacity-40 transition-all"
+            >
+              <Activity className="w-4 h-4" /> Preview
+            </button>
+            <button
+              onClick={() => exportReport(false)}
+              disabled={!auditData}
+              className="px-6 py-3 border border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-zinc-200 font-bold rounded-xl flex flex-1 items-center justify-center gap-2 text-sm hover:bg-gray-50 dark:bg-zinc-950 disabled:opacity-40 transition-all"
+            >
+              <Download className="w-4 h-4" /> Download
+            </button>
+          </div>
         </div>
       </div>
 

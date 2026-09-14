@@ -145,7 +145,16 @@ interface Project {
   created_at: string;
 }
 
-type StatsData = AdminStats | ClientStats | null;
+interface SalesManagerStats {
+  metrics: {
+    assigned_leads: number;
+    assigned_contacts: number;
+    assigned_clients: number;
+  };
+  recent_activity: Activity[];
+}
+
+type StatsData = AdminStats | ClientStats | SalesManagerStats | null;
 
 
 // Inline mini bar chart (no external library needed)
@@ -202,7 +211,6 @@ export default function HomePage() {
   const { role, email, user, isAuthenticated, loading: authLoading } = useRole();
   const router = useRouter();
 
-  // Show landing page if not authenticated
   if (!authLoading && !isAuthenticated) {
     if (typeof window !== "undefined") {
       window.location.href = "/showcase/index.html";
@@ -333,7 +341,7 @@ function Dashboard() {
   return (
     <motion.div initial="hidden" animate="show" variants={containerVariants} className={cn(isAdmin || role === 'ProjectMember' || role === 'Demo' ? "space-y-6" : "")}>
       {role === "ProjectMember" && <DeveloperDashboard />}
-      {role === "SalesManager" && <SalesManagerDashboard />}
+      {role === "SalesManager" && stats && <SalesManagerDashboard stats={stats as SalesManagerStats} name={user?.name || "Manager"} />}
       {isAdmin && adminStats && <AdminDashboard adminStats={adminStats} NAV_CARDS={NAV_CARDS} language={language} />}
       {role === "Demo" && <AdminDashboard adminStats={adminStats} NAV_CARDS={visibleNavCards} language={language} isDemo={true} />}
       {!isAdmin && role !== "Demo" && role !== "ProjectMember" && role !== "SalesManager" && role !== "Supplier" && (

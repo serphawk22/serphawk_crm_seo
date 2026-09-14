@@ -1,10 +1,10 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { HeadphonesIcon, Plus, X, Search, Filter, Loader2, Trash2, Edit2, AlertCircle, CheckCircle2, Clock } from "lucide-react";
+import { HeadphonesIcon, Plus, X, Search, Filter, Loader2, Trash2, Edit2, AlertCircle, CheckCircle2, Clock, Mail } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 
-interface Case { id: number; case_number?: string; subject: string; description?: string; status: string; priority: string; category?: string; client_name?: string; lead_name?: string; assignee_name?: string; created_at: string; resolved_at?: string; }
+interface Case { id: number; case_number?: string; subject: string; description?: string; status: string; priority: string; category?: string; client_name?: string; lead_name?: string; assignee_name?: string; created_at: string; resolved_at?: string; is_notified?: boolean; }
 interface Lead { id: number; company_name: string; email?: string; }
 const STATUSES = ["Open", "In Progress", "Resolved", "Closed"];
 const PRIORITIES = ["Low", "Medium", "High", "Urgent"];
@@ -113,6 +113,11 @@ export default function CasesPage() {
                   <span className={`flex items-center gap-1 text-[10px] font-black uppercase ${PRIORITY_COLORS[c.priority]}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[c.priority]}`} />{c.priority}
                   </span>
+                  {c.is_notified && (
+                    <span className="flex items-center gap-1 text-[10px] font-black uppercase text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded-lg">
+                      <Mail className="w-3 h-3" /> Notified
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm font-bold text-slate-800 dark:text-zinc-100 mb-1">{c.subject}</p>
                 {c.description && <p className="text-xs text-slate-500 line-clamp-2">{c.description}</p>}
