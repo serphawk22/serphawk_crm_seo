@@ -8,6 +8,8 @@ from sqlmodel import SQLModel, Field, Relationship, create_engine, Session, JSON
 from sqlalchemy import Column, String, Index, DateTime, select, func, Text
 from sqlalchemy.dialects.postgresql import JSONB
 import os
+import json
+from pydantic import field_validator
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
@@ -1087,6 +1089,16 @@ class Lead(SQLModel, table=True):
     ai_analysis_results: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     swot_analysis: Optional[str] = Field(default=None, sa_column=Column(Text))
 
+    @field_validator('ai_analysis_results', mode='before')
+    @classmethod
+    def parse_ai_results(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return {}
+        return v
+
     account: Optional[Account] = Relationship(back_populates="leads")
     contacts: List["Contact"] = Relationship(back_populates="lead")
 
@@ -1280,6 +1292,7 @@ class Case(SQLModel, table=True):
     assigned_to: Optional[int] = Field(default=None, foreign_key="users.id")
     resolution: Optional[str] = Field(default=None, sa_column=Column(Text))
     resolved_at: Optional[datetime] = Field(default=None)
+    is_notified: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
