@@ -125,9 +125,11 @@ export default function GmailAgentLoop({
         });
         if (!res.ok) throw new Error(`Research failed (${res.status})`);
         const data: ResearchResultData = await res.json();
-        const hasDraft = !!(data.draft?.english_body || (data.draft as any)?.body || data.draft?.spanish_body);
-        if (!hasDraft) {
-          setTasks(prev => prev.map((t, idx) => idx === i ? { ...t, status: "no_email", details: "No draft generated" } : t));
+        const isN8nError = !!(data as any)._n8n_error;
+        const hasDraft = !isN8nError && !!(data.draft?.english_body || (data.draft as any)?.body || data.draft?.spanish_body);
+        if (isN8nError || !hasDraft) {
+          const errMsg = isN8nError ? ((data as any)._error_message || "Research service unavailable") : "No draft generated";
+          setTasks(prev => prev.map((t, idx) => idx === i ? { ...t, status: "no_email", details: errMsg } : t));
         } else {
           const entryId = (data as any).db_id ? String((data as any).db_id) : `bulk-${Date.now()}-${i}`;
           setResults(prev => [...prev, { id: entryId, resultData: data, companyName: derivedName, companyUrl: url }]);

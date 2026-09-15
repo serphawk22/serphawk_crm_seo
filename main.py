@@ -731,12 +731,15 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
             
             if response.status_code != 200:
                 print(f"N8N Webhook Error: {response.status_code} - {response.text}")
+                # N8N not available - return empty draft so frontend can show error state
                 return {
-                    "company_info": {"company_name": body.company_name, "summary": f"N8N Webhook Error {response.status_code}. Please make sure you are listening for test events in n8n."},
-                    "contact": {"email": "test@example.com"},
-                    "draft": {"subject": "Test Draft", "english_body": "N8N Webhook Error occurred. Workflow not started."},
+                    "company_info": {"company_name": body.company_name, "summary": ""},
+                    "contact": {},
+                    "draft": None,
                     "recommended_services": [],
-                    "extracted_services": []
+                    "extracted_services": [],
+                    "_n8n_error": True,
+                    "_error_message": f"Research service unavailable (N8N {response.status_code}). Please check your N8N workflow is active."
                 }
             
             # If successful, handle JSON decoding properly
@@ -9838,6 +9841,26 @@ def list_products(category: Optional[str] = None, active_only: bool = False, ses
     products = session.exec(q).all()
     return {"products": [p.model_dump() for p in products]}
 
+
+
+@app.post("/products/export-pdf")
+def export_products_pdf(body: dict = {}, session: Session = Depends(get_session)):
+    """Export all catalog products as a downloadable PDF."""
+    from modules.pdf_export import catalog_pdf, send_pdf_email
+    from fastapi.responses import Response
+    products = session.exec(select(Product).order_by(Product.name)).all()
+    rows = [p.model_dump() for p in products]
+    pdf_bytes = catalog_pdf(rows)
+    recipient = (body or {}).get("email") if isinstance(body, dict) else None
+    if recipient:
+        try:
+            send_pdf_email(recipient, "Product Catalog – SERPHAWK", "Please find the catalog PDF attached.", pdf_bytes, "catalog.pdf", "Product Catalog")
+            return {"ok": True, "message": f"PDF sent to {recipient}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=catalog.pdf"})
+
 @app.post("/products")
 def create_product(body: ProductCreateRequest, session: Session = Depends(get_session)):
     p = Product(**body.model_dump())
@@ -10269,6 +10292,37 @@ def _so_dict(o: SalesOrder, session: Session) -> dict:
     d["client_name"] = client.companyName if client else None
     return d
 
+
+
+@app.post("/sales-orders/export-pdf")
+def export_sales_orders_pdf(body: dict = {}, session: Session = Depends(get_session)):
+    """Export all sales orders as a downloadable PDF."""
+    from modules.pdf_export import sales_order_pdf, send_pdf_email
+    from fastapi.responses import Response
+    orders = session.exec(select(SalesOrder).order_by(SalesOrder.created_at.desc())).all()
+    rows = []
+    for o in orders:
+        client_name = None
+        if o.client_id:
+            c = session.get(Client, o.client_id)
+            if c: client_name = c.name
+        rows.append({
+            "order_number": o.order_number, "client_name": client_name or o.lead_name or "—",
+            "grand_total": float(o.grand_total or 0), "currency": o.currency,
+            "status": o.status, "delivery_date": str(o.delivery_date or ""),
+            "created_at": o.created_at.isoformat() if o.created_at else ""
+        })
+    pdf_bytes = sales_order_pdf(rows)
+    recipient = (body or {}).get("email") if isinstance(body, dict) else None
+    if recipient:
+        try:
+            send_pdf_email(recipient, "Sales Orders – SERPHAWK", "Please find the sales orders PDF attached.", pdf_bytes, "sales_orders.pdf")
+            return {"ok": True, "message": f"PDF sent to {recipient}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=sales_orders.pdf"})
+
 @app.post("/sales-orders")
 def create_sales_order(body: SalesOrderCreateRequest, session: Session = Depends(get_session)):
     import random, string
@@ -10323,6 +10377,32 @@ def list_purchase_orders(status: Optional[str] = None, session: Session = Depend
         q = q.where(PurchaseOrder.status == status)
     orders = session.exec(q).all()
     return {"orders": [o.model_dump() for o in orders]}
+
+
+
+@app.post("/purchase-orders/export-pdf")
+def export_purchase_orders_pdf(body: dict = {}, session: Session = Depends(get_session)):
+    """Export all purchase orders as a downloadable PDF."""
+    from modules.pdf_export import purchase_order_pdf, send_pdf_email
+    from fastapi.responses import Response
+    orders = session.exec(select(PurchaseOrder).order_by(PurchaseOrder.created_at.desc())).all()
+    rows = [
+        {"po_number": o.po_number, "vendor_name": o.vendor_name, "vendor_email": o.vendor_email,
+         "grand_total": float(o.grand_total or 0), "currency": o.currency, "status": o.status,
+         "expected_delivery": str(o.expected_delivery or ""),
+         "created_at": o.created_at.isoformat() if o.created_at else ""}
+        for o in orders
+    ]
+    pdf_bytes = purchase_order_pdf(rows)
+    recipient = (body or {}).get("email") if isinstance(body, dict) else None
+    if recipient:
+        try:
+            send_pdf_email(recipient, "Purchase Orders – SERPHAWK", "Please find the purchase orders PDF attached.", pdf_bytes, "purchase_orders.pdf")
+            return {"ok": True, "message": f"PDF sent to {recipient}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=purchase_orders.pdf"})
 
 @app.post("/purchase-orders")
 def create_purchase_order(body: PurchaseOrderCreateRequest, session: Session = Depends(get_session)):
@@ -11886,6 +11966,31 @@ def get_inventory(session: Session = Depends(get_session)):
             ]
         })
     return {"items": result, "total": len(result)}
+
+
+
+@app.post("/inventory/export-pdf")
+def export_inventory_pdf(body: dict = {}, email: Optional[str] = None, session: Session = Depends(get_session)):
+    """Export all inventory items as a downloadable PDF, or send via email if email param provided."""
+    from modules.pdf_export import inventory_pdf, send_pdf_email
+    from fastapi.responses import Response
+    items = session.exec(select(InventoryItem).order_by(InventoryItem.name)).all()
+    rows = [
+        {"id": it.id, "code": it.code, "name": it.name, "category": it.category,
+         "current_stock": it.current_stock, "min_stock": it.min_stock,
+         "unit": it.unit, "description": it.description, "photo_url": it.photo_url}
+        for it in items
+    ]
+    pdf_bytes = inventory_pdf(rows)
+    recipient = (body or {}).get("email") if isinstance(body, dict) else None
+    if recipient:
+        try:
+            send_pdf_email(recipient, "Inventory Export – SERPHAWK", "Please find the inventory PDF attached.", pdf_bytes, "inventory.pdf", "Inventory Export")
+            return {"ok": True, "message": f"PDF sent to {recipient}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=inventory.pdf"})
 
 @app.post("/inventory")
 def create_inventory_item(data: InventoryItemCreate, session: Session = Depends(get_session)):
