@@ -9,6 +9,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import PageGuide from "@/components/PageGuide";
 import { useRole } from "@/context/RoleContext";
+import { useLanguage } from "@/context/LanguageContext";
 
 const itemVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -22,6 +23,7 @@ const containerVariants = {
 
 export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
   const { user, role } = useRole();
+  const { t } = useLanguage();
 
   const activeServicesCount = clientStats?.active_services_list?.length || 0;
   const pendingRequestsCount = clientStats?.pending_requests_count || 0;
@@ -29,11 +31,11 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
   const unreadNotifications = clientStats?.unread_notifications_count || 0;
 
   const checks = [
-    { key: 'profile', label: 'Complete Company Profile', done: !!(clientStats?.companyName && clientStats?.website), link: '/clients' },
-    { key: 'setup', label: 'Verify Your Domain', done: false, link: '/setup' },
-    { key: 'files', label: 'Upload Your First Document', done: (clientStats?.files?.length || 0) > 0, link: '/my-files' },
-    { key: 'services', label: 'Explore & Request Services', done: activeServicesCount > 0 || pendingRequestsCount > 0, link: '/store' },
-    { key: 'proposals', label: 'Review Your Proposals', done: (clientStats?.proposals?.length || 0) > 0, link: '/proposals' },
+    { key: 'profile', label: t("client_dashboard.check_profile"), done: !!(clientStats?.companyName && clientStats?.website), link: '/clients' },
+    { key: 'setup', label: t("client_dashboard.check_setup"), done: false, link: '/setup' },
+    { key: 'files', label: t("client_dashboard.check_files"), done: (clientStats?.files?.length || 0) > 0, link: '/my-files' },
+    { key: 'services', label: t("client_dashboard.check_services"), done: activeServicesCount > 0 || pendingRequestsCount > 0, link: '/store' },
+    { key: 'proposals', label: t("client_dashboard.check_proposals"), done: (clientStats?.proposals?.length || 0) > 0, link: '/proposals' },
   ];
   const completedChecks = checks.filter(c => c.done).length;
   const onboardingProgress = Math.round((completedChecks / checks.length) * 100);
@@ -44,13 +46,13 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
       <div className="mb-6">
         <PageGuide
           pageKey="dashboard-client-new"
-          title="Welcome to Your Dashboard"
-          description="Track your SEO campaign, manage services, and communicate with your dedicated team."
+          title={t("client_dashboard.welcome_title")}
+          description={t("client_dashboard.welcome_desc")}
           steps={[
-            { icon: '🏠', text: 'Use the quick links to navigate to key areas of your workspace.' },
-            { icon: '🛒', text: 'Visit the Store to request new services and explore options.' },
-            { icon: '💬', text: 'Use Messages to connect directly with your dedicated SEO specialists.' },
-            { icon: '📈', text: 'Monitor your keyword rankings and analytics from the Monitor tab.' },
+            { icon: '🏠', text: t("client_dashboard.pg_step1") },
+            { icon: '🛒', text: t("client_dashboard.pg_step2") },
+            { icon: '💬', text: t("client_dashboard.pg_step3") },
+            { icon: '📈', text: t("client_dashboard.pg_step4") },
           ]}
         />
       </div>
@@ -59,10 +61,10 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
       <motion.div variants={itemVariants} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">
-            Welcome back, {clientStats?.companyName || user?.name || 'Partner'}
+            {t("client_dashboard.welcome_back")}, {clientStats?.companyName || user?.name || t("client_dashboard.partner")}
           </h1>
           <p className="text-sm font-medium text-[var(--text-secondary)] mt-1">
-            Here's an overview of your active campaigns and growth metrics.
+            {t("client_dashboard.header_subtitle")}
           </p>
         </div>
       </motion.div>
@@ -70,10 +72,10 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
       {/* KPI METRICS ROW */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { title: "Active Services", value: activeServicesCount, trend: "Currently in motion", icon: Briefcase, color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-500/10" },
-          { title: "Pending Requests", value: pendingRequestsCount, trend: "Awaiting approval", icon: Timer, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-500/10" },
-          { title: "Active Projects", value: activeProjectsCount, trend: "Ongoing assignments", icon: FolderKanban, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-500/10" },
-          { title: "Notifications", value: unreadNotifications, trend: "Requires attention", icon: Send, color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-500/10" },
+          { title: t("client_dashboard.kpi_active_services"), value: activeServicesCount, trend: t("client_dashboard.kpi_trend_services"), icon: Briefcase, color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-500/10" },
+          { title: t("client_dashboard.kpi_pending_requests"), value: pendingRequestsCount, trend: t("client_dashboard.kpi_trend_pending"), icon: Timer, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-500/10" },
+          { title: t("client_dashboard.kpi_active_projects"), value: activeProjectsCount, trend: t("client_dashboard.kpi_trend_projects"), icon: FolderKanban, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-500/10" },
+          { title: t("client_dashboard.kpi_notifications"), value: unreadNotifications, trend: t("client_dashboard.kpi_trend_notifications"), icon: Send, color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-500/10" },
         ].map((kpi, idx) => (
           <motion.div key={idx} variants={itemVariants} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm flex items-center gap-4">
             <div className={`p-3 rounded-xl ${kpi.bg}`}>
@@ -93,7 +95,7 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
           {/* QUICK LINKS GRID */}
           <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm h-max">
             <div className="p-5 border-b border-[var(--border)]">
-              <h3 className="font-bold text-[var(--text-primary)]">Quick Links</h3>
+              <h3 className="font-bold text-[var(--text-primary)]">{t("client_dashboard.quick_links")}</h3>
             </div>
             <div className="p-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               {NAV_CARDS.filter((c: any) => c.roles.includes(role || "Client")).map((card: any) => (
@@ -110,7 +112,7 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
             <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
               <div className="p-5 border-b border-[var(--border)]">
                 <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-blue-500" /> Services In Motion
+                  <Activity className="w-5 h-5 text-blue-500" /> {t("client_dashboard.services_in_motion")}
                 </h3>
               </div>
               <div className="divide-y divide-[var(--border)]">
@@ -138,8 +140,8 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
                         {String(activeServicesCount + 1).padStart(2, '0')}
                       </div>
                       <div>
-                        <h4 className="font-bold text-[var(--text-primary)]">{pendingRequestsCount} Request{pendingRequestsCount > 1 ? 's' : ''} in Review</h4>
-                        <p className="text-xs font-medium text-amber-500 mt-1 uppercase tracking-wider">Pending</p>
+                        <h4 className="font-bold text-[var(--text-primary)]">{pendingRequestsCount} {pendingRequestsCount > 1 ? t("client_dashboard.requests_in_review") : t("client_dashboard.request_in_review")}</h4>
+                        <p className="text-xs font-medium text-amber-500 mt-1 uppercase tracking-wider">{t("client_dashboard.pending")}</p>
                       </div>
                     </div>
                     <div className="p-2 bg-slate-100 dark:bg-zinc-800 rounded-lg text-slate-400">
@@ -156,7 +158,7 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
             <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
               <div className="p-5 border-b border-[var(--border)]">
                 <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
-                  <FolderKanban className="w-5 h-5 text-indigo-500" /> Your Projects
+                  <FolderKanban className="w-5 h-5 text-indigo-500" /> {t("client_dashboard.your_projects")}
                 </h3>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-5">
@@ -182,7 +184,7 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
           {showOnboarding && (
             <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
               <div className="p-5 border-b border-[var(--border)] flex justify-between items-center">
-                <h3 className="font-bold text-[var(--text-primary)] text-sm uppercase tracking-wider text-amber-600">Onboarding</h3>
+                <h3 className="font-bold text-[var(--text-primary)] text-sm uppercase tracking-wider text-amber-600">{t("client_dashboard.onboarding")}</h3>
                 <span className="text-xs font-black text-amber-500">{onboardingProgress}%</span>
               </div>
               <div className="p-5">
@@ -210,19 +212,19 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
             <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
                <div className="p-5 border-b border-[var(--border)]">
                 <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
-                  <Target className="w-5 h-5 text-emerald-500" /> Active Strategy
+                  <Target className="w-5 h-5 text-emerald-500" /> {t("client_dashboard.active_strategy")}
                 </h3>
               </div>
               <div className="p-5 space-y-5">
                 {clientStats?.seoStrategy && (
                   <div>
-                    <p className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Campaign Focus</p>
+                    <p className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">{t("client_dashboard.campaign_focus")}</p>
                     <p className="text-sm font-medium text-[var(--text-primary)] italic">&ldquo;{clientStats.seoStrategy}&rdquo;</p>
                   </div>
                 )}
                 {clientStats?.targetKeywords?.length > 0 && (
                   <div>
-                    <p className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Keywords</p>
+                    <p className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">{t("client_dashboard.keywords")}</p>
                     <div className="flex flex-wrap gap-2">
                       {clientStats.targetKeywords.map((kw: string) => (
                         <span key={kw} className="px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 text-[var(--text-secondary)] text-xs font-semibold rounded-md">{kw}</span>
@@ -232,7 +234,7 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
                 )}
                 {clientStats?.nextMilestone && (
                   <div className="p-4 border border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-500/5 rounded-xl">
-                    <p className="text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider mb-1">Next Milestone</p>
+                    <p className="text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider mb-1">{t("client_dashboard.next_milestone")}</p>
                     <p className="font-bold text-[var(--text-primary)]">{clientStats.nextMilestone}</p>
                     {clientStats.nextMilestoneDate && <p className="text-xs text-[var(--text-secondary)] mt-1">{clientStats.nextMilestoneDate}</p>}
                   </div>
@@ -245,7 +247,7 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
           <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
              <div className="p-5 border-b border-[var(--border)]">
               <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <Shield className="w-5 h-5 text-slate-400" /> Identity
+                <Shield className="w-5 h-5 text-slate-400" /> {t("client_dashboard.identity")}
               </h3>
             </div>
             <div className="p-5">
@@ -255,13 +257,13 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
                 </div>
                 <div>
                   <h3 className="font-bold text-[var(--text-primary)]">{clientStats?.companyName || user?.name}</h3>
-                  <p className="text-xs font-semibold text-[var(--text-secondary)] mt-1">Active Partner</p>
+                  <p className="text-xs font-semibold text-[var(--text-secondary)] mt-1">{t("client_dashboard.active_partner")}</p>
                 </div>
               </div>
               <div className="space-y-4">
                 {[
-                  { label: 'Website', value: clientStats?.website || 'Not configured', icon: Globe },
-                  { label: 'Status', value: clientStats?.status || 'Active', icon: CheckCircle },
+                  {label: t("client_dashboard.website"), value: clientStats?.website || t("client_dashboard.not_configured"), icon: Globe },
+                  { label: t("client_dashboard.status"), value: clientStats?.status || t("client_dashboard.status_active"), icon: CheckCircle },
                 ].map(({ label, value, icon: Icon }) => (
                   <div key={label} className="flex items-start gap-3">
                     <Icon className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />

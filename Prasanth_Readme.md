@@ -29,9 +29,9 @@ As requested, I have completely refactored the CRM navigation layout, shifting a
 - The global search (Cmd/Ctrl + K) remains perfectly intact and accessible.
 
 ### 4. Email Agent & Webhook Automation (NEW)
-- **Sender Configured:** The Email Agent has been strictly locked to send ONLY from `prasanthanupojuwork@gmail.com`. 
+- **Sender Configured:** The Email Agent has been strictly locked to send ONLY from `crm@serphawk.in`. 
 - **Hardcoded CCs Removed:** Removed the old hidden CC list (which copied `dapros.mx.com`, `harischamsa`, etc.) from `modules/email_sender.py`. Emails now go *only* to the intended prospect.
-- **Gmail SMTP Routing:** Adjusted the SMTP logic in `.env` and `main.py` to route through `smtp.gmail.com` (Port 587) instead of the Microsoft servers.
+- **SMTP Routing:** Adjusted the SMTP logic in `.env` and `main.py` to route through `mail.serphawk.in` (Port 587) for the `crm@serphawk.in` mailbox.
 - **n8n Webhook Connected:** Successfully wired an HTTP POST request in `main.py`. The moment an email is successfully sent, it fires a JSON payload to `http://localhost:5678/webhook-test/serphawk-followup`.
 
 > **⚠️ CRITICAL: WHY YOUR EMAILS ARE NOT SENDING**

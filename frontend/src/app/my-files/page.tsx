@@ -7,6 +7,7 @@ import {
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from "@/context/LanguageContext";
 
 interface ClientFile {
   id: number;
@@ -34,6 +35,7 @@ function formatSize(bytes?: number) {
 }
 
 export default function MyFilesPage() {
+  const { t } = useLanguage();
   const { user } = useRole();
   const [clientId, setClientId] = useState<number | null>(user?.client_id || null);
   const [files, setFiles] = useState<ClientFile[]>([]);
@@ -43,7 +45,6 @@ export default function MyFilesPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [description, setDescription] = useState("");
 
-  // Resolve client profile id for current user
   useEffect(() => {
     if (user?.client_id) {
       setClientId(user.client_id);
@@ -110,7 +111,7 @@ export default function MyFilesPage() {
   }
 
   async function deleteFile(id: number) {
-    if (!confirm("Delete this file?")) return;
+    if (!confirm(t("my_files.confirm_delete"))) return;
     await fetch(`${API_BASE_URL}/files/${id}`, { method: "DELETE" });
     setFiles(prev => prev.filter(f => f.id !== id));
   }
@@ -118,7 +119,7 @@ export default function MyFilesPage() {
   if (!clientId && !loading) {
     return (
       <div className="flex items-center justify-center min-h-[40vh] text-gray-500 dark:text-zinc-400">
-        No client profile found for this account.
+        {t("my_files.no_client")}
       </div>
     );
   }
@@ -127,24 +128,24 @@ export default function MyFilesPage() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">My Files</h1>
-          <p className="text-gray-500 dark:text-zinc-400 font-medium">Documents &amp; files shared with your team.</p>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">{t("my_files.title")}</h1>
+          <p className="text-gray-500 dark:text-zinc-400 font-medium">{t("my_files.subtitle")}</p>
         </div>
         <button onClick={() => setShowModal(true)}
           className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-2xl font-bold text-sm hover:bg-black shadow-lg transition-all active:scale-95">
-          <Plus className="w-4 h-4" /> Add File
+          <Plus className="w-4 h-4" /> {t("my_files.add_file")}
         </button>
       </div>
 
       <PageGuide
         pageKey="my-files"
-        title="How My Files works"
-        description="Upload, organize, and share documents with your team securely."
+        title={t("my_files.guide_title")}
+        description={t("my_files.guide_desc")}
         steps={[
-          { icon: '📂', text: 'Click \"Add File\" to upload documents, images, PDFs, or any file up to the size limit.' },
-          { icon: '📝', text: 'Add a description when uploading so your team knows what each file is for.' },
-          { icon: '⬇️', text: 'Download any file by clicking the download button on the file card.' },
-          { icon: '🗑️', text: 'Remove files you no longer need using the delete action.' },
+          { icon: '📂', text: t("my_files.guide_s1") },
+          { icon: '📝', text: t("my_files.guide_s2") },
+          { icon: '⬇️', text: t("my_files.guide_s3") },
+          { icon: '🗑️', text: t("my_files.guide_s4") },
         ]}
       />
 
@@ -155,7 +156,7 @@ export default function MyFilesPage() {
           {files.length === 0 && (
             <div className="text-center py-20 text-gray-400">
               <Upload className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p>No files uploaded yet.<br />Click <strong>Add File</strong> to share a document.</p>
+              <p>{t("my_files.empty")}</p>
             </div>
           )}
           {files.map(f => (
@@ -174,7 +175,7 @@ export default function MyFilesPage() {
               </div>
               <div className="flex gap-2 shrink-0">
                 <a href={f.file_url.startsWith("/static") ? `${API_BASE_URL}${f.file_url}` : f.file_url} target="_blank" rel="noopener noreferrer"
-                  className="p-2 text-gray-500 dark:text-zinc-400 hover:text-blue-600 rounded-xl hover:bg-blue-50 transition-all" title="Open file">
+                  className="p-2 text-gray-500 dark:text-zinc-400 hover:text-blue-600 rounded-xl hover:bg-blue-50 transition-all" title={t("my_files.add_file")}>
                   <Download className="w-4 h-4" />
                 </a>
                 <button onClick={() => deleteFile(f.id)}
@@ -187,17 +188,16 @@ export default function MyFilesPage() {
         </div>
       )}
 
-      {/* Upload Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-md p-8">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-black">Add File</h2>
+              <h2 className="text-xl font-black">{t("my_files.modal_title")}</h2>
               <button onClick={() => setShowModal(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <form onSubmit={uploadFile} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Choose File *</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("my_files.choose_file")}</label>
                 <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-2xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-all">
                   {selectedFile ? (
                     <div className="text-center px-4">
@@ -208,25 +208,25 @@ export default function MyFilesPage() {
                   ) : (
                     <div className="text-center">
                       <Upload className="w-8 h-8 text-gray-300 mx-auto mb-1" />
-                      <p className="text-sm text-gray-500 dark:text-zinc-400 font-medium">Click to select a file</p>
-                      <p className="text-xs text-gray-400">PDF, images, docs, etc.</p>
+                      <p className="text-sm text-gray-500 dark:text-zinc-400 font-medium">{t("my_files.click_to_select")}</p>
+                      <p className="text-xs text-gray-400">{t("my_files.file_types")}</p>
                     </div>
                   )}
                   <input type="file" className="hidden" onChange={e => setSelectedFile(e.target.files?.[0] || null)} />
                 </label>
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">Description</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase mb-1 block">{t("my_files.description")}</label>
                 <input value={description} onChange={e => setDescription(e.target.value)}
                   className="w-full border border-gray-200 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Monthly report, contract, etc." />
+                  placeholder={t("my_files.description_ph")} />
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => { setShowModal(false); setSelectedFile(null); setDescription(""); }}
-                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600 dark:text-zinc-300">Cancel</button>
+                  className="flex-1 py-2.5 border rounded-xl font-bold text-sm text-gray-600 dark:text-zinc-300">{t("my_files.cancel")}</button>
                 <button type="submit" disabled={submitting || !selectedFile}
                   className="flex-1 py-2.5 bg-gray-900 text-white rounded-xl font-bold text-sm hover:bg-black disabled:opacity-50 flex items-center justify-center gap-2">
-                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Upload className="w-4 h-4" /> Upload</>}
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Upload className="w-4 h-4" /> {t("my_files.upload")}</>}
                 </button>
               </div>
             </form>

@@ -1,8 +1,10 @@
 "use client";
 import { useState } from "react";
 import { Shield, Plus, Edit2, Trash2, Check, X } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function RolesPage() {
+  const { t } = useLanguage();
   const [roles, setRoles] = useState([
     { id: 1, name: "Admin", description: "Full access to all modules and settings.", users: 2 },
     { id: 2, name: "SalesManager", description: "Access to leads, clients, quotes, and reports.", users: 5 },
@@ -16,12 +18,12 @@ export default function RolesPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
             <Shield className="w-6 h-6 text-blue-500" />
-            Roles & Permissions
+            {t("roles.title")}
           </h1>
-          <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">Manage access levels and permissions across the CRM.</p>
+          <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">{t("roles.subtitle")}</p>
         </div>
         <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors">
-          <Plus className="w-4 h-4" /> Add Role
+          <Plus className="w-4 h-4" /> {t("roles.add_role")}
         </button>
       </div>
 
@@ -37,8 +39,8 @@ export default function RolesPage() {
             </div>
             <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4 h-10">{role.description}</p>
             <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-100 dark:border-zinc-800">
-              <span className="text-xs font-semibold px-2 py-1 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-lg">{role.users} Users</span>
-              <button className="text-xs font-semibold text-blue-500 hover:text-blue-600">View Permissions</button>
+              <span className="text-xs font-semibold px-2 py-1 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-lg">{role.users} {t("roles.users")}</span>
+              <button className="text-xs font-semibold text-blue-500 hover:text-blue-600">{t("roles.view_permissions")}</button>
             </div>
           </div>
         ))}

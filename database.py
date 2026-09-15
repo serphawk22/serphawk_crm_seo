@@ -118,6 +118,36 @@ class User(SQLModel, table=True):
     assigned_requests: List["ServiceRequest"] = Relationship(back_populates="assigned_employee")
     deals: List["Deal"] = Relationship(back_populates="assigned_user")
 
+class PasswordResetToken(SQLModel, table=True):
+    """One-time token used to reset a user's password."""
+    __tablename__ = "password_reset_tokens"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    token: str = Field(unique=True, index=True, max_length=128)
+    expires_at: datetime = Field(index=True)
+    used: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    user: Optional["User"] = Relationship()
+
+
+class EmailOTP(SQLModel, table=True):
+    """One-time code sent to verify ownership of an email address for SMTP / integration setup."""
+    __tablename__ = "email_otps"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    email: str = Field(max_length=255, index=True)
+    otp_code: str = Field(max_length=8)
+    purpose: str = Field(max_length=50, default="smtp_settings")  # smtp_settings | integration | signup
+    expires_at: datetime = Field(index=True)
+    verified: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    user: Optional["User"] = Relationship()
+
+
 class MarketplaceService(SQLModel, table=True):
     """
     Central B2B Marketplace catalog entry.
@@ -126,6 +156,7 @@ class MarketplaceService(SQLModel, table=True):
     __tablename__ = "marketplace_services"
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
 
     # Service identity
     service_name: str = Field(max_length=255)
@@ -415,6 +446,8 @@ class ClientProfile(SQLModel, table=True):
     discovered_via: Optional[str] = Field(default=None, max_length=100)  # 'Radar Analysis'
     discovery_date: Optional[str] = Field(default=None, max_length=50)
     discovered_from_name: Optional[str] = Field(default=None, max_length=255)  # denormalized label
+    
+    swot_analysis: Optional[str] = Field(default=None, sa_column=Column(Text))
     
     # Relationships
     user: Optional[User] = Relationship(back_populates="profile")
@@ -779,6 +812,7 @@ class Task(SQLModel, table=True):
     priority: str = Field(default="Medium")  # Low, Medium, High, Urgent
     due_date: Optional[str] = None
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     project_id: Optional[int] = Field(default=None, foreign_key="projects.id")
     assigned_to: Optional[int] = Field(default=None, foreign_key="users.id")
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")
@@ -927,7 +961,8 @@ class ClientNote(SQLModel, table=True):
     __tablename__ = "client_notes"
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
-    client_id: int = Field(foreign_key="client_profiles.id")
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     content: str = Field(sa_column=Column(Text))
     tags: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
     is_pinned: bool = Field(default=False)
@@ -960,7 +995,8 @@ class ConversationLog(SQLModel, table=True):
     __tablename__ = "conversation_logs"
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
-    client_id: int = Field(foreign_key="client_profiles.id")
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     title: str = Field(max_length=500)
     type: str = Field(default="call")  # call, meeting, email, whatsapp, visit, other
     description: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -1051,6 +1087,7 @@ class Lead(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_activity: Optional[str] = Field(default=None, max_length=500)
     ai_analysis_results: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    swot_analysis: Optional[str] = Field(default=None, sa_column=Column(Text))
 
     @field_validator('ai_analysis_results', mode='before')
     @classmethod
@@ -1064,6 +1101,17 @@ class Lead(SQLModel, table=True):
 
     account: Optional[Account] = Relationship(back_populates="leads")
     contacts: List["Contact"] = Relationship(back_populates="lead")
+
+class LeadNote(SQLModel, table=True):
+    """Note attached to an individual lead, with author and timestamp"""
+    __tablename__ = "lead_notes"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    lead_id: int = Field(foreign_key="leads.id", index=True)
+    content: str = Field(sa_column=Column(Text))
+    author_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    author_name: Optional[str] = Field(default=None, max_length=255)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Contact(SQLModel, table=True):
     __tablename__ = "contacts"
@@ -1137,6 +1185,7 @@ class Product(SQLModel, table=True):
     category: Optional[str] = Field(default=None, max_length=200)
     unit_price: float = Field(default=0.0)
     currency: str = Field(default="USD", max_length=10)
+    photo_url: Optional[str] = Field(default=None, max_length=500)
     tax_rate: float = Field(default=0.0)
     stock_quantity: Optional[int] = Field(default=None)
     is_active: bool = Field(default=True)
@@ -1235,6 +1284,8 @@ class Case(SQLModel, table=True):
     status: str = Field(default="Open", max_length=50)  # Open, In Progress, Resolved, Closed
     priority: str = Field(default="Medium", max_length=50)  # Low, Medium, High, Urgent
     category: Optional[str] = Field(default=None, max_length=200)
+    case_type: Optional[str] = Field(default="Bug", max_length=100)  # Bug, Feature Request
+    url: Optional[str] = Field(default=None, max_length=1000)  # Related URL
     lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
     contact_id: Optional[int] = Field(default=None, foreign_key="contacts.id")
@@ -1344,9 +1395,16 @@ def create_db_and_tables():
         "ALTER TABLE client_research ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
         "ALTER TABLE sent_emails ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
         "ALTER TABLE activity_logs ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
+        "ALTER TABLE tasks ADD COLUMN lead_id INTEGER REFERENCES leads(id)",
         "ALTER TABLE whatsappsession ADD COLUMN active_live_chat_session VARCHAR",
         "ALTER TABLE whatsappsession ALTER COLUMN pending_action DROP NOT NULL",
         "ALTER TABLE whatsappsession ALTER COLUMN action_data DROP NOT NULL",
+        "ALTER TABLE products ADD COLUMN photo_url VARCHAR(500)",
+        "ALTER TABLE marketplace_services ADD COLUMN tenant_id INTEGER REFERENCES tenants(id)",
+        "ALTER TABLE email_otps ALTER COLUMN user_id DROP NOT NULL",
+        # Supplier credentials emailing
+        "ALTER TABLE inventory_suppliers ADD COLUMN login_password VARCHAR(255)",
+        "ALTER TABLE inventory_suppliers ADD COLUMN credentials_sent BOOLEAN DEFAULT FALSE",
     ]
     
     with engine.connect() as conn:
@@ -1357,6 +1415,34 @@ def create_db_and_tables():
             except Exception as e:
                 # Column likely already exists
                 conn.rollback()
+        
+    # Backfill tenant_id on marketplace_services from client_profiles
+    try:
+        with engine.connect() as conn:
+            dialect = engine.dialect.name
+            if dialect == "postgresql":
+                conn.execute(text("""
+                    UPDATE marketplace_services ms
+                    SET tenant_id = cp.tenant_id
+                    FROM client_profiles cp
+                    WHERE ms.provider_client_id = cp.id
+                      AND ms.tenant_id IS NULL
+                      AND cp.tenant_id IS NOT NULL
+                """))
+            else:
+                conn.execute(text("""
+                    UPDATE marketplace_services
+                    SET tenant_id = (
+                        SELECT cp.tenant_id FROM client_profiles cp
+                        WHERE cp.id = marketplace_services.provider_client_id
+                          AND cp.tenant_id IS NOT NULL
+                    )
+                    WHERE marketplace_services.tenant_id IS NULL
+                      AND marketplace_services.provider_client_id IS NOT NULL
+                """))
+            conn.commit()
+    except Exception:
+        pass
         
     # Seed default statuses if none exist
     try:
@@ -1533,6 +1619,8 @@ class InventorySupplier(SQLModel, table=True):
     min_order_qty: Optional[float] = Field(default=None)
     is_preferred: bool = Field(default=False)
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    login_password: Optional[str] = Field(default=None, max_length=255)  # plaintext unique password for supplier login
+    credentials_sent: bool = Field(default=False)  # whether credentials email has been sent
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     item: Optional[InventoryItem] = Relationship(back_populates="suppliers")
@@ -1633,4 +1721,17 @@ if __name__ == "__main__":
     print("Creating database tables...")
     create_db_and_tables()
     print("Database tables created successfully!")
+
+
+
+class APIUsageLog(SQLModel, table=True):
+    __tablename__ = "api_usage_logs"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    method: str = Field(max_length=10)
+    path: str = Field(max_length=255)
+    status_code: int
+    response_time_ms: float
+    ip_address: Optional[str] = Field(default=None, max_length=50)
+    user_agent: Optional[str] = Field(default=None, max_length=255)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 

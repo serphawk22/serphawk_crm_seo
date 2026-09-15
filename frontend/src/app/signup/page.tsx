@@ -5,11 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useGoogleLogin } from "@react-oauth/google";
 import { useRole } from "@/context/RoleContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { API_BASE_URL } from "@/config";
-import { Lock, Mail, Loader2, Eye, EyeOff, ArrowRight, Globe, ChevronDown, Check } from "lucide-react";
+import { Lock, Mail, Loader2, Eye, EyeOff, ArrowRight, Globe, ChevronDown, Check, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useTranslation } from "react-i18next";
-import "@/i18n/config";
+import PasswordStrengthMeter from "@/components/PasswordStrengthMeter";
+import EmailOTPVerification from "@/components/EmailOTPVerification";
 
 
 // ── Language options shown on the Sign Up page: English + Spanish ONLY ──────
@@ -19,12 +20,12 @@ const SIGNUP_LANGUAGES = [
 ] as const;
 
 function SignupLanguageSwitcher() {
-  const { i18n } = useTranslation();
+  const { language, setLanguage, t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const currentCode = SIGNUP_LANGUAGES.find((l) => l.code === i18n.language)
-    ? i18n.language
+  const currentCode = SIGNUP_LANGUAGES.find((l) => l.code === language)
+    ? language
     : "en";
 
   // Close on outside click
@@ -40,7 +41,7 @@ function SignupLanguageSwitcher() {
 
   const changeLanguage = (code: string) => {
     setIsOpen(false);
-    i18n.changeLanguage(code);
+    setLanguage(code);
     localStorage.setItem("crm-language", code);
     localStorage.setItem("language", code);
 
@@ -76,18 +77,18 @@ function SignupLanguageSwitcher() {
         className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border text-sm font-semibold ${
           isOpen
             ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-            : "hover:bg-slate-50 border-transparent text-slate-600 hover:border-slate-200"
+            : "hover:bg-zinc-900 border-transparent text-zinc-400 hover:border-zinc-800"
         }`}
       >
-        <Globe className="w-4 h-4 text-slate-400" />
-        <span className="hidden sm:block">Language</span>
+        <Globe className="w-4 h-4 text-zinc-500" />
+        <span className="hidden sm:block">{t("auth.language")}</span>
         <div className="flex items-center gap-1.5 ml-1">
           <span className="text-base leading-none">{current.flag}</span>
-          <span className="uppercase text-[10px] font-black tracking-wider text-slate-400">
+          <span className="uppercase text-[10px] font-black tracking-wider text-zinc-500">
             {current.code}
           </span>
         </div>
-        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+        <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
       </motion.button>
 
       <AnimatePresence>
@@ -97,11 +98,11 @@ function SignupLanguageSwitcher() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.97 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full mt-2 w-52 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50"
+            className="absolute right-0 top-full mt-2 w-52 bg-[#0a0a0a] border border-zinc-800 rounded-2xl shadow-xl overflow-hidden z-50"
           >
-            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                Select Language
+            <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900">
+              <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+                {t("auth.select_language")}
               </p>
             </div>
             <div className="p-2 space-y-1">
@@ -114,7 +115,7 @@ function SignupLanguageSwitcher() {
                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-left ${
                       isActive
                         ? "bg-indigo-50 text-indigo-700"
-                        : "hover:bg-slate-50 text-slate-700"
+                        : "hover:bg-zinc-900 text-zinc-300"
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -123,7 +124,7 @@ function SignupLanguageSwitcher() {
                         <span className={`text-sm font-semibold leading-tight ${isActive ? "text-indigo-700" : "group-hover:text-indigo-600"}`}>
                           {lang.nativeName}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-medium">{lang.name}</span>
+                        <span className="text-[10px] text-zinc-500 font-medium">{lang.name}</span>
                       </div>
                     </div>
                     {isActive && <Check className="w-4 h-4 text-indigo-600" />}
@@ -139,28 +140,28 @@ function SignupLanguageSwitcher() {
 }
 
 const FEATURES = [
-
-  { icon: "🚀", title: "Growth Engine", desc: "Radar analysis & AI-powered outreach" },
-  { icon: "📊", title: "Smart Pipeline", desc: "Visual sales tracking in real-time" },
-  { icon: "🤖", title: "AI Automations", desc: "Let AI handle repetitive workflows" },
-  { icon: "💼", title: "Client CRM", desc: "360° view of every client relationship" },
+  { icon: "🚀", titleKey: "fe_growth_title", descKey: "fe_growth_desc" },
+  { icon: "📊", titleKey: "fe_pipeline_title", descKey: "fe_pipeline_desc" },
+  { icon: "🤖", titleKey: "fe_automation_title", descKey: "fe_automation_desc" },
+  { icon: "💼", titleKey: "fe_crm_title", descKey: "fe_crm_desc" },
 ];
 
 function FloatingCard({
   icon,
-  title,
-  desc,
+  titleKey,
+  descKey,
   delay,
   x,
   y,
 }: {
   icon: string;
-  title: string;
-  desc: string;
+  titleKey: string;
+  descKey: string;
   delay: number;
   x: string;
   y: string;
 }) {
+  const { t } = useLanguage();
   return (
     <motion.div
       initial={{ opacity: 0, y: 20, scale: 0.9 }}
@@ -177,8 +178,8 @@ function FloatingCard({
     >
       <span className="text-2xl">{icon}</span>
       <div>
-        <p className="text-white font-semibold text-sm leading-tight">{title}</p>
-        <p className="text-blue-200/70 text-xs mt-0.5">{desc}</p>
+        <p className="text-white font-semibold text-sm leading-tight">{t(`auth.${titleKey}`)}</p>
+        <p className="text-blue-200/70 text-xs mt-0.5">{t(`auth.${descKey}`)}</p>
       </div>
     </motion.div>
   );
@@ -193,8 +194,35 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [focusedField, setFocusedField] = useState<"name" | "email" | "password" | null>(null);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
   const { login } = useRole();
   const router = useRouter();
+  const { t } = useLanguage();
+
+  // Prefer full-width unicode Light characters (googtrans-compatible) and common symbols/numbers
+  function suggestPassword() {
+    const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    const lower = "abcdefghijkmnpqrstuvwxyz";
+    const digits = "23456789";
+    const symbols = "!@#$%^&*";
+    const rand = (set: string) => set[Math.floor(Math.random() * set.length)];
+    const parts = [
+      rand(upper), rand(lower), rand(digits), rand(symbols),
+      Array.from({ length: 8 }, () => rand(upper + lower + digits + symbols)).join(""),
+    ];
+    const shuffled = parts
+      .map((part) => part.split(""))
+      .flat()
+      .sort(() => Math.random() - 0.5)
+      .join("");
+    return shuffled.slice(0, 16);
+  }
+
+  const useSuggestedPassword = () => {
+    const pw = suggestPassword();
+    setPassword(pw);
+    setShowPassword(true);
+  };
 
   const googleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
@@ -207,7 +235,7 @@ export default function SignupPage() {
           body: JSON.stringify({ access_token: tokenResponse.access_token }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Google login failed");
+        if (!res.ok) throw new Error(data.detail || t("auth.google_login_error"));
         
         localStorage.setItem("crm_user", JSON.stringify(data.user));
         
@@ -217,20 +245,27 @@ export default function SignupPage() {
           window.location.href = "/dashboard";
         }
       } catch (err: any) {
-        setError(err.message || "An error occurred with Google Login.");
+        setError(err.message || t("auth.google_login_error"));
       } finally {
         setGoogleSubmitting(false);
       }
     },
     onError: () => {
-      setError("Google Login failed. Please try again.");
+      setError(t("auth.google_failed"));
     }
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    // First step: verify the email address via OTP before creating the account
+    setVerifyingOtp(true);
+  };
+
+  const createAccount = async () => {
     setIsSubmitting(true);
+    setError("");
 
     try {
       const res = await fetch(`${API_BASE_URL}/demo/signup`, {
@@ -239,18 +274,19 @@ export default function SignupPage() {
         body: JSON.stringify({ name, email, password })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to create account");
+      if (!res.ok) throw new Error(data.detail || t("auth.demo_failed_signup"));
       
       // Attempt login after signup
       await login(email, password);
     } catch (err: any) {
-      setError(err.message || "An error occurred.");
+      setError(err.message || t("auth.unexpected_error"));
+      setVerifyingOtp(false);
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex overflow-hidden font-sans">
+    <div className="min-h-screen flex overflow-hidden font-sans bg-[#0a0a0a] text-zinc-100 selection:bg-indigo-500/30">
       {/* ── LEFT PANEL – Visual branding ── */}
       <div
         className="hidden lg:flex lg:w-[55%] relative flex-col items-center justify-center overflow-hidden p-12"
@@ -344,11 +380,11 @@ export default function SignupPage() {
                   WebkitTextFillColor: "transparent",
                 }}
               >
-                Growth Platform
+                {t("auth.growth_platform")}
               </span>
             </h1>
             <p className="text-blue-200/70 text-lg font-medium max-w-xs mx-auto leading-relaxed">
-              The all-in-one CRM for SEO agencies that want to dominate their market.
+              {t("auth.signup_left_desc")}
             </p>
           </div>
 
@@ -360,13 +396,13 @@ export default function SignupPage() {
             transition={{ delay: 0.6 }}
           >
             {[
-              { value: "500+", label: "Clients Managed" },
-              { value: "98%", label: "Retention Rate" },
-              { value: "3x", label: "Revenue Growth" },
+              { value: "500+", labelKey: "stat_clients" },
+              { value: "98%", labelKey: "stat_retention" },
+              { value: "3x", labelKey: "stat_revenue" },
             ].map((stat) => (
-              <div key={stat.label} className="text-center">
+              <div key={stat.labelKey} className="text-center">
                 <p className="text-2xl font-extrabold text-white">{stat.value}</p>
-                <p className="text-xs font-medium text-blue-300/60 mt-0.5">{stat.label}</p>
+                <p className="text-xs font-medium text-blue-300/60 mt-0.5">{t(`auth.${stat.labelKey}`)}</p>
               </div>
             ))}
           </motion.div>
@@ -375,8 +411,8 @@ export default function SignupPage() {
 
       {/* ── RIGHT PANEL – Login form ── */}
       <div
-        className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12 relative"
-        style={{ background: "#ffffff" }}
+        className="flex-1 flex flex-col justify-center relative z-20 px-6 sm:px-12 lg:px-24 xl:px-32"
+        
       >
         {/* Language selector in top right — English + Spanish only */}
         <div className="absolute top-5 right-6 z-20">
@@ -395,7 +431,7 @@ export default function SignupPage() {
               <circle cx="12" cy="12" r="2" fill="white" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold text-gray-900">SERP Hawk CRM</h2>
+          <h2 className="text-xl font-bold text-white">{t("auth.app_name")}</h2>
         </div>
 
         <motion.div
@@ -406,26 +442,41 @@ export default function SignupPage() {
         >
           {/* Header */}
           <div className="mb-8">
-            <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">
-              Create Demo Account
+            <h2 className="text-3xl font-extrabold text-white tracking-tight mb-2">
+              {t("auth.signup_title")}
             </h2>
-            <p className="text-gray-500 text-[15px] font-medium">
-              Join the SERP Hawk CRM showcase
+            <p className="text-zinc-400 text-[15px] font-medium">
+              {t("auth.signup_subtitle")}
             </p>
           </div>
 
-          {/* Form */}
+          {/* Form / OTP verification */}
+          {verifyingOtp ? (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6"
+            >
+              <EmailOTPVerification
+                email={email}
+                purpose="signup"
+                autoSend
+                onVerified={createAccount}
+                onCancel={() => setVerifyingOtp(false)}
+              />
+            </motion.div>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Name */}
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
-                Full Name
+              <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                {t("auth.full_name")}
               </label>
               <div
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
                   focusedField === "name"
                     ? "border-blue-500 shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                    : "border-gray-200 hover:border-gray-300"
+                    : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/60"
                 }`}
               >
                 <div className="absolute left-4 w-4 h-4 text-gray-400">👤</div>
@@ -436,21 +487,21 @@ export default function SignupPage() {
                   onChange={(e) => setName(e.target.value)}
                   onFocus={() => setFocusedField("name")}
                   onBlur={() => setFocusedField(null)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-transparent border-none text-[15px] font-medium text-gray-900 placeholder:text-gray-400 focus:ring-0 outline-none"
-                  placeholder="John Doe"
+                  className="w-full pl-11 pr-4 py-3.5 bg-transparent border-none text-[15px] font-medium text-white placeholder:text-gray-400 focus:ring-0 outline-none"
+                  placeholder={t("auth.name_placeholder")}
                 />
               </div>
             </div>
             {/* Email */}
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
-                Email Address
+              <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                {t("auth.email_address")}
               </label>
               <div
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
                   focusedField === "email"
                     ? "border-blue-500 shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                    : "border-gray-200 hover:border-gray-300"
+                    : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/60"
                 }`}
               >
                 <Mail
@@ -465,22 +516,33 @@ export default function SignupPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   onFocus={() => setFocusedField("email")}
                   onBlur={() => setFocusedField(null)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-transparent text-gray-900 placeholder-gray-400 text-[15px] outline-none rounded-xl"
-                  placeholder="name@company.com"
+                  className="w-full pl-11 pr-4 py-3.5 bg-transparent text-white placeholder-gray-400 text-[15px] outline-none rounded-xl"
+                  placeholder={t("auth.email_placeholder")}
                 />
               </div>
             </div>
 
             {/* Password */}
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                  {t("auth.password_label")}
+                </label>
+                <button
+                  type="button"
+                  onClick={useSuggestedPassword}
+                  className="flex items-center gap-1.5 text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+                  title={t("auth.suggest_password")}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  {t("auth.suggest_password")}
+                </button>
+              </div>
               <div
                 className={`relative flex items-center rounded-xl border transition-all duration-200 ${
                   focusedField === "password"
                     ? "border-blue-500 shadow-[0_0_0_3px_rgba(37,99,235,0.12)]"
-                    : "border-gray-200 hover:border-gray-300"
+                    : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/60"
                 }`}
               >
                 <Lock
@@ -495,8 +557,8 @@ export default function SignupPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   onFocus={() => setFocusedField("password")}
                   onBlur={() => setFocusedField(null)}
-                  className="w-full pl-11 pr-12 py-3.5 bg-transparent text-gray-900 placeholder-gray-400 text-[15px] outline-none rounded-xl"
-                  placeholder="Enter your password"
+                  className="w-full pl-11 pr-12 py-3.5 bg-transparent text-white placeholder-gray-400 text-[15px] outline-none rounded-xl"
+                  placeholder={t("auth.enter_password")}
                 />
                 <button
                   type="button"
@@ -506,15 +568,18 @@ export default function SignupPage() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+
+              {/* Strength indicator + rules */}
+              <PasswordStrengthMeter password={password} />
             </div>
 
             {/* Forgot password */}
             <div className="flex justify-end">
               <button
                 type="button"
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
               >
-                Forgot password?
+                {t("auth.forgot_password")}
               </button>
             </div>
 
@@ -552,11 +617,11 @@ export default function SignupPage() {
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      Creating account...
+                      {t("auth.creating_account")}
                     </>
                   ) : (
                     <>
-                      Create Account
+                      {t("auth.create_account")}
                       <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                     </>
                   )}
@@ -568,9 +633,9 @@ export default function SignupPage() {
                   type="button"
                   whileHover={{ scale: 1.01, y: -1 }}
                   whileTap={{ scale: 0.98 }}
-                  className="relative w-full h-full py-4 rounded-xl font-bold text-slate-700 bg-white border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-[15px] flex items-center justify-center gap-2.5 transition-all shadow-sm"
+                  className="w-full h-full py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center"
                 >
-                  Sign In Instead
+                  {t("auth.sign_in_instead")}
                   <ArrowRight className="w-4 h-4 opacity-50" />
                 </motion.button>
               </Link>
@@ -578,9 +643,9 @@ export default function SignupPage() {
 
             {/* Divider */}
             <div className="relative flex py-5 items-center">
-              <div className="flex-grow border-t border-slate-200"></div>
-              <span className="flex-shrink-0 mx-4 text-slate-400 text-sm font-medium">Or continue with</span>
-              <div className="flex-grow border-t border-slate-200"></div>
+              <div className="flex-grow border-t border-zinc-800"></div>
+              <span className="flex-shrink-0 mx-4 text-zinc-500 text-sm font-medium">{t("auth.or_continue_with")}</span>
+              <div className="flex-grow border-t border-zinc-800"></div>
             </div>
 
             {/* Google Button */}
@@ -588,10 +653,10 @@ export default function SignupPage() {
               type="button"
               onClick={() => googleLogin()}
               disabled={googleSubmitting}
-              className="w-full relative py-3.5 rounded-xl font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 text-[15px] flex items-center justify-center gap-3 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
             >
               {googleSubmitting ? (
-                <Loader2 className="w-5 h-5 animate-spin text-slate-500" />
+                <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
               ) : (
                 <svg viewBox="0 0 24 24" className="w-5 h-5" xmlns="http://www.w3.org/2000/svg">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -600,24 +665,25 @@ export default function SignupPage() {
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                 </svg>
               )}
-              {googleSubmitting ? "Authenticating..." : "Continue with Google"}
+              {googleSubmitting ? t("auth.authenticating") : t("auth.continue_google")}
             </button>
           </form>
+          )}
 
           {/* Footer */}
           <p className="text-center text-gray-400 text-sm font-medium mt-8">
-            Authorized personnel only.{" "}
+            {t("auth.authorized_only")}{" "}
             <a
               href="mailto:support@serphawk.com"
-              className="text-blue-600 font-semibold hover:underline"
+              className="text-indigo-400 font-semibold hover:underline"
             >
-              Contact Support
+              {t("auth.contact_support")}
             </a>
           </p>
 
           {/* Security badges */}
           <div className="flex items-center justify-center gap-4 mt-8">
-            {["🔒 SSL Secured", "🛡️ SOC 2", "🔑 2FA Ready"].map((badge) => (
+            {[t("auth.ssl_secured"), t("auth.soc2"), t("auth.two_fa")].map((badge) => (
               <span
                 key={badge}
                 className="text-[11px] font-medium text-gray-400"

@@ -6,6 +6,7 @@
    DESIGN TOKENS — Light Mode (Zoho Inspired)
 ═══════════════════════════════════════════════ */
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --surface: #f8fafc;
   --border: #e5e7eb;
@@ -34,6 +35,7 @@
    DESIGN TOKENS — Dark Mode (Linear / GitHub Inspired)
 ═══════════════════════════════════════════════ */
 [data-theme="dark"] {
+  color-scheme: dark;
   --background: #000000;
   --surface: #0a0a0a;
   --card: #111111;
@@ -95,6 +97,21 @@ body {
   color: var(--text-primary);
   font-family: 'Inter', Arial, Helvetica, sans-serif;
   min-height: 100vh;
+}
+
+/* ─────────────────────────────────────────────────────────
+   FORM CONTROLS — keep native dropdown lists & inputs legible
+   in both themes (the theme is set via data-theme, not the
+   OS color scheme, so the browser needs explicit guidance)
+──────────────────────────────────────────────────────────── */
+select option {
+  background-color: #ffffff;
+  color: #111827;
+}
+
+[data-theme="dark"] select option {
+  background-color: #18181b;
+  color: #f4f4f5;
 }
 
 /* ═══════════════════════════════════════════════

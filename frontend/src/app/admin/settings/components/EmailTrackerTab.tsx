@@ -4,10 +4,11 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Mail, RefreshCw, CheckCircle, UserPlus, Building, Trash2, 
-  Inbox, Loader2, Sparkles, Check
+  Inbox, Loader2, Sparkles, Check, Shield
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
+import EmailOTPVerification from "@/components/EmailOTPVerification";
 
 export default function EmailTrackerTab() {
   const { user } = useRole();
@@ -16,6 +17,9 @@ export default function EmailTrackerTab() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [verifyingId, setVerifyingId] = useState<number | null>(null);
+  const [showOtpVerification, setShowOtpVerification] = useState(false);
+  const [integrationEmail, setIntegrationEmail] = useState("");
+  const [otpVerified, setOtpVerified] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -46,6 +50,11 @@ export default function EmailTrackerTab() {
     if (user?.id) {
       window.location.href = `${API_BASE_URL}/auth/google/login?user_id=${user.id}`;
     }
+  };
+
+  const handleIntegrationOtpVerified = () => {
+    setOtpVerified(true);
+    setShowOtpVerification(false);
   };
 
   const syncInbox = async (integrationId: number) => {
@@ -97,6 +106,34 @@ export default function EmailTrackerTab() {
 
   return (
     <div className="space-y-8">
+      {/* OTP Verification Modal */}
+      <AnimatePresence>
+        {showOtpVerification && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            onClick={() => setShowOtpVerification(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-zinc-700 p-6 w-full max-w-md"
+            >
+              <EmailOTPVerification
+                email={integrationEmail}
+                purpose="integration"
+                onVerified={handleIntegrationOtpVerified}
+                onCancel={() => setShowOtpVerification(false)}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Integrations Section */}
       <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-6 rounded-2xl shadow-sm">
         <div className="flex items-center gap-3 mb-6">
@@ -110,19 +147,67 @@ export default function EmailTrackerTab() {
         </div>
 
         {integrations.length === 0 ? (
-          <div className="flex gap-4">
-            <button 
-              onClick={connectGoogleOAuth}
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 border-2 border-dashed border-slate-300 dark:border-zinc-700 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors font-bold text-slate-700 dark:text-zinc-300"
-            >
-              Sign in with Google
-            </button>
-            <button 
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 border-2 border-dashed border-slate-300 dark:border-zinc-700 rounded-xl opacity-50 cursor-not-allowed font-bold text-slate-700 dark:text-zinc-300"
-              title="Coming soon"
-            >
-              Connect Outlook
-            </button>
+          <div className="space-y-4">
+            {/* OTP verification step */}
+            {!otpVerified && !showOtpVerification && (
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <Shield className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-bold text-sm text-blue-800 dark:text-blue-300">
+                      Email verification required
+                    </p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                      Before connecting an email integration, please verify your email address with a one-time code.
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <input
+                        type="email"
+                        value={integrationEmail}
+                        onChange={(e) => setIntegrationEmail(e.target.value)}
+                        placeholder="Enter your email address"
+                        className="flex-1 px-3 py-2 text-sm rounded-lg border border-blue-200 dark:border-blue-700 bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 outline-none focus:border-blue-500"
+                      />
+                      <button
+                        onClick={() => setShowOtpVerification(true)}
+                        disabled={!integrationEmail}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        Verify
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* OTP verified badge */}
+            {otpVerified && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+                <CheckCircle className="w-4 h-4 text-emerald-500" />
+                <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                  {integrationEmail} verified
+                </span>
+              </div>
+            )}
+
+            <div className="flex gap-4">
+              <button 
+                onClick={connectGoogleOAuth}
+                disabled={!otpVerified}
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 border-2 border-dashed border-slate-300 dark:border-zinc-700 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors font-bold text-slate-700 dark:text-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Check size={16} className="text-blue-500" />
+                Sign in with Google
+              </button>
+              <button 
+                disabled={!otpVerified}
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 border-2 border-dashed border-slate-300 dark:border-zinc-700 rounded-xl opacity-50 cursor-not-allowed font-bold text-slate-700 dark:text-zinc-300"
+                title="Coming soon"
+              >
+                Connect Outlook
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">

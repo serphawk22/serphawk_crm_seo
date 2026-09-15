@@ -12,6 +12,7 @@ import PageGuide from '@/components/PageGuide';
 import { useRole } from '@/context/RoleContext';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface ServiceRequest {
   id: number;
@@ -50,13 +51,14 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function ProgressBar({ status }: { status: string }) {
+  const { t } = useLanguage();
   const cfg = STATUS_CONFIG[status];
   const pct = cfg?.progress ?? 0;
   const color = status === 'Delivered' ? 'bg-emerald-500' : status === 'In Progress' ? 'bg-violet-500' : status === 'Accepted' ? 'bg-indigo-500' : status === 'Quoted' ? 'bg-blue-400' : 'bg-amber-400';
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between items-center">
-        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Progress</span>
+        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('services_overview.progress')}</span>
         <span className="text-[11px] font-black text-slate-600 dark:text-zinc-300">{pct}%</span>
       </div>
       <div className="h-2 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
@@ -73,6 +75,7 @@ function ProgressBar({ status }: { status: string }) {
 
 export default function ServicesOverviewPage() {
   const { role } = useRole();
+  const { t } = useLanguage();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
@@ -87,7 +90,7 @@ export default function ServicesOverviewPage() {
   }, []);
 
   if (role !== 'Admin' && role !== 'Employee') {
-    return <div className="p-20 text-center text-red-500 font-bold">Unauthorized access.</div>;
+    return <div className="p-20 text-center text-red-500 font-bold">{t('services_overview.unauthorized')}</div>;
   }
 
   const byStatus = requests.reduce((acc: Record<string, number>, r) => {
@@ -118,35 +121,35 @@ export default function ServicesOverviewPage() {
               <LayoutGrid className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-slate-800 dark:text-zinc-100">Services Overview</h1>
-              <p className="text-slate-400 text-sm font-medium mt-0.5">All client service requests — click any row for full details</p>
+              <h1 className="text-2xl font-black text-slate-800 dark:text-zinc-100">{t('services_overview.title')}</h1>
+              <p className="text-slate-400 text-sm font-medium mt-0.5">{t('services_overview.subtitle')}</p>
             </div>
           </div>
           <Link href="/admin/services" className="btn-glow-indigo px-5 py-2.5 rounded-xl text-white font-bold text-sm flex items-center gap-2 shrink-0 w-fit">
-            <Tag className="w-4 h-4" /> Manage Catalog
+            <Tag className="w-4 h-4" /> {t('services_overview.manage_catalog')}
           </Link>
         </div>
       </div>
 
       <PageGuide
         pageKey="admin-services-overview"
-        title="How Services Overview works"
-        description="A bird\'s-eye view of every client service request across the organization."
+        title={t('services_overview.guide_title')}
+        description={t('services_overview.guide_desc')}
         steps={[
-          { icon: '📊', text: 'Stats cards show total requests, active work, pending reviews, and total revenue.' },
-          { icon: '🔍', text: 'Use the search bar to find any request by service name, client, or status.' },
-          { icon: '📄', text: 'Click any row to expand it and see full details, timeline, and assigned team.' },
-          { icon: '🏷️', text: 'Click \"Manage Catalog\" to add or edit service offerings in the catalog builder.' },
+          { icon: '📊', text: t('services_overview.guide_step1') },
+          { icon: '🔍', text: t('services_overview.guide_step2') },
+          { icon: '📄', text: t('services_overview.guide_step3') },
+          { icon: '🏷️', text: t('services_overview.guide_step4') },
         ]}
       />
 
       {/* ── Summary Stats ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Total Requests', value: requests.length,                                                           icon: Package,     color: 'text-indigo-600',  bg: 'bg-indigo-50 border-indigo-100'  },
-          { label: 'Active Work',    value: (byStatus['In Progress'] || 0) + (byStatus['Accepted'] || 0),             icon: Activity,    color: 'text-violet-600',  bg: 'bg-violet-50 border-violet-100'  },
-          { label: 'Pending Review', value: byStatus['Pending'] || 0,                                                 icon: Clock,       color: 'text-amber-600',   bg: 'bg-amber-50 border-amber-100'    },
-          { label: 'Total Revenue',  value: `$${totalRevenue.toLocaleString()}`,                                      icon: DollarSign,  color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-100'},
+          { label: t('services_overview.total_requests'), value: requests.length,                                                           icon: Package,     color: 'text-indigo-600',  bg: 'bg-indigo-50 border-indigo-100'  },
+          { label: t('services_overview.active_work'),    value: (byStatus['In Progress'] || 0) + (byStatus['Accepted'] || 0),             icon: Activity,    color: 'text-violet-600',  bg: 'bg-violet-50 border-violet-100'  },
+          { label: t('services_overview.pending_review'), value: byStatus['Pending'] || 0,                                                 icon: Clock,       color: 'text-amber-600',   bg: 'bg-amber-50 border-amber-100'    },
+          { label: t('services_overview.total_revenue'),  value: `$${totalRevenue.toLocaleString()}`,                                      icon: DollarSign,  color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-100'},
         ].map(s => (
           <div key={s.label} className="glass-card p-4 flex items-center gap-3">
             <div className={cn('p-2.5 rounded-xl border', s.bg)}>
@@ -166,7 +169,7 @@ export default function ServicesOverviewPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by service, client name or email..."
+            placeholder={t('services_overview.search_placeholder')}
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm text-slate-700 dark:text-zinc-200 placeholder:text-slate-400 focus:outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
@@ -194,23 +197,23 @@ export default function ServicesOverviewPage() {
       {loading ? (
         <div className="glass-card p-20 flex flex-col items-center gap-4 text-slate-400">
           <Activity className="w-8 h-8 animate-spin" />
-          <p className="font-bold text-sm">Loading service requests...</p>
+          <p className="font-bold text-sm">{t('services_overview.loading')}</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="glass-card p-20 flex flex-col items-center gap-4 text-slate-400">
           <Package className="w-12 h-12 text-slate-200" />
-          <p className="font-black text-slate-600 dark:text-zinc-300 text-lg">No requests found</p>
-          <p className="text-sm">Try adjusting your filters.</p>
+          <p className="font-black text-slate-600 dark:text-zinc-300 text-lg">{t('services_overview.no_requests')}</p>
+          <p className="text-sm">{t('services_overview.try_filters')}</p>
         </div>
       ) : (
         <div className="glass-card overflow-hidden">
           {/* Table header */}
           <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_1fr_40px] gap-4 px-5 py-3 bg-slate-50 dark:bg-zinc-950 border-b border-slate-100 dark:border-zinc-800 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            <span>Service</span>
-            <span>Client</span>
-            <span>Assigned To</span>
-            <span>Quoted</span>
-            <span>Status</span>
+            <span>{t('services_overview.service')}</span>
+            <span>{t('services_overview.client')}</span>
+            <span>{t('services_overview.assigned_to')}</span>
+            <span>{t('services_overview.quoted')}</span>
+            <span>{t('services_overview.status')}</span>
             <span />
           </div>
           <div className="divide-y divide-slate-50">
@@ -235,7 +238,7 @@ export default function ServicesOverviewPage() {
                   <div>
                     {req.assigned_employee_name
                       ? <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 rounded-lg text-[11px] font-bold"><UserCheck className="w-3 h-3 text-indigo-500" />{req.assigned_employee_name}</span>
-                      : <span className="text-[11px] text-slate-300 font-medium">Unassigned</span>
+                      : <span className="text-[11px] text-slate-300 font-medium">{t('services_overview.unassigned')}</span>
                     }
                   </div>
                   <div>
@@ -276,7 +279,7 @@ export default function ServicesOverviewPage() {
               {/* Drawer header */}
               <div className="flex items-start justify-between p-6 border-b border-slate-100 dark:border-zinc-800 shrink-0">
                 <div>
-                  <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1">Service Request #{selected.id}</p>
+                  <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1">{t('services_overview.request_num')} #{selected.id}</p>
                   <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100">{selected.service_name}</h2>
                 </div>
                 <button
@@ -293,7 +296,7 @@ export default function ServicesOverviewPage() {
                 {/* Status + Progress */}
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Current Status</span>
+                    <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{t('services_overview.current_status')}</span>
                     <StatusBadge status={selected.status} />
                   </div>
                   <ProgressBar status={selected.status} />
@@ -323,7 +326,7 @@ export default function ServicesOverviewPage() {
                 {/* Who ordered */}
                 <div className="space-y-2">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <Users className="w-3.5 h-3.5 text-indigo-500" /> Client
+                    <Users className="w-3.5 h-3.5 text-indigo-500" /> {t('services_overview.client')}
                   </p>
                   <div className="p-4 rounded-2xl border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -339,7 +342,7 @@ export default function ServicesOverviewPage() {
                       href={`/admin/clients/${selected.client_id}`}
                       className="px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-lg text-[11px] font-bold hover:bg-indigo-100 transition-colors"
                     >
-                      View Profile
+                      {t('services_overview.view_profile')}
                     </Link>
                   </div>
                 </div>
@@ -347,34 +350,34 @@ export default function ServicesOverviewPage() {
                 {/* Pricing */}
                 <div className="space-y-2">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <DollarSign className="w-3.5 h-3.5 text-emerald-500" /> Pricing
+                    <DollarSign className="w-3.5 h-3.5 text-emerald-500" /> {t('services_overview.pricing')}
                   </p>
                   <div className="p-4 rounded-2xl border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
                     {selected.quoted_amount != null ? (
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-[11px] text-slate-400 font-medium">Quoted Amount</p>
+                          <p className="text-[11px] text-slate-400 font-medium">{t('services_overview.quoted_amount')}</p>
                           <p className="text-3xl font-black text-emerald-700">${selected.quoted_amount.toLocaleString()}</p>
                         </div>
                         {selected.quote_sent_at && (
                           <div className="text-right">
-                            <p className="text-[10px] text-slate-400 font-medium">Quote Sent</p>
+                            <p className="text-[10px] text-slate-400 font-medium">{t('services_overview.quote_sent')}</p>
                             <p className="text-sm font-bold text-slate-600 dark:text-zinc-300">{new Date(selected.quote_sent_at).toLocaleDateString()}</p>
                           </div>
                         )}
                       </div>
                     ) : (
-                      <p className="text-sm text-slate-400 font-medium italic">No quote issued yet.</p>
+                      <p className="text-sm text-slate-400 font-medium italic">{t('services_overview.no_quote_yet')}</p>
                     )}
                     {selected.quote_message && (
                       <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Quote Note</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{t('services_overview.quote_note')}</p>
                         <p className="text-sm text-slate-600 dark:text-zinc-300 font-medium leading-relaxed">{selected.quote_message}</p>
                       </div>
                     )}
                     {selected.quote_doc_url && (
                       <a href={selected.quote_doc_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-[11px] font-bold text-indigo-600 hover:text-indigo-700">
-                        <FileText className="w-3.5 h-3.5" /> View Proposal Document
+                        <FileText className="w-3.5 h-3.5" /> {t('services_overview.view_proposal')}
                       </a>
                     )}
                   </div>
@@ -383,7 +386,7 @@ export default function ServicesOverviewPage() {
                 {/* Team */}
                 <div className="space-y-2">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <Briefcase className="w-3.5 h-3.5 text-violet-500" /> Team Handling
+                    <Briefcase className="w-3.5 h-3.5 text-violet-500" /> {t('services_overview.team_handling')}
                   </p>
                   <div className="p-4 rounded-2xl border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 space-y-3">
                     {selected.assigned_employee_name ? (
@@ -392,16 +395,16 @@ export default function ServicesOverviewPage() {
                           {selected.assigned_employee_name[0].toUpperCase()}
                         </div>
                         <div>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Assigned Employee</p>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('services_overview.assigned_employee')}</p>
                           <p className="font-bold text-slate-800 dark:text-zinc-100 text-sm">{selected.assigned_employee_name}</p>
                         </div>
                       </div>
                     ) : (
-                      <p className="text-sm text-slate-400 font-medium italic">No employee assigned yet.</p>
+                      <p className="text-sm text-slate-400 font-medium italic">{t('services_overview.no_employee')}</p>
                     )}
                     {selected.team_info && (
                       <div className="pt-3 border-t border-slate-100 dark:border-zinc-800">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Team Notes</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{t('services_overview.team_notes')}</p>
                         <p className="text-sm text-slate-600 dark:text-zinc-300 font-medium leading-relaxed">{selected.team_info}</p>
                       </div>
                     )}
@@ -411,12 +414,12 @@ export default function ServicesOverviewPage() {
                 {/* Timeline */}
                 <div className="space-y-2">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <Calendar className="w-3.5 h-3.5 text-sky-500" /> Timeline
+                    <Calendar className="w-3.5 h-3.5 text-sky-500" /> {t('services_overview.timeline')}
                   </p>
                   <div className="p-4 rounded-2xl border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 grid grid-cols-2 gap-4">
                     {[
-                      { label: 'Requested',  value: selected.requested_at  },
-                      { label: 'Quote Sent', value: selected.quote_sent_at },
+                      { label: t('services_overview.requested'),  value: selected.requested_at  },
+                      { label: t('services_overview.quote_sent'), value: selected.quote_sent_at },
                     ].map(({ label, value }) => (
                       <div key={label}>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{label}</p>
@@ -435,13 +438,13 @@ export default function ServicesOverviewPage() {
                   href="/admin/requests"
                   className="flex-1 text-center px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 font-bold text-sm hover:bg-slate-50 dark:bg-zinc-950 transition-colors"
                 >
-                  Manage in Request Board
+                  {t('services_overview.manage_in_board')}
                 </Link>
                 <Link
                   href={`/admin/clients/${selected.client_id}`}
                   className="flex-1 text-center btn-glow-indigo px-4 py-2.5 rounded-xl text-white font-bold text-sm"
                 >
-                  Open Client
+                  {t('services_overview.open_client')}
                 </Link>
               </div>
             </motion.div>

@@ -351,8 +351,8 @@
   <svg id="icon-sun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
   <svg id="icon-moon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
   </button>
-  <a href="https://crm.serphawk.in/login" class="nav-login" data-i18n="nav_login">Sign In</a>
-  <a href="https://crm.serphawk.in" class="nav-cta" data-i18n="nav_cta">Try Demo →</a>
+  <a href="/login" class="nav-login" data-i18n="nav_login">Sign In</a>
+  <a href="/login" class="nav-cta" data-i18n="nav_cta">Try Demo →</a>
   </div>
 </nav>
 
@@ -362,7 +362,7 @@
  <h1 data-i18n="hero_h1">Your agency, run by<br/><em>AI agents</em> while you sleep.</h1>
  <p class="hero-sub" data-i18n="hero_sub">SERP Hawk deploys 5 AI agents that win clients, analyse competitors, build call pitches, monitor your entire platform in real time, and answer clients on WhatsApp — 24 hours a day.</p>
  <div class="hero-actions">
- <a href="https://crm.serphawk.in" class="btn-primary" data-i18n="hero_btn_primary"> Try Live Demo</a>
+ <a href="/login" class="btn-primary" data-i18n="hero_btn_primary"> Try Live Demo</a>
  <a href="#agents" class="btn-secondary" data-i18n="hero_btn_secondary">Meet the Agents ↓</a>
  </div>
  <div class="hero-mockup">
@@ -693,7 +693,7 @@
  <input type="email" class="cta-input" id="ctaEmail" data-i18n-placeholder="cta_placeholder" placeholder="your@agency.com" required/>
  <button type="submit" class="cta-btn" data-i18n="cta_btn">Get Demo Access →</button>
  </form>
- <p style="margin-top:16px;font-size:13px;color:var(--muted)"><span data-i18n="cta_or">Or</span> <a href="https://crm.serphawk.in" style="color:var(--text);text-decoration:underline" data-i18n="cta_link">try the live demo instantly →</a></p>
+ <p style="margin-top:16px;font-size:13px;color:var(--muted)"><span data-i18n="cta_or">Or</span> <a href="/login" style="color:var(--text);text-decoration:underline" data-i18n="cta_link">try the live demo instantly →</a></p>
  </div>
 </section>
 
@@ -706,7 +706,7 @@
  <a href="#agents" data-i18n="nav_agents">AI Agents</a>
  <a href="#modules" data-i18n="nav_modules">Modules</a>
  <a href="#roles" data-i18n="role_eyebrow">Roles</a>
- <a href="https://crm.serphawk.in" data-i18n="nav_demo">Live Demo</a>
+ <a href="/login" data-i18n="nav_demo">Live Demo</a>
  </div>
  <div class="footer-copy" data-i18n="footer_copy">© 2026 SERP Hawk · Built for SEO agencies that want to win</div>
 </footer>
@@ -1210,7 +1210,7 @@ window.addEventListener('mousemove', e => {
 function handleCTA(e) {
  e.preventDefault();
  const email = encodeURIComponent(document.getElementById('ctaEmail').value);
- window.location.href = 'https://crm.serphawk.in?ref=pitch&email=' + email;
+ window.location.href = '/login?ref=pitch&email=' + email;
 }
 </script>
 </body>

@@ -32,7 +32,9 @@
     "react-dom": "19.2.3",
     "react-i18next": "^17.0.8",
     "react-leaflet": "^5.0.0",
+    "react-markdown": "^10.1.0",
     "recharts": "^3.8.1",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.5.0",
     "xlsx": "^0.18.5"
   },
@@ -46,5 +48,9 @@
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4.2.1",
     "typescript": "^5"
+  },
+  "overrides": {
+    "@next/swc-linux-x64-gnu": "16.1.7",
+    "@next/swc-linux-x64-musl": "16.1.7"
   }
 }

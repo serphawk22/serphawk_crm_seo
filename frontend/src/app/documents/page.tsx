@@ -4,8 +4,10 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Upload, FileText, Loader2, Check, User, Building, Phone, Mail, Globe, Save, Camera, X, CheckCircle2 } from 'lucide-react';
 import { API_BASE_URL } from '@/config';
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function DocumentsPage() {
+  const { t } = useLanguage();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -43,7 +45,7 @@ export default function DocumentsPage() {
       }
     } catch (err) {
       console.error("Error accessing camera:", err);
-      alert("Could not access camera. Please check permissions.");
+      alert(t("documents.upload_prompt"));
       setIsCameraOpen(false);
     }
   };
@@ -93,7 +95,6 @@ export default function DocumentsPage() {
           let width = img.width;
           let height = img.height;
 
-          // Max dimension 1500px is enough for OCR
           const MAX_DIMENSION = 1500;
           if (width > height) {
             if (width > MAX_DIMENSION) {
@@ -114,7 +115,7 @@ export default function DocumentsPage() {
 
           canvas.toBlob((blob) => {
             resolve(blob as Blob);
-          }, 'image/jpeg', 0.8); // 80% quality JPEG
+          }, 'image/jpeg', 0.8);
         };
       };
     });
@@ -128,7 +129,6 @@ export default function DocumentsPage() {
     setResult(null);
 
     try {
-      // Compress image before sending
       const compressedBlob = await compressImage(file);
 
       const formDataPayload = new FormData();
@@ -147,7 +147,6 @@ export default function DocumentsPage() {
 
       const data = await res.json();
 
-      // Check if API returned an error inside the response body
       if (data.error) {
         setOcrError(`OCR Error: ${data.error}`);
         return;
@@ -196,7 +195,7 @@ export default function DocumentsPage() {
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to save lead.");
+      alert(t("documents.save_as_lead"));
     } finally {
       setSaving(false);
     }
@@ -206,19 +205,19 @@ export default function DocumentsPage() {
     <div className="space-y-6 max-w-4xl mx-auto p-6">
       <div className="bg-white dark:bg-zinc-900 p-8 rounded-xl border shadow-sm">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-50 mb-2 flex items-center gap-2">
-          <FileText className="w-6 h-6 text-blue-600" /> Document OCR
+          <FileText className="w-6 h-6 text-blue-600" /> {t("documents.title")}
         </h1>
-        <p className="text-gray-500 dark:text-zinc-400 mb-8">Upload an ID card or business card to automatically extract details.</p>
+        <p className="text-gray-500 dark:text-zinc-400 mb-8">{t("documents.subtitle")}</p>
 
         <PageGuide
           pageKey="documents"
-          title="How Document OCR works"
-          description="Scan business cards, ID cards, or documents to automatically extract contact information."
+          title={t("documents.guide_title")}
+          description={t("documents.guide_desc")}
           steps={[
-            { icon: '📷', text: 'Upload an image or use your camera to capture a business card or ID document.' },
-            { icon: '🤖', text: 'Our AI will analyze the image and extract details like name, company, phone, email, and website.' },
-            { icon: '✏️', text: 'Review and edit the extracted data before saving it to your contacts.' },
-            { icon: '💾', text: 'Click \"Save as Client\" to add the extracted contact directly to your client database.' },
+            { icon: '📷', text: t("documents.guide_s1") },
+            { icon: '🤖', text: t("documents.guide_s2") },
+            { icon: '✏️', text: t("documents.guide_s3") },
+            { icon: '💾', text: t("documents.guide_s4") },
           ]}
         />
 
@@ -233,8 +232,8 @@ export default function DocumentsPage() {
                   ) : (
                     <div className="text-gray-400">
                       <Upload className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p className="text-sm">Click to upload or drag and drop</p>
-                      <p className="text-xs mt-2">JPG, PNG up to 5MB</p>
+                      <p className="text-sm">{t("documents.upload_hint")}</p>
+                      <p className="text-xs mt-2">{t("documents.upload_format")}</p>
                     </div>
                   )}
                   <input
@@ -252,19 +251,19 @@ export default function DocumentsPage() {
                     disabled={analyzing}
                     className="flex-1 py-3 border border-gray-300 text-gray-700 dark:text-zinc-200 rounded-lg font-bold hover:bg-gray-50 dark:bg-zinc-950 flex items-center justify-center gap-2"
                   >
-                    <Camera className="w-4 h-4" /> Use Camera
+                    <Camera className="w-4 h-4" /> {t("documents.use_camera")}
                   </button>
                   <button
                     onClick={handleAnalyze}
                     disabled={analyzing || !file}
                     className="flex-1 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {analyzing ? <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing...</> : 'Analyze'}
+                    {analyzing ? <><Loader2 className="w-4 h-4 animate-spin" /> {t("documents.analyzing")}</> : t("documents.analyze")}
                   </button>
                 </div>
                 {ocrError && (
                   <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start gap-2">
-                    <span className="font-bold">⚠ Error:</span>
+                    <span className="font-bold">{t("documents.error_label")}</span>
                     <span>{ocrError}</span>
                   </div>
                 )}
@@ -285,7 +284,7 @@ export default function DocumentsPage() {
                   onClick={capturePhoto}
                   className="w-full py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center justify-center gap-2"
                 >
-                  <Camera className="w-4 h-4" /> Capture Photo
+                  <Camera className="w-4 h-4" /> {t("documents.capture_photo")}
                 </button>
               </div>
             )}
@@ -296,13 +295,13 @@ export default function DocumentsPage() {
             {result ? (
               <div className="bg-gray-50 dark:bg-zinc-950 p-6 rounded-xl border space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <h3 className="font-bold text-gray-900 dark:text-zinc-50 flex items-center gap-2 border-b pb-2">
-                  <Check className="w-4 h-4 text-green-600" /> Extracted Details
+                  <Check className="w-4 h-4 text-green-600" /> {t("documents.extracted_details")}
                 </h3>
 
                 <div className="space-y-3">
                   <div>
                     <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase flex items-center gap-1 mb-1">
-                      <User className="w-3 h-3" /> Name
+                      <User className="w-3 h-3" /> {t("documents.field_name")}
                     </label>
                     <input
                       className="w-full p-2 border rounded-lg bg-white dark:bg-zinc-900"
@@ -312,7 +311,7 @@ export default function DocumentsPage() {
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase flex items-center gap-1 mb-1">
-                      <Building className="w-3 h-3" /> Company
+                      <Building className="w-3 h-3" /> {t("documents.field_company")}
                     </label>
                     <input
                       className="w-full p-2 border rounded-lg bg-white dark:bg-zinc-900"
@@ -322,7 +321,7 @@ export default function DocumentsPage() {
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase flex items-center gap-1 mb-1">
-                      <Phone className="w-3 h-3" /> Mobile
+                      <Phone className="w-3 h-3" /> {t("documents.field_mobile")}
                     </label>
                     <input
                       className="w-full p-2 border rounded-lg bg-white dark:bg-zinc-900"
@@ -332,7 +331,7 @@ export default function DocumentsPage() {
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase flex items-center gap-1 mb-1">
-                      <Mail className="w-3 h-3" /> Email
+                      <Mail className="w-3 h-3" /> {t("documents.field_email")}
                     </label>
                     <input
                       className="w-full p-2 border rounded-lg bg-white dark:bg-zinc-900"
@@ -342,7 +341,7 @@ export default function DocumentsPage() {
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase flex items-center gap-1 mb-1">
-                      <Globe className="w-3 h-3" /> Website
+                      <Globe className="w-3 h-3" /> {t("documents.field_website")}
                     </label>
                     <input
                       className="w-full p-2 border rounded-lg bg-white dark:bg-zinc-900"
@@ -358,24 +357,24 @@ export default function DocumentsPage() {
                   className={`w-full py-2 rounded-lg font-bold mt-4 flex items-center justify-center gap-2 transition-colors ${saved ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-green-600 text-white hover:bg-green-700'}`}
                 >
                   {saving ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+                    <><Loader2 className="w-4 h-4 animate-spin" /> {t("documents.saving")}</>
                   ) : saved ? (
-                    <><CheckCircle2 className="w-4 h-4" /> Lead Saved!</>
+                    <><CheckCircle2 className="w-4 h-4" /> {t("documents.lead_saved")}</>
                   ) : (
-                    <><Save className="w-4 h-4" /> Save as Lead</>
+                    <><Save className="w-4 h-4" /> {t("documents.save_as_lead")}</>
                   )}
                 </button>
-                {!formData.email && <p className="text-[10px] text-red-500 text-center mt-1">Email is required to save as lead</p>}
+                {!formData.email && <p className="text-[10px] text-red-500 text-center mt-1">{t("documents.email_required")}</p>}
               </div>
             ) : (
               <div className="h-full flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-100 dark:border-zinc-800 rounded-xl p-8 text-center bg-gray-50 dark:bg-zinc-950">
                 {analyzing ? (
                   <div className="space-y-4">
                     <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500" />
-                    <p>Extracting text from image...</p>
+                    <p>{t("documents.extracting")}</p>
                   </div>
                 ) : (
-                  <p>Upload an image or take a photo to see results here</p>
+                  <p>{t("documents.upload_prompt")}</p>
                 )}
               </div>
             )}

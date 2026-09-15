@@ -25,11 +25,54 @@ export default function GmailAgentLoop() {
   const isStoppedRef = useRef(false);
   const [processedCount, setProcessedCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [bulkText, setBulkText] = useState("");
+
+  const handleBulkTextSubmit = () => {
+    if (!bulkText.trim()) return;
+    const urls = extractUrls(bulkText);
+    if (urls.length === 0) {
+      alert("No URLs found in the text. Make sure to provide valid URLs.");
+      return;
+    }
+    const newTasks = urls.map(url => ({
+      id: Math.random().toString(36).substring(7),
+      url,
+      status: "pending" as const
+    }));
+    setTasks(newTasks);
+    setProcessedCount(0);
+    setIsStopped(false);
+    isStoppedRef.current = false;
+    setBulkText("");
+  };
 
   const extractUrls = (text: string): string[] => {
-    const urlRegex = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi;
-    const matches = text.match(urlRegex) || [];
-    return Array.from(new Set(matches.map((u) => u.trim())));
+    const seen = new Set<string>();
+    const results: string[] = [];
+
+    // 1. Extract full URLs with http/https
+    const httpRegex = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi;
+    const httpMatches = text.match(httpRegex) || [];
+    httpMatches.forEach(u => {
+      const clean = u.trim().replace(/[,;'"]+$/, '');
+      if (!seen.has(clean)) { seen.add(clean); results.push(clean); }
+    });
+
+    // 2. Extract bare domains (e.g. "example.com" from CSV columns)
+    const bareRegex = /(?:^|[\s,;\t"'])(((?:www\.)?[a-zA-Z0-9](?:[-a-zA-Z0-9]{0,61}[a-zA-Z0-9])?\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?(?:\/[^\s,;"']*)?))(?=[\s,;"'\n]|$)/gm;
+    let m;
+    while ((m = bareRegex.exec(text)) !== null) {
+      const domain = m[1].trim().replace(/[,;'"]+$/, '');
+      // Filter out common non-URL patterns
+      if (!domain || domain.includes('@') || /^\d+$/.test(domain)) continue;
+      const withHttp = `https://${domain}`;
+      if (!seen.has(withHttp) && !seen.has(`http://${domain}`)) {
+        seen.add(withHttp);
+        results.push(withHttp);
+      }
+    }
+
+    return results;
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -57,7 +100,8 @@ export default function GmailAgentLoop() {
         const workbook = xlsx.read(arrayBuffer, { type: "array" });
         workbook.SheetNames.forEach(sheetName => {
           const sheet = workbook.Sheets[sheetName];
-          text += xlsx.utils.sheet_to_txt(sheet) + " ";
+          // Use CSV export to preserve cell-by-cell values (better for URL columns)
+          text += xlsx.utils.sheet_to_csv(sheet) + "\n";
         });
       } else if (extension === "txt" || extension === "csv") {
         text = await file.text();
@@ -67,6 +111,10 @@ export default function GmailAgentLoop() {
       }
 
       const urls = extractUrls(text);
+      if (urls.length === 0) {
+        alert("No URLs found in the file. Make sure the file contains website URLs (e.g. https://example.com or example.com).");
+        return;
+      }
       const newTasks = urls.map(url => ({
         id: Math.random().toString(36).substring(7),
         url,
@@ -241,19 +289,39 @@ export default function GmailAgentLoop() {
       </div>
 
       {tasks.length === 0 ? (
-        <div className="border-2 border-dashed border-slate-200 dark:border-zinc-700 rounded-2xl p-12 flex flex-col items-center justify-center text-center bg-slate-50 dark:bg-zinc-950/50">
-          <div className="p-4 bg-white dark:bg-zinc-900 shadow-sm rounded-full mb-4">
-            <Upload className="w-8 h-8 text-indigo-500" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="border-2 border-dashed border-slate-200 dark:border-zinc-700 rounded-2xl p-8 flex flex-col items-center justify-center text-center bg-slate-50 dark:bg-zinc-950/50">
+            <div className="p-4 bg-white dark:bg-zinc-900 shadow-sm rounded-full mb-4">
+              <Upload className="w-8 h-8 text-indigo-500" />
+            </div>
+            <h3 className="font-bold text-slate-800 dark:text-zinc-100 mb-1">Upload File</h3>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mb-4 max-w-xs">Supports PDF, DOCX, XLSX, TXT, CSV.</p>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept=".pdf,.docx,.xlsx,.xls,.txt,.csv"
+              className="block w-full max-w-xs text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 cursor-pointer mx-auto"
+            />
           </div>
-          <h3 className="font-bold text-slate-800 dark:text-zinc-100 mb-1">Upload File</h3>
-          <p className="text-xs text-slate-500 dark:text-zinc-400 mb-4 max-w-xs">Supports PDF, DOCX, XLSX, TXT. We will extract all company URLs inside.</p>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileUpload}
-            accept=".pdf,.docx,.xlsx,.xls,.txt,.csv"
-            className="block w-full max-w-xs text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 cursor-pointer"
-          />
+          <div className="border-2 border-slate-200 dark:border-zinc-700 rounded-2xl p-6 flex flex-col bg-white dark:bg-zinc-900 shadow-sm">
+            <h3 className="font-bold text-slate-800 dark:text-zinc-100 mb-2 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-indigo-500" /> Paste URLs
+            </h3>
+            <textarea
+              className="flex-1 w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none mb-4 custom-scrollbar text-slate-800 dark:text-zinc-100 placeholder-slate-400 min-h-[120px]"
+              placeholder="https://example.com&#10;https://google.com"
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+            />
+            <button
+              onClick={handleBulkTextSubmit}
+              disabled={!bulkText.trim()}
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition-all"
+            >
+              Extract URLs
+            </button>
+          </div>
         </div>
       ) : (
         <div className="space-y-4">

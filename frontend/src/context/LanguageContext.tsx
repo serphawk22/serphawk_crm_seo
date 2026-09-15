@@ -8,7 +8,7 @@ interface LanguageContextType {
   language: Language;
   activeLang?: Language;
   setLanguage: (lang: Language | string) => void;
-  t: (key: string) => string;
+  t: (key: string, params?: Record<string, string | number>) => string;
 }
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
@@ -24,15 +24,12 @@ const translations = {
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>("en");
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // Load saved language preference from localStorage
     const savedLanguage = localStorage.getItem("language") || localStorage.getItem("crm-language") as Language | null;
     if (savedLanguage && ["en", "es"].includes(savedLanguage)) {
       setLanguageState(savedLanguage as Language);
     }
-    setMounted(true);
   }, []);
 
   const setLanguage = (lang: Language | string) => {
@@ -42,7 +39,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("crm-language", validLang); // Keep both in sync
   };
 
-  const t = (key: string): string => {
+  const t = (key: string, params?: Record<string, string | number>): string => {
     const keys = key.split(".");
     let value: any = translations[language];
 
@@ -50,11 +47,17 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       if (value && typeof value === "object" && k in value) {
         value = value[k];
       } else {
-        return key; // Return key if translation not found
+        return key;
       }
     }
 
-    return typeof value === "string" ? value : key;
+    let result = typeof value === "string" ? value : key;
+    if (params) {
+      for (const [pKey, pVal] of Object.entries(params)) {
+        result = result.replace(new RegExp(`\\{\\{${pKey}\\}\\}`, "g"), String(pVal));
+      }
+    }
+    return result;
   };
 
   return (

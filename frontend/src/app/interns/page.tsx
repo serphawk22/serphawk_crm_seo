@@ -5,8 +5,10 @@ import { Activity, UserPlus, Search, MoreVertical, Mail, Trash2, X, Check, Loade
 import { API_BASE_URL } from '@/config';
 import { cn } from "@/lib/utils";
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function InternsPage() {
+  const { t } = useLanguage();
   const [interns, setInterns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -50,7 +52,7 @@ export default function InternsPage() {
         setPassword("");
       } else {
         const err = await res.json();
-        alert(err.detail || "Failed to create intern");
+        alert(err.detail || t("interns.error_create"));
       }
     } catch (error) {
       console.error("Failed to add intern:", error);
@@ -60,7 +62,7 @@ export default function InternsPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Are you sure you want to remove this intern?")) return;
+    if (!confirm(t("interns.confirm_delete"))) return;
     try {
       const res = await fetch(`${API_BASE_URL}/users/${id}`, { method: 'DELETE' });
       if (res.ok) fetchInterns();
@@ -73,26 +75,26 @@ export default function InternsPage() {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight uppercase">Intern Management</h1>
-          <p className="text-gray-500 dark:text-zinc-400 font-medium">Provision and manage supporting talent accounts.</p>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight uppercase">{t("interns.title")}</h1>
+          <p className="text-gray-500 dark:text-zinc-400 font-medium">{t("interns.subtitle")}</p>
         </div>
         <button 
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-2xl font-bold text-sm hover:bg-black shadow-lg shadow-gray-900/20 transition-all active:scale-95"
         >
-          <UserPlus className="w-4 h-4" /> Add Intern
+          <UserPlus className="w-4 h-4" /> {t("interns.add_intern")}
         </button>
       </div>
 
       <PageGuide
         pageKey="interns"
-        title="How Intern Management works"
-        description="Create and manage intern accounts who can assist on projects and tasks."
+        title={t("interns.guide_title")}
+        description={t("interns.guide_desc")}
         steps={[
-          { icon: '🎓', text: 'Click \"Add Intern\" to provision a new intern with login credentials.' },
-          { icon: '📋', text: 'Interns can be assigned to projects and tasks but have limited system access.' },
-          { icon: '🔒', text: 'You can reset passwords or remove intern accounts at any time from the action menu.' },
-          { icon: '👁️', text: 'Interns can view project boards and update task statuses assigned to them.' },
+          { icon: '🎓', text: t("interns.guide_s1") },
+          { icon: '📋', text: t("interns.guide_s2") },
+          { icon: '🔒', text: t("interns.guide_s3") },
+          { icon: '👁️', text: t("interns.guide_s4") },
         ]}
       />
 
@@ -100,19 +102,19 @@ export default function InternsPage() {
         <div className="p-8 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50 dark:bg-zinc-950/50">
            <div className="relative w-72">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input type="text" placeholder="Search interns..." className="w-full pl-11 pr-4 py-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+              <input type="text" placeholder={t("interns.search_placeholder")} className="w-full pl-11 pr-4 py-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
            </div>
-           <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest leading-none">{interns.length} ACCESS TOKENS ACTIVE</p>
+           <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest leading-none">{interns.length} {t("interns.access_tokens_active")}</p>
         </div>
         
         <div className="p-4 overflow-x-auto">
            <table className="w-full">
               <thead>
                  <tr className="text-left">
-                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Name</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Credentials</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Role</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{t("interns.col_name")}</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{t("interns.col_credentials")}</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{t("interns.col_role")}</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">{t("interns.col_actions")}</th>
                  </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -151,7 +153,7 @@ export default function InternsPage() {
                          <div className="w-16 h-16 bg-gray-50 dark:bg-zinc-950 rounded-2xl flex items-center justify-center mx-auto mb-4 border-2 border-dashed border-gray-200 dark:border-zinc-700">
                             <Activity className="w-8 h-8 text-gray-300" />
                          </div>
-                         <p className="text-gray-500 dark:text-zinc-400 font-bold uppercase tracking-widest text-[10px]">No active intern protocols found.</p>
+                         <p className="text-gray-500 dark:text-zinc-400 font-bold uppercase tracking-widest text-[10px]">{t("interns.empty")}</p>
                       </td>
                    </tr>
                  )}
@@ -166,8 +168,8 @@ export default function InternsPage() {
           <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-8 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50 dark:bg-zinc-950/50">
               <div>
-                <h2 className="text-xl font-black text-gray-900 dark:text-zinc-50 tracking-tight uppercase tracking-tighter">Add New Intern</h2>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Provision system access</p>
+                <h2 className="text-xl font-black text-gray-900 dark:text-zinc-50 tracking-tight uppercase tracking-tighter">{t("interns.modal_title")}</h2>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t("interns.modal_subtitle")}</p>
               </div>
               <button onClick={() => setShowAddModal(false)} className="p-3 hover:bg-white dark:bg-zinc-900 rounded-2xl transition-all shadow-sm">
                 <X className="w-5 h-5 text-gray-400" />
@@ -176,38 +178,38 @@ export default function InternsPage() {
             
             <form onSubmit={handleAddIntern} className="p-8 space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("interns.field_full_name")}</label>
                 <input 
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Alex Johnson" 
+                  placeholder={t("interns.ph_full_name")} 
                   className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Email Address</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("interns.field_email")}</label>
                 <input 
                   required
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="alex@company.com" 
+                  placeholder={t("interns.ph_email")} 
                   className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                 />
               </div>
 
               <div className="space-y-2 text-indigo-100/5">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-2">
-                   <Key className="w-3 h-3" /> Create Account Password
+                   <Key className="w-3 h-3" /> {t("interns.field_password")}
                 </label>
                 <input 
                   required
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Create a secure password" 
+                  placeholder={t("interns.ph_password")} 
                   className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                 />
               </div>
@@ -218,7 +220,7 @@ export default function InternsPage() {
                   onClick={() => setShowAddModal(false)}
                   className="flex-1 px-6 py-4 bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-zinc-400 rounded-2xl font-bold text-sm hover:bg-gray-200 transition-all uppercase tracking-widest"
                 >
-                  Cancel
+                  {t("interns.cancel")}
                 </button>
                 <button 
                   type="submit"
@@ -226,7 +228,7 @@ export default function InternsPage() {
                   className="flex-1 px-6 py-4 bg-gray-900 text-white rounded-2xl font-bold text-sm hover:bg-black shadow-lg shadow-gray-900/20 transition-all flex items-center justify-center gap-2 uppercase tracking-widest"
                 >
                   {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  Save Intern
+                  {t("interns.save")}
                 </button>
               </div>
             </form>

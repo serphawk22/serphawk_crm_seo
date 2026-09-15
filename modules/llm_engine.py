@@ -10,6 +10,126 @@ def get_openai_client():
         raise ValueError("OPENAI_API_KEY not found in environment variables")
     return OpenAI(api_key=api_key)
 
+
+def deep_investigate_company(company_name: str, website: str, scraped_text: str = "") -> dict:
+    """
+    Runs a deep GPT-4o investigation of a company — full business intelligence,
+    GTM analysis, ICPs, competitive landscape, proof points, and contact intelligence.
+    This is designed to produce the kind of rich analysis you'd get asking
+    'do a proper investigation on {company_name}' in ChatGPT.
+    """
+    try:
+        client = get_openai_client()
+
+        context_block = ""
+        if scraped_text:
+            context_block = f"\n\nRAW SCRAPED WEBSITE CONTENT (use this as primary source, supplement with your own knowledge):\n{scraped_text[:40000]}"
+
+        prompt = f"""You are a world-class business analyst, GTM strategist, and OSINT researcher. 
+Do a PROPER, EXHAUSTIVELY DEEP investigation of the company below. Think like a top-tier McKinsey consultant and a seasoned GTM Director who needs to completely deconstruct this business before writing a highly tailored growth plan.
+
+Company Name: {company_name}
+Website: {website}{context_block}
+
+Perform a comprehensive investigation and return a rich JSON object. 
+Instead of strict fields, write a massive, incredibly detailed 2000-15000 word markdown report in the "full_markdown_report" field. This report should contain the ENTIRE analysis, exactly as you would output it directly in ChatGPT (using headings, bold text, bullet points, and tables if necessary).
+
+Cover absolutely everything in extreme detail:
+1. Executive Summary & Core Value Proposition
+2. Comprehensive Product/Service Portfolio Breakdown: Analyze ALL services offered on their website in detail.
+3. Marketing & Lead Generation: Take a deep look at their marketing strategies, how they are generating leads, and their digital footprint.
+4. Business & Financials: Provide estimates or insights on their revenue, business size, and scale based on available data.
+5. Detailed Ideal Customer Profiles (ICPs) with specific pains, deep desires, and perfectly crafted hooks
+6. Complete Competitive Landscape (who are their top 3-5 competitors, what are they doing better, where is this company weak)
+7. Sales & GTM Strategy: What channels should they use? What are the quick wins?
+8. Common Objections & Rebuttals (What will prospects say to say no, and how to counter it)
+9. Cold Email Angles (Provide 3 distinct cold email angles/hooks for outreach)
+10. SEO & Digital Presence analysis (What is missing? SERP Hawk opportunities)
+
+Return ONLY valid JSON with this exact structure:
+{{
+    "executive_verdict": "A powerful 2-3 sentence executive summary of whether this company is a good target and why.",
+    "company_overview": "A detailed paragraph summarizing the company, what they do, and their market position.",
+    "industry": "Specific industry",
+    "business_model": "e.g. B2B SaaS, B2C E-commerce, Agency, Manufacturing",
+    "years_in_business": "e.g. 5+ years",
+    "geographic_presence": "e.g. North America, Global, Local (City)",
+    "biggest_opportunities": ["Opportunity 1", "Opportunity 2"],
+    "key_weaknesses": ["Weakness 1", "Weakness 2"],
+    "strongest_proof_points": [
+        {{"type": "Metric/Client/Award", "value": "e.g. 10k+ Users", "why_it_matters": "Shows scale"}}
+    ],
+    "product_portfolio": [
+        {{"name": "Product A", "description": "What it is", "pricing_tier": "High/Med/Low", "target_customer": "Who buys this"}}
+    ],
+    "competitive_landscape": {{
+        "competitive_positioning": "How they position themselves vs others",
+        "main_competitors": [
+            {{"name": "Competitor 1", "how_they_compete": "Their angle", "overlap": "High/Medium/Low"}}
+        ]
+    }},
+    "ideal_customer_profiles": [
+        {{"name": "ICP Name", "pain": "Their core problem", "desire": "What they want", "best_message": "A 1-sentence hook to grab their attention"}}
+    ],
+    "gtm_recommendations": {{
+        "positioning_statement": "How we should position our pitch to them",
+        "quick_wins": ["Action 1", "Action 2"]
+    }},
+    "serphawk_opportunity": {{
+        "fit_score": 8,
+        "pitch_angle": "How to sell to them",
+        "estimated_deal_value": "$5k - $10k",
+        "recommended_services": ["SEO", "Web Dev"]
+    }},
+    "contacts": [
+        {{
+            "name": "Decision maker name if known, else null",
+            "role": "Their title/role",
+            "email": "Email if found, else null",
+            "phone_number": "Phone if found, else null",
+            "personal_social_media": {{"linkedin": "url", "twitter": "url"}}
+        }}
+    ],
+    "company_info": {{
+        "company_name": "{company_name}",
+        "summary": "2-3 sentence summary for the CRM card",
+        "extracted_emails": "Comma-separated email addresses found",
+        "extracted_phone_numbers": "Comma-separated phone numbers found",
+        "linkedin": "Company LinkedIn URL if found",
+        "company_social_media": {{
+            "linkedin": "LinkedIn URL or null",
+            "twitter": "Twitter/X URL or null"
+        }}
+    }},
+    "full_markdown_report": "Your 1000-15000 word detailed markdown report covering the entire deep investigation."
+}}
+
+Be specific, data-driven, and insightful. Reference real details about this company wherever possible.
+Do NOT use generic placeholder text anywhere."""
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.4
+        )
+
+        result = json.loads(response.choices[0].message.content)
+        return result
+
+    except Exception as e:
+        print(f"[deep_investigate_company] Error: {e}")
+        return {
+            "company_name": company_name,
+            "executive_verdict": f"Investigation failed: {e}",
+            "company_overview": "",
+            "contacts": [],
+            "company_info": {"company_name": company_name, "summary": "", "extracted_emails": "", "extracted_phone_numbers": "", "company_social_media": {}},
+            "draft": {"subject": "", "english_body": "", "spanish_body": "", "whatsapp_draft": ""},
+            "error": str(e)
+        }
+
+
 def analyze_content(text):
     """
     Analyzes website text using OpenAI.
@@ -21,11 +141,24 @@ def analyze_content(text):
         {{
             "company_name": "The real name of the company (never a placeholder)",
             "what_they_do": "A real, concise summary of what this company does (2-3 sentences, never a template)",
+            "summary": "A 2-3 sentence description",
+            "likely_industry": "Industry guess",
+            "business_model": "B2B or B2C",
+            "estimated_size": "E.g. 1-10 employees",
+            "target_market": "E.g. Local, National",
+            "geographic_presence": "Where they operate",
+            "best_conversion_opportunity": "How we can help them",
+            "sales_follow_up_focus": "Next steps for sales",
+            "extracted_emails": ["List of ALL email addresses exactly as found in Extracted Emails"],
+            "extracted_phone_numbers": "Comma separated string of ALL phone numbers exactly as found in Extracted Phone Numbers",
+            "extracted_linkedin": "The primary company LinkedIn URL found in Extracted LinkedIn Profiles",
+            "extracted_twitter": "The primary company Twitter/X URL found in Extracted Twitter Profiles",
             "company_social_media": {{
                 "linkedin": "Company LinkedIn URL or null",
                 "twitter": "Company Twitter/X URL or null",
                 "instagram": "Company Instagram URL or null",
-                "facebook": "Company Facebook URL or null"
+                "facebook": "Company Facebook URL or null",
+                "youtube": "Company Youtube URL or null"
             }},
             "contacts": [
                 {{
@@ -40,11 +173,10 @@ def analyze_content(text):
                     "context": "How you found or inferred this contact, or null"
                 }}
             ],
-            "key_value_props": ["List of my services that best match this company (real, never prop1/prop2)"]
+            "key_value_props": ["List of actual services or products that the scraped company provides to its customers (e.g. SEO, Web Design, Plumbing, Consulting, etc)"]
         }}
 
-        My services are: Organic SEO, Local SEO, Google Ads, Meta Ads, Social Media, Content Marketing, Web Development, App Development, Automation & Consulting.
-        Map the most relevant of these to the company based on their business.
+        For `key_value_props`, extract the ACTUAL services the company offers based on their website, do NOT output Dapros/Serphawk services.
 
         Look closely at the 'Extracted Emails', 'Extracted Phone Numbers', and any 'Social Links' in the company info below. Always prefer using the actual scraped links and emails instead of placeholders or guesses. Extract as many people/decision makers as possible.
 
@@ -68,6 +200,7 @@ def analyze_content(text):
             "contacts": [],
             "error": str(e)
         }
+
 
 def generate_email(analysis, contact=None, recommended_services=None, owner_name="Varshith"):
     """
@@ -299,62 +432,158 @@ def process_chatbot_command(message: str, client_context: dict = None, current_r
         # ── Role-specific persona and capability definitions ─────────────────
         role = (user_role or "").strip()
 
+        # ── Common CRM knowledge base ─────────────────────────────────────────
+        CRM_KNOWLEDGE = """
+=== SERP HAWK CRM — COMPLETE NAVIGATION & FEATURE GUIDE ===
+
+SIDEBAR NAVIGATION STRUCTURE:
+• Dashboard → / → Overview of revenue, pipeline, recent activity, quick links
+• My Work Queue → /work-queue → Your assigned tasks and follow-ups
+• Notifications → /notifications → Alerts, mentions, and system events
+
+CRM SECTION:
+• Leads → /leads → Prospects not yet converted. Add new leads, track pipeline stages (New, Qualified, Discovery, Proposal, Negotiation, Won, Lost), view AI Agent Analysis, run Pre-Sales Research, extract services
+• Contacts → /contacts → Individual contact persons linked to leads or clients
+• Clients → /clients → Converted or direct clients. Full profile with Opportunities tab, Tasks, Timeline, Files, Health, Conversations, Tickets tabs. Run AI analysis, extract services
+
+AI AGENTS SECTION:
+• Email Agent → /email-agent → AI-powered outbound email drafting. Enter website URL → AI generates personalized email pitch
+
+PROJECTS & ACTIVITIES:
+• Projects → /projects → Manage client projects, tasks (Kanban board), milestones
+• Meetings → /meetings → Schedule and log meetings
+• Calls → /calls → Log and review call records
+
+TEAMS:
+• Team Directory → /team → View all team members, roles, contact info
+• Leaderboard → /leaderboard → Sales performance rankings
+
+INVENTORY:
+• Inventory → /inventory → Physical stock management
+• Catalog → /catalog → Product/service catalog
+• Orders → /orders → Customer orders
+• Billing → /billing → Invoices, quotes, payment records
+• Proposals → /proposals → Create and send proposals to clients
+• Marketplace → /admin/marketplace → Services extracted from leads/clients, listed as offerings
+
+SUPPORT:
+• Cases → /cases → Customer support tickets and case management
+• Solutions → /solutions → Knowledge base and solution articles
+
+SYSTEM:
+• Import Data → /import → Bulk import clients or leads via CSV/Google Sheets
+• Demo Account Data → /demo → Demo data management
+• API Intelligence → /admin/api-intelligence → Track OpenAI API usage, costs
+
+=== HOW TO DO COMMON ACTIONS ===
+
+HOW TO ADD A LEAD:
+1. Click "Leads" in the left sidebar under CRM
+2. Click the "+ Add Lead" button (top right)
+3. Fill in Company Name (required), Website, Industry, Email, Phone, Source, Status
+4. Click Save → A Sales Team Assignment popup appears
+5. Choose a salesperson manually OR click "Auto Assign" to pick the least-busy one
+6. Click "Assign & Create" (or "Skip for now")
+
+HOW TO ADD A CLIENT:
+1. Click "Clients" in the left sidebar under CRM
+2. Click the "+ Add Client" button (top right)
+3. Fill in Company Name, Website URL (required for autofill), Email, Project Name, GMB Name, SEO Strategy, Tagline, Keywords
+4. You can click "🪄 Autofill" to auto-extract info from the website
+5. Click "Create Client" → A Sales Team Assignment popup appears
+6. Choose or auto-assign a salesperson → Click "Assign & Create"
+
+HOW TO RUN AI ANALYSIS ON A LEAD/CLIENT:
+1. Go to Leads or Clients → Click on the specific lead/client
+2. Go to the "Opportunities" tab
+3. Click "Analyze Lead with AI" (or "Analyze Client with AI")
+4. Wait for the AI to generate SWOT analysis, company overview, competitors, pain points
+
+HOW TO EXTRACT SERVICES FROM A WEBSITE:
+1. Go to a Lead or Client detail page
+2. Go to the "Opportunities" tab → Pre-Sales Research section
+3. Click "Extract Services from Website"
+4. AI scrapes the website and lists services → They are automatically added to Marketplace
+
+HOW TO SEND AN EMAIL:
+1. Click "Email Agent" in the left sidebar
+2. Enter the target website URL or select a client
+3. AI generates a personalized email pitch
+4. Edit if needed → Send or copy
+
+HOW TO ASSIGN A SALESPERSON:
+- When creating a Lead or Client, the Sales Assignment popup appears automatically
+- To reassign: Go to the client/lead detail page → Right sidebar → "Assign Salesperson" dropdown
+- "Auto Assign" picks the salesperson with the fewest active clients + leads
+
+HOW TO CREATE A TASK:
+1. Go to Projects or a specific Client/Lead detail page
+2. Click the "Tasks" tab
+3. Click "+ Add Task" → Fill in title, description, due date, assignee
+4. Tasks appear in My Work Queue for the assigned person
+
+HOW TO LOG A CALL:
+1. Click "Calls" in the sidebar
+2. Click "+ Log Call"
+3. Fill in the client, duration, outcome, notes
+
+HOW TO CREATE AN INVOICE/QUOTE:
+1. Click "Billing" in the sidebar
+2. Click "+ New Invoice" or "+ New Quote"
+3. Select client, add line items, set due date → Save and send
+
+HOW TO IMPORT LEADS/CLIENTS IN BULK:
+1. Click "Import Data" in the sidebar (System section)
+2. Paste a Google Sheet CSV URL or upload a CSV file
+3. Map columns to CRM fields → Preview → Import
+
+=== NAVIGATION LINKS (EXACT ROUTES) ===
+Dashboard='/', Leads='/leads', Contacts='/contacts', Clients='/clients',
+Email Agent='/email-agent', Projects='/projects', Meetings='/meetings', Calls='/calls',
+Team='/team', Leaderboard='/leaderboard', Inventory='/inventory', Catalog='/catalog',
+Orders='/orders', Billing='/billing', Proposals='/proposals', Marketplace='/admin/marketplace',
+Cases='/cases', Solutions='/solutions', Import='/import', API Intelligence='/admin/api-intelligence',
+Work Queue='/work-queue', Notifications='/notifications'
+"""
+
         if role == "Admin":
-            persona = """You are the SERP Hawk CRM Super-Admin AI Assistant. 
-You have FULL access to every module: Clients, Leads, Deals, Invoices, Quotes, Billing, Inventory, Products, Catalog, Orders, Projects, Tasks, Team, Meetings, Calls, Email Agent, Marketplace, Settings, Users, Reports.
-You can create, edit, delete, and manage ANYTHING in the system.
-You can also navigate to any page and perform advanced admin operations."""
+            persona = f"""You are the SERP Hawk CRM AI Assistant — a specialist guide for THIS CRM ONLY.
+
+CRITICAL RULE: You ONLY answer questions about SERP Hawk CRM. If the user asks ANYTHING unrelated to this CRM (general knowledge, coding, math, weather, news, etc.), politely refuse and redirect: "I can only help with SERP Hawk CRM questions. What would you like to know about the CRM?"
+
+You have FULL Admin access to all modules. You provide:
+- Step-by-step instructions for any CRM action
+- Navigation guidance to any page
+- Explanations of any feature or module
+- Help with managing clients, leads, deals, billing, team, etc.
+
+{CRM_KNOWLEDGE}"""
             allowed_tools = "all"
-            route_map = "Dashboard='/', Clients='/clients', Leads='/leads', Deals='/pipeline', Invoices='/invoices', Quotes='/billing', Billing='/billing', Inventory='/inventory', Products='/catalog', Catalog='/catalog', Orders='/orders', Projects='/projects', Tasks='/tasks', Team='/team', Meetings='/meetings', Calls='/calls', Email Agent='/email-agent', Marketplace='/admin/marketplace', Settings='/setup', Reports='/reports', Notifications='/notifications', Billing Settings='/billing'"
-
-        elif role in ("SalesManager", "Sales"):
-            persona = """You are the SERP Hawk CRM Sales AI Assistant.
-You can manage: Clients, Leads, Deals/Pipeline, Quotes, Invoices, Meetings, Calls, Email Agent, and view Reports.
-You CANNOT access: Inventory, Settings, User Management, Marketplace Admin, or Billing Settings.
-Focus on helping with sales workflows: creating leads, managing pipeline, drafting quotes and emails, logging calls and meetings."""
-            allowed_tools = "sales"
-            route_map = "Dashboard='/', Clients='/clients', Leads='/leads', Deals='/pipeline', Invoices='/invoices', Quotes='/billing', Meetings='/meetings', Calls='/calls', Email Agent='/email-agent'"
-
-        elif role == "Employee":
-            persona = """You are the SERP Hawk CRM Employee AI Assistant.
-You can manage: Clients (view/edit), Deals, Tasks, Meetings, Calls, Email Agent.
-You CANNOT access: Invoices, Billing, Settings, User Management, Marketplace, Inventory, or Reports.
-Help the employee with their day-to-day work: logging calls, managing tasks, updating client notes, scheduling meetings."""
-            allowed_tools = "employee"
-            route_map = "Dashboard='/', Clients='/clients', Deals='/pipeline', Tasks='/tasks', Meetings='/meetings', Calls='/calls', Email Agent='/email-agent'"
-
-        elif role in ("ProjectMember", "Developer"):
-            persona = """You are the SERP Hawk CRM Developer/Project AI Assistant.
-You can manage: Projects, Tasks (Kanban board), view your assigned work, and communicate via Messages.
-You CANNOT access: Clients, Leads, Invoices, Billing, Inventory, Settings, or Sales data.
-Help with project management: creating tasks, updating ticket status, viewing project details, managing the Kanban board."""
-            allowed_tools = "developer"
-            route_map = "Dashboard='/', Projects='/projects', Tasks='/tasks', Messages='/messages', My Profile='/setup'"
-
-        elif role == "Supplier":
-            persona = """You are the SERP Hawk Supplier Portal AI Assistant.
-You can ONLY help with: Viewing your submitted RFQ (Request for Quotation) responses, understanding the RFQ process, navigating the supplier portal.
-You CANNOT access any client data, sales data, financials, or admin features.
-Be helpful and guide the supplier through their limited portal experience."""
-            allowed_tools = "supplier"
-            route_map = "Supplier Portal='/supplier', My RFQs='/supplier/rfqs'"
+            route_map = "Dashboard='/', Clients='/clients', Leads='/leads', Billing='/billing', Inventory='/inventory', Products='/catalog', Catalog='/catalog', Orders='/orders', Projects='/projects', Tasks='/tasks', Meetings='/meetings', Calls='/calls', Email Agent='/email-agent', Marketplace='/admin/marketplace', Settings='/setup', Notifications='/notifications', Team='/team', Leaderboard='/leaderboard', Cases='/cases', Import='/import'"
 
         elif role == "Demo":
-            persona = """You are the SERP Hawk CRM Demo AI Assistant.
-You are demonstrating the CRM to a potential customer. You can navigate to any section for showcasing purposes.
-You should explain what each feature does as you navigate.
-You CANNOT make any real changes to data in demo mode — you can only show, explain, and navigate."""
+            persona = f"""You are the SERP Hawk CRM Demo AI Assistant — a specialist guide for THIS CRM ONLY.
+
+CRITICAL RULE: You ONLY answer questions about SERP Hawk CRM. If the user asks ANYTHING unrelated to this CRM, politely refuse: "I can only help with SERP Hawk CRM questions."
+
+You are demonstrating the CRM. You can navigate to any section and explain features clearly.
+You CANNOT make real data changes — demo mode is view-only.
+Explain what each feature does, how it helps, and guide through the UI step by step.
+
+{CRM_KNOWLEDGE}"""
             allowed_tools = "demo"
-            route_map = "Dashboard='/', Clients='/clients', Leads='/leads', Pipeline='/pipeline', Invoices='/invoices', Billing='/billing', Inventory='/inventory', Catalog='/catalog', Projects='/projects', Email Agent='/email-agent', Marketplace='/admin/marketplace'"
+            route_map = "Dashboard='/', Clients='/clients', Leads='/leads', Pipeline='/pipeline', Billing='/billing', Inventory='/inventory', Catalog='/catalog', Projects='/projects', Email Agent='/email-agent', Marketplace='/admin/marketplace'"
 
         else:
-            # Fallback: minimal permissions
-            persona = "You are the SERP Hawk CRM AI Assistant. You can help navigate the system and answer questions."
-            allowed_tools = "minimal"
-            route_map = "Dashboard='/', Clients='/clients'"
+            persona = f"""You are the SERP Hawk CRM AI Assistant.
 
-        system_prompt = f"""
-{persona}
+CRITICAL RULE: You ONLY answer questions about SERP Hawk CRM. Refuse all off-topic questions.
+
+{CRM_KNOWLEDGE}"""
+            allowed_tools = "minimal"
+            route_map = "Dashboard='/', Clients='/clients', Leads='/leads'"
+
+        system_prompt = f"""{persona}
 
 {route_str}
 {context_str}
@@ -363,15 +592,14 @@ You CANNOT make any real changes to data in demo mode — you can only show, exp
 ROUTE MAP (use ONLY these exact routes for navigation):
 {route_map}
 
-You have a suite of tools available. If the user asks you to do something that matches a tool AND your role allows it, CALL THE TOOL.
-You can call multiple tools if necessary.
-If no tools are relevant, or after you've called tools, respond with a helpful conversational reply.
-
-At the end of EVERY response, always append a line like:
-"💡 **I can help you with:** [list the 3-5 most relevant things you can do for this user based on their role and current page]"
-
-Be concise, professional, and action-oriented.
+RESPONSE RULES:
+1. ONLY answer CRM-related questions. For ANY off-topic question, say: "I can only help with SERP Hawk CRM questions. What would you like to know about the CRM?"
+2. Always provide numbered step-by-step instructions when explaining how to do something
+3. When the user wants to navigate somewhere, use the navigate_user tool with the correct route
+4. Be concise but thorough — use bullet points and numbered steps for clarity
+5. At the end of EVERY response, add: "💡 **Need help with:** [list 3 quick things you can help with]"
 """
+
 
         # ── Build tool list based on role ────────────────────────────────────
         ALL_TOOLS = [
@@ -688,13 +916,24 @@ Your CRM capabilities:
 2. **schedule_meeting** — Schedule a meeting/call. Trigger on: "book meeting with X tomorrow 5pm", "call Y on Monday".
 3. **add_note** — Add a note to a client/lead. Trigger on: "note that X is interested", "log that Y called back".
 4. **add_task** — Create a task/reminder. Trigger on: "remind me to follow up", "create task to send proposal".
-5. **radar_search** — Search for competitors or research a business via radar. Trigger on: "radar on acme.com", "research competitors for X", "analyze mysore restaurant market".
+5. **radar_search** — Search for competitors or research a business via radar. Trigger on: "radar on acme.com", "research competitors for X".
 6. **get_call_pitch** — Get the AI call pitch for a client. Trigger on: "get pitch for X", "what do I say to Y", "call pitch for Acme".
-7. **research_client** — Run AI research on a client/lead/website. Trigger on: "research X", "find info about acme.com", "what does Y company do".
+7. **research_client** — Run AI research on a client/lead/website. Trigger on: "research X", "find info about acme.com".
+8. **list_clients** — List existing clients. Trigger on: "show clients", "list clients", "how many clients do I have", "my clients".
+9. **list_leads** — List existing leads. Trigger on: "show leads", "list leads", "new leads", "leads today".
+10. **list_tasks** — List pending tasks. Trigger on: "show tasks", "my tasks", "pending tasks", "what do I need to do".
+11. **list_upcoming_meetings** — List upcoming meetings/calls. Trigger on: "upcoming meetings", "what's on my calendar", "meetings today", "scheduled calls".
+12. **get_client_summary** — Get a detailed summary of one specific client or lead. Trigger on: "tell me about Acme", "summary of Blue Barrier", "info on Ravi".
+13. **assign_salesperson** — Assign a sales rep/employee to a client or lead. Trigger on: "assign Ravi to Acme", "set sales rep for Blue Barrier to Prasanth", "give Acme to John".
+14. **update_lead_status** — Change the status of a lead. Trigger on: "update lead Acme to Qualified", "move Blue Barrier to Closed Won", "mark lead as Hot".
+15. **update_client_status** — Change the status of a client. Trigger on: "set Acme to Hold", "mark Blue Barrier as Active", "pause Ravi's account".
+16. **generate_email_draft** — Generate an AI email draft for a client or lead. Trigger on: "generate draft for Acme", "create email for Blue Barrier", "write outreach for Ravi".
+17. **send_success_message** — Get the AI agent success/onboarding message or SWOT summary for a client. Trigger on: "send success message to Acme", "agent results for Blue Barrier", "get analysis for Acme".
+18. **quick_followup** — Schedule a quick follow-up reminder. Trigger on: "follow up with Acme tomorrow", "remind me to call Ravi on Friday", "ping Blue Barrier next week".
 
 Rules:
-- ALWAYS call a tool if user intent matches any of the 7 actions above — no matter how informal or broken the speech-to-text is.
-- Aggressively fix speech-to-text errors (e.g., "varsit adre gmail dot com" → "varsitadre@gmail.com").
+- ALWAYS call a tool if user intent matches any of the 18 actions above — no matter how informal or broken the speech-to-text is.
+- Aggressively fix speech-to-text errors (e.g., "varsit adre gmail dot com" -> "varsitadre@gmail.com").
 - For pure conversation (greetings, questions about CRM status, thank-yous) — respond naturally without calling any tool. Keep it brief.
 - Never say "I cannot" or "I don't have access to". Just do it.
 """
@@ -730,7 +969,9 @@ Rules:
                         "type": "object",
                         "properties": {
                             "target_name": {"type": "string", "description": "Name of the lead/client to meet."},
-                            "time_str": {"type": "string", "description": "When (e.g. 'tomorrow at 5pm', 'Monday 3pm')."}
+                            "time_str": {"type": "string", "description": "When (e.g. 'tomorrow at 5pm', 'Monday 3pm')."},
+                            "meeting_type": {"type": "string", "description": "Type: Meeting, Demo, Follow-up, Discovery. Default: Meeting."},
+                            "notes": {"type": "string", "description": "Optional agenda or notes for the meeting."}
                         },
                         "required": ["target_name", "time_str"]
                     }
@@ -773,12 +1014,12 @@ Rules:
                 "type": "function",
                 "function": {
                     "name": "radar_search",
-                    "description": "Runs a radar/competitor analysis on a website, keyword, or business type. Use for competitor research, local market analysis, or finding businesses in a niche.",
+                    "description": "Runs a radar/competitor analysis on a website, keyword, or business type.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "query": {"type": "string", "description": "The website URL, keyword, or business niche to research (e.g. 'acme.com', 'SEO agencies in Hyderabad', 'restaurants in Mysore')."},
-                            "location": {"type": "string", "description": "Optional location context (e.g. 'Hyderabad', 'Bangalore')."}
+                            "query": {"type": "string", "description": "The website URL, keyword, or business niche to research."},
+                            "location": {"type": "string", "description": "Optional location context."}
                         },
                         "required": ["query"]
                     }
@@ -802,13 +1043,177 @@ Rules:
                 "type": "function",
                 "function": {
                     "name": "research_client",
-                    "description": "Runs AI-powered research on a client, lead, or website and returns a summary with company info, contacts, and recommended services.",
+                    "description": "Runs AI-powered research on a client, lead, or website and returns a summary.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "query": {"type": "string", "description": "Client/lead name or website URL to research (e.g. 'Acme Corp', 'acme.com')."}
+                            "query": {"type": "string", "description": "Client/lead name or website URL to research."}
                         },
                         "required": ["query"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_clients",
+                    "description": "Lists existing clients from the CRM. Use when the user asks to see their clients.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "status_filter": {"type": "string", "description": "Optional: filter by status (Active, Hold, Pending). Leave empty for all."},
+                            "limit": {"type": "integer", "description": "Max number to return. Default 10."}
+                        },
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_leads",
+                    "description": "Lists existing leads from the CRM. Use when the user asks to see their leads.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "status_filter": {"type": "string", "description": "Optional: filter by status (New, Contacted, Qualified, Closed Won, Closed Lost). Leave empty for all."},
+                            "limit": {"type": "integer", "description": "Max number to return. Default 10."}
+                        },
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_tasks",
+                    "description": "Lists pending or all tasks from the CRM.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "status_filter": {"type": "string", "description": "Optional: filter by status (Todo, In Progress, Done). Default: Todo and In Progress."},
+                            "limit": {"type": "integer", "description": "Max number to return. Default 10."}
+                        },
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_upcoming_meetings",
+                    "description": "Lists upcoming meetings and scheduled calls.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "limit": {"type": "integer", "description": "Max number to return. Default 10."}
+                        },
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_client_summary",
+                    "description": "Gets a detailed summary/info card for a specific client or lead by name.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "Name of the client or lead."}
+                        },
+                        "required": ["name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "assign_salesperson",
+                    "description": "Assigns a salesperson or employee to a client or lead.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "entity_name": {"type": "string", "description": "Name of the client or lead to assign to."},
+                            "salesperson_name": {"type": "string", "description": "Name of the salesperson/employee to assign."},
+                            "entity_type": {"type": "string", "description": "client or lead. Default: client."}
+                        },
+                        "required": ["entity_name", "salesperson_name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "update_lead_status",
+                    "description": "Updates the status of a lead (e.g., New, Contacted, Qualified, Closed Won, Closed Lost).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "lead_name": {"type": "string", "description": "Name of the lead to update."},
+                            "new_status": {"type": "string", "description": "New status: New, Contacted, Qualified, Proposal Sent, Closed Won, Closed Lost."}
+                        },
+                        "required": ["lead_name", "new_status"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "update_client_status",
+                    "description": "Updates the status of a client (Active, Hold, Pending).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "client_name": {"type": "string", "description": "Name of the client to update."},
+                            "new_status": {"type": "string", "description": "New status: Active, Hold, Pending."}
+                        },
+                        "required": ["client_name", "new_status"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "generate_email_draft",
+                    "description": "Generates an AI email draft for a client or lead for outreach or follow-up.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "entity_name": {"type": "string", "description": "Name of the client or lead."},
+                            "context": {"type": "string", "description": "Optional: extra context for the email (e.g., 'they asked about SEO', 'follow-up after call')."}
+                        },
+                        "required": ["entity_name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "send_success_message",
+                    "description": "Gets the AI-generated success/onboarding summary or SWOT analysis for a client from the research agents.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "entity_name": {"type": "string", "description": "Name of the client or lead."}
+                        },
+                        "required": ["entity_name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "quick_followup",
+                    "description": "Creates a quick follow-up reminder or task for a client/lead.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "entity_name": {"type": "string", "description": "Name of the client or lead to follow up with."},
+                            "time_str": {"type": "string", "description": "When to follow up (e.g. 'tomorrow', 'Friday', 'next week')."},
+                            "note": {"type": "string", "description": "Optional reason or note for the follow-up."}
+                        },
+                        "required": ["entity_name", "time_str"]
                     }
                 }
             }
@@ -854,7 +1259,7 @@ Rules:
             return {
                 "action": "none",
                 "parameters": {},
-                "reply": msg.content or "Hey! I'm Hawk, your CRM assistant. Try: 'add lead Acme Corp', 'radar on acme.com', or send a business card photo! 🦅"
+                "reply": msg.content or "Hey! I'm Hawk, your CRM assistant 🦅\n\nTry:\n• _Add lead Acme Corp_\n• _List my clients_\n• _Note that Blue Barrier is interested in SEO_\n• _Assign Ravi to Acme_\n• _Schedule meeting with Blue Barrier tomorrow 5pm_\n• Or send a voice note or business card photo!"
             }
     except Exception as e:
         print(f"Error in process_whatsapp_command: {e}")
@@ -865,3 +1270,55 @@ Rules:
         }
 
 
+
+async def generate_swot_analysis(url: str, company_name: str = "the company") -> dict:
+    """
+    Scrapes the given URL and uses OpenAI to generate a SWOT analysis.
+    """
+    from modules.scraper import scrape_website
+    
+    try:
+        # Scrape website for context
+        scraped_text = await scrape_website(url)
+        if scraped_text.startswith("ERROR"):
+            scraped_text = ""
+        
+        client = get_openai_client()
+        
+        context_block = ""
+        if scraped_text:
+            context_block = f"\n\nWEBSITE CONTENT:\n{scraped_text[:20000]}"
+            
+        prompt = f"""You are a top-tier business analyst. Perform a SWOT (Strengths, Weaknesses, Opportunities, Threats) analysis for {company_name} based on their website.
+
+Website: {url}{context_block}
+
+Return a JSON object with this exact structure:
+{{
+    "strengths": ["point 1", "point 2", "point 3"],
+    "weaknesses": ["point 1", "point 2", "point 3"],
+    "opportunities": ["point 1", "point 2", "point 3"],
+    "threats": ["point 1", "point 2", "point 3"],
+    "summary": "A 2-3 sentence overall strategic summary of the company."
+}}
+
+Be specific and insightful based on the scraped content. If the scraped content is missing, make reasonable inferences based on their industry or domain, but clearly state what is assumed.
+"""
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.3
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        return result
+    except Exception as e:
+        print(f"Error generating SWOT analysis: {e}")
+        return {
+            "strengths": [],
+            "weaknesses": [],
+            "opportunities": [],
+            "threats": [],
+            "summary": f"Could not generate SWOT analysis. Error: {str(e)}"
+        }
