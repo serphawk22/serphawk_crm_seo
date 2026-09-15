@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/config";
 import { motion } from "framer-motion";
 import { Loader2, Briefcase, Phone, ArrowRight, CheckCircle } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function OnboardingPage() {
+  const { t } = useLanguage();
   const [company, setCompany] = useState("");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
@@ -14,7 +16,6 @@ export default function OnboardingPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Basic check if user is logged in
     const saved = localStorage.getItem("crm_user");
     if (!saved) {
       router.push("/login");
@@ -24,7 +25,7 @@ export default function OnboardingPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!company) {
-      setError("Company Name is required.");
+      setError(t("onboarding.error_company_required"));
       return;
     }
 
@@ -32,7 +33,6 @@ export default function OnboardingPage() {
     setIsSubmitting(true);
 
     try {
-      // Get the stored user to fetch tenant ID
       const savedUser = JSON.parse(localStorage.getItem("crm_user") || "{}");
       
       const res = await fetch(`${API_BASE_URL}/onboarding`, {
@@ -45,12 +45,11 @@ export default function OnboardingPage() {
       });
       
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to save profile");
+      if (!res.ok) throw new Error(data.detail || t("onboarding.error_save_failed"));
 
-      // Redirect to dashboard
       window.location.href = "/dashboard";
     } catch (err: any) {
-      setError(err.message || "An error occurred.");
+      setError(err.message || t("onboarding.error_occurred"));
       setIsSubmitting(false);
     }
   };
@@ -66,14 +65,14 @@ export default function OnboardingPage() {
           <div className="w-16 h-16 bg-blue-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/30">
             <CheckCircle className="w-8 h-8" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-zinc-100">Welcome to SerpHawk!</h2>
-          <p className="text-slate-500 dark:text-zinc-400 mt-2 text-sm">Let's set up your Demo workspace. Tell us a bit about your business.</p>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-zinc-100">{t("onboarding.welcome")}</h2>
+          <p className="text-slate-500 dark:text-zinc-400 mt-2 text-sm">{t("onboarding.subtitle")}</p>
         </div>
 
         <div className="p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-zinc-300 mb-1.5">Company Name *</label>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-zinc-300 mb-1.5">{t("onboarding.company_name")}</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                   <Briefcase className="w-5 h-5" />
@@ -84,13 +83,13 @@ export default function OnboardingPage() {
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
                   className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-800 dark:text-zinc-100"
-                  placeholder="e.g. Acme Corp"
+                  placeholder={t("onboarding.company_ph")}
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-zinc-300 mb-1.5">Phone Number (Optional)</label>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-zinc-300 mb-1.5">{t("onboarding.phone_optional")}</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                   <Phone className="w-5 h-5" />
@@ -120,7 +119,7 @@ export default function OnboardingPage() {
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
                 <>
-                  Complete Setup <ArrowRight className="w-5 h-5" />
+                  {t("onboarding.complete_setup")} <ArrowRight className="w-5 h-5" />
                 </>
               )}
             </button>

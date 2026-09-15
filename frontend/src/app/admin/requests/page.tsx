@@ -8,6 +8,7 @@ import {
 import Link from 'next/link';
 import { API_BASE_URL } from '@/config';
 import PageGuide from '@/components/PageGuide';
+import { useLanguage } from '@/context/LanguageContext';
 
 const STATUS_COLORS: Record<string, string> = {
   Pending: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -18,6 +19,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function AdminRequestsPage() {
+  const { t } = useLanguage();
   const [requests, setRequests] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +48,7 @@ export default function AdminRequestsPage() {
   const handleSendQuote = async (req: any) => {
     const form = quoteForm[req.id] || {};
     if (!form.quoted_amount || !form.quote_message) {
-      showToast('Please fill in the quoted amount and message.');
+      showToast(t('requests.fill_amount_msg'));
       return;
     }
     setSendingQuote(req.id);
@@ -64,7 +66,7 @@ export default function AdminRequestsPage() {
         })
       });
       if (res.ok) {
-        showToast('Quote sent to client! ✓');
+        showToast(t('requests.quote_sent'));
         setExpandedId(null);
         await loadRequests();
       }
@@ -95,36 +97,36 @@ export default function AdminRequestsPage() {
         <div className="flex items-center gap-4">
           <div className="p-3 bg-white dark:bg-zinc-900/10 rounded-2xl"><Inbox className="w-7 h-7" /></div>
           <div>
-            <h1 className="text-2xl font-black">Service Request Board</h1>
-            <p className="text-indigo-200 text-sm font-medium">Review client requests and send personalized quotes</p>
+            <h1 className="text-2xl font-black">{t('requests.board_title')}</h1>
+            <p className="text-indigo-200 text-sm font-medium">{t('requests.board_subtitle')}</p>
           </div>
         </div>
         {pendingCount > 0 && (
           <div className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-xl font-black text-sm">
-            <AlertCircle className="w-4 h-4" /> {pendingCount} Pending
+            <AlertCircle className="w-4 h-4" /> {pendingCount} {t('requests.pending')}
           </div>
         )}
       </div>
 
       <PageGuide
         pageKey="admin-requests"
-        title="How the Service Request Board works"
-        description="Review incoming client service requests, send personalized quotes, and manage request lifecycles."
+        title={t('requests.guide_title')}
+        description={t('requests.guide_desc')}
         steps={[
-          { icon: '📥', text: 'New client requests appear here with status \"Pending\" — review them and send a quote.' },
-          { icon: '💵', text: 'Expand any request to enter a quote amount and a personalized message to the client.' },
-          { icon: '✅', text: 'Once quoted, the client can accept or decline from their Store page.' },
-          { icon: '📊', text: 'Use the stats row above to see pending, quoted, accepted, and delivered counts at a glance.' },
+          { icon: '📥', text: t('requests.guide_step1') },
+          { icon: '💵', text: t('requests.guide_step2') },
+          { icon: '✅', text: t('requests.guide_step3') },
+          { icon: '📊', text: t('requests.guide_step4') },
         ]}
       />
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total Requests', val: requests.length, icon: Inbox, color: 'text-slate-600 dark:text-zinc-300' },
-          { label: 'Pending Review', val: requests.filter(r => r.status === 'Pending').length, icon: Clock, color: 'text-amber-500' },
-          { label: 'Quotes Sent', val: requests.filter(r => r.status === 'Quoted').length, icon: Send, color: 'text-indigo-600' },
-          { label: 'Active', val: requests.filter(r => r.status === 'Accepted' || r.status === 'In Progress').length, icon: Activity, color: 'text-emerald-500' },
+          { label: t('requests.total_requests'), val: requests.length, icon: Inbox, color: 'text-slate-600 dark:text-zinc-300' },
+          { label: t('requests.pending_review'), val: requests.filter(r => r.status === 'Pending').length, icon: Clock, color: 'text-amber-500' },
+          { label: t('requests.quotes_sent'), val: requests.filter(r => r.status === 'Quoted').length, icon: Send, color: 'text-indigo-600' },
+          { label: t('requests.active'), val: requests.filter(r => r.status === 'Accepted' || r.status === 'In Progress').length, icon: Activity, color: 'text-emerald-500' },
         ].map(({ label, val, icon: Icon, color }) => (
           <div key={label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm flex items-center gap-3">
             <div className={`p-2 bg-slate-50 dark:bg-zinc-950 rounded-xl ${color}`}><Icon className="w-5 h-5" /></div>
@@ -138,12 +140,12 @@ export default function AdminRequestsPage() {
 
       {/* Requests List */}
       {loading ? (
-        <div className="text-center py-16 text-slate-400 font-bold">Loading requests...</div>
+        <div className="text-center py-16 text-slate-400 font-bold">{t('requests.loading')}</div>
       ) : requests.length === 0 ? (
         <div className="text-center py-16 bg-white dark:bg-zinc-900 rounded-3xl border border-slate-200 dark:border-zinc-700">
           <Inbox className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="font-black text-slate-700 dark:text-zinc-200">No service requests yet.</p>
-          <p className="text-slate-400 text-sm font-medium">Requests will appear here when clients submit them from the store.</p>
+          <p className="font-black text-slate-700 dark:text-zinc-200">{t('requests.no_requests')}</p>
+          <p className="text-slate-400 text-sm font-medium">{t('requests.no_requests_desc')}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -171,8 +173,8 @@ export default function AdminRequestsPage() {
                     </div>
                     {req.quoted_amount && (
                       <div className="mt-2 inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1">
-                        <span className="text-xs text-indigo-600 font-black">Quote sent: ${req.quoted_amount}</span>
-                        {req.client_accepted_quote && <span className="text-xs text-emerald-600 font-black">✓ Accepted</span>}
+                        <span className="text-xs text-indigo-600 font-black">{t('requests.quote_sent_label')}: ${req.quoted_amount}</span>
+                        {req.client_accepted_quote && <span className="text-xs text-emerald-600 font-black">✓ {t('requests.accepted')}</span>}
                       </div>
                     )}
                   </div>
@@ -180,13 +182,13 @@ export default function AdminRequestsPage() {
                     {(req.status === 'Accepted' || req.status === 'In Progress') && (
                       <Link href="/messages"
                         className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl font-black text-xs hover:bg-emerald-100 transition-all shadow-sm">
-                        <MessageCircle className="w-4 h-4" /> Open Chat session
+                        <MessageCircle className="w-4 h-4" /> {t('requests.open_chat')}
                       </Link>
                     )}
                     {req.status !== 'Accepted' && req.status !== 'Delivered' && req.status !== 'In Progress' && (
                       <button onClick={() => setExpandedId(isExpanded ? null : req.id)}
                         className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-sm transition-all ${isExpanded ? 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md'}`}>
-                        {req.status === 'Quoted' ? 'Edit Quote' : 'Send Quote'}
+                        {req.status === 'Quoted' ? t('requests.edit_quote') : t('requests.send_quote')}
                         {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </button>
                     )}
@@ -200,23 +202,23 @@ export default function AdminRequestsPage() {
                       className="border-t border-slate-100 dark:border-zinc-800 overflow-hidden">
                       <div className="p-6 bg-slate-50 dark:bg-zinc-950 space-y-5">
                         <h4 className="font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2">
-                          <Send className="w-4 h-4 text-indigo-600" /> Send Quote to {req.client_name}
+                          <Send className="w-4 h-4 text-indigo-600" /> {t('requests.send_quote_to')} {req.client_name}
                         </h4>
 
                         <div className="grid md:grid-cols-2 gap-4">
                           <div className="space-y-1.5">
-                            <label className="text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-1"><DollarSign className="w-3 h-3 text-emerald-500" /> Quoted Amount *</label>
+                            <label className="text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-1"><DollarSign className="w-3 h-3 text-emerald-500" /> {t('requests.quoted_amount')} *</label>
                             <input type="number" step="0.01" value={quoteForm[req.id]?.quoted_amount || ''}
                               onChange={e => updateForm(req.id, 'quoted_amount', e.target.value)}
-                              className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none font-bold" placeholder="e.g. 1500.00" />
+                              className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none font-bold" placeholder={t('requests.ph_amount')} />
                           </div>
 
                           <div className="space-y-1.5">
-                            <label className="text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-1"><Users className="w-3 h-3 text-indigo-500" /> Assign Employee</label>
+                            <label className="text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-1"><Users className="w-3 h-3 text-indigo-500" /> {t('requests.assign_employee')}</label>
                             <select value={quoteForm[req.id]?.assigned_employee_id || ''}
                               onChange={e => updateForm(req.id, 'assigned_employee_id', e.target.value)}
                               className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium">
-                              <option value="">— Select Employee —</option>
+                              <option value="">— {t('requests.select_employee')} —</option>
                               {employees.map((emp: any) => (
                                 <option key={emp.id} value={emp.id}>{emp.name || emp.email}</option>
                               ))}
@@ -225,39 +227,39 @@ export default function AdminRequestsPage() {
                         </div>
 
                         <div className="space-y-1.5">
-                          <label className="text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-1"><FileText className="w-3 h-3 text-slate-400" /> Message to Client *</label>
+                          <label className="text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-1"><FileText className="w-3 h-3 text-slate-400" /> {t('requests.message_to_client')} *</label>
                           <textarea value={quoteForm[req.id]?.quote_message || ''}
                             onChange={e => updateForm(req.id, 'quote_message', e.target.value)}
                             className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none h-32"
-                            placeholder="Explain what's included, timelines, deliverables..." />
+                            placeholder={t('requests.ph_message')} />
                         </div>
 
                         <div className="space-y-1.5">
-                          <label className="text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-1"><Briefcase className="w-3 h-3 text-fuchsia-500" /> Team Information</label>
+                          <label className="text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest flex items-center gap-1"><Briefcase className="w-3 h-3 text-fuchsia-500" /> {t('requests.team_info')}</label>
                           <textarea value={quoteForm[req.id]?.team_info || ''}
                             onChange={e => updateForm(req.id, 'team_info', e.target.value)}
                             className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none h-20"
-                            placeholder="Who will be handling this: names, roles, experience..." />
+                            placeholder={t('requests.ph_team_info')} />
                         </div>
 
                         <div className="space-y-1.5">
-                          <label className="text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">Proposal Document URL (optional)</label>
+                          <label className="text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">{t('requests.doc_url')}</label>
                           <input type="url" value={quoteForm[req.id]?.quote_doc_url || ''}
                             onChange={e => updateForm(req.id, 'quote_doc_url', e.target.value)}
-                            className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="https://docs.google.com/... or any shareable link" />
+                            className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder={t('requests.ph_doc_url')} />
                         </div>
 
                         <div className="flex gap-3 pt-2">
                           <button onClick={() => handleSendQuote(req)} disabled={sendingQuote === req.id}
                             className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-black rounded-xl transition-all shadow-md flex items-center justify-center gap-2">
                             {sendingQuote === req.id ? (
-                              <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Sending...</>
+                              <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> {t('requests.sending')}...</>
                             ) : (
-                              <><Send className="w-4 h-4" /> Send Quote to Client</>
+                              <><Send className="w-4 h-4" /> {t('requests.send_quote_client')}</>
                             )}
                           </button>
                           <button onClick={() => setExpandedId(null)} className="px-6 py-3.5 bg-slate-200 dark:bg-zinc-700 hover:bg-slate-300 text-slate-700 dark:text-zinc-200 font-bold rounded-xl transition-colors">
-                            Cancel
+                            {t('requests.cancel')}
                           </button>
                         </div>
                       </div>

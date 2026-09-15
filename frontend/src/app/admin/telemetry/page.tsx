@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
+import { useLanguage } from "@/context/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DemoAccount {
@@ -92,6 +93,7 @@ function Badge({ text, color }: { text: string; color: string }) {
 // ─── Demo Detail Full Screen ──────────────────────────────────────────────────
 function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => void }) {
   const { user } = useRole();
+  const { t } = useLanguage();
   const [detail, setDetail] = useState<DemoDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [backfilling, setBackfilling] = useState(false);
@@ -123,17 +125,17 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
   useEffect(() => { loadDetail(); }, [account.id]);
 
   const tabs = [
-    { key: "overview",  label: "Overview",        icon: <BarChart2  className="w-3.5 h-3.5" /> },
-    { key: "clients",   label: "Clients",          icon: <Users      className="w-3.5 h-3.5" />, count: detail?.clients?.length },
-    { key: "leads",     label: "Leads",            icon: <TrendingUp className="w-3.5 h-3.5" />, count: detail?.leads?.length },
-    { key: "contacts",  label: "Contacts",         icon: <UserPlus   className="w-3.5 h-3.5" />, count: detail?.contacts?.length },
-    { key: "radar",     label: "Radar Analysis",   icon: <Radar      className="w-3.5 h-3.5" />, count: detail?.radar?.length },
-    { key: "emails",    label: "Email Agent",      icon: <Mail       className="w-3.5 h-3.5" />, count: detail?.emails?.length },
-    { key: "meetings",  label: "Meetings",         icon: <Calendar   className="w-3.5 h-3.5" />, count: detail?.meetings?.length },
-    { key: "calls",     label: "Calls/Pitches",    icon: <PhoneCall  className="w-3.5 h-3.5" />, count: detail?.calls?.length },
-    { key: "projects",  label: "Projects",         icon: <Folder     className="w-3.5 h-3.5" />, count: detail?.projects?.length },
-    { key: "team",      label: "Team Members",     icon: <UserCheck  className="w-3.5 h-3.5" />, count: detail?.team_members?.length },
-    { key: "ai",        label: "AI Activities",    icon: <Brain      className="w-3.5 h-3.5" />, count: (detail?.researches?.length || 0) + (detail?.competitors?.length || 0) },
+    { key: "overview",  label: t("telemetry.tab_overview"),        icon: <BarChart2  className="w-3.5 h-3.5" /> },
+    { key: "clients",   label: t("telemetry.tab_clients"),          icon: <Users      className="w-3.5 h-3.5" />, count: detail?.clients?.length },
+    { key: "leads",     label: t("telemetry.tab_leads"),            icon: <TrendingUp className="w-3.5 h-3.5" />, count: detail?.leads?.length },
+    { key: "contacts",  label: t("telemetry.tab_contacts"),         icon: <UserPlus   className="w-3.5 h-3.5" />, count: detail?.contacts?.length },
+    { key: "radar",     label: t("telemetry.tab_radar"),            icon: <Radar      className="w-3.5 h-3.5" />, count: detail?.radar?.length },
+    { key: "emails",    label: t("telemetry.tab_email_agent"),      icon: <Mail       className="w-3.5 h-3.5" />, count: detail?.emails?.length },
+    { key: "meetings",  label: t("telemetry.tab_meetings"),         icon: <Calendar   className="w-3.5 h-3.5" />, count: detail?.meetings?.length },
+    { key: "calls",     label: t("telemetry.tab_calls"),            icon: <PhoneCall  className="w-3.5 h-3.5" />, count: detail?.calls?.length },
+    { key: "projects",  label: t("telemetry.tab_projects"),         icon: <Folder     className="w-3.5 h-3.5" />, count: detail?.projects?.length },
+    { key: "team",      label: t("telemetry.tab_team"),             icon: <UserCheck  className="w-3.5 h-3.5" />, count: detail?.team_members?.length },
+    { key: "ai",        label: t("telemetry.tab_ai_activities"),    icon: <Brain      className="w-3.5 h-3.5" />, count: (detail?.researches?.length || 0) + (detail?.competitors?.length || 0) },
   ] as const;
 
   return (
@@ -141,7 +143,7 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
       {/* Header */}
       <div className="flex items-center gap-4 flex-wrap">
         <button onClick={onBack} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-sm font-semibold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 transition-all shadow-sm">
-          <ArrowLeft className="w-4 h-4" /> Back
+          <ArrowLeft className="w-4 h-4" /> {t("telemetry.back")}
         </button>
         <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-xl shadow-lg">
           {account.name.charAt(0).toUpperCase()}
@@ -151,7 +153,7 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
             {account.name}
             {detail?.user?.upgrade_requested && (
               <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 text-[10px] uppercase font-black px-2 py-0.5 rounded-full flex items-center gap-1 border border-amber-200 dark:border-amber-800/50">
-                ⭐ Upgrade Requested
+                ⭐ {t("telemetry.upgrade_requested")}
               </span>
             )}
           </h2>
@@ -161,15 +163,15 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
           <button
             onClick={handleBackfill}
             disabled={backfilling}
-            title="Fix legacy data: assign tenant_id to old records so they appear in telemetry"
+            title={t("telemetry.fix_data_title")}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-100 transition-all disabled:opacity-50"
           >
             <Wrench className="w-3.5 h-3.5" />
-            {backfilling ? "Fixing..." : "Fix Data"}
+            {backfilling ? t("telemetry.fixing") : t("telemetry.fix_data")}
           </button>
           <span className="text-xs text-slate-400 flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5" />
-            Demo since {account.created_at ? new Date(account.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+            {t("telemetry.demo_since")} {account.created_at ? new Date(account.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
           </span>
         </div>
       </div>
@@ -189,9 +191,9 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
 
       {/* Content */}
       {loading ? (
-        <div className="py-20 text-center"><Activity className="w-8 h-8 animate-pulse mx-auto mb-3 text-indigo-400 opacity-60" /><p className="text-slate-500">Loading...</p></div>
+        <div className="py-20 text-center"><Activity className="w-8 h-8 animate-pulse mx-auto mb-3 text-indigo-400 opacity-60" /><p className="text-slate-500">{t("telemetry.loading")}</p></div>
       ) : !detail ? (
-        <div className="py-20 text-center text-slate-500">Failed to load data.</div>
+        <div className="py-20 text-center text-slate-500">{t("telemetry.load_failed")}</div>
       ) : (
         <AnimatePresence mode="wait">
           <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}>
@@ -200,43 +202,42 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
             {tab === "overview" && (
               <div className="space-y-5">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <StatCard icon={<Users      className="w-5 h-5" />} label="Clients"        value={detail.clients?.length ?? 0}       color="bg-gradient-to-br from-blue-500 to-blue-600" />
-                  <StatCard icon={<TrendingUp className="w-5 h-5" />} label="Leads"          value={detail.leads?.length ?? 0}         color="bg-gradient-to-br from-violet-500 to-purple-600" />
-                  <StatCard icon={<UserPlus   className="w-5 h-5" />} label="Contacts"       value={detail.contacts?.length ?? 0}      color="bg-gradient-to-br from-pink-500 to-rose-500" />
-                  <StatCard icon={<Radar      className="w-5 h-5" />} label="Radar Analyses" value={detail.radar?.length ?? 0}         color="bg-gradient-to-br from-cyan-500 to-teal-600" />
-                  <StatCard icon={<Mail       className="w-5 h-5" />} label="Emails Sent"    value={detail.emails?.length ?? 0}        color="bg-gradient-to-br from-orange-500 to-amber-500" />
-                  <StatCard icon={<Calendar   className="w-5 h-5" />} label="Meetings"       value={detail.meetings?.length ?? 0}      color="bg-gradient-to-br from-emerald-500 to-green-600" />
-                  <StatCard icon={<PhoneCall  className="w-5 h-5" />} label="Calls/Pitches"  value={detail.calls?.length ?? 0}         color="bg-gradient-to-br from-green-500 to-teal-500" />
-                  <StatCard icon={<Folder     className="w-5 h-5" />} label="Projects"       value={detail.projects?.length ?? 0}      color="bg-gradient-to-br from-indigo-500 to-blue-600" />
-                  <StatCard icon={<UserCheck  className="w-5 h-5" />} label="Team Members"   value={detail.team_members?.length ?? 0}  color="bg-gradient-to-br from-fuchsia-500 to-pink-600" />
-                  <StatCard icon={<Brain      className="w-5 h-5" />} label="AI Researches"  value={detail.researches?.length ?? 0}    color="bg-gradient-to-br from-purple-500 to-indigo-600" />
-                  <StatCard icon={<Target     className="w-5 h-5" />} label="Competitor Scans" value={detail.competitors?.length ?? 0} color="bg-gradient-to-br from-rose-500 to-red-600" />
+                  <StatCard icon={<Users      className="w-5 h-5" />} label={t("telemetry.clients")}        value={detail.clients?.length ?? 0}       color="bg-gradient-to-br from-blue-500 to-blue-600" />
+                  <StatCard icon={<TrendingUp className="w-5 h-5" />} label={t("telemetry.leads")}          value={detail.leads?.length ?? 0}         color="bg-gradient-to-br from-violet-500 to-purple-600" />
+                  <StatCard icon={<UserPlus   className="w-5 h-5" />} label={t("telemetry.contacts")}       value={detail.contacts?.length ?? 0}      color="bg-gradient-to-br from-pink-500 to-rose-500" />
+                  <StatCard icon={<Radar      className="w-5 h-5" />} label={t("telemetry.radar_analyses")} value={detail.radar?.length ?? 0}         color="bg-gradient-to-br from-cyan-500 to-teal-600" />
+                  <StatCard icon={<Mail       className="w-5 h-5" />} label={t("telemetry.emails_sent")}    value={detail.emails?.length ?? 0}        color="bg-gradient-to-br from-orange-500 to-amber-500" />
+                  <StatCard icon={<Calendar   className="w-5 h-5" />} label={t("telemetry.meetings")}       value={detail.meetings?.length ?? 0}      color="bg-gradient-to-br from-emerald-500 to-green-600" />
+                  <StatCard icon={<PhoneCall  className="w-5 h-5" />} label={t("telemetry.calls")}          value={detail.calls?.length ?? 0}         color="bg-gradient-to-br from-green-500 to-teal-500" />
+                  <StatCard icon={<Folder     className="w-5 h-5" />} label={t("telemetry.projects")}       value={detail.projects?.length ?? 0}      color="bg-gradient-to-br from-indigo-500 to-blue-600" />
+                  <StatCard icon={<UserCheck  className="w-5 h-5" />} label={t("telemetry.team_members")}   value={detail.team_members?.length ?? 0}  color="bg-gradient-to-br from-fuchsia-500 to-pink-600" />
+                  <StatCard icon={<Brain      className="w-5 h-5" />} label={t("telemetry.ai_researches")}  value={detail.researches?.length ?? 0}    color="bg-gradient-to-br from-purple-500 to-indigo-600" />
+                  <StatCard icon={<Target     className="w-5 h-5" />} label={t("telemetry.competitor_scans")} value={detail.competitors?.length ?? 0} color="bg-gradient-to-br from-rose-500 to-red-600" />
                 </div>
 
                 {detail.limits && (
                   <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm">
-                    <h4 className="font-bold text-slate-800 dark:text-zinc-100 mb-4 flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-500" /> Demo Usage Limits</h4>
+                    <h4 className="font-bold text-slate-800 dark:text-zinc-100 mb-4 flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-500" /> {t("telemetry.demo_usage_limits")}</h4>
                     <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-                      <UsageBar label="Clients"          usage={detail.limits.clients.usage}  limit={detail.limits.clients.limit}  color="bg-blue-500" />
-                      <UsageBar label="Email Agent"      usage={detail.limits.emails.usage}   limit={detail.limits.emails.limit}   color="bg-orange-500" />
-                      <UsageBar label="Radar Searches"   usage={detail.limits.searches.usage} limit={detail.limits.searches.limit} color="bg-cyan-500" />
-                      <UsageBar label="Projects/Sites"   usage={detail.limits.projects.usage} limit={detail.limits.projects.limit} color="bg-violet-500" />
-                      {detail.limits.calls && <UsageBar label="Calls/Pitches" usage={detail.limits.calls.usage} limit={detail.limits.calls.limit} color="bg-green-500" />}
+                      <UsageBar label={t("telemetry.clients")}          usage={detail.limits.clients.usage}  limit={detail.limits.clients.limit}  color="bg-blue-500" />
+                      <UsageBar label={t("telemetry.email_agent")}      usage={detail.limits.emails.usage}   limit={detail.limits.emails.limit}   color="bg-orange-500" />
+                      <UsageBar label={t("telemetry.radar_searches")}   usage={detail.limits.searches.usage} limit={detail.limits.searches.limit} color="bg-cyan-500" />
+                      {detail.limits.calls && <UsageBar label={t("telemetry.calls")} usage={detail.limits.calls.usage} limit={detail.limits.calls.limit} color="bg-green-500" />}
                     </div>
                   </div>
                 )}
 
                 {/* Activity feed */}
                 <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm">
-                  <h4 className="font-bold text-slate-800 dark:text-zinc-100 mb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-indigo-500" /> Recent Activity</h4>
+                  <h4 className="font-bold text-slate-800 dark:text-zinc-100 mb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-indigo-500" /> {t("telemetry.recent_activity")}</h4>
                   {(() => {
                     const feed = [
-                      ...detail.clients.slice(0, 4).map(c  => ({ color: "bg-blue-500",   text: `Added client "${c.company}"`,          time: c.created_at })),
-                      ...detail.leads.slice(0, 4).map(l    => ({ color: "bg-violet-500", text: `Added lead "${l.name}"`,               time: l.created_at })),
-                      ...detail.radar.slice(0, 4).map(r    => ({ color: "bg-cyan-500",   text: `Radar search for "${r.target_name}"`,  time: r.run_date })),
-                      ...detail.emails.slice(0, 4).map(e   => ({ color: "bg-orange-500", text: `Email sent to "${e.to}"`,              time: e.sent_at })),
+                      ...detail.clients.slice(0, 4).map(c  => ({ color: "bg-blue-500",   text: `${t("telemetry.activity_client")} "${c.company}"`,          time: c.created_at })),
+                      ...detail.leads.slice(0, 4).map(l    => ({ color: "bg-violet-500", text: `${t("telemetry.activity_lead")} "${l.name}"`,              time: l.created_at })),
+                      ...detail.radar.slice(0, 4).map(r    => ({ color: "bg-cyan-500",   text: `${t("telemetry.activity_radar")} "${r.target_name}"`,       time: r.run_date })),
+                      ...detail.emails.slice(0, 4).map(e   => ({ color: "bg-orange-500", text: `${t("telemetry.activity_email")} "${e.to}"`,              time: e.sent_at })),
                     ].filter(x => x.time).sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 10);
-                    if (feed.length === 0) return <p className="text-center text-slate-400 text-sm py-6">No activity yet.</p>;
+                    if (feed.length === 0) return <p className="text-center text-slate-400 text-sm py-6">{t("telemetry.no_activity")}</p>;
                     return (
                       <div className="space-y-0 divide-y divide-slate-50 dark:divide-zinc-800/50">
                         {feed.map((item, i) => (
@@ -257,12 +258,12 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
             {tab === "clients" && (
               <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 bg-blue-50/40 dark:bg-blue-900/10 flex items-center gap-2">
-                  <Users className="w-4 h-4 text-blue-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">Clients Added</h3>
+                  <Users className="w-4 h-4 text-blue-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">{t("telemetry.clients_added")}</h3>
                   <span className="ml-auto text-xs font-black bg-blue-100 dark:bg-blue-900/30 text-blue-600 px-2 py-0.5 rounded-full">{detail.clients.length}</span>
                 </div>
                 <DataTable
-                  headers={["Company", "Website", "Status", "Added"]}
-                  empty="No clients added yet."
+                  headers={[t("telemetry.company"), t("telemetry.website"), t("telemetry.status"), t("telemetry.added")]}
+                  empty={t("telemetry.no_clients")}
                   rows={detail.clients.map(c => [
                     <span className="font-semibold">{c.company}</span>,
                     <span className="text-xs text-slate-400">{c.website}</span>,
@@ -277,12 +278,12 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
             {tab === "leads" && (
               <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 bg-violet-50/40 dark:bg-violet-900/10 flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-violet-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">Leads Added</h3>
+                  <TrendingUp className="w-4 h-4 text-violet-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">{t("telemetry.leads_added")}</h3>
                   <span className="ml-auto text-xs font-black bg-violet-100 dark:bg-violet-900/30 text-violet-600 px-2 py-0.5 rounded-full">{detail.leads.length}</span>
                 </div>
                 <DataTable
-                  headers={["Name", "Email", "Company", "Status", "Added"]}
-                  empty="No leads added yet."
+                  headers={[t("telemetry.name"), t("telemetry.email"), t("telemetry.company"), t("telemetry.status"), t("telemetry.added")]}
+                  empty={t("telemetry.no_leads")}
                   rows={detail.leads.map(l => [
                     <span className="font-semibold">{l.name}</span>,
                     <span className="text-xs text-slate-400">{l.email}</span>,
@@ -298,12 +299,12 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
             {tab === "contacts" && (
               <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 bg-pink-50/40 dark:bg-pink-900/10 flex items-center gap-2">
-                  <UserPlus className="w-4 h-4 text-pink-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">Contacts</h3>
+                  <UserPlus className="w-4 h-4 text-pink-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">{t("telemetry.contacts")}</h3>
                   <span className="ml-auto text-xs font-black bg-pink-100 dark:bg-pink-900/30 text-pink-600 px-2 py-0.5 rounded-full">{detail.contacts.length}</span>
                 </div>
                 <DataTable
-                  headers={["Name", "Email", "Designation"]}
-                  empty="No contacts added yet."
+                  headers={[t("telemetry.name"), t("telemetry.email"), t("telemetry.designation")]}
+                  empty={t("telemetry.no_contacts")}
                   rows={detail.contacts.map(c => [
                     <span className="font-semibold">{c.name}</span>,
                     <span className="text-xs text-slate-400">{c.email}</span>,
@@ -317,12 +318,12 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
             {tab === "radar" && (
               <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 bg-cyan-50/40 dark:bg-cyan-900/10 flex items-center gap-2">
-                  <Radar className="w-4 h-4 text-cyan-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">Radar Analyses</h3>
+                  <Radar className="w-4 h-4 text-cyan-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">{t("telemetry.radar_analyses")}</h3>
                   <span className="ml-auto text-xs font-black bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 px-2 py-0.5 rounded-full">{detail.radar.length}</span>
                 </div>
                 <DataTable
-                  headers={["Target Business", "Website", "Competitors Found", "Radius", "Run Date"]}
-                  empty="No radar analyses yet."
+                  headers={[t("telemetry.target_business"), t("telemetry.website"), t("telemetry.competitors_found"), t("telemetry.radius"), t("telemetry.run_date")]}
+                  empty={t("telemetry.no_radar")}
                   rows={detail.radar.map(r => [
                     <span className="font-semibold">{r.target_name}</span>,
                     <span className="text-xs text-slate-400">{r.target_website}</span>,
@@ -338,12 +339,12 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
             {tab === "emails" && (
               <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 bg-orange-50/40 dark:bg-orange-900/10 flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-orange-500" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">Email Agent</h3>
+                  <Mail className="w-4 h-4 text-orange-500" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">{t("telemetry.email_agent")}</h3>
                   <span className="ml-auto text-xs font-black bg-orange-100 dark:bg-orange-900/30 text-orange-600 px-2 py-0.5 rounded-full">{detail.emails.length}</span>
                 </div>
                 <DataTable
-                  headers={["Sent To", "Subject", "Status", "Sent At"]}
-                  empty="No emails sent via Email Agent yet."
+                  headers={[t("telemetry.sent_to"), t("telemetry.subject"), t("telemetry.status"), t("telemetry.sent_at")]}
+                  empty={t("telemetry.no_emails")}
                   rows={detail.emails.map(e => [
                     <span className="text-xs text-slate-500">{e.to}</span>,
                     <span className="font-semibold max-w-xs truncate block">{e.subject}</span>,
@@ -358,12 +359,12 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
             {tab === "meetings" && (
               <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 bg-emerald-50/40 dark:bg-emerald-900/10 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-emerald-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">Meetings</h3>
+                  <Calendar className="w-4 h-4 text-emerald-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">{t("telemetry.meetings")}</h3>
                   <span className="ml-auto text-xs font-black bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 px-2 py-0.5 rounded-full">{detail.meetings?.length || 0}</span>
                 </div>
                 <DataTable
-                  headers={["Title", "Status", "Scheduled At"]}
-                  empty="No meetings scheduled yet."
+                  headers={[t("telemetry.title"), t("telemetry.status"), t("telemetry.scheduled_at")]}
+                  empty={t("telemetry.no_meetings")}
                   rows={(detail.meetings || []).map(m => [
                     <span className="font-semibold">{m.title}</span>,
                     <Badge text={m.status} color="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400" />,
@@ -377,12 +378,12 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
             {tab === "calls" && (
               <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 bg-green-50/40 dark:bg-green-900/10 flex items-center gap-2">
-                  <PhoneCall className="w-4 h-4 text-green-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">Calls / Pitches</h3>
+                  <PhoneCall className="w-4 h-4 text-green-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">{t("telemetry.calls_pitches")}</h3>
                   <span className="ml-auto text-xs font-black bg-green-100 dark:bg-green-900/30 text-green-600 px-2 py-0.5 rounded-full">{detail.calls?.length || 0}</span>
                 </div>
                 <DataTable
-                  headers={["Phone", "Duration", "Summary", "Logged At"]}
-                  empty="No calls logged yet."
+                  headers={[t("telemetry.phone"), t("telemetry.duration"), t("telemetry.summary"), t("telemetry.logged_at")]}
+                  empty={t("telemetry.no_calls")}
                   rows={(detail.calls || []).map(c => [
                     <span className="font-semibold">{c.phone}</span>,
                     <span className="text-xs text-slate-500">{c.duration}s</span>,
@@ -397,12 +398,12 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
             {tab === "projects" && (
               <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 bg-blue-50/40 dark:bg-blue-900/10 flex items-center gap-2">
-                  <Folder className="w-4 h-4 text-blue-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">Projects</h3>
+                  <Folder className="w-4 h-4 text-blue-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">{t("telemetry.projects")}</h3>
                   <span className="ml-auto text-xs font-black bg-blue-100 dark:bg-blue-900/30 text-blue-600 px-2 py-0.5 rounded-full">{detail.projects?.length || 0}</span>
                 </div>
                 <DataTable
-                  headers={["Project Name", "Status", "Progress"]}
-                  empty="No projects created yet."
+                  headers={[t("telemetry.project_name"), t("telemetry.status"), t("telemetry.progress")]}
+                  empty={t("telemetry.no_projects")}
                   rows={(detail.projects || []).map(p => [
                     <span className="font-semibold">{p.name}</span>,
                     <Badge text={p.status} color="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" />,
@@ -416,12 +417,12 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
             {tab === "team" && (
               <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 bg-fuchsia-50/40 dark:bg-fuchsia-900/10 flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-fuchsia-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">Team Members</h3>
+                  <UserCheck className="w-4 h-4 text-fuchsia-600" /><h3 className="font-bold text-slate-800 dark:text-zinc-100">{t("telemetry.team_members")}</h3>
                   <span className="ml-auto text-xs font-black bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-600 px-2 py-0.5 rounded-full">{detail.team_members?.length || 0}</span>
                 </div>
                 <DataTable
-                  headers={["Name", "Email", "Role"]}
-                  empty="No team members added yet."
+                  headers={[t("telemetry.name"), t("telemetry.email"), t("telemetry.role")]}
+                  empty={t("telemetry.no_team")}
                   rows={(detail.team_members || []).map(u => [
                     <span className="font-semibold">{u.name}</span>,
                     <span className="text-xs text-slate-400">{u.email}</span>,
@@ -440,6 +441,7 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
 // ─── Account Grid ─────────────────────────────────────────────────────────────
 function AccountGrid({ onSelect }: { onSelect: (a: DemoAccount) => void }) {
   const { user } = useRole();
+  const { t } = useLanguage();
   const [accounts, setAccounts] = useState<DemoAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -472,7 +474,7 @@ function AccountGrid({ onSelect }: { onSelect: (a: DemoAccount) => void }) {
             <Users className="w-6 h-6 text-indigo-600" />
           </div>
           <div>
-            <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">Total Demo Accounts</p>
+            <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">{t("telemetry.total_demo_accounts")}</p>
             <p className="text-2xl font-black text-slate-800 dark:text-zinc-100">{loading ? "—" : accounts.length}</p>
           </div>
         </div>
@@ -481,7 +483,7 @@ function AccountGrid({ onSelect }: { onSelect: (a: DemoAccount) => void }) {
             <CheckCircle2 className="w-6 h-6 text-green-600" />
           </div>
           <div>
-            <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">Active This Week</p>
+            <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">{t("telemetry.active_this_week")}</p>
             <p className="text-2xl font-black text-slate-800 dark:text-zinc-100">
               {loading ? "—" : accounts.filter(a => {
                 const d = new Date(a.created_at);
@@ -495,8 +497,8 @@ function AccountGrid({ onSelect }: { onSelect: (a: DemoAccount) => void }) {
             <Activity className="w-6 h-6 text-blue-600" />
           </div>
           <div>
-            <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">Click to view details</p>
-            <p className="text-sm font-semibold text-blue-500">Clients, Leads, Radar...</p>
+            <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">{t("telemetry.click_to_view")}</p>
+            <p className="text-sm font-semibold text-blue-500">{t("telemetry.clients_leads_radar")}</p>
           </div>
         </div>
       </div>
@@ -505,7 +507,7 @@ function AccountGrid({ onSelect }: { onSelect: (a: DemoAccount) => void }) {
       <div className="flex gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..."
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("telemetry.search_name_email")}
             className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-zinc-100" />
         </div>
         <button onClick={load} className="p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all text-slate-500">
@@ -515,12 +517,12 @@ function AccountGrid({ onSelect }: { onSelect: (a: DemoAccount) => void }) {
 
       {/* Cards */}
       {loading ? (
-        <div className="py-20 text-center"><Activity className="w-8 h-8 animate-pulse mx-auto mb-3 text-indigo-400 opacity-60" /><p className="text-slate-500">Loading demo accounts...</p></div>
+        <div className="py-20 text-center"><Activity className="w-8 h-8 animate-pulse mx-auto mb-3 text-indigo-400 opacity-60" /><p className="text-slate-500">{t("telemetry.loading_accounts")}</p></div>
       ) : filtered.length === 0 ? (
         <div className="py-20 text-center text-slate-500">
           <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p className="font-semibold">No demo accounts yet.</p>
-          <p className="text-sm mt-1">Share the signup link to get demo users onboard.</p>
+          <p className="font-semibold">{t("telemetry.no_demo_accounts")}</p>
+          <p className="text-sm mt-1">{t("telemetry.no_demo_accounts_desc")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -556,6 +558,7 @@ function AccountGrid({ onSelect }: { onSelect: (a: DemoAccount) => void }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function DemoAccountsDashboard() {
   const { user } = useRole();
+  const { t } = useLanguage();
   const [selected, setSelected] = useState<DemoAccount | null>(null);
 
   if (user?.role === "Demo") {
@@ -565,8 +568,8 @@ export default function DemoAccountsDashboard() {
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center mx-auto mb-4 shadow-lg">
             <Activity className="w-8 h-8 text-white" />
           </div>
-          <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">Access Restricted</h2>
-          <p className="text-slate-500 text-sm">This page is only available to Admin accounts.</p>
+          <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">{t("telemetry.access_restricted")}</h2>
+          <p className="text-slate-500 text-sm">{t("telemetry.access_restricted_desc")}</p>
         </div>
       </div>
     );
@@ -580,8 +583,8 @@ export default function DemoAccountsDashboard() {
           <Users className="w-6 h-6 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-black text-slate-800 dark:text-zinc-100">Demo Accounts</h1>
-          <p className="text-sm text-slate-500 dark:text-zinc-400">Track and monitor all demo users and their activity</p>
+          <h1 className="text-2xl font-black text-slate-800 dark:text-zinc-100">{t("telemetry.demo_accounts")}</h1>
+          <p className="text-sm text-slate-500 dark:text-zinc-400">{t("telemetry.subtitle")}</p>
         </div>
       </div>
 

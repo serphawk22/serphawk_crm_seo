@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Plus, X, AlignLeft, Calendar, User, GitBranch, Link as LinkIcon, History, Clock, FileText, ArrowDownAZ } from "lucide-react";
+import { Plus, X, AlignLeft, Calendar, User, GitBranch, Link as LinkIcon, History, Clock, FileText, ArrowDownAZ, ArrowRight, ArrowLeft } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
@@ -42,6 +42,7 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
   const [activeTab, setActiveTab] = useState<'details'|'history'|'notes'>('details');
   const [selectedTicket, setSelectedTicket] = useState<ProjectTicket | null>(null);
   const [sortOption, setSortOption] = useState<'newest'|'oldest'|'fastest'|'longest'>('newest');
+  const [teamMembers, setTeamMembers] = useState<{id: number; name: string; email: string}[]>([]);
   
   const [revertPrompt, setRevertPrompt] = useState<{isOpen: boolean; ticketId?: number; task?: string; newStatus?: string; reason: string}>({isOpen: false, reason: ""});
 
@@ -76,6 +77,19 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     fetchTickets();
+    // Fetch project team members for the assignee dropdown
+    fetch(`${API_BASE_URL}/projects/${projectId}`)
+      .then(r => r.json())
+      .then(d => {
+        const team = d.team || {};
+        const all = [
+          ...(team.employees || []),
+          ...(team.interns || []),
+          ...(team.projectMembers || []),
+        ];
+        setTeamMembers(all);
+      })
+      .catch(() => {});
   }, [projectId]);
 
   const sortedTickets = useMemo(() => {
@@ -232,14 +246,14 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
       </div>
 
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start overflow-x-auto pb-4">
+        <div className="flex gap-4 items-stretch overflow-x-auto pb-4 snap-x">
           {KANBAN_COLUMNS.map(col => (
             <Droppable key={col} droppableId={col}>
               {(provided) => (
                 <div 
                   ref={provided.innerRef} 
                   {...provided.droppableProps}
-                  className="bg-slate-100 dark:bg-zinc-900/50 p-4 rounded-3xl min-h-[500px] min-w-[300px]"
+                  className="bg-slate-100 dark:bg-zinc-900/50 p-4 rounded-3xl min-h-[500px] min-w-[320px] w-[320px] shrink-0 snap-start flex flex-col"
                 >
                   <h4 className="text-sm font-black text-slate-500 dark:text-zinc-400 mb-4 px-2 uppercase tracking-widest flex items-center justify-between">
                     {col}
@@ -248,7 +262,7 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                     </span>
                   </h4>
                   
-                  <div className="space-y-3">
+                  <div className="space-y-3 flex-1 h-full">
                     {sortedTickets.filter(t => t.current_state === col).map((ticket, index) => (
                       <Draggable key={ticket.id} draggableId={String(ticket.id)} index={index}>
                         {(provided) => (
@@ -259,11 +273,40 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                             onClick={() => openTicket(ticket)}
                             className="bg-white dark:bg-zinc-900 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-zinc-800 cursor-pointer hover:shadow-md transition-all group"
                           >
-                            {ticket.category && (
-                              <span className="inline-block px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold rounded-md mb-2">
-                                {ticket.category}
-                              </span>
-                            )}
+                            <div className="flex items-center justify-between mb-2">
+                              {ticket.category && (
+                                <span className="inline-block px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold rounded-md">
+                                  {ticket.category}
+                                </span>
+                              )}
+                              <div className="flex gap-1 ml-auto" onClick={(e) => e.stopPropagation()}>
+                                {KANBAN_COLUMNS.indexOf(ticket.current_state) > 0 && (
+                                  <button 
+                                    onClick={() => {
+                                      const prevStatus = KANBAN_COLUMNS[KANBAN_COLUMNS.indexOf(ticket.current_state) - 1];
+                                      if (ticket.current_state === 'Given to QA' && prevStatus === 'In Dev') {
+                                        setRevertPrompt({ isOpen: true, ticketId: ticket.id, task: ticket.task, newStatus: prevStatus, reason: "" });
+                                      } else {
+                                        executeStatusUpdate(ticket.id!, prevStatus, ticket);
+                                      }
+                                    }}
+                                    className="p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition-colors"
+                                    title="Move left"
+                                  >
+                                    <ArrowLeft size={14} />
+                                  </button>
+                                )}
+                                {KANBAN_COLUMNS.indexOf(ticket.current_state) < KANBAN_COLUMNS.length - 1 && (
+                                  <button 
+                                    onClick={() => executeStatusUpdate(ticket.id!, KANBAN_COLUMNS[KANBAN_COLUMNS.indexOf(ticket.current_state) + 1], ticket)}
+                                    className="p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition-colors"
+                                    title="Move right"
+                                  >
+                                    <ArrowRight size={14} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
                             <h5 className="font-bold text-slate-900 dark:text-zinc-100 text-sm mb-2">{ticket.task}</h5>
                             
                             {ticket.competitor && (
@@ -386,8 +429,21 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                 <div className="space-y-5 bg-slate-50/50 dark:bg-zinc-900/30 p-6 rounded-3xl border border-slate-100 dark:border-zinc-800/50">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Owner Name</label>
-                      <input type="text" value={form.current_owner || ''} onChange={e => setForm({...form, current_owner: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Assign To (Owner)</label>
+                      {teamMembers.length > 0 ? (
+                        <select
+                          value={form.current_owner || ''}
+                          onChange={e => setForm({...form, current_owner: e.target.value})}
+                          className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                        >
+                          <option value="">— Unassigned —</option>
+                          {teamMembers.map(m => (
+                            <option key={m.id} value={m.name}>{m.name} ({m.email})</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input type="text" value={form.current_owner || ''} onChange={e => setForm({...form, current_owner: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="No team members yet — type name" />
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Owner Role</label>

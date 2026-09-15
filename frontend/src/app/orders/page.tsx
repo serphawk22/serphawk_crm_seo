@@ -3,16 +3,18 @@
 import { useState } from "react";
 import SalesOrders from "./SalesOrders";
 import PurchaseOrders from "./PurchaseOrders";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function OrdersPage() {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<"sales" | "purchase">("sales");
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 dark:bg-black rounded-3xl p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">Orders</h1>
-          <p className="text-gray-500 dark:text-zinc-400 font-medium">Manage your sales and purchase orders.</p>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">{t("orders.title")}</h1>
+          <p className="text-gray-500 dark:text-zinc-400 font-medium">{t("orders.subtitle")}</p>
         </div>
       </div>
 
@@ -25,7 +27,7 @@ export default function OrdersPage() {
               : "text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-300"
           }`}
         >
-          Sales Orders
+          {t("orders.sales_orders")}
         </button>
         <button
           onClick={() => setActiveTab("purchase")}
@@ -35,7 +37,7 @@ export default function OrdersPage() {
               : "text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-300"
           }`}
         >
-          Purchase Orders
+          {t("orders.purchase_orders")}
         </button>
       </div>
 

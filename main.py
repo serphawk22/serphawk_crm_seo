@@ -708,113 +708,171 @@ class SmartResearchRequest(BaseModel):
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest, session: Session = Depends(get_session)):
     """
-    Takes a company name (and optional URL) and forwards the request to the N8N webhook.
-    Returns the exact JSON response from N8N.
+    Researches a company by scraping their website and using OpenAI to:
+    1. Extract contact details, emails, socials from the website
+    2. Analyze the company (industry, what they do, ICPs)
+    3. Generate a personalized bilingual email draft (English + Spanish)
+
+    No N8N dependency — runs fully on the internal scraper + LLM pipeline.
     """
     check_tenant_limit(session, "emails")
-    import os
-    import httpx
+    from modules.scraper import scrape_website
+    from modules.llm_engine import analyze_content, generate_email
+    from modules.fallback_analyzer import analyze_company_name_fallback
 
-    webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "http://localhost:5678/webhook-test/your-webhook-id")
+    company_name = body.company_name or ""
+    company_url = body.company_url or ""
+    owner_name = body.owner_name or "Varshith"
 
-    payload = {
-        "event": "research",
-        "company_name": body.company_name,
-        "company_url": body.company_url,
-        "client_id": body.client_id,
-        "owner_name": body.owner_name
+    # Ensure URL has a scheme
+    url = company_url.strip()
+    if url and not url.startswith("http"):
+        url = "https://" + url
+
+    print(f"[smart-research] Starting for: {company_name} | {url}")
+
+    # ── Step 1: Scrape the website ──────────────────────────────────────────
+    scraped_text = ""
+    if url:
+        try:
+            scraped_text = await scrape_website(url)
+            if scraped_text.startswith("ERROR"):
+                print(f"[smart-research] Scrape failed, falling back to LLM-only: {scraped_text}")
+                scraped_text = ""
+        except Exception as e:
+            print(f"[smart-research] Scrape exception: {e}")
+            scraped_text = ""
+
+    # ── Step 2: Analyze company with OpenAI ────────────────────────────────
+    analysis = {}
+    if scraped_text:
+        try:
+            analysis = analyze_content(scraped_text)
+        except Exception as e:
+            print(f"[smart-research] analyze_content failed: {e}")
+
+    if not analysis or not analysis.get("company_name"):
+        # Fallback: ask GPT to infer from company name alone
+        try:
+            from modules.fallback_analyzer import analyze_company_name_fallback
+            analysis = analyze_company_name_fallback(company_name or url)
+        except Exception as e:
+            print(f"[smart-research] fallback analysis failed: {e}")
+            analysis = {
+                "company_name": company_name,
+                "summary": "",
+                "what_they_do": "",
+                "likely_industry": "",
+                "business_model": "",
+                "estimated_size": "",
+                "target_market": "",
+                "geographic_presence": "",
+                "contacts": [],
+                "extracted_emails": [],
+                "extracted_phone_numbers": "",
+                "company_social_media": {},
+                "key_value_props": []
+            }
+
+    # Ensure company_name is always set
+    if not analysis.get("company_name"):
+        analysis["company_name"] = company_name
+
+    # ── Step 3: Pick best contact + emails ────────────────────────────────
+    contacts = analysis.get("contacts") or []
+    primary_contact = contacts[0] if contacts else {}
+
+    extracted_emails = analysis.get("extracted_emails") or []
+    if isinstance(extracted_emails, str):
+        extracted_emails = [e.strip() for e in extracted_emails.split(",") if e.strip()]
+    extracted_emails_str = ", ".join(extracted_emails)
+
+    # ── Step 4: Determine recommended services ────────────────────────────
+    key_props = analysis.get("key_value_props") or []
+    # Map to SERP Hawk services based on what the company does / their gaps
+    recommended_services = []
+    service_map = {
+        "seo": {"service_name": "Organic SEO", "why_relevant": "Improve organic search rankings", "expected_impact": "More organic traffic and leads"},
+        "local": {"service_name": "Local SEO", "why_relevant": "Dominate local search & Google Maps", "expected_impact": "Higher local visibility"},
+        "ads": {"service_name": "Google Ads", "why_relevant": "Targeted PPC campaigns", "expected_impact": "Faster lead generation"},
+        "social": {"service_name": "Social Media Marketing", "why_relevant": "Build brand presence", "expected_impact": "Audience engagement"},
+        "web": {"service_name": "Web Development", "why_relevant": "Modern, fast website", "expected_impact": "Better conversions"},
+        "content": {"service_name": "Content Marketing", "why_relevant": "Quality content drives authority", "expected_impact": "SEO + brand trust"},
     }
+    # Default: always suggest SEO + Web Dev as starting point
+    recommended_services = [
+        {"service_name": "Organic SEO", "why_relevant": "Boost search visibility", "expected_impact": "More organic leads"},
+        {"service_name": "Web Development", "why_relevant": "Modern performant website", "expected_impact": "Better user experience & conversions"},
+    ]
 
+    # ── Step 5: Generate personalized email draft ─────────────────────────
+    draft = {}
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(webhook_url, json=payload, timeout=60.0)
-            
-            if response.status_code != 200:
-                print(f"N8N Webhook Error: {response.status_code} - {response.text}")
-                return {
-                    "company_info": {"company_name": body.company_name, "summary": f"N8N Webhook Error {response.status_code}. Please make sure you are listening for test events in n8n."},
-                    "contact": {"email": "test@example.com"},
-                    "draft": {"subject": "Test Draft", "english_body": "N8N Webhook Error occurred. Workflow not started."},
-                    "recommended_services": [],
-                    "extracted_services": []
-                }
-            
-            # If successful, handle JSON decoding properly
-            try:
-                data = response.json()
-            except Exception as e:
-                print(f"Failed to parse JSON from N8N: {e}")
-                data = {}
-                
-            # If N8N returns custom fields (like emails, phone, cold_email_english), map them to expected schema
-            if "emails" in data or "cold_email_english" in data or "company_services" in data:
-                raw_english = data.get("cold_email_english", "")
-                raw_spanish = data.get("cold_email_spanish", "")
-                
-                subject = "Growth Partnership"
-                if raw_english.startswith("Subject:"):
-                    parts = raw_english.split("\n\n", 1)
-                    if len(parts) == 2:
-                        subject = parts[0].replace("Subject:", "").strip()
-                        raw_english = parts[1].strip()
-                        
-                if raw_spanish.startswith("Asunto:"):
-                    parts = raw_spanish.split("\n\n", 1)
-                    if len(parts) == 2:
-                        raw_spanish = parts[1].strip()
-
-                socials = data.get("social_links", {})
-                linkedin = socials.get("linkedin", "") if isinstance(socials, dict) else ""
-                twitter = socials.get("twitter", "") if isinstance(socials, dict) else ""
-                
-                company_info = data.get("company_info", {})
-                company_info["company_name"] = body.company_name
-                company_info["extracted_emails"] = data.get("emails", "")
-                company_info["extracted_phone_numbers"] = data.get("phone", "")
-                company_info["linkedin"] = linkedin
-                company_info["company_social_media"] = {
-                    "linkedin": linkedin,
-                    "twitter": twitter,
-                    "instagram": socials.get("instagram", "") if isinstance(socials, dict) else "",
-                    "facebook": socials.get("facebook", "") if isinstance(socials, dict) else ""
-                }
-                
-                return {
-                    "company_info": company_info,
-                    "contact": {
-                        "email": data.get("emails", ""),
-                        "phone_number": data.get("phone", ""),
-                        "linkedin": linkedin,
-                        "twitter": twitter,
-                        "name": ""
-                    },
-                    "draft": {
-                        "subject": subject,
-                        "english_body": raw_english,
-                        "spanish_body": raw_spanish
-                    },
-                    "recommended_services": data.get("company_services", []),
-                    "extracted_services": data.get("extracted_services", [])
-                }
-
-            # Fill in defaults if N8N returns an empty or old format response
-            if "company_info" not in data:
-                data["company_info"] = {"company_name": body.company_name, "summary": "N8N didn't return the expected JSON format."}
-            if "contact" not in data:
-                data["contact"] = {"email": "test@example.com", "name": "Test Prospect"}
-            if "draft" not in data:
-                data["draft"] = {"subject": "Automated Draft", "english_body": "Your N8N workflow executed successfully."}
-                
-            return data
+        draft = generate_email(
+            analysis=analysis,
+            contact=primary_contact if primary_contact else None,
+            recommended_services=recommended_services,
+            owner_name=owner_name
+        )
     except Exception as e:
-        print(f"Webhook Exception: {e}")
-        return {
-            "company_info": {"company_name": body.company_name, "summary": f"Webhook Exception: {e}"},
-            "contact": {"email": ""},
-            "draft": {"subject": "", "english_body": ""},
-            "recommended_services": [],
-            "extracted_services": []
+        print(f"[smart-research] generate_email failed: {e}")
+        draft = {
+            "subject": f"Quick question about {analysis.get('company_name', company_name)}",
+            "english_body": f"Hi there,\n\nI came across {analysis.get('company_name', company_name)} and wanted to reach out about how we could help grow your online presence.\n\nWould you be open to a quick 15-minute call?\n\nBest regards,\n{owner_name} | SERP Hawk Digital Agency",
+            "spanish_body": "",
+            "whatsapp_draft": ""
         }
+
+    # ── Step 6: Save result to DB (best-effort) ──────────────────────────
+    db_id = None
+    try:
+        from models import EmailAgentResult
+        result_record = EmailAgentResult(
+            company_name=analysis.get("company_name", company_name),
+            company_url=url or company_url,
+            result_json=json.dumps({
+                "company_info": analysis,
+                "contact": primary_contact,
+                "draft": draft,
+                "recommended_services": recommended_services,
+            }),
+            tenant_id=current_tenant_id.get()
+        )
+        session.add(result_record)
+        session.commit()
+        session.refresh(result_record)
+        db_id = result_record.id
+    except Exception as e:
+        print(f"[smart-research] DB save skipped: {e}")
+
+    # ── Step 7: Return full structured response ──────────────────────────
+    return {
+        "db_id": db_id,
+        "company_url": url or company_url,
+        "company_info": {
+            "company_name": analysis.get("company_name", company_name),
+            "summary": analysis.get("summary") or analysis.get("what_they_do") or "",
+            "what_they_do": analysis.get("what_they_do", ""),
+            "likely_industry": analysis.get("likely_industry", ""),
+            "industry": analysis.get("likely_industry", ""),
+            "business_model": analysis.get("business_model", ""),
+            "estimated_size": analysis.get("estimated_size", ""),
+            "target_market": analysis.get("target_market", ""),
+            "geographic_presence": analysis.get("geographic_presence", ""),
+            "best_conversion_opportunity": analysis.get("best_conversion_opportunity", ""),
+            "sales_follow_up_focus": analysis.get("sales_follow_up_focus", ""),
+            "extracted_emails": extracted_emails,
+            "extracted_phone_numbers": analysis.get("extracted_phone_numbers", ""),
+            "linkedin": analysis.get("extracted_linkedin") or (analysis.get("company_social_media") or {}).get("linkedin", ""),
+            "website": url or company_url,
+            "company_social_media": analysis.get("company_social_media") or {},
+            "contacts": contacts,
+        },
+        "contact": primary_contact,
+        "draft": draft,
+        "recommended_services": recommended_services,
+        "extracted_services": key_props,
+    }
 
 # --- Send Manual: create client + record email + activity ---
 class SendManualRequest(BaseModel):
@@ -9838,6 +9896,26 @@ def list_products(category: Optional[str] = None, active_only: bool = False, ses
     products = session.exec(q).all()
     return {"products": [p.model_dump() for p in products]}
 
+
+
+@app.post("/products/export-pdf")
+def export_products_pdf(body: dict = {}, session: Session = Depends(get_session)):
+    """Export all catalog products as a downloadable PDF."""
+    from modules.pdf_export import catalog_pdf, send_pdf_email
+    from fastapi.responses import Response
+    products = session.exec(select(Product).order_by(Product.name)).all()
+    rows = [p.model_dump() for p in products]
+    pdf_bytes = catalog_pdf(rows)
+    recipient = (body or {}).get("email") if isinstance(body, dict) else None
+    if recipient:
+        try:
+            send_pdf_email(recipient, "Product Catalog – SERPHAWK", "Please find the catalog PDF attached.", pdf_bytes, "catalog.pdf", "Product Catalog")
+            return {"ok": True, "message": f"PDF sent to {recipient}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=catalog.pdf"})
+
 @app.post("/products")
 def create_product(body: ProductCreateRequest, session: Session = Depends(get_session)):
     p = Product(**body.model_dump())
@@ -10269,6 +10347,37 @@ def _so_dict(o: SalesOrder, session: Session) -> dict:
     d["client_name"] = client.companyName if client else None
     return d
 
+
+
+@app.post("/sales-orders/export-pdf")
+def export_sales_orders_pdf(body: dict = {}, session: Session = Depends(get_session)):
+    """Export all sales orders as a downloadable PDF."""
+    from modules.pdf_export import sales_order_pdf, send_pdf_email
+    from fastapi.responses import Response
+    orders = session.exec(select(SalesOrder).order_by(SalesOrder.created_at.desc())).all()
+    rows = []
+    for o in orders:
+        client_name = None
+        if o.client_id:
+            c = session.get(Client, o.client_id)
+            if c: client_name = c.name
+        rows.append({
+            "order_number": o.order_number, "client_name": client_name or o.lead_name or "—",
+            "grand_total": float(o.grand_total or 0), "currency": o.currency,
+            "status": o.status, "delivery_date": str(o.delivery_date or ""),
+            "created_at": o.created_at.isoformat() if o.created_at else ""
+        })
+    pdf_bytes = sales_order_pdf(rows)
+    recipient = (body or {}).get("email") if isinstance(body, dict) else None
+    if recipient:
+        try:
+            send_pdf_email(recipient, "Sales Orders – SERPHAWK", "Please find the sales orders PDF attached.", pdf_bytes, "sales_orders.pdf")
+            return {"ok": True, "message": f"PDF sent to {recipient}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=sales_orders.pdf"})
+
 @app.post("/sales-orders")
 def create_sales_order(body: SalesOrderCreateRequest, session: Session = Depends(get_session)):
     import random, string
@@ -10323,6 +10432,32 @@ def list_purchase_orders(status: Optional[str] = None, session: Session = Depend
         q = q.where(PurchaseOrder.status == status)
     orders = session.exec(q).all()
     return {"orders": [o.model_dump() for o in orders]}
+
+
+
+@app.post("/purchase-orders/export-pdf")
+def export_purchase_orders_pdf(body: dict = {}, session: Session = Depends(get_session)):
+    """Export all purchase orders as a downloadable PDF."""
+    from modules.pdf_export import purchase_order_pdf, send_pdf_email
+    from fastapi.responses import Response
+    orders = session.exec(select(PurchaseOrder).order_by(PurchaseOrder.created_at.desc())).all()
+    rows = [
+        {"po_number": o.po_number, "vendor_name": o.vendor_name, "vendor_email": o.vendor_email,
+         "grand_total": float(o.grand_total or 0), "currency": o.currency, "status": o.status,
+         "expected_delivery": str(o.expected_delivery or ""),
+         "created_at": o.created_at.isoformat() if o.created_at else ""}
+        for o in orders
+    ]
+    pdf_bytes = purchase_order_pdf(rows)
+    recipient = (body or {}).get("email") if isinstance(body, dict) else None
+    if recipient:
+        try:
+            send_pdf_email(recipient, "Purchase Orders – SERPHAWK", "Please find the purchase orders PDF attached.", pdf_bytes, "purchase_orders.pdf")
+            return {"ok": True, "message": f"PDF sent to {recipient}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=purchase_orders.pdf"})
 
 @app.post("/purchase-orders")
 def create_purchase_order(body: PurchaseOrderCreateRequest, session: Session = Depends(get_session)):
@@ -11886,6 +12021,31 @@ def get_inventory(session: Session = Depends(get_session)):
             ]
         })
     return {"items": result, "total": len(result)}
+
+
+
+@app.post("/inventory/export-pdf")
+def export_inventory_pdf(body: dict = {}, email: Optional[str] = None, session: Session = Depends(get_session)):
+    """Export all inventory items as a downloadable PDF, or send via email if email param provided."""
+    from modules.pdf_export import inventory_pdf, send_pdf_email
+    from fastapi.responses import Response
+    items = session.exec(select(InventoryItem).order_by(InventoryItem.name)).all()
+    rows = [
+        {"id": it.id, "code": it.code, "name": it.name, "category": it.category,
+         "current_stock": it.current_stock, "min_stock": it.min_stock,
+         "unit": it.unit, "description": it.description, "photo_url": it.photo_url}
+        for it in items
+    ]
+    pdf_bytes = inventory_pdf(rows)
+    recipient = (body or {}).get("email") if isinstance(body, dict) else None
+    if recipient:
+        try:
+            send_pdf_email(recipient, "Inventory Export – SERPHAWK", "Please find the inventory PDF attached.", pdf_bytes, "inventory.pdf", "Inventory Export")
+            return {"ok": True, "message": f"PDF sent to {recipient}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=inventory.pdf"})
 
 @app.post("/inventory")
 def create_inventory_item(data: InventoryItemCreate, session: Session = Depends(get_session)):

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import Link from "next/link";
+import { useLanguage } from "@/context/LanguageContext";
 
 // ─── Category color map ──────────────────────────────────────────────────────
 const CATEGORY_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
@@ -60,6 +61,8 @@ interface MarketplaceService {
 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 export default function MarketplacePage() {
+  const { t } = useLanguage();
+
   const [services, setServices] = useState<MarketplaceService[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [clients, setClients] = useState<{ id: number; companyName: string }[]>([]);
@@ -164,7 +167,7 @@ export default function MarketplacePage() {
 
   // ── Delete ──────────────────────────────────────────────────────────────────
   const handleDelete = async (id: number) => {
-    if (!confirm("Remove this service from the marketplace?")) return;
+    if (!confirm(t("marketplace.confirm_remove"))) return;
     await fetch(`${API_BASE_URL}/marketplace/services/${id}`, { method: "DELETE" });
     setServices(prev => prev.filter(s => s.id !== id));
     setTotal(t => t - 1);
@@ -193,22 +196,22 @@ export default function MarketplacePage() {
             <Store className="w-7 h-7 text-indigo-300" />
           </div>
           <div>
-            <h1 className="text-2xl font-black tracking-tight">Marketplace Catalog</h1>
+            <h1 className="text-2xl font-black tracking-tight">{t("marketplace.catalog_title")}</h1>
             <p className="text-indigo-300 text-sm font-medium mt-0.5">
-              Discover services offered by all clients in your CRM network
+              {t("marketplace.catalog_desc")}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <span className="px-3 py-1.5 bg-white dark:bg-zinc-900/10 rounded-xl text-xs font-bold text-indigo-200 border border-white/10">
-            {total} Services
+            {total} {t("marketplace.services")}
           </span>
           <motion.button
             whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
             onClick={() => setShowAddModal(true)}
             className="flex items-center gap-2 px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 rounded-xl text-sm font-black transition-colors shadow-lg shadow-indigo-900/40"
           >
-            <Plus className="w-4 h-4" /> Add Service
+            <Plus className="w-4 h-4" /> {t("marketplace.add_service")}
           </motion.button>
         </div>
       </div>
@@ -216,10 +219,10 @@ export default function MarketplacePage() {
       {/* ── KPI Stats ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { icon: Store, label: "Total Services", value: total, color: "text-indigo-500", bg: "bg-indigo-50" },
-          { icon: Tag, label: "Categories", value: categories.length, color: "text-violet-500", bg: "bg-violet-50" },
-          { icon: Building2, label: "Providers", value: providers, color: "text-emerald-500", bg: "bg-emerald-50" },
-          { icon: DollarSign, label: "Avg. Cost", value: avgCost > 0 ? `$${avgCost.toFixed(0)}` : "—", color: "text-amber-500", bg: "bg-amber-50" },
+          { icon: Store, label: t("marketplace.total_services"), value: total, color: "text-indigo-500", bg: "bg-indigo-50" },
+          { icon: Tag, label: t("marketplace.categories"), value: categories.length, color: "text-violet-500", bg: "bg-violet-50" },
+          { icon: Building2, label: t("marketplace.providers"), value: providers, color: "text-emerald-500", bg: "bg-emerald-50" },
+          { icon: DollarSign, label: t("marketplace.avg_cost"), value: avgCost > 0 ? `$${avgCost.toFixed(0)}` : "—", color: "text-amber-500", bg: "bg-amber-50" },
         ].map(({ icon: Icon, label, value, color, bg }) => (
           <motion.div key={label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm flex items-center gap-3">
@@ -238,7 +241,7 @@ export default function MarketplacePage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Search services, providers…"
+            placeholder={t("marketplace.search_services")}
             className="w-full pl-9 pr-4 py-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
           />
         </div>
@@ -246,20 +249,20 @@ export default function MarketplacePage() {
           value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setPage(1); }}
           className="px-3 py-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium min-w-[160px]"
         >
-          <option value="">All Categories</option>
+          <option value="">{t("marketplace.all_categories")}</option>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-400">Cost:</span>
-          <input type="number" value={minCost} onChange={e => { setMinCost(e.target.value); setPage(1); }} placeholder="Min $"
+          <span className="text-xs font-bold text-slate-400">{t("marketplace.cost")}:</span>
+          <input type="number" value={minCost} onChange={e => { setMinCost(e.target.value); setPage(1); }} placeholder={`${t("marketplace.min")} $`}
             className="w-20 px-3 py-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
           <span className="text-slate-300">–</span>
-          <input type="number" value={maxCost} onChange={e => { setMaxCost(e.target.value); setPage(1); }} placeholder="Max $"
+          <input type="number" value={maxCost} onChange={e => { setMaxCost(e.target.value); setPage(1); }} placeholder={`${t("marketplace.max")} $`}
             className="w-20 px-3 py-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
         </div>
         {hasFilters && (
           <button onClick={clearFilters} className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-bold text-slate-500 dark:text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors border border-slate-200 dark:border-zinc-700">
-            <X className="w-3.5 h-3.5" /> Clear
+            <X className="w-3.5 h-3.5" /> {t("marketplace.clear")}
           </button>
         )}
         {compareIds.length >= 2 && (
@@ -267,7 +270,7 @@ export default function MarketplacePage() {
             onClick={() => setShowCompareDrawer(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 text-white text-xs font-black rounded-xl hover:bg-violet-700 transition-colors shadow-md"
           >
-            <GitCompare className="w-3.5 h-3.5" /> Compare ({compareIds.length})
+            <GitCompare className="w-3.5 h-3.5" /> {t("marketplace.compare")} ({compareIds.length})
           </motion.button>
         )}
       </div>
@@ -276,18 +279,18 @@ export default function MarketplacePage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
-          <p className="text-sm font-bold text-slate-400">Loading marketplace…</p>
+          <p className="text-sm font-bold text-slate-400">{t("marketplace.loading")}</p>
         </div>
       ) : services.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-4 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl">
           <div className="p-4 bg-slate-50 dark:bg-zinc-950 rounded-2xl"><Store className="w-8 h-8 text-slate-300" /></div>
           <div className="text-center">
-            <p className="text-lg font-black text-slate-700 dark:text-zinc-200">No services found</p>
-            <p className="text-sm text-slate-400 mt-1">{hasFilters ? "Try clearing your filters." : "Add your first marketplace service."}</p>
+            <p className="text-lg font-black text-slate-700 dark:text-zinc-200">{t("marketplace.no_services")}</p>
+            <p className="text-sm text-slate-400 mt-1">{hasFilters ? t("marketplace.try_clearing") : t("marketplace.add_first_service")}</p>
           </div>
           {!hasFilters && (
             <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-black hover:bg-indigo-700 transition-colors">
-              <Plus className="w-4 h-4" /> Add First Service
+              <Plus className="w-4 h-4" /> {t("marketplace.add_first_service_btn")}
             </button>
           )}
         </div>
@@ -308,7 +311,7 @@ export default function MarketplacePage() {
                     <div className="flex items-start justify-between gap-2">
                       <CategoryBadge category={s.category} />
                       {s.source === "scraper" && (
-                        <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Auto</span>
+                        <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wider">{t("marketplace.auto")}</span>
                       )}
                     </div>
                     <div>
@@ -316,7 +319,7 @@ export default function MarketplacePage() {
                         {s.normalized_name || s.service_name}
                       </h3>
                       {s.normalized_name && s.normalized_name !== s.service_name && (
-                        <p className="text-[10px] text-slate-400 mt-0.5 font-medium">Raw: {s.service_name}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5 font-medium">{t("marketplace.raw")}: {s.service_name}</p>
                       )}
                     </div>
                     {s.description && (
@@ -349,11 +352,11 @@ export default function MarketplacePage() {
                         <div className="flex items-center gap-1.5">
                           <span className="text-base font-black text-slate-800 dark:text-zinc-100">${s.estimated_cost.toLocaleString()}</span>
                           {s.cost_is_estimated && (
-                            <span className="text-[9px] font-black text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Est.</span>
+                            <span className="text-[9px] font-black text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">{t("marketplace.est")}</span>
                           )}
                         </div>
                       ) : (
-                        <span className="text-xs font-bold text-slate-400">Price on request</span>
+                        <span className="text-xs font-bold text-slate-400">{t("marketplace.price_on_request")}</span>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -361,7 +364,7 @@ export default function MarketplacePage() {
                       <button
                         onClick={() => handleAICategorize(s.id)}
                         disabled={isCategorizing}
-                        title="AI Auto-Categorize"
+                        title={t("marketplace.ai_categorize")}
                         className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors disabled:opacity-50"
                       >
                         {isCategorizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
@@ -369,7 +372,7 @@ export default function MarketplacePage() {
                       {/* Compare toggle */}
                       <button
                         onClick={() => toggleCompare(s.id)}
-                        title={isCompared ? "Remove from compare" : "Add to compare"}
+                        title={isCompared ? t("marketplace.remove_from_compare") : t("marketplace.add_to_compare")}
                         className={`p-1.5 rounded-lg transition-colors ${isCompared ? "bg-violet-100 text-violet-600" : "hover:bg-slate-100 dark:bg-zinc-800 text-slate-400 hover:text-violet-600"}`}
                       >
                         <GitCompare className="w-3.5 h-3.5" />
@@ -377,7 +380,7 @@ export default function MarketplacePage() {
                       {/* Delete */}
                       <button
                         onClick={() => handleDelete(s.id)}
-                        title="Remove from marketplace"
+                        title={t("marketplace.remove_from_marketplace")}
                         className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -396,12 +399,12 @@ export default function MarketplacePage() {
         <div className="flex items-center justify-center gap-3">
           <button disabled={page <= 1} onClick={() => setPage(p => p - 1)}
             className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:bg-zinc-950 disabled:opacity-40 transition-colors">
-            <ChevronLeft className="w-4 h-4" /> Previous
+            <ChevronLeft className="w-4 h-4" /> {t("marketplace.previous")}
           </button>
-          <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">Page {page} of {totalPages}</span>
+          <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">{t("marketplace.page")} {page} {t("marketplace.of")} {totalPages}</span>
           <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}
             className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:bg-zinc-950 disabled:opacity-40 transition-colors">
-            Next <ChevronRight className="w-4 h-4" />
+            {t("marketplace.next")} <ChevronRight className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -420,8 +423,8 @@ export default function MarketplacePage() {
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-white dark:bg-zinc-900/20 rounded-xl"><Plus className="w-4 h-4 text-white" /></div>
                   <div>
-                    <h2 className="text-base font-black text-white">Add Marketplace Service</h2>
-                    <p className="text-xs text-indigo-200">Manually list a service from a CRM client</p>
+                    <h2 className="text-base font-black text-white">{t("marketplace.add_marketplace_service")}</h2>
+                    <p className="text-xs text-indigo-200">{t("marketplace.manually_list_service")}</p>
                   </div>
                 </div>
                 <button onClick={() => setShowAddModal(false)} className="text-white/60 hover:text-white transition-colors">
@@ -432,57 +435,57 @@ export default function MarketplacePage() {
               <div className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
-                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">Service Name *</label>
+                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">{t("marketplace.service_name")} *</label>
                     <input value={form.service_name} onChange={e => setForm(f => ({ ...f, service_name: e.target.value }))}
-                      placeholder="e.g., Local SEO Optimization"
+                      placeholder={t("marketplace.ph_local_seo")}
                       className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
                   </div>
                   <div>
-                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">Category</label>
+                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">{t("marketplace.category")}</label>
                     <input value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
                       list="categories-list" placeholder="e.g., SEO"
                       className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
                     <datalist id="categories-list">{categories.map(c => <option key={c} value={c} />)}</datalist>
                   </div>
                   <div>
-                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">Estimated Cost ($)</label>
+                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">{t("marketplace.estimated_cost")} ($)</label>
                     <input type="number" value={form.estimated_cost} onChange={e => setForm(f => ({ ...f, estimated_cost: e.target.value }))}
-                      placeholder="0 = on request"
+                      placeholder={t("marketplace.ph_on_request")}
                       className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">Description</label>
+                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">{t("marketplace.description")}</label>
                     <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                      placeholder="Brief description of the service…" rows={3}
+                      placeholder={t("marketplace.ph_description")} rows={3}
                       className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium resize-none" />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">Provider (CRM Client)</label>
+                    <label className="block text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">{t("marketplace.provider_crm_client")}</label>
                     <select value={form.provider_client_id} onChange={e => setForm(f => ({ ...f, provider_client_id: e.target.value }))}
                       className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium">
-                      <option value="">— Select a client (optional) —</option>
+                      <option value="">— {t("marketplace.select_client_optional")} —</option>
                       {clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}
                     </select>
-                    <p className="text-[10px] text-slate-400 mt-1">Or enter manually:</p>
+                    <p className="text-[10px] text-slate-400 mt-1">{t("marketplace.or_enter_manually")}</p>
                     <input value={form.provider_name} onChange={e => setForm(f => ({ ...f, provider_name: e.target.value }))}
-                      placeholder="Company name (if not in CRM)"
+                      placeholder={t("marketplace.ph_company_name")}
                       className="mt-1 w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
                   </div>
                 </div>
                 <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
                   <AlertCircle className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                  <p className="text-[10px] text-slate-400">After saving, click <strong className="text-indigo-600">✦ AI</strong> on the card to auto-assign category and estimate cost.</p>
+                  <p className="text-[10px] text-slate-400">{t("marketplace.after_saving")} <strong className="text-indigo-600">✦ AI</strong> {t("marketplace.after_saving_2")}</p>
                 </div>
               </div>
               {/* Modal Footer */}
               <div className="px-6 pb-6 flex items-center justify-end gap-3">
                 <button onClick={() => setShowAddModal(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:bg-zinc-800 rounded-xl transition-colors">
-                  Cancel
+                  {t("marketplace.cancel")}
                 </button>
                 <button onClick={handleAdd} disabled={!form.service_name.trim() || saving}
                   className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-black rounded-xl transition-colors disabled:opacity-50 shadow-md">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saveSuccess ? <CheckCircle2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                  {saving ? "Saving…" : saveSuccess ? "Saved!" : "Add Service"}
+                  {saving ? t("marketplace.saving") : saveSuccess ? t("marketplace.saved") : t("marketplace.add_service")}
                 </button>
               </div>
             </motion.div>
@@ -502,11 +505,11 @@ export default function MarketplacePage() {
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-violet-100 rounded-xl"><GitCompare className="w-4 h-4 text-violet-600" /></div>
-                  <h2 className="text-base font-black text-slate-800 dark:text-zinc-100">Comparing {compareServices.length} Services</h2>
+                  <h2 className="text-base font-black text-slate-800 dark:text-zinc-100">{t("marketplace.comparing_services")} {compareServices.length}</h2>
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => setCompareIds([])} className="text-xs font-bold text-slate-500 dark:text-zinc-400 hover:text-red-500 transition-colors px-3 py-1.5 hover:bg-red-50 rounded-lg">
-                    Clear All
+                    {t("marketplace.clear_all")}
                   </button>
                   <button onClick={() => setShowCompareDrawer(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:bg-zinc-800 text-slate-400 hover:text-slate-600 dark:text-zinc-300 transition-colors">
                     <X className="w-4 h-4" />
@@ -517,7 +520,7 @@ export default function MarketplacePage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 dark:border-zinc-800">
-                      <th className="text-left text-[10px] font-black text-slate-400 uppercase tracking-wider pb-3 pr-4 w-32">Field</th>
+                      <th className="text-left text-[10px] font-black text-slate-400 uppercase tracking-wider pb-3 pr-4 w-32">{t("marketplace.field")}</th>
                       {compareServices.map(s => (
                         <th key={s.id} className="text-left pb-3 px-4 font-black text-slate-700 dark:text-zinc-200 min-w-[200px]">
                           <div className="flex items-center gap-2">
@@ -532,8 +535,8 @@ export default function MarketplacePage() {
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {[
-                      { label: "Category", key: "category" as const, render: (s: MarketplaceService) => <CategoryBadge category={s.category} /> },
-                      { label: "Provider", key: "provider_name" as const, render: (s: MarketplaceService) => s.provider_name || "—" },
+                      { label: t("marketplace.category"), key: "category" as const, render: (s: MarketplaceService) => <CategoryBadge category={s.category} /> },
+                      { label: t("marketplace.provider"), key: "provider_name" as const, render: (s: MarketplaceService) => s.provider_name || "—" },
                       { label: "Industry", key: "provider_industry" as const, render: (s: MarketplaceService) => s.provider_industry || "—" },
                       { label: "Cost", key: "estimated_cost" as const, render: (s: MarketplaceService) => s.estimated_cost > 0 ? `$${s.estimated_cost.toLocaleString()}${s.cost_is_estimated ? " (Est.)" : ""}` : "On request" },
                       { label: "Description", key: "description" as const, render: (s: MarketplaceService) => s.description || "—" },

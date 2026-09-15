@@ -78,25 +78,39 @@ export default function RadarMap({ clientLat, clientLng, competitors, clientName
 
         {/* Competitor Markers */}
         {competitors.map((comp: any) => {
-          const icon = comp.type === 'direct' ? redIcon : comp.type === 'partial' ? orangeIcon : greenIcon;
+          const icon = comp.pin_color === 'red' ? redIcon : comp.pin_color === 'orange' ? orangeIcon : greenIcon;
           
           return (
-            <Marker key={comp.id} position={[comp.lat, comp.lng]} icon={icon}>
+            <Marker key={comp.place_id || comp.id} position={[comp.lat, comp.lng]} icon={icon}>
               <Popup className="custom-popup">
                 <div className="p-1 min-w-[200px]">
                   <h3 className="font-bold text-lg text-slate-800 mb-1">{comp.name}</h3>
-                  <div className="flex items-center gap-2 text-xs font-bold text-yellow-600 mb-2">
-                    {comp.rating} <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" /> ({comp.reviews} reviews)
-                  </div>
-                  <div className="text-xs text-slate-600 mb-2 border-l-2 border-indigo-200 pl-2">
-                    <span className="font-bold block mb-1">Services Match ({comp.similarity}%):</span>
-                    {comp.services.join(', ')}
-                  </div>
-                  <div className="text-xs font-bold text-indigo-600 mb-3">{comp.priceRange}</div>
+                  <div className="text-xs text-slate-500 mb-2">{comp.address}</div>
                   
-                  <button className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-1.5 rounded text-xs font-bold transition-colors">
-                    View Details
-                  </button>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div className="bg-slate-100 p-2 rounded">
+                      <div className="text-[9px] text-slate-500 uppercase font-bold">Distance</div>
+                      <div className="text-sm font-black text-slate-800">{comp.distance_km}km</div>
+                    </div>
+                    <div className="bg-slate-100 p-2 rounded">
+                      <div className="text-[9px] text-slate-500 uppercase font-bold">Market Score</div>
+                      <div className="text-sm font-black text-slate-800">{comp.market_size_score}/100</div>
+                    </div>
+                    <div className="bg-slate-100 p-2 rounded">
+                      <div className="text-[9px] text-slate-500 uppercase font-bold">Team</div>
+                      <div className="text-sm font-black text-slate-800">{comp.team_size_estimate}</div>
+                    </div>
+                    <div className="bg-slate-100 p-2 rounded">
+                      <div className="text-[9px] text-slate-500 uppercase font-bold">Overlap</div>
+                      <div className="text-sm font-black text-slate-800">{comp.overlap_pct}%</div>
+                    </div>
+                  </div>
+                  
+                  {comp.maps_url && (
+                    <a href={comp.maps_url} target="_blank" rel="noreferrer" className="block text-center w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 py-1.5 rounded text-xs font-bold transition-colors">
+                      View on Maps ↗
+                    </a>
+                  )}
                 </div>
               </Popup>
             </Marker>

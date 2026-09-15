@@ -14,11 +14,13 @@ import TeamTab from './TeamTab';
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useRole } from "@/context/RoleContext";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const { user } = useRole();
+  const { t } = useLanguage();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
@@ -139,14 +141,14 @@ export default function ProjectDetailPage() {
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
       <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
-      <p className="text-sm font-black text-gray-400 uppercase tracking-widest">Constructing Dashboard...</p>
+      <p className="text-sm font-black text-gray-400 uppercase tracking-widest">{t("project_detail.loading")}</p>
     </div>
   );
 
   if (!data?.project) return (
     <div className="text-center p-20">
-      <p className="text-xl font-bold text-gray-900 dark:text-zinc-50">Project Not Found</p>
-      <Link href="/projects" className="text-blue-600 hover:underline mt-4 inline-block font-medium">Return to Projects</Link>
+      <p className="text-xl font-bold text-gray-900 dark:text-zinc-50">{t("project_detail.not_found")}</p>
+      <Link href="/projects" className="text-blue-600 hover:underline mt-4 inline-block font-medium">{t("project_detail.return_projects")}</Link>
     </div>
   );
 
@@ -176,7 +178,7 @@ export default function ProjectDetailPage() {
                </span>
             </div>
             <p className="text-gray-400 font-bold uppercase tracking-widest text-xs flex items-center gap-2">
-              <Shield className="w-3 h-3" /> Project ID: {project.id} • Created {new Date(project.createdAt).toLocaleDateString()}
+              <Shield className="w-3 h-3" /> {t("project_detail.project_id")}: {project.id} • {t("project_detail.created")} {new Date(project.createdAt).toLocaleDateString()}
             </p>
           </div>
         </div>
@@ -202,13 +204,13 @@ export default function ProjectDetailPage() {
 
       <PageGuide
         pageKey="project-detail"
-        title="How the Project Detail page works"
-        description="Everything about this project in one place — team, progress, comments, and activity."
+        title={t("project_detail.guide_title")}
+        description={t("project_detail.guide_desc")}
         steps={[
-          { icon: '📍', text: 'The header shows the project name, status badge, and creation date.' },
-          { icon: '👥', text: 'Assign team members (employees and interns) from the dropdowns to manage who works on this.' },
-          { icon: '💬', text: 'Add comments to discuss progress, share updates, or leave notes for the team.' },
-          { icon: '📊', text: 'Update project status (Planning, Active, Completed) using the buttons and track progress percentage.' },
+          { icon: '📍', text: t("project_detail.guide_s1") },
+          { icon: '👥', text: t("project_detail.guide_s2") },
+          { icon: '💬', text: t("project_detail.guide_s3") },
+          { icon: '📊', text: t("project_detail.guide_s4") },
         ]}
       />
 
@@ -218,19 +220,19 @@ export default function ProjectDetailPage() {
           onClick={() => setActiveTab('overview')}
           className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'overview' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200'}`}
         >
-          Overview
+          {t("project_detail.tab_overview")}
         </button>
         <button
           onClick={() => setActiveTab('kanban')}
           className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'kanban' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200'}`}
         >
-          Kanban Board
+          {t("project_detail.tab_kanban")}
         </button>
         <button
           onClick={() => setActiveTab('team')}
           className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'team' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200'}`}
         >
-          Team & Access
+          {t("project_detail.tab_team")}
         </button>
       </div>
 
@@ -249,8 +251,8 @@ export default function ProjectDetailPage() {
               
               <div className="flex justify-between items-end mb-8">
                  <div>
-                    <h2 className="text-xl font-black text-gray-900 dark:text-zinc-50 mb-1">REAL-TIME PROGRESS</h2>
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Update project milestone completion</p>
+                    <h2 className="text-xl font-black text-gray-900 dark:text-zinc-50 mb-1">{t("project_detail.realtime_progress")}</h2>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t("project_detail.progress_sub")}</p>
                  </div>
                  <div className="text-4xl font-black text-blue-600">{project.progress}%</div>
               </div>
@@ -265,28 +267,28 @@ export default function ProjectDetailPage() {
               />
               
               <div className="flex justify-between text-[10px] font-black text-gray-300 uppercase tracking-widest">
-                 <span>Initiation</span>
-                 <span>Midway</span>
-                 <span>Final Delivery</span>
+                 <span>{t("project_detail.progress_initiation")}</span>
+                 <span>{t("project_detail.progress_midway")}</span>
+                 <span>{t("project_detail.progress_final")}</span>
               </div>
            </div>
 
            {/* Description Card */}
            <div className="bg-white dark:bg-zinc-900 p-10 rounded-[3rem] border shadow-sm">
               <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
-                <Target className="w-4 h-4 text-blue-600" /> Project Objective & Scope
+                <Target className="w-4 h-4 text-blue-600" /> {t("project_detail.objective_scope")}
               </h2>
               <div className="prose prose-blue max-w-none text-gray-600 dark:text-zinc-300 leading-relaxed font-medium">
-                 {project.description || "The project manager has not provided a detailed description yet."}
+                 {project.description || t("project_detail.no_description")}
               </div>
               
               <div className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4">
                  <div className="p-6 bg-gray-50 dark:bg-zinc-950 rounded-[2rem] border border-gray-100 dark:border-zinc-800 text-center">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">Assignees</p>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">{t("project_detail.assignees")}</p>
                     <p className="text-xl font-black text-gray-900 dark:text-zinc-50">{(project.employeeIds?.length || 0) + (project.internIds?.length || 0)}</p>
                  </div>
                  <div className="p-6 bg-gray-50 dark:bg-zinc-950 rounded-[2rem] border border-gray-100 dark:border-zinc-800 text-center col-span-2 md:col-span-4">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">Total Assignees</p>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 text-gray-800 dark:text-zinc-100">{t("project_detail.total_assignees")}</p>
                     <p className="text-xl font-black text-gray-900 dark:text-zinc-50">{(project.employeeIds?.length || 0) + (project.internIds?.length || 0) + (project.projectMemberIds?.length || 0)}</p>
                  </div>
               </div>
@@ -296,16 +298,16 @@ export default function ProjectDetailPage() {
            <div className="bg-white dark:bg-zinc-900 p-10 rounded-[3rem] border shadow-sm">
               <div className="flex justify-between items-center mb-8">
                  <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-3">
-                   <MessageSquare className="w-4 h-4 text-blue-600" /> Project Remarks & Internal Notes
+                   <MessageSquare className="w-4 h-4 text-blue-600" /> {t("project_detail.remarks_title")}
                  </h2>
-                 <span className="text-[10px] font-black text-gray-300 uppercase">{remarks?.length || 0} TOTAL</span>
+                 <span className="text-[10px] font-black text-gray-300 uppercase">{remarks?.length || 0} {t("project_detail.total")}</span>
               </div>
               
               <form onSubmit={handleAddComment} className="mb-10 relative">
                  <textarea 
                    value={comment}
                    onChange={(e) => setComment(e.target.value)}
-                   placeholder="Post an internal update or concern..."
+                   placeholder={t("project_detail.comment_placeholder")} 
                    className="w-full p-6 bg-gray-50 dark:bg-zinc-950 border-none rounded-[2rem] text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none min-h-[120px]"
                  />
                  <button 
@@ -330,14 +332,14 @@ export default function ProjectDetailPage() {
                            </div>
                            <div className="flex items-center gap-4 mt-2 ml-2">
                               <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">{new Date(r.createdAt).toLocaleString()}</span>
-                              <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest italic">• INTERNAL</span>
+                              <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest italic">• {t("project_detail.internal")}</span>
                            </div>
                         </div>
                      </div>
                    ))
                  ) : (
                    <div className="text-center py-10 opacity-30">
-                      <p className="text-[10px] font-black uppercase tracking-[0.3em]">No conversation logs found</p>
+                      <p className="text-[10px] font-black uppercase tracking-[0.3em]">{t("project_detail.no_logs")}</p>
                    </div>
                  )}
               </div>
@@ -350,7 +352,7 @@ export default function ProjectDetailPage() {
            <div className="bg-white dark:bg-zinc-900 p-8 rounded-[3.5rem] border shadow-sm">
               <div className="flex justify-between items-center mb-10">
                  <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-3">
-                   <Users className="w-4 h-4 text-blue-600" /> Core Team Assigned
+                   <Users className="w-4 h-4 text-blue-600" /> {t("project_detail.core_team")}
                  </h2>
                  <button 
                    onClick={() => setShowAssignModal(true)}
@@ -364,7 +366,7 @@ export default function ProjectDetailPage() {
                  {/* Employees */}
                  <div>
                     <h3 className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-4 flex items-center gap-2">
-                       <Briefcase className="w-3 h-3" /> Senior Members ({(team?.employees?.length || 0)})
+                       <Briefcase className="w-3 h-3" /> {t("project_detail.senior_members")} ({(team?.employees?.length || 0)})
                     </h3>
                     <div className="space-y-3">
                        {team?.employees?.map((e: any) => (
@@ -375,7 +377,7 @@ export default function ProjectDetailPage() {
                                 </div>
                                 <div className="leading-tight">
                                    <p className="text-sm font-black text-gray-900 dark:text-zinc-50">{e.name}</p>
-                                   <p className="text-[10px] font-bold text-gray-400 italic">Project Manager</p>
+                                   <p className="text-[10px] font-bold text-gray-400 italic">{t("project_detail.project_manager")}</p>
                                 </div>
                              </div>
                              <button className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100">
@@ -389,7 +391,7 @@ export default function ProjectDetailPage() {
                  {/* Interns */}
                  <div>
                     <h3 className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-4 flex items-center gap-2">
-                       <Activity className="w-3 h-3" /> Supporting Interns ({(team?.interns?.length || 0)})
+                       <Activity className="w-3 h-3" /> {t("project_detail.supporting_interns")} ({(team?.interns?.length || 0)})
                     </h3>
                     <div className="space-y-3">
                        {team?.interns?.map((i: any) => (
@@ -414,7 +416,7 @@ export default function ProjectDetailPage() {
                  {/* Project Members */}
                  <div>
                     <h3 className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-4 flex items-center gap-2">
-                       <User size={12} className="w-3 h-3" /> Project Members ({(team?.projectMembers?.length || 0)})
+                       <User size={12} className="w-3 h-3" /> {t("project_detail.project_members")} ({(team?.projectMembers?.length || 0)})
                     </h3>
                     <div className="space-y-3">
                        {team?.projectMembers?.map((pm: any) => (
@@ -438,12 +440,12 @@ export default function ProjectDetailPage() {
                  
                  {(team?.employees?.length === 0 && team?.interns?.length === 0 && team?.projectMembers?.length === 0) && (
                    <div className="text-center py-10 px-6 border-2 border-dashed border-gray-100 dark:border-zinc-800 rounded-[2.5rem]">
-                      <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-4">Unassigned Initiative</p>
+                      <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-4">{t("project_detail.unassigned")}</p>
                       <button 
                         onClick={() => setShowAssignModal(true)}
                         className="text-xs font-black text-blue-600 hover:text-blue-700 transition-colors uppercase"
                       >
-                         + Build Your Team
+                         {t("project_detail.build_team")}
                       </button>
                    </div>
                  )}
@@ -455,13 +457,13 @@ export default function ProjectDetailPage() {
               <div className="absolute top-0 right-0 p-8 opacity-10">
                  <Shield className="w-20 h-20" />
               </div>
-              <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] mb-8">Initiative Health</h2>
+              <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] mb-8">{t("project_detail.initiative_health")}</h2>
               
               <div className="space-y-6">
                  <div>
                     <div className="flex justify-between text-[10px] font-black uppercase mb-2">
-                       <span>Velocity</span>
-                       <span className="text-green-400">OPTIMAL</span>
+                       <span>{t("project_detail.velocity")}</span>
+                       <span className="text-green-400">{t("project_detail.optimal")}</span>
                     </div>
                     <div className="w-full bg-white dark:bg-zinc-900/10 h-1.5 rounded-full">
                        <div className="bg-green-400 h-full w-[85%] rounded-full shadow-[0_0_10px_rgba(74,222,128,0.5)]"></div>
@@ -469,8 +471,8 @@ export default function ProjectDetailPage() {
                  </div>
                  <div>
                     <div className="flex justify-between text-[10px] font-black uppercase mb-2">
-                       <span>Risk Level</span>
-                       <span className="text-blue-400">MINIMAL</span>
+                       <span>{t("project_detail.risk_level")}</span>
+                       <span className="text-blue-400">{t("project_detail.minimal")}</span>
                     </div>
                     <div className="w-full bg-white dark:bg-zinc-900/10 h-1.5 rounded-full">
                        <div className="bg-blue-400 h-full w-[25%] rounded-full shadow-[0_0_10px_rgba(96,165,250,0.5)]"></div>
@@ -479,7 +481,7 @@ export default function ProjectDetailPage() {
               </div>
               
               <div className="mt-10 pt-10 border-t border-white/10 flex items-center justify-between">
-                 <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">Efficiency</div>
+                 <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t("project_detail.efficiency")}</div>
                  <div className="text-2xl font-black italic">A+</div>
               </div>
            </div>
@@ -493,7 +495,7 @@ export default function ProjectDetailPage() {
            <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
               <div className="p-8 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50 dark:bg-zinc-950/50">
                 <h2 className="text-xl font-black text-gray-900 dark:text-zinc-50 tracking-tight flex items-center gap-3">
-                  <UserPlus className="w-5 h-5 text-blue-600" /> Assign Team
+                  <UserPlus className="w-5 h-5 text-blue-600" /> {t("project_detail.assign_team")}
                 </h2>
                 <button onClick={() => setShowAssignModal(false)} className="p-3 hover:bg-white dark:bg-zinc-900 rounded-2xl transition-all shadow-sm">
                   <X className="w-5 h-5 text-gray-400" />
@@ -502,7 +504,7 @@ export default function ProjectDetailPage() {
               
               <div className="p-8 max-h-[60vh] overflow-y-auto space-y-8">
                  <div>
-                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Available Employees</h3>
+                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">{t("project_detail.available_employees")}</h3>
                     <div className="space-y-2">
                        {allEmployees.map((emp: any) => (
                           <button 
@@ -524,7 +526,7 @@ export default function ProjectDetailPage() {
                  </div>
 
                  <div>
-                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Available Interns</h3>
+                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">{t("project_detail.available_interns")}</h3>
                     <div className="space-y-2">
                        {allInterns.map((int: any) => (
                           <button 

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useRole } from "@/context/RoleContext";
 import { API_BASE_URL } from "@/config";
+import { useLanguage } from "@/context/LanguageContext";
 import { AdminTopbar } from "@/components/AdminTopbar";
 import { Sidebar } from "@/components/Sidebar";
 import { 
@@ -25,16 +26,15 @@ interface Deal {
 const STAGES = ["Lead", "Discovery", "Demo", "Negotiation", "Closed Won", "Closed Lost"];
 
 export default function PipelinePage() {
+  const { t } = useLanguage();
   const { role, userId } = useRole();
   const router = useRouter();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Drag state
   const [draggedDeal, setDraggedDeal] = useState<Deal | null>(null);
 
-  // Add Deal Modal state
   const [showAddModal, setShowAddModal] = useState(false);
   const [newDeal, setNewDeal] = useState({ title: "", value: "", client_id: "", stage: "Lead", expected_close_date: "" });
   const [clients, setClients] = useState<{ id: number; email: string; companyName?: string }[]>([]);
@@ -77,12 +77,11 @@ export default function PipelinePage() {
   const handleDragStart = (e: React.DragEvent, deal: Deal) => {
     setDraggedDeal(deal);
     e.dataTransfer.effectAllowed = "move";
-    // For firefox compatibility
     e.dataTransfer.setData("text/plain", deal.id.toString());
   };
 
   const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault(); // Necessary to allow dropping
+    e.preventDefault();
     e.dataTransfer.dropEffect = "move";
   };
 
@@ -93,7 +92,6 @@ export default function PipelinePage() {
       return;
     }
 
-    // Optimistic update
     const updatedDeals = deals.map(d => d.id === draggedDeal.id ? { ...d, stage: newStage } : d);
     setDeals(updatedDeals);
 
@@ -106,7 +104,6 @@ export default function PipelinePage() {
       if (!res.ok) throw new Error("Failed to update deal stage");
     } catch (err) {
       console.error(err);
-      // Revert on failure
       fetchDeals();
     }
     setDraggedDeal(null);
@@ -137,7 +134,6 @@ export default function PipelinePage() {
     }
   };
 
-  // Group deals by stage
   const dealsByStage = STAGES.reduce((acc, stage) => {
     acc[stage] = deals.filter(d => d.stage === stage);
     return acc;
@@ -145,7 +141,7 @@ export default function PipelinePage() {
 
   const totalValue = deals.reduce((sum, d) => sum + (d.value || 0), 0);
 
-  if (loading) return <div className="p-8 text-center">Loading pipeline...</div>;
+  if (loading) return <div className="p-8 text-center">{t("pipeline.loading_pipeline")}</div>;
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-zinc-950">
@@ -158,14 +154,14 @@ export default function PipelinePage() {
             <div>
               <h1 className="text-2xl font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
                 <Kanban className="w-6 h-6 text-indigo-600" />
-                Sales Pipeline
+                {t("pipeline.sales_pipeline")}
               </h1>
-              <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">Manage and track your active deals.</p>
+              <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">{t("pipeline.manage_track_deals")}</p>
             </div>
             
             <div className="flex items-center gap-4">
               <div className="bg-white dark:bg-zinc-900 px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 shadow-sm flex flex-col items-end">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Pipeline</span>
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("pipeline.total_pipeline")}</span>
                 <span className="text-lg font-bold text-slate-800 dark:text-zinc-100">${totalValue.toLocaleString()}</span>
               </div>
               <button 
@@ -173,7 +169,7 @@ export default function PipelinePage() {
                 className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl shadow-sm transition-colors flex items-center gap-2 text-sm font-medium"
               >
                 <Plus className="w-4 h-4" />
-                Add Deal
+                {t("pipeline.add_deal")}
               </button>
             </div>
           </div>
@@ -246,17 +242,17 @@ export default function PipelinePage() {
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
               <div className="p-6 border-b border-slate-100 dark:border-zinc-800">
-                <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">Create New Deal</h2>
+                <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">{t("pipeline.create_new_deal")}</h2>
               </div>
               <form onSubmit={handleAddDeal} className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">Deal Title</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">{t("pipeline.deal_title")}</label>
                   <input required type="text" value={newDeal.title} onChange={e => setNewDeal({...newDeal, title: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" placeholder="e.g. Website Redesign" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">Client</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">{t("pipeline.client")}</label>
                   <select required value={newDeal.client_id} onChange={e => setNewDeal({...newDeal, client_id: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none">
-                    <option value="">Select a client...</option>
+                    <option value="">{t("pipeline.select_client")}</option>
                     {clients.map(c => (
                       <option key={c.id} value={c.id}>{c.companyName || c.email}</option>
                     ))}
@@ -264,24 +260,24 @@ export default function PipelinePage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">Value ($)</label>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">{t("pipeline.value_label")}</label>
                     <input type="number" step="0.01" value={newDeal.value} onChange={e => setNewDeal({...newDeal, value: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" placeholder="0.00" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">Close Date</label>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">{t("pipeline.close_date")}</label>
                     <input type="date" value={newDeal.expected_close_date} onChange={e => setNewDeal({...newDeal, expected_close_date: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">Starting Stage</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">{t("pipeline.starting_stage")}</label>
                   <select value={newDeal.stage} onChange={e => setNewDeal({...newDeal, stage: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none">
                     {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 
                 <div className="flex gap-3 pt-4 border-t border-slate-100 dark:border-zinc-800">
-                  <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 font-medium rounded-xl hover:bg-slate-50 dark:bg-zinc-950 transition-colors">Cancel</button>
-                  <button type="submit" className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors shadow-sm">Create Deal</button>
+                  <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 font-medium rounded-xl hover:bg-slate-50 dark:bg-zinc-950 transition-colors">{t("pipeline.cancel")}</button>
+                  <button type="submit" className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors shadow-sm">{t("pipeline.create_deal")}</button>
                 </div>
               </form>
             </div>

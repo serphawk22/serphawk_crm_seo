@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Users, Plus, Star } from "lucide-react";
+import { Users, Plus, Star, UserPlus } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
 
@@ -115,7 +115,14 @@ export default function LinkedContacts({ leadId, clientId }: { leadId?: string, 
       {loading ? (
         <p className="text-sm text-slate-500 text-center py-2">Loading...</p>
       ) : links.length === 0 ? (
-        <p className="text-xs text-slate-500 text-center py-4">{language === 'es' ? 'No hay contactos vinculados' : 'No linked contacts'}</p>
+        <div className="flex flex-col items-center text-center py-8 px-4">
+          <UserPlus size={28} className="text-slate-300 dark:text-zinc-600 mb-2" />
+          <p className="text-sm font-semibold text-slate-600 dark:text-zinc-200">{language === 'es' ? 'Aún no hay contactos añadidos' : 'No contacts added yet'}</p>
+          <p className="text-xs text-slate-400 dark:text-zinc-400 mt-1">{language === 'es' ? 'Asocia un contacto existente a este cliente.' : 'Link a contact to this client to keep everyone in the loop.'}</p>
+          <button onClick={() => setShowAdd(true)} className="mt-4 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors">
+            <Plus size={14} /> {language === 'es' ? 'Añadir Contacto' : 'Add Contact'}
+          </button>
+        </div>
       ) : (
         <div className="space-y-3">
           {links.map(link => (

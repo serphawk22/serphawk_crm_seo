@@ -1,4 +1,4 @@
-const CACHE_NAME = "serphawk-crm-v2";
+const CACHE_NAME = "serphawk-crm-v3";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -31,7 +31,15 @@ self.addEventListener("fetch", (event) => {
   
   event.respondWith(
     fetch(event.request).catch(() => {
-      return caches.match(event.request);
+      return caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        return new Response("Network error", {
+          status: 503,
+          headers: { "Content-Type": "text/plain" },
+        });
+      });
     })
   );
 });

@@ -32,16 +32,16 @@ DATABASE_URL=postgresql://neondb_owner:npg_hBcyuG5E6frZ@ep-soft-violet-adtls8kq-
 # OpenAI API Key for AI features
 OPENAI_API_KEY=sk-proj-...
 
-# Email Configuration (SMTP / Gmail)
-OUTLOOK_EMAIL=prasanthanupojuwork@gmail.com
-OUTLOOK_PASSWORD=mjeo jugu nrxj lqmq
-EMAIL_SENDER=prasanthanupojuwork@gmail.com
-EMAIL_PASSWORD=mjeo jugu nrxj lqmq
+# Email Configuration (SMTP / serphawk.in)
+OUTLOOK_EMAIL=crm@serphawk.in
+OUTLOOK_PASSWORD=Crm@serphawk2200
+EMAIL_SENDER=crm@serphawk.in
+EMAIL_PASSWORD=Crm@serphawk2200
 
-# SMTP Server Details (Gmail Routing)
-SMTP_SERVER=smtp.gmail.com
+# SMTP Server Details (serphawk.in Postfix)
+SMTP_SERVER=mail.serphawk.in
 SMTP_PORT=587
-IMAP_SERVER=imap.gmail.com
+IMAP_SERVER=mail.serphawk.in
 USE_SSL=True
 
 # Hourly email outreach limits

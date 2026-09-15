@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useLanguage } from "@/context/LanguageContext";
 
 /* ─────────────────────────────────────────────────
    TYPES & CONSTANTS
@@ -916,8 +917,9 @@ function ShowcaseSection({ theme, title, subtitle, mockup, reverse = false, inde
    MAIN PAGE
 ───────────────────────────────────────────────── */
 export default function DemoShowcase() {
+  const { t, language, setLanguage } = useLanguage();
   const [theme, setTheme] = useState<Theme>("dark");
-  const [lang, setLang] = useState<Lang>("en");
+  const lang = (language as Lang) || "en";
   const tx = T[lang];
   const [tourActive, setTourActive] = useState(false);
   const [tourStep, setTourStep] = useState(0);
@@ -969,27 +971,27 @@ export default function DemoShowcase() {
       <header style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, background: bg === "#000" ? "rgba(0,0,0,0.85)" : "rgba(255,255,255,0.85)", backdropFilter: "blur(20px)", borderBottom: `1px solid ${border}` }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 32px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-            <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: "-0.03em", color: fg }}>{tx.brand}</div>
-            <div style={{ fontSize: 11, color: muted }}>{tx.showcase}</div>
+            <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: "-0.03em", color: fg }}>{t("demo_showcase.brand")}</div>
+            <div style={{ fontSize: 11, color: muted }}>{t("demo_showcase.showcase")}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <button onClick={() => { setTourStep(0); setTourActive(true); setTourPaused(false); }}
               style={{ padding: "6px 14px", borderRadius: 6, border: `1px solid ${border}`, background: "transparent", color: fg, fontSize: 11, fontWeight: 600, cursor: "pointer", letterSpacing: "-0.01em" }}>
-              {tx.startTour}
+              {t("demo_showcase.start_tour")}
             </button>
             {/* Language toggle */}
-            <button onClick={() => setLang(l => l === "en" ? "es" : "en")}
+            <button onClick={() => setLanguage(lang === "en" ? "es" : "en")}
               style={{ width: 60, height: 28, borderRadius: 14, border: `1px solid ${border}`, background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", padding: "0 4px", position: "relative", transition: "all 0.3s" }}>
               <div style={{ position: "absolute", left: lang === "en" ? 4 : 34, width: 18, height: 18, borderRadius: "50%", background: fg, transition: "left 0.3s cubic-bezier(0.34,1.56,0.64,1)" }} />
               <span style={{ position: "absolute", left: lang === "en" ? 26 : 6, fontSize: 8, fontWeight: 800, color: fg, letterSpacing: "0.03em" }}>{lang === "en" ? "ES" : "EN"}</span>
             </button>
             {/* Theme toggle */}
-            <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
+            <button onClick={() => setTheme(t2 => t2 === "dark" ? "light" : "dark")}
               style={{ width: 60, height: 28, borderRadius: 14, border: `1px solid ${border}`, background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", padding: "0 4px", position: "relative", transition: "all 0.3s" }}>
               <div style={{ position: "absolute", left: theme === "dark" ? 4 : 34, width: 18, height: 18, borderRadius: "50%", background: fg, transition: "left 0.3s cubic-bezier(0.34,1.56,0.64,1)" }} />
               <span style={{ position: "absolute", left: theme === "dark" ? 26 : 8, fontSize: 9, fontWeight: 800, color: fg, letterSpacing: "0.04em" }}>{theme === "dark" ? "W" : "B"}</span>
             </button>
-            <a href="/login" style={{ padding: "6px 14px", borderRadius: 6, background: fg, color: bg, fontSize: 11, fontWeight: 700, textDecoration: "none", letterSpacing: "-0.01em" }}>{tx.launchCRM}</a>
+            <a href="/login" style={{ padding: "6px 14px", borderRadius: 6, background: fg, color: bg, fontSize: 11, fontWeight: 700, textDecoration: "none", letterSpacing: "-0.01em" }}>{t("demo_showcase.launch_crm")}</a>
           </div>
         </div>
       </header>
@@ -998,8 +1000,8 @@ export default function DemoShowcase() {
       {tourActive && (
         <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 200, background: bg, border: `1px solid ${fg}`, borderRadius: 12, padding: "12px 20px", display: "flex", alignItems: "center", gap: 16, boxShadow: `0 20px 60px ${fg === "#fff" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.4)"}`, minWidth: 360 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10, color: muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 2 }}>{tx.guidedTour}</div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: fg }}>{tx.sectionOf(tourStep + 1, sections.length)}</div>
+            <div style={{ fontSize: 10, color: muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 2 }}>{t("demo_showcase.guided_tour")}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: fg }}>{t("demo_showcase.section_of")} {tourStep + 1} {t("demo_showcase.of")} {sections.length}</div>
             <div style={{ marginTop: 6, height: 2, background: border, borderRadius: 1 }}>
               <div style={{ height: "100%", width: `${(tourStep / sections.length) * 100}%`, background: fg, borderRadius: 1, transition: "width 0.5s" }} />
             </div>
@@ -1018,24 +1020,24 @@ export default function DemoShowcase() {
       <section id="hero" ref={heroRef} style={{ minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", paddingTop: 56 }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "80px 32px 40px" }}>
           <div style={{ marginBottom: 24, opacity: heroIn ? 1 : 0, transform: heroIn ? "translateY(0)" : "translateY(20px)", transition: "all 0.8s cubic-bezier(0.16,1,0.3,1)" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.12em" }}>{tx.heroLabel}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.12em" }}>{t("demo_showcase.hero_label")}</div>
           </div>
           <h1 style={{ fontSize: "clamp(48px, 7vw, 96px)", fontWeight: 900, lineHeight: 1.0, letterSpacing: "-0.04em", maxWidth: 900, marginBottom: 32, color: fg, opacity: heroIn ? 1 : 0, transform: heroIn ? "translateY(0)" : "translateY(30px)", transition: "all 1s cubic-bezier(0.16,1,0.3,1) 0.1s" }}>
-            {tx.heroTitle}
+            {t("demo_showcase.hero_title")}
           </h1>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 48, alignItems: "start" }}>
             <div style={{ opacity: heroIn ? 1 : 0, transition: "all 0.8s 0.3s" }}>
               <p style={{ fontSize: 18, color: muted, lineHeight: 1.7, marginBottom: 36, maxWidth: 440 }}>
-                {tx.heroSub}
+                {t("demo_showcase.hero_sub")}
               </p>
               <div style={{ display: "flex", gap: 12 }}>
-                <button onClick={() => { setTourStep(0); setTourActive(true); }} style={{ padding: "12px 28px", borderRadius: 8, background: fg, color: bg, fontSize: 13, fontWeight: 700, cursor: "pointer", border: "none", letterSpacing: "-0.02em" }}>{tx.startGuidedTour}</button>
+                <button onClick={() => { setTourStep(0); setTourActive(true); }} style={{ padding: "12px 28px", borderRadius: 8, background: fg, color: bg, fontSize: 13, fontWeight: 700, cursor: "pointer", border: "none", letterSpacing: "-0.02em" }}>{t("demo_showcase.start_guided_tour")}</button>
                 <a href="/login" style={{ padding: "12px 28px", borderRadius: 8, background: "transparent", color: fg, fontSize: 13, fontWeight: 600, cursor: "pointer", border: `1px solid ${border}`, textDecoration: "none", letterSpacing: "-0.02em", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  {tx.launchCRM} <span style={{ animation: "nudgeRight 1.5s ease-in-out infinite" }}>→</span>
+                  {t("demo_showcase.launch_crm")} <span style={{ animation: "nudgeRight 1.5s ease-in-out infinite" }}>→</span>
                 </a>
               </div>
               <div style={{ marginTop: 48, display: "flex", gap: 32 }}>
-                {([["21", tx.crmModules], ["100%", tx.automated], ["2", tx.currencies]] as [string,string][]).map(([v, l], i) => (
+                {([["21", t("demo_showcase.crm_modules")], ["100%", t("demo_showcase.automated")], ["2", t("demo_showcase.currencies")]] as [string,string][]).map(([v, l], i) => (
                   <div key={i}>
                     <div style={{ fontSize: 32, fontWeight: 900, color: fg, letterSpacing: "-0.04em" }}>{v}</div>
                     <div style={{ fontSize: 11, color: muted, marginTop: 2 }}>{l}</div>
@@ -1052,8 +1054,8 @@ export default function DemoShowcase() {
         {/* Ticker */}
         <div style={{ borderTop: `1px solid ${border}`, overflow: "hidden", marginTop: 40 }}>
           <div style={{ display: "flex", gap: 48, padding: "12px 0", animation: "ticker 25s linear infinite", width: "max-content" }}>
-            {[...Array(3)].flatMap(() => tx.tickerItems).map((t, i) => (
-              <span key={i} style={{ fontSize: 11, fontWeight: 600, color: muted, whiteSpace: "nowrap", letterSpacing: "0.02em" }}>{t}</span>
+            {[...Array(3)].flatMap(() => tx.tickerItems).map((ti, i) => (
+              <span key={i} style={{ fontSize: 11, fontWeight: 600, color: muted, whiteSpace: "nowrap", letterSpacing: "0.02em" }}>{ti}</span>
             ))}
           </div>
         </div>
@@ -1062,43 +1064,43 @@ export default function DemoShowcase() {
       {/* ═══════════════════════════════════════════════════
           SHOWCASE SECTIONS
       ═══════════════════════════════════════════════════ */}
-      <ShowcaseSection theme={theme} index={1} moduleLabel={tx.module}
-        title={tx.sections[0].title} subtitle={tx.sections[0].sub}
+      <ShowcaseSection theme={theme} index={1} moduleLabel={t("demo_showcase.module")}
+        title={t("demo_showcase.section_1_title")} subtitle={t("demo_showcase.section_1_sub")}
         mockup={(active) => <LeadMockup theme={theme} active={active} />}
       />
 
-      <ShowcaseSection theme={theme} index={2} reverse moduleLabel={tx.module}
-        title={tx.sections[1].title} subtitle={tx.sections[1].sub}
+      <ShowcaseSection theme={theme} index={2} reverse moduleLabel={t("demo_showcase.module")}
+        title={t("demo_showcase.section_2_title")} subtitle={t("demo_showcase.section_2_sub")}
         mockup={(active) => <PipelineMockup theme={theme} active={active} />}
       />
 
-      <ShowcaseSection theme={theme} index={3} moduleLabel={tx.module}
-        title={tx.sections[2].title} subtitle={tx.sections[2].sub}
+      <ShowcaseSection theme={theme} index={3} moduleLabel={t("demo_showcase.module")}
+        title={t("demo_showcase.section_3_title")} subtitle={t("demo_showcase.section_3_sub")}
         mockup={(active) => <RadarMockup theme={theme} active={active} />}
       />
 
-      <ShowcaseSection theme={theme} index={4} reverse moduleLabel={tx.module}
-        title={tx.sections[3].title} subtitle={tx.sections[3].sub}
+      <ShowcaseSection theme={theme} index={4} reverse moduleLabel={t("demo_showcase.module")}
+        title={t("demo_showcase.section_4_title")} subtitle={t("demo_showcase.section_4_sub")}
         mockup={(active) => <EmailAgentMockup theme={theme} active={active} />}
       />
 
-      <ShowcaseSection theme={theme} index={5} moduleLabel={tx.module}
-        title={tx.sections[4].title} subtitle={tx.sections[4].sub}
+      <ShowcaseSection theme={theme} index={5} moduleLabel={t("demo_showcase.module")}
+        title={t("demo_showcase.section_5_title")} subtitle={t("demo_showcase.section_5_sub")}
         mockup={(active) => <AutomationMockup theme={theme} active={active} />}
       />
 
-      <ShowcaseSection theme={theme} index={6} reverse moduleLabel={tx.module}
-        title={tx.sections[5].title} subtitle={tx.sections[5].sub}
+      <ShowcaseSection theme={theme} index={6} reverse moduleLabel={t("demo_showcase.module")}
+        title={t("demo_showcase.section_6_title")} subtitle={t("demo_showcase.section_6_sub")}
         mockup={(active) => <CommunicationMockup theme={theme} active={active} />}
       />
 
-      <ShowcaseSection theme={theme} index={7} moduleLabel={tx.module}
-        title={tx.sections[6].title} subtitle={tx.sections[6].sub}
+      <ShowcaseSection theme={theme} index={7} moduleLabel={t("demo_showcase.module")}
+        title={t("demo_showcase.section_7_title")} subtitle={t("demo_showcase.section_7_sub")}
         mockup={(active) => <AnalyticsMockup theme={theme} active={active} />}
       />
 
-      <ShowcaseSection theme={theme} index={8} reverse moduleLabel={tx.module}
-        title={tx.sections[7].title} subtitle={tx.sections[7].sub}
+      <ShowcaseSection theme={theme} index={8} reverse moduleLabel={t("demo_showcase.module")}
+        title={t("demo_showcase.section_8_title")} subtitle={t("demo_showcase.section_8_sub")}
         mockup={(active) => <ClientMockup theme={theme} active={active} />}
       />
 
@@ -1108,9 +1110,9 @@ export default function DemoShowcase() {
       <div ref={journeyRef} id="journey" style={{ borderTop: `1px solid ${border}` }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "100px 32px" }}>
           <div style={{ marginBottom: 64, opacity: journeyIn ? 1 : 0, transform: journeyIn ? "translateY(0)" : "translateY(30px)", transition: "all 0.8s" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16 }}>{tx.journeyLabel}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16 }}>{t("demo_showcase.journey_label")}</div>
             <h2 style={{ fontSize: "clamp(32px, 4vw, 56px)", fontWeight: 900, color: fg, letterSpacing: "-0.03em", lineHeight: 1.1, maxWidth: 700 }}>
-              {tx.journeyTitle}
+              {t("demo_showcase.journey_title")}
             </h2>
           </div>
           <div style={{ overflowX: "auto", paddingBottom: 24 }}>
@@ -1139,9 +1141,9 @@ export default function DemoShowcase() {
       <div ref={modulesRef} id="modules" style={{ borderTop: `1px solid ${border}` }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "100px 32px" }}>
           <div style={{ marginBottom: 64, opacity: modulesIn ? 1 : 0, transition: "opacity 0.8s" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16 }}>{tx.modulesLabel}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16 }}>{t("demo_showcase.modules_label")}</div>
             <h2 style={{ fontSize: "clamp(32px, 4vw, 56px)", fontWeight: 900, color: fg, letterSpacing: "-0.03em", lineHeight: 1.1 }}>
-              {tx.modulesTitle}
+              {t("demo_showcase.modules_title")}
             </h2>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 1, border: `1px solid ${border}` }}>
@@ -1167,12 +1169,12 @@ export default function DemoShowcase() {
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "100px 32px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 80, alignItems: "center" }}>
             <div style={{ opacity: impactIn ? 1 : 0, transform: impactIn ? "translateX(0)" : "translateX(-30px)", transition: "all 0.8s" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16 }}>{tx.impactLabel}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16 }}>{t("demo_showcase.impact_label")}</div>
               <h2 style={{ fontSize: "clamp(32px, 4vw, 52px)", fontWeight: 900, color: fg, letterSpacing: "-0.03em", lineHeight: 1.1, marginBottom: 24 }}>
-                {tx.impactTitle}
+                {t("demo_showcase.impact_title")}
               </h2>
               <p style={{ fontSize: 16, color: muted, lineHeight: 1.7 }}>
-                {tx.impactSub}
+                {t("demo_showcase.impact_sub")}
               </p>
             </div>
             <div style={{ opacity: impactIn ? 1 : 0, transform: impactIn ? "translateX(0)" : "translateX(30px)", transition: "all 0.8s 0.1s" }}>
@@ -1196,24 +1198,24 @@ export default function DemoShowcase() {
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "120px 32px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 80, alignItems: "center" }}>
           <div>
             <h2 style={{ fontSize: "clamp(36px, 5vw, 72px)", fontWeight: 900, color: fg, letterSpacing: "-0.04em", lineHeight: 1.0, marginBottom: 32 }}>
-              {tx.ctaTitle}
+              {t("demo_showcase.cta_title")}
             </h2>
             <p style={{ fontSize: 16, color: muted, lineHeight: 1.7, marginBottom: 40, maxWidth: 380 }}>
-              {tx.ctaSub}
+              {t("demo_showcase.cta_sub")}
             </p>
             <div style={{ display: "flex", gap: 12 }}>
               <a href="/login" style={{ padding: "14px 32px", borderRadius: 8, background: fg, color: bg, fontSize: 14, fontWeight: 700, textDecoration: "none", letterSpacing: "-0.02em" }}>
-                {tx.launchCRM}
+                {t("demo_showcase.launch_crm")}
               </a>
               <a href="https://wa.me/919502901416?text=Hi,%20I'd%20like%20to%20book%20a%20CRM%20demo" target="_blank" rel="noopener noreferrer"
                 style={{ padding: "14px 32px", borderRadius: 8, border: `1px solid ${border}`, background: "transparent", color: fg, fontSize: 14, fontWeight: 600, textDecoration: "none", letterSpacing: "-0.02em" }}>
-                {tx.bookDemo}
+                {t("demo_showcase.book_demo")}
               </a>
             </div>
           </div>
           <div>
             <div style={{ border: `1px solid ${border}`, borderRadius: 12, padding: 32 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 24 }}>{tx.platformOverview}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 24 }}>{t("demo_showcase.platform_overview")}</div>
               {tx.platformItems.map(([title, desc], i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "12px 0", borderBottom: i < 5 ? `1px solid ${border}` : "none" }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: fg }}>{title}</div>
@@ -1228,17 +1230,17 @@ export default function DemoShowcase() {
       {/* Footer */}
       <div style={{ borderTop: `1px solid ${border}`, padding: "24px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
         <div style={{ display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ fontSize: 11, color: muted }}>{tx.footer}</div>
+          <div style={{ fontSize: 11, color: muted }}>{t("demo_showcase.footer")}</div>
           <div style={{ fontSize: 11, color: muted }}>
             Developed by Varshith, part of SERP HAWK · <a href="mailto:varshith@serphawk.com" style={{ color: fg, textDecoration: "none" }}>varshith@serphawk.com</a>
           </div>
         </div>
         <div style={{ display: "flex", gap: 16 }}>
-          <button onClick={() => setLang(l => l === "en" ? "es" : "en")} style={{ fontSize: 11, color: muted, background: "transparent", border: "none", cursor: "pointer" }}>
+          <button onClick={() => setLanguage(lang === "en" ? "es" : "en")} style={{ fontSize: 11, color: muted, background: "transparent", border: "none", cursor: "pointer" }}>
             {lang === "en" ? "Ver en Español" : "View in English"}
           </button>
-          <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} style={{ fontSize: 11, color: muted, background: "transparent", border: "none", cursor: "pointer" }}>
-            {theme === "dark" ? tx.switchToWhite : tx.switchToBlack}
+          <button onClick={() => setTheme(t2 => t2 === "dark" ? "light" : "dark")} style={{ fontSize: 11, color: muted, background: "transparent", border: "none", cursor: "pointer" }}>
+            {theme === "dark" ? t("demo_showcase.switch_to_white") : t("demo_showcase.switch_to_black")}
           </button>
         </div>
       </div>

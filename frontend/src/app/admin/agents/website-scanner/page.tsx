@@ -20,6 +20,7 @@ import {
   Shield,
   Zap,
 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface SiteData {
   url: string;
@@ -67,6 +68,7 @@ function mockAnalyze(url: string): Promise<SiteData> {
 }
 
 function ScoreRing({ score }: { score: number }) {
+  const { t } = useLanguage();
   const radius = 42;
   const circumference = 2 * Math.PI * radius;
   const progress = (score / 100) * circumference;
@@ -101,7 +103,7 @@ function ScoreRing({ score }: { score: number }) {
           {score}
         </motion.span>
         <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--text-secondary)" }}>
-          SEO Score
+          {t("agents_scanner.seo_score")}
         </span>
       </div>
     </div>
@@ -117,6 +119,7 @@ function AddClientModal({
   onClose: () => void;
   onAdd: () => void;
 }) {
+  const { t } = useLanguage();
   const [name, setName] = useState(siteData.title);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -158,9 +161,9 @@ function AddClientModal({
               <CheckCircle className="w-8 h-8 text-green-600" />
             </div>
             <div>
-              <h3 className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>Client Added!</h3>
+              <h3 className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>{t("agents_scanner.client_added")}</h3>
               <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-                {name} has been added to your CRM
+                {name} {t("agents_scanner.added_to_crm")}
               </p>
             </div>
           </motion.div>
@@ -169,7 +172,7 @@ function AddClientModal({
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>
-                  Add as Client
+                  {t("agents_scanner.add_as_client")}
                 </h3>
                 <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
                   {siteData.url}
@@ -186,10 +189,10 @@ function AddClientModal({
 
             <div className="space-y-3">
               {[
-                { icon: Building2, label: "Business Name", value: name, set: setName, type: "text", placeholder: "Company name" },
-                { icon: Mail, label: "Email", value: email, set: setEmail, type: "email", placeholder: "contact@company.com" },
-                { icon: Phone, label: "Phone", value: phone, set: setPhone, type: "tel", placeholder: "+1 234 567 8900" },
-                { icon: MapPin, label: "Location", value: location, set: setLocation, type: "text", placeholder: "City, Country" },
+                { icon: Building2, label: t("agents_scanner.business_name"), value: name, set: setName, type: "text", placeholder: t("agents_scanner.ph_company_name") },
+                { icon: Mail, label: t("agents_scanner.email"), value: email, set: setEmail, type: "email", placeholder: "contact@company.com" },
+                { icon: Phone, label: t("agents_scanner.phone"), value: phone, set: setPhone, type: "tel", placeholder: "+1 234 567 8900" },
+                { icon: MapPin, label: t("agents_scanner.location"), value: location, set: setLocation, type: "text", placeholder: t("agents_scanner.ph_city_country") },
               ].map(({ icon: Icon, label, value, set, type, placeholder }) => (
                 <div key={label}>
                   <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-secondary)" }}>
@@ -223,10 +226,10 @@ function AddClientModal({
               </div>
               <div className="min-w-0">
                 <p className="text-[12px] font-semibold truncate" style={{ color: "var(--text-primary)" }}>
-                  SEO Score: {siteData.score}/100 · {siteData.industry}
+                  {t("agents_scanner.seo_score")} {siteData.score}/100 · {siteData.industry}
                 </p>
                 <p className="text-[11px] truncate" style={{ color: "var(--text-secondary)" }}>
-                  {siteData.issues.length} issues · {siteData.opportunities.length} growth opportunities
+                  {siteData.issues.length} {t("agents_scanner.issues")} · {siteData.opportunities.length} {t("agents_scanner.growth_opportunities")}
                 </p>
               </div>
             </div>
@@ -241,9 +244,9 @@ function AddClientModal({
               }}
             >
               {adding ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Adding to CRM...</>
+                <><Loader2 className="w-4 h-4 animate-spin" /> {t("agents_scanner.adding_to_crm")}</>
               ) : (
-                <><UserPlus className="w-4 h-4" /> Add as Client</>
+                <><UserPlus className="w-4 h-4" /> {t("agents_scanner.add_as_client")}</>
               )}
             </button>
           </>
@@ -254,6 +257,7 @@ function AddClientModal({
 }
 
 export default function WebsiteScannerPage() {
+  const { t } = useLanguage();
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [siteData, setSiteData] = useState<SiteData | null>(null);
@@ -294,7 +298,7 @@ export default function WebsiteScannerPage() {
       const data = await mockAnalyze(cleanUrl);
       setSiteData(data);
     } catch {
-      setError("Could not analyze this website. Please check the URL and try again.");
+      setError(t("agents_scanner.scan_error"));
     } finally {
       setLoading(false);
     }
@@ -319,10 +323,10 @@ export default function WebsiteScannerPage() {
           </div>
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight" style={{ color: "var(--text-primary)" }}>
-              Website Scanner
+              {t("agents_scanner.title")}
             </h1>
             <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-              Analyze any website and instantly add as a client prospect
+              {t("agents_scanner.subtitle")}
             </p>
           </div>
         </div>
@@ -350,7 +354,7 @@ export default function WebsiteScannerPage() {
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="Enter website URL — e.g. apple.com"
+            placeholder={t("agents_scanner.placeholder_url")}
             className="flex-1 bg-transparent text-[14px] outline-none"
             style={{ color: "var(--text-primary)" }}
           />
@@ -376,7 +380,7 @@ export default function WebsiteScannerPage() {
           ) : (
             <Search className="w-4 h-4" />
           )}
-          {loading ? "Scanning..." : "Scan"}
+          {loading ? t("agents_scanner.scanning") : t("agents_scanner.scan")}
         </motion.button>
       </motion.form>
 
@@ -404,7 +408,7 @@ export default function WebsiteScannerPage() {
                 animate={{ opacity: [0.5, 1, 0.5] }}
                 transition={{ duration: 1.5, repeat: Infinity }}
               >
-                🔍 Crawling website and analyzing SEO signals…
+                🔍 {t("agents_scanner.crawling")}
               </motion.span>
             </p>
           </motion.div>
@@ -506,7 +510,7 @@ export default function WebsiteScannerPage() {
                 <div className="flex items-center gap-2 mb-4">
                   <AlertCircle className="w-4 h-4 text-red-500" />
                   <h3 className="font-bold text-[14px]" style={{ color: "var(--text-primary)" }}>
-                    Issues Found
+                    {t("agents_scanner.issues_found")}
                   </h3>
                   <span className="ml-auto text-xs font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full">
                     {siteData.issues.length}
@@ -537,7 +541,7 @@ export default function WebsiteScannerPage() {
                 <div className="flex items-center gap-2 mb-4">
                   <TrendingUp className="w-4 h-4 text-green-500" />
                   <h3 className="font-bold text-[14px]" style={{ color: "var(--text-primary)" }}>
-                    Opportunities
+                    {t("agents_scanner.opportunities")}
                   </h3>
                   <span className="ml-auto text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
                     {siteData.opportunities.length}
@@ -574,12 +578,12 @@ export default function WebsiteScannerPage() {
             >
               <div>
                 <h3 className="font-bold text-[15px]" style={{ color: "var(--text-primary)" }}>
-                  {isAdded ? "✅ Added to CRM" : "Ready to onboard this client?"}
+                  {isAdded ? t("agents_scanner.added_to_crm_badge") : t("agents_scanner.ready_onboard")}
                 </h3>
                 <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
                   {isAdded
-                    ? `${siteData.title} is now in your client list`
-                    : `${siteData.issues.length} issues to fix + ${siteData.opportunities.length} growth opportunities`}
+                    ? `${siteData.title} ${t("agents_scanner.now_in_client_list")}`
+                    : `${siteData.issues.length} ${t("agents_scanner.issues_to_fix")} + ${siteData.opportunities.length} ${t("agents_scanner.growth_opps")}`}
                 </p>
               </div>
               <motion.button
@@ -599,9 +603,9 @@ export default function WebsiteScannerPage() {
                 }
               >
                 {isAdded ? (
-                  <><CheckCircle className="w-4 h-4" /> Client Added</>
+                  <><CheckCircle className="w-4 h-4" /> {t("agents_scanner.client_added")}</>
                 ) : (
-                  <><UserPlus className="w-4 h-4" /> Add as Client</>
+                  <><UserPlus className="w-4 h-4" /> {t("agents_scanner.add_as_client")}</>
                 )}
               </motion.button>
             </motion.div>

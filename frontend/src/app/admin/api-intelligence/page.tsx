@@ -26,19 +26,30 @@ import {
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import { useRouter } from "next/navigation";
+import { useLanguage } from "@/context/LanguageContext";
 
 type Tab = "overview" | "providers" | "sales" | "clients" | "endpoints" | "requests" | "live" | "alerts";
 
-const TABS: { id: Tab; name: string; icon: typeof Activity }[] = [
-  { id: "overview", name: "Overview", icon: BarChart3 },
-  { id: "providers", name: "AI Models", icon: BrainCircuit },
-  { id: "sales", name: "Sales Team", icon: Users },
-  { id: "clients", name: "Clients", icon: DollarSign },
-  { id: "endpoints", name: "Endpoints", icon: Server },
-  { id: "requests", name: "Request Log", icon: List },
-  { id: "live", name: "Live Monitor", icon: Zap },
-  { id: "alerts", name: "Alerts", icon: Bell },
-];
+const TAB_ICONS: Record<string, typeof Activity> = {
+  overview: BarChart3,
+  providers: BrainCircuit,
+  sales: Users,
+  clients: DollarSign,
+  endpoints: Server,
+  requests: List,
+  live: Zap,
+  alerts: Bell,
+};
+const TAB_NAMES: Record<string, string> = {
+  overview: "tab_overview",
+  providers: "tab_models",
+  sales: "tab_sales_team",
+  clients: "tab_clients",
+  endpoints: "tab_endpoints",
+  requests: "tab_request_log",
+  live: "tab_live_monitor",
+  alerts: "tab_alerts",
+};
 
 // ── STAT CARD ──────────────────────────────────────────────────────────────
 function StatCard({
@@ -152,6 +163,7 @@ function Td({ children, mono, green, red }: { children: React.ReactNode; mono?: 
 // ── MAIN PAGE ──────────────────────────────────────────────────────────────
 export default function ApiIntelligencePage() {
   const { role, isAuthenticated } = useRole();
+  const { t } = useLanguage();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [overview, setOverview] = useState<any>(null);
@@ -244,13 +256,13 @@ export default function ApiIntelligencePage() {
           </div>
           <div>
             <h1 className="text-[22px] font-extrabold tracking-tight" style={{ color: "var(--text-primary)" }}>
-              API Intelligence
+              {t("api_intelligence.title")}
             </h1>
             <p className="text-[13px]" style={{ color: "var(--text-secondary)" }}>
-              Token analytics, cost tracking & live observability
+              {t("api_intelligence.subtitle")}
               {lastUpdated && (
                 <span className="ml-2 text-[11px]" style={{ color: "var(--text-secondary)" }}>
-                  · Updated {lastUpdated.toLocaleTimeString()}
+                  · {t("api_intelligence.updated")} {lastUpdated.toLocaleTimeString()}
                 </span>
               )}
             </p>
@@ -266,7 +278,7 @@ export default function ApiIntelligencePage() {
             style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--text-primary)" }}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh
+            {t("api_intelligence.refresh")}
           </motion.button>
           <motion.button
             whileHover={{ scale: 1.03 }}
@@ -275,7 +287,7 @@ export default function ApiIntelligencePage() {
             style={{ background: "linear-gradient(135deg,#2563eb,#6366f1)", boxShadow: "0 4px 14px rgba(37,99,235,0.28)" }}
           >
             <Download className="w-3.5 h-3.5" />
-            Export
+            {t("api_intelligence.export")}
           </motion.button>
         </div>
       </motion.div>
@@ -285,23 +297,27 @@ export default function ApiIntelligencePage() {
         className="flex gap-0.5 p-1 rounded-2xl mb-6 overflow-x-auto shrink-0"
         style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
       >
-        {TABS.map((t) => (
+        {TAB_NAMES && Object.entries(TAB_NAMES).map(([id, nameKey]) => {
+          const Icon = TAB_ICONS[id];
+          const tabName = t(`api_intelligence.${nameKey}`);
+          return (
           <button
-            key={t.id}
-            onClick={() => setActiveTab(t.id)}
+            key={id}
+            onClick={() => setActiveTab(id as Tab)}
             className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12.5px] font-semibold transition-all whitespace-nowrap"
-            style={activeTab === t.id ? { color: "#2563eb" } : { color: "var(--text-secondary)" }}
+            style={activeTab === id ? { color: "#2563eb" } : { color: "var(--text-secondary)" }}
           >
-            {activeTab === t.id && (
+            {activeTab === id && (
               <motion.div layoutId="tab-bg" className="absolute inset-0 rounded-xl" style={{ background: "rgba(37,99,235,0.08)" }} />
             )}
-            <t.icon className="w-3.5 h-3.5 relative z-10" />
-            <span className="relative z-10">{t.name}</span>
-            {t.id === "live" && (
+            <Icon className="w-3.5 h-3.5 relative z-10" />
+            <span className="relative z-10">{tabName}</span>
+            {id === "live" && (
               <span className="relative z-10 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             )}
           </button>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── Content ── */}
@@ -312,7 +328,7 @@ export default function ApiIntelligencePage() {
               className="absolute inset-0 rounded-full border-2 border-blue-600 border-t-transparent" />
             <div className="absolute inset-2.5 rounded-full bg-blue-600 opacity-20 animate-pulse" />
           </div>
-          <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Loading API metrics…</p>
+          <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>{t("api_intelligence.loading")}</p>
         </div>
       ) : (
         <AnimatePresence mode="wait">
@@ -323,10 +339,10 @@ export default function ApiIntelligencePage() {
               <div className="space-y-5">
                 {/* Metric cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <StatCard title="Total Tokens" value={overview.tokens.total.toLocaleString()} sub={`${overview.tokens.input.toLocaleString()} in · ${overview.tokens.output.toLocaleString()} out`} icon={BrainCircuit} trend="up" color="#2563eb" />
-                  <StatCard title="Total Cost" value={`$${overview.cost.total.toFixed(4)}`} sub={`$${overview.cost.today.toFixed(2)} today`} icon={DollarSign} trend="down" color="#10b981" />
-                  <StatCard title="API Calls" value={overview.calls.total.toLocaleString()} sub={`${overview.calls.today} today`} icon={Activity} trend="up" color="#6366f1" />
-                  <StatCard title="Projected Annual" value={`$${overview.cost.annual_projection.toFixed(2)}`} sub="Based on this month" icon={TrendingUp} color="#f59e0b" />
+                  <StatCard title={t("api_intelligence.total_tokens")} value={overview.tokens.total.toLocaleString()} sub={`${overview.tokens.input.toLocaleString()} in · ${overview.tokens.output.toLocaleString()} out`} icon={BrainCircuit} trend="up" color="#2563eb" />
+                  <StatCard title={t("api_intelligence.total_cost")} value={`$${overview.cost.total.toFixed(4)}`} sub={`$${overview.cost.today.toFixed(2)} ${t("api_intelligence.today")}`} icon={DollarSign} trend="down" color="#10b981" />
+                  <StatCard title={t("api_intelligence.api_calls")} value={overview.calls.total.toLocaleString()} sub={`${overview.calls.today} ${t("api_intelligence.today")}`} icon={Activity} trend="up" color="#6366f1" />
+                  <StatCard title={t("api_intelligence.projected_annual")} value={`$${overview.cost.annual_projection.toFixed(2)}`} sub={t("api_intelligence.based_on_month")} icon={TrendingUp} color="#f59e0b" />
                 </div>
 
                 {/* Trend charts */}
@@ -335,8 +351,8 @@ export default function ApiIntelligencePage() {
                     <Card>
                       <div className="p-5">
                         <div className="flex items-center justify-between mb-4">
-                          <h3 className="font-bold text-[14px]" style={{ color: "var(--text-primary)" }}>Token Consumption</h3>
-                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(37,99,235,0.08)", color: "#2563eb" }}>Last 7 days</span>
+                          <h3 className="font-bold text-[14px]" style={{ color: "var(--text-primary)" }}>{t("api_intelligence.token_consumption")}</h3>
+                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(37,99,235,0.08)", color: "#2563eb" }}>{t("api_intelligence.last_7_days")}</span>
                         </div>
                         <MiniBar data={trend.tokens} labels={trend.labels} color="#2563eb" />
                       </div>
@@ -344,8 +360,8 @@ export default function ApiIntelligencePage() {
                     <Card>
                       <div className="p-5">
                         <div className="flex items-center justify-between mb-4">
-                          <h3 className="font-bold text-[14px]" style={{ color: "var(--text-primary)" }}>Cost Trend</h3>
-                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.08)", color: "#10b981" }}>Last 7 days</span>
+                          <h3 className="font-bold text-[14px]" style={{ color: "var(--text-primary)" }}>{t("api_intelligence.cost_trend")}</h3>
+                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.08)", color: "#10b981" }}>{t("api_intelligence.last_7_days")}</span>
                         </div>
                         <MiniBar data={trend.costs} labels={trend.labels} color="#10b981" />
                       </div>
@@ -370,16 +386,16 @@ export default function ApiIntelligencePage() {
                             <h3 className="font-bold text-[15px] capitalize" style={{ color: "var(--text-primary)" }}>{p.provider}</h3>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               <StatusDot ok={p.error_rate < 5} />
-                              <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>{p.error_rate < 5 ? "Healthy" : "Degraded"}</span>
+                              <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>{p.error_rate < 5 ? t("api_intelligence.healthy") : t("api_intelligence.degraded")}</span>
                             </div>
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           {[
-                            { label: "Calls", value: p.calls.toLocaleString(), color: "#6366f1" },
-                            { label: "Tokens", value: p.tokens.toLocaleString(), color: "#2563eb" },
-                            { label: "Total Cost", value: `$${p.cost.toFixed(4)}`, color: "#10b981" },
-                            { label: "Avg Latency", value: `${p.avg_response_time.toFixed(0)}ms`, color: "#f59e0b" },
+                            { label: t("api_intelligence.calls"), value: p.calls.toLocaleString(), color: "#6366f1" },
+                            { label: t("api_intelligence.tokens"), value: p.tokens.toLocaleString(), color: "#2563eb" },
+                            { label: t("api_intelligence.total_cost"), value: `$${p.cost.toFixed(4)}`, color: "#10b981" },
+                            { label: t("api_intelligence.avg_latency"), value: `${p.avg_response_time.toFixed(0)}ms`, color: "#f59e0b" },
                           ].map((m) => (
                             <div key={m.label} className="p-2.5 rounded-xl" style={{ background: "var(--background)", border: "1px solid var(--border)" }}>
                               <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: "var(--text-secondary)" }}>{m.label}</p>
@@ -390,7 +406,7 @@ export default function ApiIntelligencePage() {
                         {/* Error rate bar */}
                         <div className="mt-3">
                           <div className="flex justify-between text-[11px] mb-1">
-                            <span style={{ color: "var(--text-secondary)" }}>Error Rate</span>
+                            <span style={{ color: "var(--text-secondary)" }}>{t("api_intelligence.error_rate")}</span>
                             <span style={{ color: p.error_rate > 5 ? "#ef4444" : "#10b981" }}>{p.error_rate.toFixed(1)}%</span>
                           </div>
                           <div className="h-1 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
@@ -409,7 +425,7 @@ export default function ApiIntelligencePage() {
               <Card>
                 <table className="w-full text-left text-sm">
                   <thead>
-                    <tr><Th>Salesperson</Th><Th>API Calls</Th><Th>Tokens</Th><Th>Cost Generated</Th></tr>
+                    <tr><Th>{t("api_intelligence.salesperson")}</Th><Th>{t("api_intelligence.api_calls")}</Th><Th>{t("api_intelligence.tokens")}</Th><Th>{t("api_intelligence.cost_generated")}</Th></tr>
                   </thead>
                   <tbody>
                     {salespersons.map((s, i) => (
@@ -435,7 +451,7 @@ export default function ApiIntelligencePage() {
               <Card>
                 <table className="w-full text-left text-sm">
                   <thead>
-                    <tr><Th>Client</Th><Th>API Calls</Th><Th>Tokens</Th><Th>Cost</Th></tr>
+                    <tr><Th>{t("api_intelligence.client")}</Th><Th>{t("api_intelligence.api_calls")}</Th><Th>{t("api_intelligence.tokens")}</Th><Th>{t("api_intelligence.cost")}</Th></tr>
                   </thead>
                   <tbody>
                     {clients.map((c, i) => (
@@ -461,7 +477,7 @@ export default function ApiIntelligencePage() {
               <Card>
                 <table className="w-full text-left text-sm">
                   <thead>
-                    <tr><Th>Endpoint</Th><Th>Hits</Th><Th>Tokens</Th><Th>Cost</Th><Th>Avg Latency</Th></tr>
+                    <tr><Th>{t("api_intelligence.endpoint")}</Th><Th>{t("api_intelligence.hits")}</Th><Th>{t("api_intelligence.tokens")}</Th><Th>{t("api_intelligence.cost")}</Th><Th>{t("api_intelligence.avg_latency")}</Th></tr>
                   </thead>
                   <tbody>
                     {endpoints.map((e, i) => (
@@ -492,16 +508,16 @@ export default function ApiIntelligencePage() {
               <Card>
                 <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
                   <span className="text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>
-                    {requests.length} requests logged
+                    {requests.length} {t("api_intelligence.requests_logged")}
                   </span>
                   <button className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg border transition-colors hover:bg-gray-50" style={{ color: "var(--text-secondary)", borderColor: "var(--border)" }}>
-                    <Filter className="w-3.5 h-3.5" /> Filter
+                    <Filter className="w-3.5 h-3.5" /> {t("api_intelligence.filter")}
                   </button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
                     <thead>
-                      <tr><Th>Time</Th><Th>Endpoint</Th><Th>User</Th><Th>Model</Th><Th>Tokens</Th><Th>Cost</Th><Th>Latency</Th><Th>Status</Th></tr>
+                      <tr><Th>{t("api_intelligence.time")}</Th><Th>{t("api_intelligence.endpoint")}</Th><Th>{t("api_intelligence.user")}</Th><Th>{t("api_intelligence.model")}</Th><Th>{t("api_intelligence.tokens")}</Th><Th>{t("api_intelligence.cost")}</Th><Th>{t("api_intelligence.latency")}</Th><Th>{t("api_intelligence.status")}</Th></tr>
                     </thead>
                     <tbody>
                       {requests.map((r, i) => (
@@ -528,9 +544,9 @@ export default function ApiIntelligencePage() {
                           </Td>
                           <Td>
                             {r.status === "success" || !r.status ? (
-                              <span className="flex items-center gap-1 text-emerald-500"><CheckCircle className="w-3.5 h-3.5" />OK</span>
+                              <span className="flex items-center gap-1 text-emerald-500"><CheckCircle className="w-3.5 h-3.5" />{t("api_intelligence.ok")}</span>
                             ) : (
-                              <span className="flex items-center gap-1 text-red-400"><XCircle className="w-3.5 h-3.5" />Error</span>
+                              <span className="flex items-center gap-1 text-red-400"><XCircle className="w-3.5 h-3.5" />{t("api_intelligence.error")}</span>
                             )}
                           </Td>
                         </tr>
@@ -547,10 +563,10 @@ export default function ApiIntelligencePage() {
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2 font-semibold text-emerald-500 text-[13px]">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                    Live API Stream — Auto-refresh every 5s
+                    Live API Stream — {t("api_intelligence.auto_refresh")}
                   </div>
                   <span className="text-[12px]" style={{ color: "var(--text-secondary)" }}>
-                    {requests.length} events loaded
+                    {requests.length} {t("api_intelligence.events_loaded")}
                   </span>
                 </div>
 
@@ -562,7 +578,7 @@ export default function ApiIntelligencePage() {
                     <div className="w-3 h-3 rounded-full bg-yellow-400" />
                     <div className="w-3 h-3 rounded-full bg-emerald-400" />
                     <span className="ml-3 text-[11px] font-mono text-gray-500">api-intelligence/stream</span>
-                    <span className="ml-auto text-[11px] font-mono text-emerald-400">● CONNECTED</span>
+                    <span className="ml-auto text-[11px] font-mono text-emerald-400">● {t("api_intelligence.connected")}</span>
                   </div>
                   <div ref={liveRef} className="p-4 max-h-[500px] overflow-y-auto space-y-1 font-mono text-[12px]" style={{ scrollbarWidth: "none" }}>
                     {requests.map((r, i) => (
@@ -582,7 +598,7 @@ export default function ApiIntelligencePage() {
                       </motion.div>
                     ))}
                     {requests.length === 0 && (
-                      <p className="text-gray-600 text-center py-8">Waiting for API calls…</p>
+                      <p className="text-gray-600 text-center py-8">{t("api_intelligence.waiting")}</p>
                     )}
                   </div>
                 </div>
@@ -598,18 +614,18 @@ export default function ApiIntelligencePage() {
                       <Bell className="w-7 h-7 text-amber-500" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-[16px]" style={{ color: "var(--text-primary)" }}>Alert Configuration</h3>
+                      <h3 className="font-bold text-[16px]" style={{ color: "var(--text-primary)" }}>{t("api_intelligence.alert_config")}</h3>
                       <p className="text-[13px] mt-1" style={{ color: "var(--text-secondary)" }}>
-                        Set up automated notifications for cost overruns and error spikes.
+                        {t("api_intelligence.alert_config_desc")}
                       </p>
                     </div>
 
                     {/* Quick alert presets */}
                     <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-3 mt-2">
                       {[
-                        { title: "Cost Threshold", desc: "Alert when daily cost exceeds $X", icon: DollarSign, color: "#10b981" },
-                        { title: "Error Rate Spike", desc: "Alert on >5% error rate for any model", icon: AlertTriangle, color: "#f59e0b" },
-                        { title: "Token Limit", desc: "Alert when monthly tokens hit 80% of quota", icon: BrainCircuit, color: "#6366f1" },
+                        { title: t("api_intelligence.cost_threshold"), desc: t("api_intelligence.cost_threshold_desc"), icon: DollarSign, color: "#10b981" },
+                        { title: t("api_intelligence.error_rate_spike"), desc: t("api_intelligence.error_rate_spike_desc"), icon: AlertTriangle, color: "#f59e0b" },
+                        { title: t("api_intelligence.token_limit"), desc: t("api_intelligence.token_limit_desc"), icon: BrainCircuit, color: "#6366f1" },
                       ].map((a) => (
                         <div key={a.title} className="p-4 rounded-xl text-left cursor-pointer hover:opacity-90 transition-opacity border" style={{ background: `${a.color}08`, borderColor: `${a.color}22` }}>
                           <a.icon className="w-4 h-4 mb-2" style={{ color: a.color }} />
@@ -623,7 +639,7 @@ export default function ApiIntelligencePage() {
                       className="px-6 py-2.5 rounded-xl font-bold text-[13px] text-white mt-2 transition-all"
                       style={{ background: "linear-gradient(135deg,#2563eb,#6366f1)", boxShadow: "0 4px 14px rgba(37,99,235,0.28)" }}
                     >
-                      Create New Alert
+                      {t("api_intelligence.create_new_alert")}
                     </button>
                   </div>
                 </Card>

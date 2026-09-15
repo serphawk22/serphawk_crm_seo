@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { Database, Table, Download, ArrowUp, ArrowDown, ChevronRight, Lock } from 'lucide-react';
+import { useLanguage } from "@/context/LanguageContext";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://crmbackend.serphawk.in';
 
 export default function DatabaseManagementPage() {
+  const { t } = useLanguage();
   const [tables, setTables] = useState<string[]>([]);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   
@@ -108,8 +110,8 @@ export default function DatabaseManagementPage() {
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-zinc-950">
         <div className="text-center">
           <Lock className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-zinc-100 mb-2">Access Denied</h1>
-          <p className="text-slate-500">Only Master Admins can access the Database Management interface.</p>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-zinc-100 mb-2">{t("database_management.access_denied")}</h1>
+          <p className="text-slate-500">{t("database_management.only_master_admins")}</p>
         </div>
       </div>
     );
@@ -126,7 +128,7 @@ export default function DatabaseManagementPage() {
             </div>
             <h1 className="text-lg font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600 dark:from-indigo-400 dark:to-violet-400">Neon DB</h1>
           </div>
-          <p className="text-xs font-bold text-slate-400 mt-3 uppercase tracking-widest pl-1">Super Admin Core</p>
+          <p className="text-xs font-bold text-slate-400 mt-3 uppercase tracking-widest pl-1">{t("database_management.super_admin_core")}</p>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
           {tables.map(t => (
@@ -159,7 +161,7 @@ export default function DatabaseManagementPage() {
                 <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 flex items-center gap-3">
                   {selectedTable}
                   <span className="text-xs font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 px-3 py-1 rounded-full border border-indigo-200 dark:border-indigo-800/50">
-                    {total} Entries
+                    {total} {t("database_management.entries")}
                   </span>
                 </h2>
               </div>
@@ -169,7 +171,7 @@ export default function DatabaseManagementPage() {
                   className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 dark:from-white dark:to-slate-100 dark:hover:from-slate-200 dark:hover:to-slate-300 text-white dark:text-slate-900 text-sm font-bold rounded-xl transition-all shadow-md hover:shadow-lg active:scale-95"
                 >
                   <Download className="w-4 h-4" />
-                  Export to CSV
+                  {t("database_management.export_csv")}
                 </button>
               </div>
             </div>
@@ -216,14 +218,14 @@ export default function DatabaseManagementPage() {
                           <td colSpan={columns.length} className="p-12 text-center text-slate-400 font-medium">
                             <div className="flex flex-col items-center justify-center gap-3">
                               <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                              Querying database...
+                              {t("database_management.querying_db")}
                             </div>
                           </td>
                         </tr>
                       ) : data.length === 0 ? (
                         <tr>
                           <td colSpan={columns.length} className="p-12 text-center text-slate-500 font-medium bg-slate-50/50 dark:bg-zinc-900/50">
-                            No records found in this table.
+                            {t("database_management.no_records")}
                           </td>
                         </tr>
                       ) : (
@@ -246,7 +248,7 @@ export default function DatabaseManagementPage() {
                 {/* Pagination */}
                 <div className="p-4 border-t border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/80 flex items-center justify-between">
                   <div className="text-sm text-slate-500 dark:text-zinc-400 font-semibold">
-                    Showing <span className="text-slate-700 dark:text-zinc-300">{((page - 1) * perPage) + (total > 0 ? 1 : 0)}</span> to <span className="text-slate-700 dark:text-zinc-300">{Math.min(page * perPage, total)}</span> of <span className="text-slate-700 dark:text-zinc-300">{total}</span> entries
+                    {t("database_management.showing_to_of").replace("{from}", String(((page - 1) * perPage) + (total > 0 ? 1 : 0))).replace("{to}", String(Math.min(page * perPage, total))).replace("{total}", String(total))}
                   </div>
                   <div className="flex gap-2">
                     <button 
@@ -254,14 +256,14 @@ export default function DatabaseManagementPage() {
                       disabled={page === 1 || loading}
                       className="px-4 py-2 text-sm font-bold rounded-lg border border-slate-200 dark:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 transition-colors shadow-sm bg-slate-100 dark:bg-zinc-900"
                     >
-                      Previous
+                      {t("database_management.previous")}
                     </button>
                     <button 
                       onClick={() => setPage(p => p + 1)}
                       disabled={page * perPage >= total || loading}
                       className="px-4 py-2 text-sm font-bold rounded-lg border border-slate-200 dark:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 transition-colors shadow-sm bg-slate-100 dark:bg-zinc-900"
                     >
-                      Next
+                      {t("database_management.next")}
                     </button>
                   </div>
                 </div>
@@ -276,9 +278,9 @@ export default function DatabaseManagementPage() {
             <div className="w-24 h-24 bg-white dark:bg-zinc-900 shadow-xl rounded-2xl flex items-center justify-center mb-8 rotate-3 border border-slate-100 dark:border-zinc-800 relative z-10">
               <Database className="w-10 h-10 text-indigo-500" />
             </div>
-            <h2 className="text-3xl font-black text-slate-800 dark:text-zinc-100 mb-3 relative z-10">Database Connected</h2>
+            <h2 className="text-3xl font-black text-slate-800 dark:text-zinc-100 mb-3 relative z-10">{t("database_management.db_connected")}</h2>
             <p className="text-slate-500 dark:text-zinc-400 max-w-md mx-auto font-medium leading-relaxed relative z-10">
-              Select any table from the sidebar to view, sort, and instantly export live production data directly from PostgreSQL.
+              {t("database_management.select_table_desc")}
             </p>
           </div>
         )}

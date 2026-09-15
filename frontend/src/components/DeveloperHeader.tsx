@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
 export function DeveloperHeader() {
-  const { activeLang, setLanguage } = useLanguage();
+  const { activeLang, setLanguage, t } = useLanguage();
   const { theme, setTheme } = useTheme();
   const { user, logout } = useRole();
 
@@ -44,8 +44,8 @@ export function DeveloperHeader() {
             <Code2 size={18} className="text-white" />
           </div>
           <div>
-            <h1 className="text-sm font-black text-slate-900 dark:text-zinc-50 tracking-tight leading-tight">Developer Workspace</h1>
-            <p className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">{user?.name || 'Developer'}</p>
+            <h1 className="text-sm font-black text-slate-900 dark:text-zinc-50 tracking-tight leading-tight">{t("dev_header.workspace")}</h1>
+            <p className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">{user?.name || t("dev_header.developer")}</p>
           </div>
         </div>
 
@@ -91,7 +91,7 @@ export function DeveloperHeader() {
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors text-sm font-bold"
           >
             <LogOut size={16} />
-            <span className="hidden sm:inline">Logout</span>
+            <span className="hidden sm:inline">{t("dev_header.logout")}</span>
           </button>
         </div>
       </div>
