@@ -12,15 +12,35 @@ from reportlab.platypus import (
 )
 
 
+
+# ── Logo path resolver ──────────────────────────────────────────────────────
+def _logo_path():
+    """Return the path to the SERP Hawk logo, trying several locations."""
+    candidates = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logo.jpg"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Serp Hwak Logo.png"),
+        "logo.jpg",
+        os.path.join("static", "logo.jpg"),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return os.path.abspath(p)
+    return None
+
+
 def _brand_header(doc, brand_title):
     """Return flowable header block with logo + title (best-effort)."""
     from reportlab.platypus import Table as T
-    logo_path = os.path.join("static", "logo.jpg")
+    logo_path = _logo_path()
     parts = []
     logo_cell = None
-    if os.path.exists(logo_path):
+    if logo_path:
         try:
-            logo_cell = Image(logo_path, width=18 * mm, height=18 * mm, hAlign="LEFT")
+            from reportlab.lib.utils import ImageReader
+            reader = ImageReader(logo_path)
+            iw, ih = reader.getSize()
+            scale = min(18 * mm / float(iw), 18 * mm / float(ih))
+            logo_cell = Image(logo_path, width=float(iw) * scale, height=float(ih) * scale, hAlign="LEFT")
         except Exception:
             logo_cell = None
 
@@ -751,22 +771,48 @@ def _english_datetime(dt):
 def _serphawk_header(title_text, meta_lines=None, subtitle=None):
     """Shared minimal SERPHAWK document header (reference-template).
 
-    Bold brand at the top-left, small metadata block at the top-right, then a
-    thin light-gray divider. Every document built on this template (receipt,
-    inventory list, ...) shares the exact same typography / spacing / margins.
+    Logo + bold brand at the top-left, small metadata block at the top-right,
+    then a thin light-gray divider. Every document built on this template
+    (receipt, inventory list, ...) shares the exact same typography / spacing.
 
     ``meta_lines`` is a list of ``(label, value)`` tuples rendered right-aligned
     with bold labels and normal-weight values, e.g. ("Ticket:", "#2").
     """
     from reportlab.platypus import HRFlowable as _HR
 
-    left_parts = [Paragraph(title_text, ParagraphStyle(
+    # Try to embed the Serp Hawk logo
+    logo_img = None
+    _lp = _logo_path()
+    if _lp:
+        try:
+            from reportlab.lib.utils import ImageReader
+            _reader = ImageReader(_lp)
+            _iw, _ih = _reader.getSize()
+            _scale = min(14 * mm / float(_iw), 14 * mm / float(_ih))
+            logo_img = Image(_lp, width=float(_iw) * _scale, height=float(_ih) * _scale, hAlign="LEFT")
+        except Exception:
+            logo_img = None
+
+    brand_text_parts = [Paragraph(title_text, ParagraphStyle(
         "shBrand", fontName="Helvetica-Bold", fontSize=16, leading=19,
         textColor=_RECEIPT_INK, wordWrap="CJK"))]
     if subtitle:
-        left_parts.append(Paragraph(subtitle, ParagraphStyle(
+        brand_text_parts.append(Paragraph(subtitle, ParagraphStyle(
             "shSub", fontName="Helvetica", fontSize=9.5, leading=12,
             textColor=_RECEIPT_SUBTLE, wordWrap="CJK", spaceBefore=2)))
+
+    if logo_img is not None:
+        brand_cell = Table([[logo_img, Table([[p] for p in brand_text_parts], colWidths=[None])]], colWidths=[16 * mm, None])
+        brand_cell.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        left_parts = [brand_cell]
+    else:
+        left_parts = brand_text_parts
 
     right_cell = None
     if meta_lines:
@@ -785,16 +831,21 @@ def _serphawk_header(title_text, meta_lines=None, subtitle=None):
             ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
         ]))
 
-    left_cell = Table([[p] for p in left_parts], colWidths=[None])
-    left_cell.setStyle(TableStyle([
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-    ]))
+    if logo_img is not None:
+        left_cell = left_parts[0]  # already a Table (logo + text)
+        lc_width = 100 * mm
+    else:
+        left_cell = Table([[p] for p in left_parts], colWidths=[None])
+        left_cell.setStyle(TableStyle([
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        lc_width = 100 * mm
 
     if right_cell is not None:
-        header_table = Table([[left_cell, right_cell]], colWidths=[100 * mm, 80 * mm])
+        header_table = Table([[left_cell, right_cell]], colWidths=[lc_width, 80 * mm])
     else:
         header_table = Table([[left_cell]], colWidths=[180 * mm])
     header_table.setStyle(TableStyle([
@@ -1138,7 +1189,20 @@ def quote_pdf(data):
     story = []
 
     # ── 1) Header ────────────────────────────────────────────────────────
-    left_parts = [
+    # Try to embed logo in quote header
+    _qlp = _logo_path()
+    _qlogo = None
+    if _qlp:
+        try:
+            from reportlab.lib.utils import ImageReader as _QIR
+            _qr = _QIR(_qlp)
+            _qiw, _qih = _qr.getSize()
+            _qscale = min(14 * mm / float(_qiw), 14 * mm / float(_qih))
+            _qlogo = Image(_qlp, width=float(_qiw) * _qscale, height=float(_qih) * _qscale, hAlign="LEFT")
+        except Exception:
+            _qlogo = None
+
+    brand_text_list = [
         Paragraph("SERPHAWK", ParagraphStyle(
             "qBrand", fontName="Helvetica-Bold", fontSize=17, leading=20,
             textColor=_RECEIPT_INK, wordWrap="CJK")),
@@ -1146,13 +1210,27 @@ def quote_pdf(data):
             "qSub", fontName="Helvetica", fontSize=9.5, leading=12,
             textColor=_RECEIPT_SUBTLE, wordWrap="CJK", spaceBefore=3)),
     ]
-    left_cell = Table([[p] for p in left_parts], colWidths=[None])
-    left_cell.setStyle(TableStyle([
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-    ]))
+    if _qlogo is not None:
+        _text_tbl = Table([[p] for p in brand_text_list], colWidths=[None])
+        _text_tbl.setStyle(TableStyle([
+            ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        left_cell = Table([[_qlogo, _text_tbl]], colWidths=[16 * mm, None])
+        left_cell.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (0, 0), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+    else:
+        left_parts = brand_text_list
+        left_cell = Table([[p] for p in left_parts], colWidths=[None])
+        left_cell.setStyle(TableStyle([
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
 
     meta_paras = []
     if qn:
