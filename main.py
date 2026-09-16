@@ -5326,7 +5326,13 @@ def dashboard_stats(
 
     import calendar
     all_invoices = session.exec(select(Invoice)).all()
+    all_quotes = session.exec(select(CRMQuote)).all()
+    all_sales_orders = session.exec(select(SalesOrder)).all()
+    all_purchase_orders = session.exec(select(PurchaseOrder)).all()
     all_service_reqs = session.exec(select(ServiceRequest)).all()
+
+    def _billing_value(row):
+        return getattr(row, "grand_total", None) or getattr(row, "total", None) or 0
 
     revenue_data = []
     today = datetime.utcnow()
@@ -5345,8 +5351,18 @@ def dashboard_stats(
             next_year += 1
         month_end = datetime(next_year, next_month, 1)
         
-        rev = sum(inv.total for inv in all_invoices if inv.status == "Paid" and inv.created_at and month_start <= inv.created_at < month_end)
-        exp = sum(inv.total for inv in all_invoices if inv.status == "Sent" and inv.created_at and month_start <= inv.created_at < month_end) * 0.3
+        def _in_month(row):
+            v = getattr(row, "created_at", None)
+            return bool(v and month_start <= v < month_end)
+        
+        # Money in: quotes + paid invoices + sales orders created this month.
+        rev = (
+            sum(_billing_value(q) for q in all_quotes if _in_month(q))
+            + sum(_billing_value(inv) for inv in all_invoices if inv.status == "Paid" and _in_month(inv))
+            + sum(_billing_value(o) for o in all_sales_orders if _in_month(o))
+        )
+        # Money out: purchase orders created this month.
+        exp = sum(_billing_value(po) for po in all_purchase_orders if _in_month(po))
         revenue_data.append({"name": calendar.month_abbr[target_month], "revenue": rev, "expenses": exp})
         
     pipeline_data = [
@@ -5365,9 +5381,51 @@ def dashboard_stats(
     total_revenue = sum(inv.total or 0 for inv in all_invoices if inv.status == "Paid")
     total_pipeline_value = sum(p.total_value or 0 for p in all_proposals if p.status not in ("Accepted", "Declined"))
 
+    total_quotes_value = sum(_billing_value(q) for q in all_quotes)
+    accepted_quotes_value = sum(_billing_value(q) for q in all_quotes if q.status == "Accepted")
+    total_quotes_count = len(all_quotes)
+    accepted_quotes_count = sum(1 for q in all_quotes if q.status == "Accepted")
+
+    total_sales_orders_value = sum(_billing_value(o) for o in all_sales_orders)
+    fulfilled_sales_orders_value = sum(_billing_value(o) for o in all_sales_orders if o.status in ("Fulfilled", "Paid", "Completed"))
+    total_sales_orders_count = len(all_sales_orders)
+    fulfilled_sales_orders_count = sum(1 for o in all_sales_orders if o.status in ("Fulfilled", "Paid", "Completed"))
+
+    total_purchase_orders_value = sum(_billing_value(po) for po in all_purchase_orders)
+    received_purchase_orders_value = sum(_billing_value(po) for po in all_purchase_orders if po.status in ("Received", "Completed"))
+    total_purchase_orders_count = len(all_purchase_orders)
+    received_purchase_orders_count = sum(1 for po in all_purchase_orders if po.status in ("Received", "Completed"))
+
+    total_invoices_value = sum(inv.total or 0 for inv in all_invoices)
+    paid_invoices_value = sum(inv.total or 0 for inv in all_invoices if inv.status == "Paid")
+    sent_invoices_value = sum(inv.total or 0 for inv in all_invoices if inv.status == "Sent")
+    overdue_invoices_value = sum(inv.total or 0 for inv in all_invoices if inv.status == "Overdue")
+    partial_invoices_value = sum(inv.total or 0 for inv in all_invoices if inv.status == "Partial")
+    paid_invoices_count = sum(1 for inv in all_invoices if inv.status == "Paid")
+    total_invoices_count = len(all_invoices)
+
     return {
         "revenue": total_revenue,
         "pipelineValue": total_pipeline_value,
+        "totalQuotesValue": total_quotes_value,
+        "acceptedQuotesValue": accepted_quotes_value,
+        "totalQuotesCount": total_quotes_count,
+        "acceptedQuotesCount": accepted_quotes_count,
+        "totalSalesOrdersValue": total_sales_orders_value,
+        "fulfilledSalesOrdersValue": fulfilled_sales_orders_value,
+        "totalSalesOrdersCount": total_sales_orders_count,
+        "fulfilledSalesOrdersCount": fulfilled_sales_orders_count,
+        "totalPurchaseOrdersValue": total_purchase_orders_value,
+        "receivedPurchaseOrdersValue": received_purchase_orders_value,
+        "totalPurchaseOrdersCount": total_purchase_orders_count,
+        "receivedPurchaseOrdersCount": received_purchase_orders_count,
+        "totalInvoicesValue": total_invoices_value,
+        "paidInvoicesValue": paid_invoices_value,
+        "sentInvoicesValue": sent_invoices_value,
+        "overdueInvoicesValue": overdue_invoices_value,
+        "partialInvoicesValue": partial_invoices_value,
+        "paidInvoicesCount": paid_invoices_count,
+        "totalInvoicesCount": total_invoices_count,
         "total": total_clients,
         "active": active_clients,
         "pending": pending_clients,
