@@ -242,10 +242,13 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
       {(() => {
         let parsedServices: any[] = [];
         try {
-          if (lead?.services_offered) {
-            parsedServices = typeof lead.services_offered === 'string'
-              ? JSON.parse(lead.services_offered)
-              : lead.services_offered;
+          const serviceSource = lead?.services_offered
+            || lead?.ai_analysis_results?.services_offered
+            || lead?.ai_analysis_results?.product_portfolio;
+          if (serviceSource) {
+            parsedServices = typeof serviceSource === 'string'
+              ? JSON.parse(serviceSource)
+              : serviceSource;
           }
         } catch {}
         if (!Array.isArray(parsedServices) || parsedServices.length === 0) return null;

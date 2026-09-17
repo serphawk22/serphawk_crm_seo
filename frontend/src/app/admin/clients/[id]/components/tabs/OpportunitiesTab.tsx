@@ -151,8 +151,12 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
 
   let eaData: any = null;
   if (research?.email_agent_data) {
-    try { eaData = JSON.parse(research.email_agent_data); } catch (e) {}
+    try { eaData = typeof research.email_agent_data === 'string' ? JSON.parse(research.email_agent_data) : research.email_agent_data; } catch (e) {}
   }
+
+  const hasEmailAgentData = Boolean(
+    (client?.lead_source === 'Email Agent' || eaData?.company_info || eaData?.draft) && eaData
+  );
   
   if (client?.services_offered) {
     try {
@@ -312,7 +316,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
       } else if (data.ok === false) {
         setExtractError(toErrorMessage(data, 'Failed to extract services'));
       } else {
-        setExtractResult({ count: data.services?.length || 0, marketplace: data.marketplace_entries_added || 0 });
+        setExtractResult({ count: data.services?.length ?? data.extracted_count ?? 0, marketplace: data.marketplace_entries_added ?? data.marketplace_count ?? 0 });
         window.dispatchEvent(new CustomEvent('refresh-client-data'));
       }
     } catch (e: any) {
@@ -347,7 +351,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-zinc-700 dark:border-slate-800 pb-4 overflow-x-auto">
         {[
           { id: 'presales', label: language === 'es' ? 'Análisis del Agente IA' : 'AI Agent Analysis', icon: Brain },
-          { id: 'emails', label: language === 'es' ? 'Correos Salientes' : 'Outbound Emails', icon: Mail },
+          ...(hasEmailAgentData ? [{ id: 'emails', label: language === 'es' ? 'Correos Salientes' : 'Outbound Emails', icon: Mail }] : []),
 
         ].map(t => (
           <button
@@ -620,7 +624,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
       </div>
       )}
 
-      {activeSubTab === 'emails' && (
+      {hasEmailAgentData && activeSubTab === 'emails' && (
         <div className="space-y-6">
           
           {/* Research Data (ResultCard & PDF Download) */}

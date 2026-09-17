@@ -135,9 +135,18 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
   const [activeSubTab, setActiveSubTab] = React.useState('presales');
   const [expandedEmailId, setExpandedEmailId] = React.useState<number | null>(null);
 
-  let eaData: any = null;
+  let leadAgentData: any = null;
+  if (lead?.ai_analysis_results) {
+    try {
+      leadAgentData = typeof lead.ai_analysis_results === 'string'
+        ? JSON.parse(lead.ai_analysis_results)
+        : lead.ai_analysis_results;
+    } catch (e) {}
+  }
+
+  let eaData: any = leadAgentData;
   if (research?.email_agent_data) {
-    try { eaData = JSON.parse(research.email_agent_data); } catch (e) {}
+    try { eaData = typeof research.email_agent_data === 'string' ? JSON.parse(research.email_agent_data) : research.email_agent_data; } catch (e) {}
   }
   
   if (lead?.ai_analysis_results?.product_portfolio) {
@@ -156,11 +165,11 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
   // researchData feeds ResultCard — eaData already has company_info + draft
   const [researchData, setResearchData] = React.useState<any>(null);
   React.useEffect(() => {
-    if (research?.email_agent_data) {
+    if (research?.email_agent_data || leadAgentData) {
       try {
-        const parsed = typeof research.email_agent_data === 'string'
+        const parsed = leadAgentData || (typeof research.email_agent_data === 'string'
           ? JSON.parse(research.email_agent_data)
-          : research.email_agent_data;
+          : research.email_agent_data);
         setResearchData(parsed);
       } catch (e) {
         console.error('Failed to parse research data', e);
@@ -186,6 +195,7 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
   const [isGeneratingDraft, setIsGeneratingDraft] = React.useState(false);
   const [extractResult, setExtractResult] = React.useState<{ count: number; marketplace: number } | null>(null);
   const [extractError, setExtractError] = React.useState<string | null>(null);
+  const hasEmailAgentData = Boolean(leadAgentData?.company_info || leadAgentData?.draft || lead?.source === 'Email Agent');
 
   // Radar Discovery Graph State
   const [radarData, setRadarData] = React.useState<any>(null);
@@ -249,7 +259,7 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
       if (!res.ok) {
         setExtractError(data.detail || text || 'Failed to extract services');
       } else {
-        setExtractResult({ count: data.services?.length || 0, marketplace: data.marketplace_entries_added || 0 });
+        setExtractResult({ count: data.services?.length ?? data.extracted_count ?? 0, marketplace: data.marketplace_entries_added ?? data.marketplace_count ?? 0 });
         window.dispatchEvent(new CustomEvent('refresh-lead-data'));
       }
     } catch (e: any) {
@@ -289,7 +299,7 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-zinc-700 dark:border-slate-800 pb-4 overflow-x-auto">
         {[
           { id: 'presales', label: language === 'es' ? 'Análisis del Agente IA' : 'AI Agent Analysis', icon: Brain },
-          { id: 'emails', label: language === 'es' ? 'Correos Salientes' : 'Outbound Emails', icon: Mail },
+          ...(hasEmailAgentData ? [{ id: 'emails', label: language === 'es' ? 'Correos Salientes' : 'Outbound Emails', icon: Mail }] : []),
         ].map(t => (
           <button
             key={t.id}
@@ -440,7 +450,7 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
       </div>
       )}
 
-      {activeSubTab === 'emails' && (
+      {hasEmailAgentData && activeSubTab === 'emails' && (
         <div className="space-y-6">
           
           {/* Research Data (ResultCard & PDF Download) */}

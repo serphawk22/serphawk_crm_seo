@@ -9864,6 +9864,7 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
     else:
         analysis_data = {}
     analysis_data["product_portfolio"] = services
+    analysis_data["services_offered"] = services
     lead.ai_analysis_results = analysis_data
     session.add(lead)
 
@@ -9904,6 +9905,8 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
     method_label = "live website" if scrape_method == "website_scrape" else "AI knowledge (site unreachable)"
     return {
         "ok": True,
+        "services": services,
+        "marketplace_entries_added": added,
         "extracted_count": len(services),
         "marketplace_count": added,
         "scrape_method": scrape_method,
