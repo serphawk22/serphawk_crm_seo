@@ -49,53 +49,10 @@ def _serphawk_logo_bytes():
 
 
 def _logo_img_html(alt="SERP Hawk"):
-    """Small inline logo for email headers (kept compact so it doesn't dominate the mail)."""
     return (
-        f'<img src="cid:serphawk_logo" alt="{alt}" width="36" height="36" '
-        'style="display:block;width:36px;height:36px;border-radius:8px;background:#ffffff;padding:2px;box-sizing:border-box" />'
+        f'<img src="cid:serphawk_logo" alt="{alt}" width="150" height="150" '
+        'style="display:block;width:150px;height:150px;border-radius:12px;background:#ffffff;padding:4px;box-sizing:border-box" />'
     )
-
-
-def branded_email_html(title: str, body_html: str, brand_text: str = "SERP Hawk CRM") -> str:
-    """Wrap body content in the standard SERP Hawk branded email template
-    (small logo in the header + title + content + footer)."""
-    img = _logo_img_html()
-    return f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,0.08)">
-          <tr>
-            <td style="background:linear-gradient(135deg,#1e3a8a,#2563eb);padding:24px 32px">
-              <table role="presentation" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td style="vertical-align:middle">{img}</td>
-                  <td style="vertical-align:middle;padding-left:10px">
-                    <span style="font-size:13px;font-weight:800;color:#ffffff;letter-spacing:1px;text-transform:uppercase">{brand_text}</span>
-                  </td>
-                </tr>
-              </table>
-              <p style="margin:14px 0 0;font-size:20px;font-weight:800;color:#ffffff">{title}</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:24px 32px;color:#334155;font-size:14px;line-height:1.7">{body_html}</td>
-          </tr>
-          <tr>
-            <td style="padding:16px 32px 24px;border-top:1px solid #eef2f7">
-              <p style="margin:0;color:#64748b;font-size:12px;line-height:1.5">Thanks,<br><span style="font-weight:700;color:#1d4ed8">{brand_text}</span></p>
-              <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:14px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>"""
 
 
 def _inject_logo(html):
@@ -103,21 +60,16 @@ def _inject_logo(html):
     if "cid:serphawk_logo" in html:
         return html
     img = _logo_img_html()
-    brand_hdr = (
-        f'<span style="display:inline-flex;align-items:center;gap:8px">{img}'
-        f'<span style="font-size:13px;font-weight:800;color:#ffffff;letter-spacing:1px;text-transform:uppercase">SERP Hawk CRM</span></span>'
-    )
     replacements = [
-        ('<strong style="font-size:18px">🦅 SERP Hawk CRM</strong>', brand_hdr),
-        ('<strong style="font-size:18px">🦅 SERP Hawk Supplier Portal</strong>',
-         brand_hdr.replace("SERP Hawk CRM", "SERP Hawk Supplier Portal")),
-        ('<strong style="font-size:18px">SerpHawk CRM</strong>', brand_hdr),
-        ('<p style="margin:0;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#93c5fd">SERP Hawk CRM</p>', brand_hdr),
+        ('<strong style="font-size:18px">🦅 SERP Hawk CRM</strong>', img),
+        ('<strong style="font-size:18px">🦅 SERP Hawk Supplier Portal</strong>', _logo_img_html("SERP Hawk Supplier Portal")),
+        ('<strong style="font-size:18px">SerpHawk CRM</strong>', img),
+        ('<p style="margin:0;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#93c5fd">SerpHawk CRM</p>', img),
     ]
     for old, new in replacements:
         if old in html:
             return html.replace(old, new)
-    block = f'<div style="text-align:center;background:#ffffff;padding:14px 18px 0">{img}</div>'
+    block = f'<div style="text-align:center;background:#ffffff;padding:18px 18px 4px">{img}</div>'
     m = re.search(r"(<body[^>]*>)", html, re.I)
     if m:
         return html[: m.end()] + block + html[m.end():]
@@ -247,13 +199,20 @@ def send_password_reset_email(to_email: str, reset_url: str):
     if not sender or not password:
         return False
     subject = "Reset your SERP Hawk CRM password"
-    html = branded_email_html(
-        "Reset your password",
-        f"<p style='margin:0 0 20px'>We received a request to reset the password for your account. "
-        f"Click the button below to choose a new password. This link expires in <strong>1 hour</strong>.</p>"
-        f"<a href=\"{reset_url}\" style=\"display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:600\">Set a new password</a>"
-        f"<p style='margin:20px 0 0'>If you did not request this, you can safely ignore this email. The link may only be used once.</p>",
-    )
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div style="background:#1e293b;color:#fff;padding:22px 28px">
+        <strong style="font-size:18px">🦅 SERP Hawk CRM</strong>
+      </div>
+      <div style="padding:28px">
+        <h2 style="color:#0f172a;font-size:20px;margin:0 0 12px">Reset your password</h2>
+        <p style="color:#475569;line-height:1.6;margin:0 0 20px">We received a request to reset the password for your account. Click the button below to choose a new password. This link expires in <strong>1 hour</strong>.</p>
+        <a href="{reset_url}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:600">Set a new password</a>
+        <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">If you did not request this, you can safely ignore this email. The link may only be used once.</p>
+        <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
+      </div>
+    </div>
+    """
     try:
         send_email_outlook(
             to_email=to_email,
@@ -280,13 +239,22 @@ def send_otp_email(to_email: str, otp_code: str, purpose: str = "email verificat
     if not sender or not password:
         return False
     subject = f"Your SERP Hawk CRM verification code: {otp_code}"
-    html = branded_email_html(
-        "Verify your email address",
-        f"<p style='margin:0 0 20px'>Use the code below to complete your {purpose}. This code expires in <strong>10 minutes</strong>.</p>"
-        f"<div style='background:#f1f5f9;border-radius:10px;padding:20px;text-align:center;margin:0 0 20px'>"
-        f"<span style='font-size:32px;font-weight:800;letter-spacing:6px;color:#1e293b'>{otp_code}</span></div>"
-        f"<p style='margin:0'>If you did not request this, you can safely ignore this email.</p>",
-    )
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div style="background:#1e293b;color:#fff;padding:22px 28px">
+        <strong style="font-size:18px">🦅 SERP Hawk CRM</strong>
+      </div>
+      <div style="padding:28px">
+        <h2 style="color:#0f172a;font-size:20px;margin:0 0 12px">Verify your email address</h2>
+        <p style="color:#475569;line-height:1.6;margin:0 0 20px">Use the code below to complete your {purpose}. This code expires in <strong>10 minutes</strong>.</p>
+        <div style="background:#f1f5f9;border-radius:10px;padding:20px;text-align:center;margin:0 0 20px">
+          <span style="font-size:32px;font-weight:800;letter-spacing:6px;color:#1e293b">{otp_code}</span>
+        </div>
+        <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">If you did not request this, you can safely ignore this email.</p>
+        <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
+      </div>
+    </div>
+    """
     try:
         send_email_outlook(
             to_email=to_email,

@@ -41,7 +41,7 @@ const INDUSTRIES = [
   "Real Estate", "Education", "Manufacturing", "Retail", "Legal",
   "Consulting", "Media", "Hospitality", "Construction", "Other"
 ];
-const SOURCES = ["Website", "Email", "Call", "WhatsApp", "Message", "Referral", "LinkedIn", "Cold Call", "Event", "Radar", "Import", "Other"];
+const SOURCES = ["Website", "Email", "Referral", "LinkedIn", "Cold Call", "Event", "Radar", "Import", "Other"];
 const STATUSES = ["New", "Contacted", "Qualified", "Proposal Sent", "Negotiation", "Won", "Lost"];
 
 const STATUS_STYLE: Record<string, string> = {
@@ -267,9 +267,9 @@ export default function LeadsPage() {
   ];
 
   return (
-    <div className="flex flex-col h-full bg-[#f8fafc] dark:bg-[#0f172a]">
+    <div className="flex flex-col h-full bg-[#f8fafc] dark:bg-black">
       {/* Header */}
-      <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b]">
+      <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-black">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t("leads.title")}</h1>
@@ -332,8 +332,8 @@ export default function LeadsPage() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-[#1e293b] border-b border-slate-200 dark:border-slate-800 flex-wrap gap-3">
-        <div className="relative w-full sm:w-72">
+      <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-black border-b border-slate-200 dark:border-slate-800 flex-wrap gap-3">
+        <div className="relative w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text" placeholder={t("leads.search_placeholder")}
@@ -367,7 +367,7 @@ export default function LeadsPage() {
 
       <div className="flex flex-1 overflow-hidden">
       {/* Table */}
-      <div className="flex-1 overflow-auto bg-white dark:bg-[#0f172a]">
+      <div className="flex-1 overflow-auto bg-white dark:bg-black">
         {loading ? (
           <div className="flex items-center justify-center h-64">
             <Loader2 className="animate-spin w-8 h-8 text-blue-600" />
@@ -536,7 +536,7 @@ export default function LeadsPage() {
       {/* Activity Sidebar */}
       <motion.div
         initial="hidden" animate="show"
-        className="w-full xl:w-[400px] shrink-0 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] flex flex-col h-full overflow-hidden"
+        className="w-full xl:w-[400px] shrink-0 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-black flex flex-col h-full overflow-hidden"
       >
         <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3 shrink-0">
           <div className="p-2 bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded-xl"><Zap className="w-5 h-5" /></div>
@@ -576,7 +576,7 @@ export default function LeadsPage() {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.94, opacity: 0, y: 16 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className="bg-white dark:bg-zinc-900/90 backdrop-blur-2xl border border-white shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto custom-scrollbar rounded-[2rem]"
+              className="bg-white dark:bg-black rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto"
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-700">

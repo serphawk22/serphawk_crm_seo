@@ -58,7 +58,7 @@ def register_sent_emails_endpoint(app, get_session):
 import hashlib
 import re
 from datetime import datetime, timedelta, date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Form, UploadFile, File, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -94,6 +94,7 @@ from database import (
     Invoice,
     KeywordRankEntry,
     Lead,
+    LeadNote,
     MessageThread,
     Milestone,
     NPSSurvey,
@@ -122,6 +123,7 @@ from database import (
     RFQRequest,
     RFQResponse,
     APIKey,
+    EmailSettings,
 )
 
 
@@ -148,7 +150,7 @@ def _add_tenant_filter(execute_state):
         
     # Global tables that don't have tenant_id, or where we must never add a tenant filter
     global_tables = [
-        "tenants", "client_statuses", "marketplace_services", "service_catalog",
+        "tenants", "client_statuses", "service_catalog",
         "audit_logs",      # telemetry must always be cross-tenant for admin view
         "users",           # users table is queried cross-tenant (e.g. login, notifications)
         "notifications",   # user-scoped not tenant-scoped
@@ -176,7 +178,7 @@ def _auto_assign_tenant_id(session, flush_context, instances):
         return
         
     global_tables = [
-        "tenants", "client_statuses", "marketplace_services", "service_catalog",
+        "tenants", "client_statuses", "service_catalog",
         "audit_logs", "users", "notifications",
     ]
     
@@ -329,6 +331,24 @@ def get_session():
     with Session(engine) as session:
         yield session
 
+def _require_roles(session: Session, allowed_roles):
+    """Enforce role access for sensitive endpoints.
+
+    Returns the current User. Raises 401 if unauthenticated and 403 if the
+    caller's role is not allowed. SuperAdmin and the legacy UI superadmin
+    (admin@serphawk.com) are always permitted.
+    """
+    uid = current_salesperson_id.get()
+    if not uid:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    user = session.get(User, uid)
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    role = _normalize_role(user.role)
+    if role == "SuperAdmin" or (user.email or "").lower() == "admin@serphawk.com" or role in allowed_roles:
+        return user
+    raise HTTPException(status_code=403, detail="Forbidden")
+
 from modules.api_tracker import current_client_id, current_salesperson_id, current_endpoint, patch_openai
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -338,6 +358,7 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         # Reset context for this request
         current_client_id.set(None)
         current_salesperson_id.set(None)
+        current_tenant_id.set(None)
         current_endpoint.set(request.url.path)
         # Try to infer user from X-User-ID header, query parameter, or JWT token
         user_header = request.headers.get("X-User-ID")
@@ -524,7 +545,14 @@ def on_startup():
         if emp:
             emp.password = _hash_password("Admin123!")
             session.add(emp)
-            
+
+        # Dedicated Demo-role account used by the frontend demo login button.
+        # Reset its password on startup so the demo always works.
+        demo = session.exec(select(User).where(User.email == "demo@serphawk.com")).first()
+        if demo:
+            demo.password = _hash_password("DemoPass123!")
+            session.add(demo)
+
         session.commit()
         session.close()
     except Exception as e:
@@ -574,6 +602,15 @@ def on_startup():
         
     try:
         with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
+            conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
+            conn.commit()
+            print("Successfully added swot_analysis to client_profiles and leads tables.")
+    except Exception as e:
+        print("swot_analysis column already exists or error:", e)
+        
+    try:
+        with engine.connect() as conn:
             conn.execute(text("ALTER TABLE projects ADD COLUMN project_type VARCHAR DEFAULT 'Development';"))
             conn.commit()
             print("Successfully added project_type to projects table.")
@@ -613,6 +650,37 @@ def on_startup():
     except Exception as e:
         print("tenant call limits already exist or error:", e)
 
+# Keep the Neon serverless DB awake + pool warm. Without this, the first
+    # requests after ~5min of idle trigger a slow cold-start (~5-7s each).
+    try:
+        import threading as _threading
+        from database import engine as _keepalive_engine
+
+        def _db_keepalive_loop():
+            import time as _time
+            from sqlalchemy import text as _text
+            while True:
+                _time.sleep(60)
+                try:
+                    with _keepalive_engine.connect() as _conn:
+                        _conn.execute(_text("SELECT 1"))
+                except Exception as _e:
+                    print("Keepalive ping failed:", _e)
+
+        _threading.Thread(target=_db_keepalive_loop, daemon=True, name="db-keepalive").start()
+        print("DB keepalive started (pings every 60s).")
+    except Exception as e:
+        print("Could not start DB keepalive:", e)
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS url VARCHAR(1000);"))
+            conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS case_type VARCHAR(100) DEFAULT 'Bug';"))
+            conn.commit()
+            print("Successfully added url and case_type columns to cases table.")
+    except Exception as e:
+        print("cases url/case_type columns already exist or error:", e)
+
 allowed_origins = [
     "https://serphawk-crm-seo.vercel.app",
     "http://localhost:3000",
@@ -626,8 +694,7 @@ allowed_origins = [
     "https://dapros-crm.serphawk.in",
     "https://crm.dapros.serphawk.in",
     "https://dapros.serphawk.in",
-    "https://crm-dapros.vercel.app",
-    "https://crm-dapros.vercel.app/",
+    "https://crm-seo.allytechcourses.com",
     "http://dapros.serphawk.in"
 ]
 
@@ -666,14 +733,22 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # ─────────────────────────────────────────────────────────────────────────────
 def _send_notification_email(to_email: str, subject: str, body_html: str):
     """Best-effort email notification. Fails silently so it never blocks API responses."""
-    try:
-        from modules.email_sender import send_email_outlook
-        sender = os.environ.get("EMAIL_SENDER") or os.environ.get("OUTLOOK_EMAIL") or ""
-        password = os.environ.get("EMAIL_PASSWORD") or os.environ.get("OUTLOOK_PASSWORD") or ""
-        if sender and password:
-            send_email_outlook(to_email, subject, body_html, sender, password)
-    except Exception as e:
-        print(f"[Notification email failed] {e}")
+    def _send():
+        try:
+            from modules.email_sender import send_email_outlook
+            import os
+            sender = os.environ.get("EMAIL_SENDER") or os.environ.get("OUTLOOK_EMAIL") or ""
+            password = os.environ.get("EMAIL_PASSWORD") or os.environ.get("OUTLOOK_PASSWORD") or ""
+            smtp_server = os.environ.get("EMAIL_HOST") or os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+            smtp_port = int(os.environ.get("EMAIL_PORT") or os.environ.get("SMTP_PORT", 587))
+            if sender and password:
+                send_email_outlook(to_email, subject, body_html, sender, password,
+                                   smtp_server=smtp_server, smtp_port=smtp_port)
+        except Exception as e:
+            print(f"[Notification email failed] {e}")
+            
+    import threading
+    threading.Thread(target=_send).start()
 
 
 
@@ -705,111 +780,292 @@ class SmartResearchRequest(BaseModel):
     client_id: Optional[int] = None  # If set, link extracted services to this CRM client
     owner_name: Optional[str] = "Varshith"
 
+
+# ─── Background Auto-Research Helper ────────────────────────────────────────
+def _trigger_background_research(entity_id: int, entity_type: str, company_name: str, website: str, session_factory=None):
+    """
+    Fire-and-forget background task: runs the full scraper+LLM pipeline for a
+    lead or client and stores results in ClientResearch.
+    entity_type: 'lead' or 'client'
+    """
+    import threading
+    import asyncio
+
+    def _run():
+        try:
+            from modules.llm_engine import deep_investigate_company
+            from modules.scraper import research_and_map_company
+            import json, re, asyncio as _asyncio
+
+            url = website or ""
+            if not url and company_name:
+                slug = company_name.lower().replace(" ", "").replace(",","").replace(".","")
+                url = f"https://www.{slug}.com"
+            if not url:
+                return
+
+            # Step 1: Scrape the website for raw text context
+            raw_text = ""
+            try:
+                loop = _asyncio.new_event_loop()
+                scrape_result = loop.run_until_complete(research_and_map_company(url))
+                loop.close()
+                raw_text = scrape_result.get("raw_text", "") or ""
+            except Exception as scrape_err:
+                print(f"[AutoResearch] Scrape failed (using GPT knowledge only): {scrape_err}")
+
+            # Step 2: Run the deep investigation with GPT-4o
+            print(f"[AutoResearch] Running deep investigation for {company_name} ({url})")
+            data = deep_investigate_company(
+                company_name=company_name,
+                website=url,
+                scraped_text=raw_text
+            )
+
+            # Step 3: Extract key contact info to also update the lead/client record
+            contacts = data.get("contacts", []) or []
+            contact = contacts[0] if contacts else {}
+            email_addr = contact.get("email") or ""
+            phone_num = contact.get("phone_number") or ""
+            company_info = data.get("company_info", {}) or {}
+            if not email_addr:
+                extracted = company_info.get("extracted_emails", "") or ""
+                email_addr = extracted.split(",")[0].strip() if extracted else ""
+            if not phone_num:
+                extracted_ph = company_info.get("extracted_phone_numbers", "") or ""
+                phone_num = extracted_ph.split(",")[0].strip() if extracted_ph else ""
+
+            from sqlmodel import Session as _Session, select as _select
+            from database import ClientResearch, Lead, ClientProfile, engine as _engine
+            with _Session(_engine) as sess:
+                if entity_type == "lead":
+                    cr = sess.exec(_select(ClientResearch).where(ClientResearch.lead_id == entity_id)).first()
+                    if not cr:
+                        cr = ClientResearch(lead_id=entity_id)
+                    # Also update lead email/phone if discovered
+                    lead_obj = sess.get(Lead, entity_id)
+                    if lead_obj:
+                        if not lead_obj.email and email_addr: lead_obj.email = email_addr
+                        if not lead_obj.phone and phone_num: lead_obj.phone = phone_num
+                        sess.add(lead_obj)
+                else:
+                    cr = sess.exec(_select(ClientResearch).where(ClientResearch.client_id == entity_id)).first()
+                    if not cr:
+                        cr = ClientResearch(client_id=entity_id)
+                cr.email_agent_data = json.dumps(data)
+                cr.company_overview = data.get("company_overview", "") or data.get("executive_verdict", "")
+                cr.key_decision_makers = json.dumps(contacts)
+                # Store additional rich fields
+                icps = data.get("ideal_customer_profiles", [])
+                cr.pain_points = json.dumps(icps) if icps else None
+                cr.business_goals = json.dumps(data.get("gtm_recommendations", {})) if data.get("gtm_recommendations") else None
+                cr.competitors = json.dumps(data.get("competitive_landscape", {})) if data.get("competitive_landscape") else None
+                sess.add(cr)
+                sess.commit()
+            print(f"[AutoResearch] Done for {entity_type} id={entity_id}")
+        except Exception as ex:
+            import traceback
+            print(f"[AutoResearch] Error for {entity_type} id={entity_id}: {ex}")
+            traceback.print_exc()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest, session: Session = Depends(get_session)):
     """
-    Takes a company name (and optional URL) and forwards the request to the N8N webhook.
-    Returns the exact JSON response from N8N.
+    Takes a company name (and optional URL) and uses local scraper and LLM to return
+    analysis, extracted contacts, and generated emails.
     """
     check_tenant_limit(session, "emails")
-    import os
-    import httpx
-
-    webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "http://localhost:5678/webhook-test/your-webhook-id")
-
-    payload = {
-        "event": "research",
-        "company_name": body.company_name,
-        "company_url": body.company_url,
-        "client_id": body.client_id,
-        "owner_name": body.owner_name
-    }
-
+    from modules.scraper import research_and_map_company
+    from modules.llm_engine import generate_email
+    import json
+    
+    # Determine the URL
+    url = body.company_url
+    if not url:
+        # Simple fallback if no URL provided
+        formatted_name = body.company_name.replace(" ", "").replace(",", "").replace(".", "").lower()
+        url = f"https://www.{formatted_name}.com"
+        
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(webhook_url, json=payload, timeout=60.0)
+        # Run local research (which uses Firecrawl and OpenAI)
+        result = await research_and_map_company(url)
+        analysis = result.get("company_analysis", {})
+        mapping = result.get("service_mapping", [])
+        
+        # Extract Contact Info
+        contacts = analysis.get("contacts", [])
+        contact = contacts[0] if contacts else {}
+        email = contact.get("email", "")
+        if email is None:
+            email = ""
+        phone = contact.get("phone_number", "")
+        if phone is None:
+            phone = ""
+        name = contact.get("name", "")
+        if name is None:
+            name = ""
             
-            if response.status_code != 200:
-                print(f"N8N Webhook Error: {response.status_code} - {response.text}")
-                return {
-                    "company_info": {"company_name": body.company_name, "summary": f"N8N Webhook Error {response.status_code}. Please make sure you are listening for test events in n8n."},
-                    "contact": {"email": "test@example.com"},
-                    "draft": {"subject": "Test Draft", "english_body": "N8N Webhook Error occurred. Workflow not started."},
-                    "recommended_services": [],
-                    "extracted_services": []
-                }
+        # Contact social
+        personal_social = contact.get("personal_social_media", {})
+        if personal_social is None:
+            personal_social = {}
+        contact_linkedin = personal_social.get("linkedin", "") if isinstance(personal_social, dict) else ""
+        contact_twitter = personal_social.get("twitter", "") if isinstance(personal_social, dict) else ""
+        
+        # Company Socials
+        socials = analysis.get("company_social_media", {})
+        if socials is None:
+            socials = {}
+        comp_linkedin = socials.get("linkedin", "") if isinstance(socials, dict) else ""
+        comp_twitter = socials.get("twitter", "") if isinstance(socials, dict) else ""
+        comp_instagram = socials.get("instagram", "") if isinstance(socials, dict) else ""
+        comp_facebook = socials.get("facebook", "") if isinstance(socials, dict) else ""
+        
+        # Get recommended services from the mapping
+        recommended_services = [m.get("dapros_service") for m in mapping if m.get("dapros_service") and m.get("dapros_service") != "None"]
+        # Fallback to key value props if empty
+        if not recommended_services:
+            recommended_services = analysis.get("key_value_props", [])
             
-            # If successful, handle JSON decoding properly
-            try:
-                data = response.json()
-            except Exception as e:
-                print(f"Failed to parse JSON from N8N: {e}")
-                data = {}
-                
-            # If N8N returns custom fields (like emails, phone, cold_email_english), map them to expected schema
-            if "emails" in data or "cold_email_english" in data or "company_services" in data:
-                raw_english = data.get("cold_email_english", "")
-                raw_spanish = data.get("cold_email_spanish", "")
-                
-                subject = "Growth Partnership"
-                if raw_english.startswith("Subject:"):
-                    parts = raw_english.split("\n\n", 1)
-                    if len(parts) == 2:
-                        subject = parts[0].replace("Subject:", "").strip()
-                        raw_english = parts[1].strip()
-                        
-                if raw_spanish.startswith("Asunto:"):
-                    parts = raw_spanish.split("\n\n", 1)
-                    if len(parts) == 2:
-                        raw_spanish = parts[1].strip()
+        # Generate the email draft
+        draft_result = generate_email(analysis, contact, recommended_services, body.owner_name)
+        
+        # Extract Emails, Phones, and Socials from scraper raw text
+        raw_text = result.get("raw_text", "")
+        import re
+        scraped_emails = []
+        scraped_phones = []
+        scraped_linkedin = ""
+        scraped_twitter = ""
+        
+        email_match = re.search(r"Extracted Emails:\s*(.+)", raw_text)
+        if email_match:
+            scraped_emails = [e.strip() for e in email_match.group(1).split(",") if e.strip()]
+            
+        phone_match = re.search(r"Extracted Phone Numbers:\s*(.+)", raw_text)
+        if phone_match:
+            scraped_phones = [p.strip() for p in phone_match.group(1).split(",") if p.strip()]
+            
+        li_match = re.search(r"Extracted LinkedIn Profiles:\s*(.+)", raw_text)
+        if li_match:
+            scraped_linkedin = li_match.group(1).split(",")[0].strip() if li_match.group(1).strip() else ""
+            
+        tw_match = re.search(r"Extracted Twitter Profiles:\s*(.+)", raw_text)
+        if tw_match:
+            scraped_twitter = tw_match.group(1).split(",")[0].strip() if tw_match.group(1).strip() else ""
+            
+        ig_match = re.search(r"Extracted Instagram Profiles:\s*(.+)", raw_text)
+        scraped_ig = ig_match.group(1).split(",")[0].strip() if (ig_match and ig_match.group(1).strip()) else ""
+        
+        fb_match = re.search(r"Extracted Facebook Profiles:\s*(.+)", raw_text)
+        scraped_fb = fb_match.group(1).split(",")[0].strip() if (fb_match and fb_match.group(1).strip()) else ""
+        
+        yt_match = re.search(r"Extracted Youtube Profiles:\s*(.+)", raw_text)
+        scraped_yt = yt_match.group(1).split(",")[0].strip() if (yt_match and yt_match.group(1).strip()) else ""
 
-                socials = data.get("social_links", {})
-                linkedin = socials.get("linkedin", "") if isinstance(socials, dict) else ""
-                twitter = socials.get("twitter", "") if isinstance(socials, dict) else ""
-                
-                company_info = data.get("company_info", {})
-                company_info["company_name"] = body.company_name
-                company_info["extracted_emails"] = data.get("emails", "")
-                company_info["extracted_phone_numbers"] = data.get("phone", "")
-                company_info["linkedin"] = linkedin
-                company_info["company_social_media"] = {
-                    "linkedin": linkedin,
-                    "twitter": twitter,
-                    "instagram": socials.get("instagram", "") if isinstance(socials, dict) else "",
-                    "facebook": socials.get("facebook", "") if isinstance(socials, dict) else ""
-                }
-                
-                return {
-                    "company_info": company_info,
-                    "contact": {
-                        "email": data.get("emails", ""),
-                        "phone_number": data.get("phone", ""),
-                        "linkedin": linkedin,
-                        "twitter": twitter,
-                        "name": ""
-                    },
-                    "draft": {
-                        "subject": subject,
-                        "english_body": raw_english,
-                        "spanish_body": raw_spanish
-                    },
-                    "recommended_services": data.get("company_services", []),
-                    "extracted_services": data.get("extracted_services", [])
-                }
+        # Merge with LLM findings
+        if email and email not in scraped_emails:
+            scraped_emails.append(email)
+        if phone and phone not in scraped_phones:
+            scraped_phones.append(phone)
+            
+        extracted_emails = ", ".join(scraped_emails) if scraped_emails else ""
+        extracted_phones = ", ".join(scraped_phones) if scraped_phones else ""
+        
+        if scraped_linkedin and not comp_linkedin:
+            comp_linkedin = scraped_linkedin
+        if scraped_twitter and not comp_twitter:
+            comp_twitter = scraped_twitter
+        if scraped_ig and not comp_instagram:
+            comp_instagram = scraped_ig
+        if scraped_fb and not comp_facebook:
+            comp_facebook = scraped_fb
 
-            # Fill in defaults if N8N returns an empty or old format response
-            if "company_info" not in data:
-                data["company_info"] = {"company_name": body.company_name, "summary": "N8N didn't return the expected JSON format."}
-            if "contact" not in data:
-                data["contact"] = {"email": "test@example.com", "name": "Test Prospect"}
-            if "draft" not in data:
-                data["draft"] = {"subject": "Automated Draft", "english_body": "Your N8N workflow executed successfully."}
+        
+        data = {
+            "company_info": {
+                "company_name": analysis.get("company_name", body.company_name),
+                "summary": analysis.get("what_they_do", ""),
+                "extracted_emails": extracted_emails,
+                "extracted_phone_numbers": extracted_phones,
+                "linkedin": comp_linkedin,
+                "company_social_media": {
+                    "linkedin": comp_linkedin,
+                    "twitter": comp_twitter,
+                    "instagram": comp_instagram,
+                    "facebook": comp_facebook,
+                    "youtube": scraped_yt
+                }
+            },
+            "contact": {
+                "email": email,
+                "phone_number": phone,
+                "linkedin": contact_linkedin,
+                "twitter": contact_twitter,
+                "name": name
+            },
+            "draft": {
+                "subject": draft_result.get("subject", "Partnership Request"),
+                "english_body": draft_result.get("english_body", ""),
+                "spanish_body": draft_result.get("spanish_body", "")
+            },
+            "recommended_services": recommended_services,
+            "extracted_services": [{"name": m.get("company_service"), "category": "Service", "approx_cost": 0, "cost_is_estimated": False} for m in mapping if m.get("company_service")]
+        }
+        
+
+        # --- AUTO-CREATE LEAD AND SAVE RESEARCH ---
+        import json
+        from database import Lead, ClientResearch
+        from sqlmodel import select
+        
+        # See if a lead already exists for this domain
+        existing_lead = None
+        if url:
+            domain = url.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
+            if domain:
+                existing_lead = session.exec(select(Lead).where(Lead.website.like(f"%{domain}%"))).first()
                 
-            return data
+        if not existing_lead and email:
+            existing_lead = session.exec(select(Lead).where(Lead.email == email)).first()
+
+        lead_id = None
+        if not existing_lead:
+            # Create a new lead
+            new_lead = Lead(
+                company_name=data["company_info"].get("company_name", body.company_name) or "Unknown Company",
+                website=url,
+                email=email if email else None,
+                phone=phone if phone else None,
+                source="Email Agent",
+                status="Generated",
+                ai_analysis_results=json.dumps(data)
+            )
+            session.add(new_lead)
+            session.commit()
+            session.refresh(new_lead)
+            lead_id = new_lead.id
+        else:
+            existing_lead.ai_analysis_results = json.dumps(data)
+            session.add(existing_lead)
+            session.commit()
+            lead_id = existing_lead.id
+            
+        # We no longer save Email Agent JSON to ClientResearch.email_agent_data
+        # because that field is reserved for the massive Deep Research Markdown report.
+        # ------------------------------------------
+
+        return data
+        
     except Exception as e:
-        print(f"Webhook Exception: {e}")
+        import traceback
+        traceback.print_exc()
+        print(f"Smart Research Local Exception: {e}")
         return {
-            "company_info": {"company_name": body.company_name, "summary": f"Webhook Exception: {e}"},
+            "company_info": {"company_name": body.company_name, "summary": f"Smart Research Exception: {e}"},
             "contact": {"email": ""},
             "draft": {"subject": "", "english_body": ""},
             "recommended_services": [],
@@ -823,6 +1079,7 @@ class SendManualRequest(BaseModel):
     subject: str
     english_body: str
     spanish_body: Optional[str] = None
+    whatsapp_body: Optional[str] = None
     recommended_services: Optional[str] = None
     contact_name: Optional[str] = None
     contact_role: Optional[str] = None
@@ -896,23 +1153,30 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
             session.add(contact)
             session.commit()
 
-    # Step 2.5: Find or create ClientResearch to save email_agent_data
+    # Step 2.5: Save email_agent_data to lead.ai_analysis_results for Opportunities tab
     if body.email_agent_data:
-        client_research = session.exec(
-            select(ClientResearch).where(ClientResearch.lead_id == lead.id)
-        ).first()
-        if not client_research:
-            client_research = ClientResearch(
-                lead_id=lead.id,
-                email_agent_data=body.email_agent_data
-            )
-            session.add(client_research)
-        else:
-            client_research.email_agent_data = body.email_agent_data
-            session.add(client_research)
+        try:
+            import json as _j
+            parsed = _j.loads(body.email_agent_data) if isinstance(body.email_agent_data, str) else body.email_agent_data
+            lead.ai_analysis_results = parsed
+        except:
+            lead.ai_analysis_results = body.email_agent_data
+        session.add(lead)
         session.commit()
 
     # Step 3: Save SentEmail record
+    import json as _json_se
+    _draft_json_payload = _json_se.dumps({
+        "subject": body.subject,
+        "english_body": body.english_body,
+        "spanish_body": body.spanish_body or "",
+        "whatsapp_draft": getattr(body, "whatsapp_body", "") or "",
+        "contact_name": body.contact_name or "",
+        "contact_email": to_email,
+        "company_name": body.company_name or "",
+        "website_url": getattr(body, "website_url", "") or "",
+        "recommended_services": body.recommended_services or "",
+    })
     sent_email = SentEmail(
         lead_id=lead.id,
         to_email=to_email,
@@ -920,6 +1184,7 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
         english_body=body.english_body,
         spanish_body=body.spanish_body or "",
         recommended_services=body.recommended_services or "",
+        draft_json=_draft_json_payload,
         manual=body.manual if body.manual is not None else True,
         sent_at=datetime.utcnow(),
     )
@@ -927,17 +1192,38 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     session.commit()
     session.refresh(sent_email)
 
-    # Step 3.5: Send the actual email via webhook only (unless skip_send is True)
+    # Step 3.5: Send the actual email (unless skip_send is True).
+    # Primary path is direct SMTP via the configured crm@serphawk.in mailbox.
+    # The N8N webhook is still fired best-effort for follow-up automation.
     if not body.skip_send:
         import os
         import httpx
-        sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "prasanthanupojuwork@gmail.com")
-        
+        sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
+        password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
+        smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "mail.serphawk.in")
+        smtp_port = os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
+
         try:
             bodies = [b for b in [body.english_body, body.spanish_body] if b and b.strip()]
             full_body = "\n\n---\n\n".join(bodies) if bodies else ""
-            # Added for Gmail Agent Migration: Using N8N webhook trigger instead of local SMTP integration for automation.
-            # This triggers the n8n webhook workflow to send the email and handle follow-ups externally.
+
+            # Send directly over SMTP from crm@serphawk.in so mail goes out even if n8n is down.
+            if sender and password:
+                from modules.email_sender import send_email_outlook
+                send_email_outlook(
+                    to_email=body.to_email,
+                    subject=body.subject,
+                    body=full_body or body.english_body or body.spanish_body or "",
+                    sender_email=sender,
+                    sender_password=password,
+                    smtp_server=smtp_server,
+                    smtp_port=int(smtp_port),
+                )
+                print(f"Email sent via SMTP to {body.to_email} from {sender}")
+            else:
+                print("SMTP not configured (missing EMAIL_SENDER/EMAIL_PASSWORD) - skipping direct send")
+
+            # Fire the N8N webhook best-effort for follow-up automation (never blocks the reply).
             webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "https://primary-production-d40bc.up.railway.app/webhook/trigger-cold-email")
             payload = {
                 "event": "email_sent",
@@ -952,16 +1238,16 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
                 "recommended_services": body.recommended_services or "SEO",
                 "timestamp": datetime.utcnow().isoformat()
             }
-            # Send to webhook and wait for response
-            response = httpx.post(webhook_url, json=payload, timeout=30.0)
-            if response.status_code != 200:
-                print(f"Webhook Error during send-manual: {response.status_code} - {response.text}")
-                # We won't crash here so the activity still gets logged and UI completes
-            else:
-                print(f"Webhook successfully triggered and responded from manual send to {webhook_url}")
+            try:
+                response = httpx.post(webhook_url, json=payload, timeout=30.0)
+                if response.status_code != 200:
+                    print(f"Webhook Error during send-manual: {response.status_code} - {response.text}")
+                else:
+                    print(f"Webhook successfully triggered and responded from manual send to {webhook_url}")
+            except Exception as e:
+                print(f"Manual Email send failed via webhook: {e}")
         except Exception as e:
-            print(f"Manual Email send failed via webhook: {e}")
-            # We no longer raise HTTPException here to allow the frontend to succeed gracefully in tests
+            print(f"Manual Email send failed: {e}")
 
 
     # Step 4: Log activity
@@ -1086,6 +1372,7 @@ class ClientCreateRequest(BaseModel):
     tagline: Optional[str] = None
     websiteUrl: Optional[str] = None
     targetKeywords: Optional[list[str]] = None
+    assigned_employee_id: Optional[int] = None
 
 
 class ClientUpdateRequest(BaseModel):
@@ -1322,10 +1609,10 @@ class TaskCreateRequest(BaseModel):
     priority: str = "Medium"
     due_date: Optional[str] = None
     client_id: Optional[int] = None
+    lead_id: Optional[int] = None
     project_id: Optional[int] = None
     assigned_to: Optional[int] = None
     created_by: Optional[int] = None
-
 
 class TaskUpdateRequest(BaseModel):
     title: Optional[str] = None
@@ -1334,6 +1621,7 @@ class TaskUpdateRequest(BaseModel):
     priority: Optional[str] = None
     due_date: Optional[str] = None
     assigned_to: Optional[int] = None
+    lead_id: Optional[int] = None
 
 
 class TaskCommentCreateRequest(BaseModel):
@@ -1504,6 +1792,30 @@ def _hash_password(pw: str) -> str:
     return hashlib.sha256(pw.encode()).hexdigest()
 
 
+def _generate_unique_password(length: int = 10) -> str:
+    """Generate a cryptographically-random, unique password for a supplier login.
+
+    Guarantees at least one lowercase letter, one uppercase letter, one digit,
+    and one special character so it passes common password-strength rules.
+    """
+    import secrets
+    import string as _string
+    lower = _string.ascii_lowercase
+    upper = _string.ascii_uppercase
+    digits = _string.digits
+    special = "!@#$%&*"
+    pool = lower + upper + digits + special
+    chars = [
+        secrets.choice(lower),
+        secrets.choice(upper),
+        secrets.choice(digits),
+        secrets.choice(special),
+    ]
+    chars += [secrets.choice(pool) for _ in range(max(0, length - 4))]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
+
+
 def _check_password(plain: str, hashed: str) -> bool:
     return hashlib.sha256(plain.encode()).hexdigest() == hashed
 
@@ -1573,7 +1885,7 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
 
     services        = _get(cp.services_offered, "Services", "Services providing", "Services Offered")
     description     = _get(cp.tagline, "Description", "description", "Notes")
-    phone           = _get(cp.phone, "Contact", "Phone")
+    phone           = _get(cp.phone, "Contact", "Phone", "Phone Number", "phone_number", "phone")
     country         = _get(cp.address, "Country", "country", "Region")
 
     last_act_log = session.exec(select(ActivityLog).where(ActivityLog.clientId == cp.id).order_by(ActivityLog.createdAt.desc())).first()
@@ -1617,6 +1929,7 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
         "next_followup_date": cp.next_followup_date,
         "description": cf.get("ai_description") or cf.get("description") or description,
         "country": cf.get("country") or sd.get("Country") or sd.get("country"),
+        "swot_analysis": cp.swot_analysis,
         "customFields": cf,
     }
 
@@ -1744,6 +2057,7 @@ def global_activities(session: Session = Depends(get_session)):
 
 @app.get("/superadmin/tenants")
 def get_all_tenants(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     # Bypassing tenant filter for super admin
     # We temporarily clear the tenant filter context for this query
     import contextvars
@@ -1844,6 +2158,7 @@ class TenantLimitUpdateRequest(BaseModel):
 @app.patch("/superadmin/tenants/{tenant_id}/limits")
 def update_tenant_limits(tenant_id: int, body: TenantLimitUpdateRequest, session: Session = Depends(get_session)):
     """Superadmin: update limits and optionally reset usage for a tenant."""
+    _require_roles(session, ["SuperAdmin"])
     old_tenant = current_tenant_id.get()
     current_tenant_id.set(None)
     try:
@@ -1898,6 +2213,7 @@ def log_page_visit(body: PageVisitRequest, session: Session = Depends(get_sessio
 
 @app.get("/superadmin/telemetry/global")
 def get_global_telemetry(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     # Bypassing tenant filter for super admin
     import contextvars
     from database import Tenant, User, ClientProfile, PageVisitTelemetry
@@ -2013,15 +2329,34 @@ def get_dashboard_call_pitch(session: Session = Depends(get_session)):
             session.add(client)
             session.commit()
             
-    return {"client": _client_dict(client, session), "pitch_text": client.call_pitch_text}
+    research_entry = session.exec(select(ClientResearch).where(ClientResearch.client_id == client.id)).first()
+    return {
+        "client": _client_dict(client, session), 
+        "pitch_text": client.call_pitch_text,
+        "agent_data": research_entry.email_agent_data if research_entry else None,
+        "deep_research": research_entry.company_overview if research_entry else None
+    }
+
+class CallPitchDoneRequest(BaseModel):
+    feedback: str = ""
 
 @app.post("/dashboard-call-pitch/{client_id}/done")
-def mark_call_pitch_done(client_id: int, session: Session = Depends(get_session)):
+def mark_call_pitch_done(client_id: int, body: Optional[CallPitchDoneRequest] = None, session: Session = Depends(get_session)):
     client = session.exec(select(ClientProfile).where(ClientProfile.id == client_id)).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     client.call_pitch_done = True
     session.add(client)
+    
+    if body and body.feedback:
+        act = ActivityLog(
+            clientId=client.id,
+            action="Sales Call Outcome",
+            method="Phone",
+            content=f"AI Call Pitch Outcome: {body.feedback}"
+        )
+        session.add(act)
+        
     session.commit()
     return {"status": "ok"}
 
@@ -2029,6 +2364,7 @@ def mark_call_pitch_done(client_id: int, session: Session = Depends(get_session)
 @app.post("/superadmin/tenants/{tenant_id}/analyze")
 def analyze_tenant_usage(tenant_id: int, session: Session = Depends(get_session)):
     # AI summary of tenant usage and full breakdown
+    _require_roles(session, ["SuperAdmin"])
     old_tenant = current_tenant_id.get()
     current_tenant_id.set(None)
     
@@ -2102,6 +2438,7 @@ def analyze_tenant_usage(tenant_id: int, session: Session = Depends(get_session)
 
 @app.get("/debug-user")
 def debug_user(email: str = "", session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     users = session.exec(select(User)).all()
     suppliers = session.exec(select(InventorySupplier)).all()
     return {
@@ -2122,6 +2459,94 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
         if cp:
             result["client_id"] = cp.id
     return {"user": result}
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+    redirect_url: Optional[str] = None  # e.g. https://crm.serphawk.in/reset-password
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    token: str
+    new_password: str
+
+@app.post("/auth/forgot-password")
+def forgot_password(body: ForgotPasswordRequest, session: Session = Depends(get_session)):
+    """Send a one-time password reset link. Always returns 200 to avoid user enumeration."""
+    import secrets
+    from database import PasswordResetToken
+
+    user = session.exec(select(User).where(User.email == body.email)).first()
+
+    # Generate + persist a token even for unknown emails so timing doesn't leak existence
+    token = secrets.token_urlsafe(48)
+    frontend_base = "https://crm.serphawk.in"
+    if body.redirect_url:
+        from urllib.parse import urlsplit
+        p = urlsplit(body.redirect_url)
+        if p.scheme in ("http", "https") and p.netloc:
+            frontend_base = f"{p.scheme}://{p.netloc}"
+
+    if user:
+        # Invalidate previous outstanding tokens for this user (single-use)
+        old = session.exec(select(PasswordResetToken).where(PasswordResetToken.user_id == user.id)).all()
+        for o in old:
+            o.used = True
+        session.add(PasswordResetToken(
+            user_id=user.id,
+            token=token,
+            expires_at=datetime.utcnow() + timedelta(hours=1),
+        ))
+        session.commit()
+
+    reset_url = f"{frontend_base}/reset-password?email={user.email if user else ''}&token={token}"
+    from modules.email_sender import send_password_reset_email
+    sent = send_password_reset_email(body.email, reset_url)
+
+    result = {"message": "If that email is registered, a password reset link has been sent.", "delivered": sent if user else False}
+    if user:
+        print(f"[Password reset] link for {user.email}: {reset_url}")
+        # Demo/test accounts have fake inboxes: always surface the link so QA and
+        # demo users can still complete the reset, even when SMTP reports success.
+        is_demo_email = (
+            user.email.lower().endswith("@serphawk.in")
+            or user.email in ("admin@serphawk.com", "varsh@gmail.com", "varshit@gmail.com", "demo@serphawk.com", "test.user@serphawk.in")
+            or "test" in user.email.lower() or "demo" in user.email.lower()
+        )
+        if not sent or is_demo_email:
+            result["debug_reset_link"] = reset_url
+    return result
+
+@app.post("/auth/reset-password")
+def reset_password(body: ResetPasswordRequest, session: Session = Depends(get_session)):
+    """Validate the one-time token and set a new password."""
+    from datetime import datetime as _dt
+    from database import PasswordResetToken
+
+    user = session.exec(select(User).where(User.email == body.email)).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    rec = session.exec(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.token == body.token,
+        )
+    ).first()
+    if not rec or rec.used or rec.expires_at < _dt.utcnow():
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    if not body.new_password or len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+
+    user.password = _hash_password(body.new_password)
+    user.hashed_password = ""
+
+    # Invalidate all remaining tokens for this user
+    for t in session.exec(select(PasswordResetToken).where(PasswordResetToken.user_id == user.id)).all():
+        t.used = True
+    session.commit()
+
+    return {"message": "Password updated successfully. You can now sign in."}
 
 class GoogleAuthRequest(BaseModel):
     access_token: str
@@ -2257,6 +2682,57 @@ def list_users(role: Optional[str] = None, session: Session = Depends(get_sessio
     return {"users": [_user_dict(u) for u in users]}
 
 
+
+@app.get("/users/{user_id}/stats")
+def get_user_stats(user_id: int, session: Session = Depends(get_session)):
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    # Sales team stats
+    if user.role in ["Admin", "SalesManager", "Employee"]:
+        # Clients handling
+        clients_count = len(session.exec(select(ClientProfile).where(ClientProfile.assignedEmployeeId == user.id)).all())
+        
+        # Leads converted
+        converted_leads_count = len(session.exec(select(Lead).where(Lead.owner_id == user.id, Lead.is_converted == True)).all())
+        
+        # Current active tasks
+        active_tasks = session.exec(select(Task).where(Task.assigned_to == user.id, Task.status.notin_(["approved", "rejected"]))).all()
+        
+        return {
+            "type": "sales",
+            "clients_handling": clients_count,
+            "leads_converted": converted_leads_count,
+            "active_tasks": [
+                {"id": t.id, "title": t.title, "status": t.status, "priority": t.priority} 
+                for t in active_tasks
+            ]
+        }
+        
+    # Dev team stats
+    elif user.role in ["ProjectMember", "Intern"]:
+        if not user.name:
+            tickets = []
+        else:
+            tickets = session.exec(select(ProjectTicket).where(ProjectTicket.current_owner.ilike(user.name))).all()
+            
+        total_tickets = len(tickets)
+        in_dev = sum(1 for t in tickets if t.current_state == "In Dev")
+        in_qa = sum(1 for t in tickets if t.current_state == "Given to QA")
+        in_prod = sum(1 for t in tickets if t.current_state == "Prod Release")
+        
+        return {
+            "type": "dev",
+            "total_tickets": total_tickets,
+            "in_dev": in_dev,
+            "in_qa": in_qa,
+            "in_prod": in_prod
+        }
+        
+    return {"type": "unknown"}
+
+
 @app.delete("/users/{user_id}")
 def delete_user(user_id: int, session: Session = Depends(get_session)):
     user = session.get(User, user_id)
@@ -2280,9 +2756,51 @@ def list_employees(session: Session = Depends(get_session)):
     return {"employees": [_user_dict(u) for u in employees]}
 
 
+@app.get("/employees/workload")
+def get_employees_workload(session: Session = Depends(get_session)):
+    """Return each sales team member with their active client and active lead counts."""
+    query = select(User).where(User.role.in_(["Employee", "Admin", "SalesManager"]))
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        query = query.where(User.tenant_id == tenant_id)
+    employees = session.exec(query).all()
+
+    result = []
+    for emp in employees:
+        # Count active clients assigned to this employee
+        client_count = len(session.exec(
+            select(ClientProfile).where(
+                ClientProfile.assignedEmployeeId == emp.id,
+                ClientProfile.status != "Inactive"
+            )
+        ).all())
+        # Count active (non-converted) leads owned by this employee
+        lead_count = len(session.exec(
+            select(Lead).where(
+                Lead.owner_id == emp.id,
+                Lead.is_converted == False,
+                Lead.status != "Lost"
+            )
+        ).all())
+
+        d = _user_dict(emp)
+        d["active_clients"] = client_count
+        d["active_leads"] = lead_count
+        d["total_active"] = client_count + lead_count
+        result.append(d)
+
+    # Sort by total workload ascending (least busy first)
+    result.sort(key=lambda x: x["total_active"])
+    return {"employees": result}
+
+
 @app.get("/interns")
 def list_interns(session: Session = Depends(get_session)):
-    interns = session.exec(select(User).where(User.role == "Intern")).all()
+    query = select(User).where(User.role == "Intern")
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        query = query.where(User.tenant_id == tenant_id)
+    interns = session.exec(query).all()
     return {"interns": [_user_dict(u) for u in interns]}
 
 
@@ -2371,12 +2889,6 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
             if current_count >= tenant.limit_clients:
                 raise HTTPException(status_code=403, detail=f"Client limit reached. Maximum allowed: {tenant.limit_clients}")
     check_tenant_limit(session, "clients")
-    
-    if body.email:
-        existing_client = session.exec(select(ClientProfile).where(ClientProfile.email == body.email, ClientProfile.tenant_id == current_tenant_id.get())).first()
-        if existing_client:
-            raise HTTPException(status_code=400, detail="A client with this email already exists in your workspace.")
-            
     user = None
     if body.email:
         user = session.exec(select(User).where(User.email == body.email)).first()
@@ -2409,10 +2921,22 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
         tagline=body.tagline,
         websiteUrl=body.websiteUrl,
         targetKeywords=body.targetKeywords,
+        assignedEmployeeId=body.assigned_employee_id,
     )
     session.add(cp)
     session.commit()
     session.refresh(cp)
+    
+    try:
+        _notify_admins(
+            session, current_tenant_id.get(),
+            title=f"🏢 New Client: {cp.companyName}",
+            message=f"Status: {cp.status} | Website: {cp.websiteUrl or 'N/A'}",
+            notif_type="success",
+            link=f"/admin/clients/{cp.id}"
+        )
+    except Exception:
+        pass
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -2421,6 +2945,17 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
         send_ai_polished_whatsapp_message("New Client Onboarded", cp.dict(), f"{base_url}/clients/{cp.id}")
     except Exception as e:
         print("WhatsApp Error:", e)
+
+    # ── AUTO-RESEARCH ──
+    try:
+        _trigger_background_research(
+            entity_id=cp.id,
+            entity_type="client",
+            company_name=cp.companyName or "",
+            website=cp.websiteUrl or ""
+        )
+    except Exception as e:
+        print(f"AutoResearch trigger error for client {cp.id}: {e}")
         
     return {"client": _client_dict(cp, session)}
 
@@ -2439,6 +2974,7 @@ class SheetImportRequest(_BM):
 
 @app.get("/dev/reset-clients")
 def dev_reset_clients(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     from sqlalchemy import text
     from sqlmodel import delete
     
@@ -2463,6 +2999,7 @@ def dev_reset_clients(session: Session = Depends(get_session)):
     return {"message": "Client database has been completely reset to 0."}
 @app.get("/dev/seed-catalog")
 def dev_seed_catalog(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     from sqlmodel import delete
     # Delete existing products
     session.exec(delete(Product))
@@ -2497,6 +3034,7 @@ def dev_seed_catalog(session: Session = Depends(get_session)):
 
 @app.get("/dev/patch-invoices")
 def dev_patch_invoices(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     from sqlalchemy import text
     try:
         session.exec(text("ALTER TABLE invoices ADD COLUMN currency VARCHAR(10) DEFAULT 'MXN';"))
@@ -2678,23 +3216,102 @@ async def _auto_research_client_bg(client_id: int, website: str):
 
 # ─── CSV Export ────────────────────────────────────────────────────────────────
 @app.get("/clients/export-csv")
-def export_clients_csv(tenant_id: Optional[int] = None, session: Session = Depends(get_session)):
+def export_clients_csv(session: Session = Depends(get_session)):
     from fastapi.responses import StreamingResponse
+    import json as _json
 
+    tenant_id = current_tenant_id.get()
     q = select(ClientProfile)
-    if tenant_id and tenant_id != 1:
+    if tenant_id and tenant_id > 0:
         q = q.where(ClientProfile.tenant_id == tenant_id)
     clients_list = session.exec(q.order_by(ClientProfile.id.asc())).all()
+
+    # Build employee lookup
+    all_emp_ids = list({c.assignedEmployeeId for c in clients_list if c.assignedEmployeeId})
+    emp_by_id = {}
+    if all_emp_ids:
+        emps = session.exec(select(User).where(User.id.in_(all_emp_ids))).all()
+        emp_by_id = {e.id: e for e in emps}
+
     output = _io.StringIO()
     writer = _csv.writer(output)
-    writer.writerow(["Client Name", "Email", "Phone"])
-    for i, c in enumerate(clients_list, 1):
+
+    def _flatten(val):
+        if not val:
+            return ""
+        try:
+            if isinstance(val, str):
+                if val.startswith("[") or val.startswith("{"):
+                    val = _json.loads(val)
+                else:
+                    return val
+            def extract(obj):
+                if isinstance(obj, dict):
+                    return [x for v in obj.values() for x in extract(v)]
+                elif isinstance(obj, list):
+                    return [x for v in obj for x in extract(v)]
+                else:
+                    return [str(obj)] if obj and str(obj).strip() else []
+            return ", ".join(extract(val))
+        except Exception:
+            pass
+        return str(val)[:500]
+
+    writer.writerow([
+        "ID", "Company Name", "Contact Person", "Email", "Phone", "Website",
+        "Status", "Industry", "Address", "Assigned Employee",
+        "Services Offered", "Services Requested", "Target Keywords",
+        "Deal Value", "Payment Status", "Lead Score", "Lead Source",
+        "Revenue Range", "Employee Count", "Next Milestone", "Next Milestone Date",
+        "Last Activity", "Last Contact Date", "Next Follow-up Date",
+        "Google Rating", "Google Reviews", "SWOT Analysis", "AI Call Pitch",
+        "Discovered Via", "CMS Type", "Sitemap URL", "LinkedIn URL"
+    ])
+
+    for c in clients_list:
         user = session.get(User, c.userId) if c.userId else None
         client_email = c.email if hasattr(c, 'email') and c.email else (user.email if user else "")
+        emp = emp_by_id.get(c.assignedEmployeeId)
+        emp_name = emp.name if emp else ""
+
+        swot_text = _flatten(c.swot_analysis)
+        services_text = _flatten(c.services_offered)
+        services_req_text = _flatten(c.services_requested)
+        keywords_text = _flatten(c.targetKeywords)
+
         writer.writerow([
-            c.companyName or "", 
+            c.id,
+            c.companyName or "",
+            c.contact_person or "",
             client_email,
-            c.phone or ""
+            c.phone or "",
+            c.websiteUrl or "",
+            c.status or "",
+            c.industry or "",
+            c.address or "",
+            emp_name,
+            services_text,
+            services_req_text,
+            keywords_text,
+            c.deal_value or "",
+            c.payment_status or "",
+            c.lead_score or "",
+            c.lead_source or "",
+            c.revenue_range or "",
+            c.employee_count or "",
+            c.nextMilestone or "",
+            c.nextMilestoneDate or "",
+            c.lastActivity or "",
+            c.last_contact_date or "",
+            c.next_followup_date or "",
+            c.google_rating or "",
+            c.google_reviews or "",
+            swot_text,
+            (c.call_pitch_text or "")[:300],
+            c.discovered_via or "",
+            c.cms_type or "",
+            c.sitemap_url or "",
+            c.linkedin_url or "",
         ])
     output.seek(0)
     return StreamingResponse(
@@ -2895,8 +3512,11 @@ def get_client(client_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Client not found")
     return {"client": _client_dict(cp, session)}
 
+class SimulateCallRequest(BaseModel):
+    context: Optional[str] = None
+
 @app.post("/clients/{client_id}/simulate-call")
-def simulate_client_call(client_id: int, session: Session = Depends(get_session)):
+def simulate_client_call(client_id: int, req: Optional[SimulateCallRequest] = None, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
     if not cp: raise HTTPException(status_code=404, detail="Client not found")
     
@@ -2930,8 +3550,11 @@ Instructions:
 2. Directly reference their specific company name, their services/keywords, and especially any past notes or activities.
 3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
 4. Make it conversational, persuasive, and professional.
-5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
-6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
+5. Structure it logically but seamlessly.
+6. Output ONLY the spoken script as natural dialogue. Do NOT include markdown headings like **Introduction** or **Value Proposition**. It should read exactly like a transcript of someone speaking. Do not add any meta-commentary."""
+
+    if req and req.context:
+        prompt += f"\n\nAdditional Custom Context / Instructions from the Sales Rep:\n{req.context}\n(Please ensure you incorporate this custom instruction closely into the script)."
 
     from modules.llm_engine import get_openai_client
     try:
@@ -3051,6 +3674,39 @@ def update_client(
     session.commit()
     session.refresh(cp)
     return {"client": _client_dict(cp, session)}
+
+
+@app.post("/clients/{client_id}/swot")
+async def generate_client_swot(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if not cp.websiteUrl:
+        raise HTTPException(status_code=400, detail="Client has no website URL configured")
+        
+    from modules.llm_engine import generate_swot_analysis
+    import json
+    
+    swot_data = await generate_swot_analysis(cp.websiteUrl, cp.companyName or "Client")
+    cp.swot_analysis = json.dumps(swot_data)
+    session.add(cp)
+    session.commit()
+    session.refresh(cp)
+    return {"ok": True, "swot_analysis": swot_data}
+
+
+
+@app.post("/leads/{lead_id}/assign-employee")
+def assign_employee_lead(
+    lead_id: int, body: AssignEmployeeRequest, session: Session = Depends(get_session)
+):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    lead.owner_id = body.employee_id
+    session.add(lead)
+    session.commit()
+    return {"ok": True}
 
 
 @app.post("/clients/{client_id}/assign-employee")
@@ -3498,62 +4154,98 @@ def auto_research_client(client_id: int, session: Session = Depends(get_session)
         raise HTTPException(status_code=404, detail="Client not found")
         
     try:
-        from modules.llm_engine import get_openai_client
-        import json as _json
-        client_ai = get_openai_client()
-        
-        prompt = f"""
-        You are an expert pre-sales researcher for an SEO/Marketing agency.
-        Research the following company and provide a detailed summary.
-        Company Name: {cp.companyName}
-        Website: {cp.websiteUrl or 'Unknown'}
-        Industry: {cp.industry or 'Unknown'}
-        
-        Return ONLY valid JSON matching this schema exactly (no markdown formatting, no code blocks):
-        {{
-            "company_overview": "Detailed overview...",
-            "competitors": "List 3-5 main competitors...",
-            "tech_stack": "Likely technologies used...",
-            "recent_news": "Any recent news or general industry trends...",
-            "pain_points": "Likely pain points they face...",
-            "business_goals": "Likely business goals...",
-            "key_decision_makers": "Titles of key decision makers..."
-        }}
-        """
-        
-        resp = client_ai.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=1000,
+        # Trigger the same deep background research we use on creation
+        _trigger_background_research(
+            entity_id=client_id,
+            entity_type="client",
+            company_name=cp.companyName or "",
+            website=cp.websiteUrl or ""
         )
-        content = resp.choices[0].message.content.strip()
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-        elif content.startswith("```"):
-            content = content[3:-3].strip()
-            
-        data = _json.loads(content)
-        
-        research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
-        if not research:
-            research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
-            
-        research.company_overview = data.get("company_overview", "")
-        research.competitors = data.get("competitors", "")
-        research.tech_stack = data.get("tech_stack", "")
-        research.recent_news = data.get("recent_news", "")
-        research.pain_points = data.get("pain_points", "")
-        research.business_goals = data.get("business_goals", "")
-        research.key_decision_makers = data.get("key_decision_makers", "")
-        research.updated_at = datetime.utcnow()
-        
-        session.add(research)
-        session.commit()
-        return {"ok": True, "research": data}
-        
+        return {"ok": True, "message": "Research started in background"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
+
+
+@app.post("/clients/{client_id}/extract-services")
+def extract_services(client_id: int, session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+    
+    context = f"Company Name: {cp.companyName}\n"
+
+
+    if research and research.company_overview:
+        context += f"Overview: {research.company_overview}\n"
+        
+    try:
+        prompt = f"""Analyze the following company data and extract a list of services they offer.
+For each service, provide a name, a brief description, and an estimated approximate cost (in dollars, e.g. 1500).
+Return a JSON array of objects with keys: name, description, approx_cost.
+Data:
+{context}"""
+        import json
+        from modules.llm_engine import get_openai_client
+        
+        client_openai = get_openai_client()
+        response = client_openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a data extraction AI. Output raw JSON array of objects. No markdown formatting, just the raw JSON array. If you cannot find services, guess based on the industry."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
+        )
+        raw_res = response.choices[0].message.content
+        
+        try:
+            services_data = json.loads(raw_res)
+        except:
+            if "```json" in raw_res:
+                raw_res = raw_res.split("```json")[1].split("```")[0].strip()
+                services_data = json.loads(raw_res)
+            else:
+                services_data = []
+                
+        if not isinstance(services_data, list):
+            services_data = []
+            
+        added_count = 0
+        from database import MarketplaceService
+        for srv in services_data:
+            if not srv.get("name"): continue
+            
+            # Try parsing approx_cost as float
+            cost = 0.0
+            raw_cost = str(srv.get("approx_cost", 0)).replace('$', '').replace(',', '').strip()
+            try:
+                cost = float(raw_cost)
+            except:
+                cost = 0.0
+                
+            ms = MarketplaceService(
+                tenant_id=cp.tenant_id,
+                service_name=srv["name"],
+                description=srv.get("description", ""),
+                estimated_cost=cost,
+                cost_is_estimated=True,
+                provider_client_id=cp.id,
+                provider_name=cp.companyName or "Unknown Provider",
+                category="General"
+            )
+            session.add(ms)
+            added_count += 1
+            
+        cp.services_offered = json.dumps(services_data)
+        session.add(cp)
+        session.commit()
+        
+        return {"ok": True, "services": services_data, "marketplace_entries_added": added_count}
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/clients/{client_id}/generate-outbound-draft")
@@ -3568,8 +4260,39 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
         import json as _json
         client_ai = get_openai_client()
         
-        # Get existing research
+        # ── Safe upsert: always fetch (or create) research in ONE place ──────
         research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+        
+        # If no OSINT data yet, run deep investigation synchronously
+        if not research or not research.email_agent_data:
+            from modules.llm_engine import deep_investigate_company
+            url = cp.websiteUrl or cp.website or ""
+            if not url and cp.companyName:
+                slug = cp.companyName.lower().replace(" ", "").replace(",","").replace(".","")
+                url = f"https://www.{slug}.com"
+            
+            if url:
+                print(f"[DraftGen] No existing research for client {client_id}. Running deep investigation first...")
+                try:
+                    osint_data = deep_investigate_company(
+                        company_name=cp.companyName or "Unknown",
+                        website=url,
+                        scraped_text=""
+                    )
+                    if not research:
+                        research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
+                        session.add(research)
+                        session.flush()  # get the id without committing
+                    research.company_overview = osint_data.get("company_overview", "")
+                    research.email_agent_data = _json.dumps(osint_data)
+                    session.commit()
+                    print(f"[DraftGen] Deep investigation complete for client {client_id}")
+                except Exception as osint_err:
+                    session.rollback()
+                    print(f"[DraftGen] OSINT failed (continuing with draft anyway): {osint_err}")
+                    # Re-fetch research after rollback
+                    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+
         research_context = ""
         if research:
             research_context = f"""
@@ -3592,7 +4315,7 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
         if notes:
             interaction_context += "Recent Notes:\n" + "\n".join([f"- {n.content}" for n in notes]) + "\n"
         if conversations:
-            interaction_context += "Recent Conversations:\n" + "\n".join([f"- {c.type} on {c.created_at.strftime('%Y-%m-%d') if c.created_at else 'Unknown'}: {c.title} - {c.description}" for c in conversations]) + "\n"
+            interaction_context += "Recent Conversations:\n" + "\n".join([f"- {c.type} on {c.created_at}: {c.description or c.title}" for c in conversations]) + "\n"
 
         prompt = f"""
         You are an expert SDR (Sales Development Representative) at an agency. 
@@ -3644,7 +4367,9 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
         )
         session.add(draft)
         
-        # Save to research so the UI can display it in OpportunitiesTab
+        # ── Safe upsert research (use existing row, never re-insert) ─────────
+        if not research:
+            research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
         if not research:
             research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
             session.add(research)
@@ -3665,7 +4390,10 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
         return {"ok": True, "draft": data, "email_id": draft.id}
         
     except Exception as e:
+        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to generate draft: {str(e)}")
+
+
 
 
 # ─── Extract Client Services from Website ─────────────────────────────────────
@@ -3769,29 +4497,42 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
             MarketplaceService.is_active == True,
         )
     ).all()
-    existing_names = {s.service_name.lower() for s in existing}
+    existing_by_name = {s.service_name.lower(): s for s in existing}
 
     added = 0
+    updated = 0
     for svc in services:
         svc_name = svc.get("name", "").strip()
-        if not svc_name or svc_name.lower() in existing_names:
+        if not svc_name:
             continue
-        ms = MarketplaceService(
-            service_name=svc_name,
-            normalized_name=svc_name,
-            category=svc.get("category"),
-            description=svc.get("brief"),
-            estimated_cost=float(svc.get("approx_cost", 0)),
-            cost_is_estimated=svc.get("cost_is_estimated", True),
-            provider_name=company_name,
-            provider_client_id=client_id,
-            provider_industry=cp.industry,
-            provider_address=cp.address,
-            source=scrape_method,
-        )
-        session.add(ms)
-        existing_names.add(svc_name.lower())
-        added += 1
+        key = svc_name.lower()
+        if key in existing_by_name:
+            # Update existing entry
+            ms = existing_by_name[key]
+            ms.description = svc.get("brief") or ms.description
+            ms.category = svc.get("category") or ms.category
+            ms.estimated_cost = float(svc.get("approx_cost", 0)) or ms.estimated_cost
+            ms.source = scrape_method
+            session.add(ms)
+            updated += 1
+        else:
+            ms = MarketplaceService(
+                service_name=svc_name,
+                normalized_name=svc_name,
+                category=svc.get("category"),
+                description=svc.get("brief"),
+                estimated_cost=float(str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip() if str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip().replace(".","").isdigit() else 0),
+                cost_is_estimated=svc.get("cost_is_estimated", True),
+                provider_name=company_name,
+                provider_client_id=client_id,
+                provider_industry=cp.industry,
+                provider_address=cp.address,
+                source=scrape_method,
+                tenant_id=current_tenant_id.get(),
+            )
+            session.add(ms)
+            existing_by_name[key] = ms
+            added += 1
 
     session.commit()
 
@@ -3801,7 +4542,8 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
         "services": services,
         "scrape_method": scrape_method,
         "marketplace_entries_added": added,
-        "message": f"Extracted {len(services)} services via {method_label}. Added {added} to Marketplace.",
+        "marketplace_entries_updated": updated,
+        "message": f"Extracted {len(services)} services via {method_label}. Added {added} new + updated {updated} existing in Marketplace.",
     }
 
 
@@ -4027,6 +4769,17 @@ def create_project(body: ProjectCreateRequest, session: Session = Depends(get_se
     session.add(p)
     session.commit()
     session.refresh(p)
+    
+    try:
+        _notify_admins(
+            session, current_tenant_id.get(),
+            title=f"📁 New Project: {p.name}",
+            message=f"Status: {p.status} | Progress: {p.progress}%",
+            notif_type="info",
+            link=f"/projects/{p.id}"
+        )
+    except Exception:
+        pass
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -4733,6 +5486,7 @@ def list_activities(user_id: Optional[int] = None, session: Session = Depends(ge
                 "content": a.content,
                 "details": a.details,
                 "clientId": a.clientId,
+                "lead_id": a.lead_id,
                 "createdAt": a.createdAt.isoformat(),
             }
             for a in logs
@@ -4806,11 +5560,11 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
             inbound_body_en = inbound_llm.get("english_body") or INBOUND_BODY_EN.format(company_name=company_name, services=services)
             inbound_body_es = inbound_llm.get("spanish_body") or INBOUND_BODY_ES.format(company_name=company_name, services=services)
 
-        sender = body.sender_email or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "prasanth.anupoju@sasi.ac.in")
+        sender = body.sender_email or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
         password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
         smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "smtp.gmail.com")
         smtp_port = os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
-        imap_server = os.getenv("IMAP_SERVER", "imap.gmail.com")
+        imap_server = os.getenv("IMAP_SERVER")
 
         # Only send the email if manual is False and all required fields are present
         if not body.manual and all([body.to_email, body.subject, body.body, sender, password]):
@@ -5234,10 +5988,10 @@ def dashboard_stats(
     )
     total_projects = len(session.exec(select(Project)).all())
     total_employees = len(
-        session.exec(select(User).where(User.role == "Employee")).all()
+        session.exec(select(User).where(User.role == "Employee").where(User.tenant_id == current_tenant_id.get())).all()
     )
     total_interns = len(
-        session.exec(select(User).where(User.role == "Intern")).all()
+        session.exec(select(User).where(User.role == "Intern").where(User.tenant_id == current_tenant_id.get())).all()
     )
     total_activities = len(session.exec(select(ActivityLog)).all())
     total_calls = len(session.exec(select(CallLog)).all())
@@ -5667,7 +6421,7 @@ def trigger_audit(body: dict = {}, session: Session = Depends(get_session)):
 
 
 @app.get("/audit/export")
-def export_audit_pdf(email: str = Query(""), domain: str = Query(""), inline: bool = Query(False), session: Session = Depends(get_session)):
+def export_audit_pdf(email: str = Query(""), domain: str = Query(""), session: Session = Depends(get_session)):
     """Generate PDF audit report."""
     from fastapi.responses import StreamingResponse
     import io
@@ -5726,10 +6480,8 @@ def export_audit_pdf(email: str = Query(""), domain: str = Query(""), inline: bo
 
     doc.build(elements)
     buf.seek(0)
-    
-    disposition = "inline" if inline else "attachment"
     return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f'{disposition}; filename="serphawk-audit-{(domain or "report").replace("https://","").replace("/","_")}.pdf"'
+        "Content-Disposition": f'attachment; filename="serphawk-audit-{(domain or "report").replace("https://","").replace("/","_")}.pdf"'
     })
 
 
@@ -5761,6 +6513,7 @@ def _task_dict(t: Task, session: Session) -> dict:
         "priority": t.priority,
         "due_date": t.due_date,
         "client_id": t.client_id,
+        "lead_id": t.lead_id,
         "client_name": client_user.name if client_user else (client.companyName if client else None),
         "project_id": t.project_id,
         "assigned_to": t.assigned_to,
@@ -5777,6 +6530,7 @@ def list_tasks(
     status: Optional[str] = None,
     assigned_to: Optional[int] = None,
     client_id: Optional[int] = None,
+    lead_id: Optional[int] = None,
     project_id: Optional[int] = None,
     session: Session = Depends(get_session),
 ):
@@ -5791,6 +6545,8 @@ def list_tasks(
         q = q.where(Task.assigned_to == assigned_to)
     if client_id:
         q = q.where(Task.client_id == client_id)
+    if lead_id:
+        q = q.where(Task.lead_id == lead_id)
     if project_id:
         q = q.where(Task.project_id == project_id)
     tasks = session.exec(q).all()
@@ -5882,6 +6638,27 @@ def delete_task(task_id: int, session: Session = Depends(get_session)):
     if not t:
         raise HTTPException(status_code=404, detail="Task not found")
     session.delete(t)
+    session.commit()
+    return {"ok": True}
+
+
+@app.delete("/notifications/clear-all/{user_id}")
+def clear_all_notifications(user_id: int, session: Session = Depends(get_session)):
+    notifs = session.exec(
+        select(Notification).where(Notification.user_id == user_id)
+    ).all()
+    for n in notifs:
+        session.delete(n)
+    session.commit()
+    return {"ok": True, "cleared": len(notifs)}
+
+
+@app.delete("/notifications/{notification_id}")
+def delete_notification(notification_id: int, session: Session = Depends(get_session)):
+    n = session.get(Notification, notification_id)
+    if not n:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    session.delete(n)
     session.commit()
     return {"ok": True}
 
@@ -6485,18 +7262,11 @@ def respond_nps(survey_id: int, body: NPSRespondRequest, session: Session = Depe
     return {"ok": True}
 
 
-# ─────────────────────────────────────────────────────────────
-@app.get("/invoices/{invoice_id}/pdf_provider")
-def invoice_pdf_provider(invoice_id: int, provider: Optional[str] = None, download: bool = False, session: Session = Depends(get_session)):
+# ────────────────────────────────────────────────────────
+@app.get("/invoices/{invoice_id}/pdf")
+def invoice_pdf(invoice_id: int, provider: Optional[str] = None, session: Session = Depends(get_session)):
     """Generate a professional PDF for an invoice."""
     from fastapi.responses import StreamingResponse
-    import io
-    import os
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.utils import ImageReader
 
     inv = session.get(Invoice, invoice_id)
     if not inv:
@@ -6507,179 +7277,22 @@ def invoice_pdf_provider(invoice_id: int, provider: Optional[str] = None, downlo
         user = session.get(User, client.userId) if client.userId else None
         client_name = client.companyName or (user.name if user else f"Client #{client.id}")
 
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=40, bottomMargin=40, leftMargin=40, rightMargin=40)
-    styles = getSampleStyleSheet()
-    
-    # Custom Styles
-    title_style = ParagraphStyle("Title", fontName="Helvetica-Bold", fontSize=22, leading=26, textColor=colors.HexColor("#000000"))
-    normal_b = ParagraphStyle("NormalB", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10, textColor=colors.HexColor("#111111"))
-    normal = ParagraphStyle("NormalR", parent=styles["Normal"], fontName="Helvetica", fontSize=10, textColor=colors.HexColor("#333333"))
-    small = ParagraphStyle("Small", parent=normal, fontSize=8, textColor=colors.HexColor("#555555"))
-    h3 = ParagraphStyle("H3", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=12, spaceAfter=8)
-
-    els = []
-    
-    is_dapros = (provider == "DAPROS")
-    
-    if is_dapros:
-        curr = "$"
-        title_text = "INVOICE"
-        logo_el = Paragraph("DaPros", ParagraphStyle("RightB", parent=title_style, alignment=2, fontSize=28, leading=32, textColor=colors.HexColor("#000000")))
-        contact_info = [
-             Paragraph("+52 33 5018 8216 | contacto@dapros.com.mx", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("DaPros, Web Design in Guadalajara", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("Canarias 1178, 44620 Guadalajara", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("Jal., Mexico", ParagraphStyle("Right", parent=normal, alignment=2))
-        ]
-        payment_name = "DaPros"
-        place = "Guadalajara"
-    else:
-        curr = "₹"
-        title_text = "PROFORMA INVOICE"
-        logo_path = os.path.join(os.path.dirname(__file__), "logo.jpg")
-        if os.path.exists(logo_path):
-            img_reader = ImageReader(logo_path)
-            img_w, img_h = img_reader.getSize()
-            aspect = img_h / float(img_w)
-            logo_el = Image(logo_path, width=120, height=120 * aspect)
-        else:
-            logo_el = Paragraph("SERP HAWK", ParagraphStyle("RightB", parent=title_style, alignment=2, fontSize=16))
-
-        contact_info = [
-             Paragraph("089213 81769 | info@serphawk.com", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("B, 2nd Floor, Bannerghatta Slip Rd, KEB Colony", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("New Gurappana Palya, 1st Stage, BTM 1st Stage", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("Bengaluru, Karnataka 560029", ParagraphStyle("Right", parent=normal, alignment=2))
-        ]
-        payment_name = "SERP HAWK"
-        place = "Bengaluru"
-
-    # Header Section
-    header_data = [
-        [
-            Paragraph(title_text, title_style),
-            logo_el
-        ],
-        [
-            [Paragraph(f"Invoice Number: {inv.invoice_number}", normal),
-             Paragraph(f"Date: {inv.created_at.strftime('%B %d, %Y') if inv.created_at else '—'}", normal)],
-            contact_info
-        ]
-    ]
-    header_table = Table(header_data, colWidths=[260, 255])
-    header_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 25),
-        ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
-    ]))
-    els.append(header_table)
-    els.append(Spacer(1, 30))
-
-    # Info Section
-    info_data = [
-        [Paragraph("BILL TO:", h3), Paragraph("SHIP TO:", h3), Paragraph("SHIPPING DETAILS:", h3)],
-        [
-            [Paragraph(client_name or "—", normal_b), Paragraph("Client Address", normal)],
-            [Paragraph(client_name or "—", normal_b), Paragraph("Client Address", normal)],
-            [Paragraph("Freight type - Digital", normal), Paragraph(f"Due Date - {inv.due_date or 'N/A'}", normal)]
-        ]
-    ]
-    info_table = Table(info_data, colWidths=[171, 171, 173])
-    info_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    els.append(info_table)
-    els.append(Spacer(1, 30))
-
-    # Line Items Table
-    items_header = ["ITEM", "DESCRIPTION", "PROVIDER", "PRICE", "AMOUNT"]
-    items_data = [items_header]
-    
-    for idx, li in enumerate(inv.line_items or [], 1):
-        amt = float(li.get('amount', 0))
-        prov = li.get('provider', 'Custom')
-        desc = li.get('description', '')
-        items_data.append([str(idx) + ".", desc, prov, f"{curr}{amt:.2f}", f"{curr}{amt:.2f}"])
-        
-    lt = Table(items_data, colWidths=[40, 195, 100, 90, 90])
-    
-    # Base table style
-    ts = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#5472d3")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("PADDING", (0, 0), (-1, -1), 10),
-        ("ALIGN", (3, 0), (4, -1), "RIGHT"),
-        ("ALIGN", (0, 0), (0, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]
-    
-    # Alternating row colors
-    for i in range(1, len(items_data)):
-        bg = colors.HexColor("#f8f9fa") if i % 2 != 0 else colors.white
-        ts.append(("BACKGROUND", (0, i), (-1, i), bg))
-        
-    lt.setStyle(TableStyle(ts))
-    els.append(lt)
-    els.append(Spacer(1, 15))
-    
-    # Totals Section
-    totals_data = [
-        ["", "Sub Total:", f"{curr}{inv.amount:.2f}"],
-        ["", "Tax:", f"{curr}{inv.tax:.2f}"],
-        ["", "Freight:", f"{curr}0.00"],
-    ]
-    tt = Table(totals_data, colWidths=[295, 110, 110])
-    tt.setStyle(TableStyle([
-        ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
-        ("ALIGN", (1, 0), (2, -1), "RIGHT"),
-        ("PADDING", (0, 0), (-1, -1), 5),
-    ]))
-    els.append(tt)
-    els.append(Spacer(1, 10))
-    
-    grand_total_data = [["", f"TOTAL: {curr}{inv.total:.2f}"]]
-    gt = Table(grand_total_data, colWidths=[295, 220])
-    gt.setStyle(TableStyle([
-        ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#f1f5f9")),
-        ("FONTNAME", (1, 0), (1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (1, 0), (1, 0), 16),
-        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ("PADDING", (1, 0), (1, 0), 10),
-    ]))
-    els.append(gt)
-    els.append(Spacer(1, 40))
-    
-    # Footer Section
-    footer_data = [
-        [Paragraph("PAYMENT INFORMATION:", h3), Paragraph("SIGNATURE/STAMP", h3)],
-        [
-            [Paragraph("<b>Bank:</b> ___________________", normal), 
-             Paragraph(f"<b>Name:</b> {payment_name}", normal), 
-             Paragraph("<b>Account:</b> ___________________", normal)],
-            [Paragraph(f"Place: {place}", normal), Paragraph("Date: ____________", normal)]
-        ]
-    ]
-    ft = Table(footer_data, colWidths=[257, 258])
-    ft.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    els.append(ft)
-    
-    els.append(Spacer(1, 20))
-    els.append(Paragraph("<b>TERM AND CONDITIONS:</b>", normal))
-    els.append(Paragraph("Payment is due 30 days from the invoice date.", normal))
-    
-    doc.build(els)
-    buf.seek(0)
-    disp = "attachment" if download else "inline"
-    return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f'{disp}; filename="Invoice_{inv.invoice_number}.pdf"'
+    from modules.pdf_export import invoice_pdf as _invoice_pdf
+    pdf = _invoice_pdf({
+        "invoice_number": inv.invoice_number,
+        "client_name": client_name,
+        "currency": inv.currency or "$",
+        "amount": inv.amount,
+        "tax": inv.tax,
+        "total": inv.total,
+        "status": inv.status,
+        "due_date": inv.due_date,
+        "notes": inv.notes,
+        "line_items": inv.line_items or [],
+        "created_at": inv.created_at,
+    })
+    return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="invoice-{inv.invoice_number}.pdf"'
     })
 
 
@@ -6962,12 +7575,28 @@ async def upload_file_to_server(
     upload_dir = os.path.join("static", "uploads")
     file_path = os.path.join(upload_dir, unique_name)
 
-    contents = await file.read()
-    with open(file_path, "wb") as fh:
-        fh.write(contents)
+    # Stream chunks to disk in a worker thread (never block the event loop,
+    # never buffer the whole file in RAM), enforcing a 10 MB cap mid-stream.
+    import asyncio, shutil
+    _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+    def _write():
+        file.file.seek(0)
+        total = 0
+        with open(file_path, "wb") as fh:
+            while True:
+                chunk = file.file.read(1024 * 256)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > _MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Image must be under 10 MB")
+                fh.write(chunk)
+        return total
+
+    file_size = await asyncio.to_thread(_write)
 
     file_url = f"/static/uploads/{unique_name}"
-    file_size = len(contents)
 
     record = ClientFileUpload(
         client_id=client_id,
@@ -6992,7 +7621,40 @@ async def upload_file_to_server(
     }
 
 
-@app.post("/clients/{client_id}/files")
+@app.post("/upload-image")
+async def upload_image(file: UploadFile = File(...)):
+    """Upload an image (e.g. inventory photo) to static/uploads/ and return its public URL."""
+    if file.content_type and not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are allowed")
+
+    safe_name = re.sub(r'[^\w.\-]', '_', file.filename or "image")
+    unique_name = f"{_uuid.uuid4().hex[:8]}_{safe_name}"
+    upload_dir = os.path.join("static", "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, unique_name)
+
+    # Stream chunks to disk in a worker thread (never block the event loop),
+    # enforcing a 10 MB cap mid-stream.
+    import asyncio
+    _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+    def _write_sync():
+        file.file.seek(0)
+        total = 0
+        with open(file_path, "wb") as fh:
+            while True:
+                chunk = file.file.read(1024 * 256)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > _MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Image must be under 10 MB")
+                fh.write(chunk)
+        return total
+
+    await asyncio.to_thread(_write_sync)
+
+    return {"file_url": f"/static/uploads/{unique_name}"}
 def upload_client_file(
     client_id: int, body: FileUploadRequest, session: Session = Depends(get_session)
 ):
@@ -7109,98 +7771,9 @@ def delete_ranking(entry_id: int, session: Session = Depends(get_session)):
 # PDF Generation — Invoices & Proposals
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.get("/invoices/{invoice_id}/pdf")
-def invoice_pdf(invoice_id: int, download: bool = False, session: Session = Depends(get_session)):
-    """Generate a professional PDF for an invoice."""
-    from fastapi.responses import StreamingResponse
-    import io
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-
-    inv = session.get(Invoice, invoice_id)
-    if not inv:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    client = session.get(ClientProfile, inv.client_id) if inv.client_id else None
-    client_name = ""
-    if client:
-        user = session.get(User, client.userId) if client.userId else None
-        client_name = client.companyName or (user.name if user else f"Client #{client.id}")
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=50, bottomMargin=40)
-    styles = getSampleStyleSheet()
-    title_s = ParagraphStyle("ITitle", parent=styles["Title"], fontSize=24, textColor=colors.HexColor("#1e293b"))
-    h2 = ParagraphStyle("IH2", parent=styles["Heading2"], fontSize=13, textColor=colors.HexColor("#334155"), spaceBefore=18)
-    normal = styles["Normal"]
-    small = ParagraphStyle("Small", parent=normal, fontSize=9, textColor=colors.grey)
-
-    els = []
-    els.append(Paragraph("INVOICE", title_s))
-    els.append(Spacer(1, 6))
-    els.append(Paragraph(f"<b>{inv.invoice_number}</b>", ParagraphStyle("Num", parent=normal, fontSize=14, textColor=colors.HexColor("#4f46e5"))))
-    els.append(Spacer(1, 12))
-
-    # Info table
-    info = [
-        ["Bill To:", client_name or "—"],
-        ["Date:", inv.created_at.strftime("%B %d, %Y") if inv.created_at else "—"],
-        ["Due Date:", inv.due_date or "—"],
-        ["Status:", inv.status],
-    ]
-    it = Table(info, colWidths=[100, 350])
-    it.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("PADDING", (0, 0), (-1, -1), 6),
-        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#64748b")),
-    ]))
-    els.append(it)
-    els.append(Spacer(1, 18))
-
-    # Line items
-    els.append(Paragraph("Line Items", h2))
-    curr = "₹" if getattr(inv, 'currency', 'MXN') == "INR" else "$"
-    items_data = [["#", "Description", "Amount"]]
-    for idx, li in enumerate(inv.line_items or [], 1):
-        items_data.append([str(idx), li.get("description", ""), f"{curr}{float(li.get('amount', 0)):.2f}"])
-    items_data.append(["", "Subtotal", f"{curr}{inv.amount:.2f}"])
-    items_data.append(["", "Tax", f"{curr}{inv.tax:.2f}"])
-    items_data.append(["", "TOTAL", f"{curr}{inv.total:.2f}"])
-
-    lt = Table(items_data, colWidths=[40, 310, 100])
-    lt.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTNAME", (1, -1), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("PADDING", (0, 0), (-1, -1), 8),
-        ("GRID", (0, 0), (-1, -2), 0.5, colors.HexColor("#e2e8f0")),
-        ("LINEABOVE", (0, -3), (-1, -3), 1, colors.HexColor("#cbd5e1")),
-        ("LINEABOVE", (0, -1), (-1, -1), 1.5, colors.HexColor("#1e293b")),
-        ("ALIGN", (2, 0), (2, -1), "RIGHT"),
-    ]))
-    els.append(lt)
-
-    if inv.notes:
-        els.append(Spacer(1, 14))
-        els.append(Paragraph("Notes", h2))
-        els.append(Paragraph(inv.notes, normal))
-
-    els.append(Spacer(1, 30))
-    els.append(Paragraph("— SERP Hawk | Team DaPros", small))
-
-    doc.build(els)
-    buf.seek(0)
-    disp = "attachment" if download else "inline"
-    return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f'{disp}; filename="{inv.invoice_number}.pdf"'
-    })
-
 
 @app.get("/proposals/{proposal_id}/pdf")
-def proposal_pdf(proposal_id: int, download: bool = False, session: Session = Depends(get_session)):
+def proposal_pdf(proposal_id: int, session: Session = Depends(get_session)):
     """Generate a professional itemized PDF quotation."""
     from fastapi.responses import StreamingResponse
     import io
@@ -7245,7 +7818,7 @@ def proposal_pdf(proposal_id: int, download: bool = False, session: Session = De
     light_bg = colors.HexColor("#f1f5f9")
 
     title_s = ParagraphStyle("PTitle", parent=styles["Normal"], fontSize=26, fontName="Helvetica-Bold",
-                             textColor=dark, spaceAfter=2)
+                             textColor=dark, leading=28, spaceAfter=2)
     sub_s = ParagraphStyle("PSub", parent=styles["Normal"], fontSize=11, textColor=mid)
     h2 = ParagraphStyle("PH2", parent=styles["Normal"], fontSize=11, fontName="Helvetica-Bold",
                         textColor=dark, spaceBefore=14, spaceAfter=4)
@@ -7258,7 +7831,7 @@ def proposal_pdf(proposal_id: int, download: bool = False, session: Session = De
     # ── HEADER ────────────────────────────────────────────────────────────────
     header_data = [
         [Paragraph("QUOTATION", title_s), Paragraph(f"# Q-{prop.id:04d}", title_s)],
-        [Paragraph("SERP Hawk | Team DaPros", sub_s), Paragraph(f"Currency: {currency}", sub_s)],
+        [Paragraph("SERP Hawk", sub_s), Paragraph(f"Currency: {currency}", sub_s)],
     ]
     header_tbl = Table(header_data, colWidths=[90*mm, 80*mm])
     header_tbl.setStyle(TableStyle([
@@ -7349,13 +7922,12 @@ def proposal_pdf(proposal_id: int, download: bool = False, session: Session = De
     els.append(Spacer(1, 20))
     els.append(HRFlowable(width="100%", thickness=0.5, color=mid))
     els.append(Spacer(1, 6))
-    els.append(Paragraph("SERP Hawk | Team DaPros — Thank you for your business!", footer_s))
+    els.append(Paragraph("SERP Hawk — Thank you for your business!", footer_s))
 
     doc.build(els)
     buf.seek(0)
-    disp = "attachment" if download else "inline"
     return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f'{disp}; filename="quotation-Q{prop.id:04d}.pdf"'
+        "Content-Disposition": f'attachment; filename="quotation-Q{prop.id:04d}.pdf"'
     })
 
 
@@ -8247,7 +8819,17 @@ def list_marketplace_services(
     per_page: int = 18,
     session: Session = Depends(get_session),
 ):
+    _require_roles(session, ["Admin"])
     query = select(MarketplaceService).where(MarketplaceService.is_active == True)
+    # Filter by tenant so each account only sees their own extracted services
+    tenant_id = current_tenant_id.get()
+    if tenant_id and tenant_id > 0:
+        query = query.where(
+            or_(
+                MarketplaceService.tenant_id == tenant_id,
+                MarketplaceService.tenant_id == None,
+            )
+        )
 
     if search:
         like = f"%{search}%"
@@ -8285,6 +8867,7 @@ def create_marketplace_service(
     body: MarketplaceServiceCreate,
     session: Session = Depends(get_session),
 ):
+    _require_roles(session, ["Admin"])
     # Auto-fill provider info from CRM if client_id given
     provider_name = body.provider_name
     provider_industry = None
@@ -8319,6 +8902,7 @@ def update_marketplace_service(
     body: MarketplaceServiceUpdate,
     session: Session = Depends(get_session),
 ):
+    _require_roles(session, ["Admin"])
     svc = session.get(MarketplaceService, service_id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
@@ -8336,6 +8920,7 @@ def delete_marketplace_service(
     service_id: int,
     session: Session = Depends(get_session),
 ):
+    _require_roles(session, ["Admin"])
     svc = session.get(MarketplaceService, service_id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
@@ -8347,7 +8932,10 @@ def delete_marketplace_service(
 
 
 @app.get("/marketplace/categories")
-def list_marketplace_categories(session: Session = Depends(get_session)):
+def list_marketplace_categories(
+    session: Session = Depends(get_session),
+):
+    _require_roles(session, ["Admin"])
     rows = session.exec(
         select(MarketplaceService.category)
         .where(MarketplaceService.is_active == True)
@@ -8363,6 +8951,7 @@ def ai_categorize_marketplace_service(
     service_id: int,
     session: Session = Depends(get_session),
 ):
+    _require_roles(session, ["Admin"])
     svc = session.get(MarketplaceService, service_id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
@@ -8939,6 +9528,99 @@ def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_ses
     leads = session.exec(query.order_by(Lead.created_at.desc())).all()
     return {"leads": leads}
 
+@app.get("/leads/export-csv")
+def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(get_session)):
+    from fastapi.responses import StreamingResponse
+    import io as _io
+    import csv as _csv
+    import json as _json
+
+    query = select(Lead)
+    if owner_id is not None:
+        query = query.where(Lead.owner_id == owner_id)
+    tenant_id = current_tenant_id.get()
+    if tenant_id and tenant_id != 1:
+        query = query.where(Lead.tenant_id == tenant_id)
+    leads = session.exec(query.order_by(Lead.created_at.desc())).all()
+
+    # Build user lookup for owner names
+    all_user_ids = list({l.owner_id for l in leads if l.owner_id})
+    users_by_id = {}
+    if all_user_ids:
+        users = session.exec(select(User).where(User.id.in_(all_user_ids))).all()
+        users_by_id = {u.id: u for u in users}
+    
+    output = _io.StringIO()
+    writer = _csv.writer(output)
+
+    def _flatten_ai(val):
+        """Convert AI analysis JSON into readable plain text."""
+        if not val:
+            return ""
+        try:
+            if isinstance(val, str):
+                val = _json.loads(val)
+            def extract(obj):
+                if isinstance(obj, dict):
+                    return [x for v in obj.values() for x in extract(v)]
+                elif isinstance(obj, list):
+                    return [x for v in obj for x in extract(v)]
+                else:
+                    return [str(obj)] if obj and str(obj).strip() else []
+            return ", ".join(extract(val))
+        except Exception:
+            pass
+        return str(val)[:500]
+
+    writer.writerow([
+        "ID", "Company Name", "Website", "Industry", "Email", "Phone",
+        "Address", "Source", "Status", "Lead Score", "Deal Value",
+        "Assigned To", "Is Converted", "Notes", "Last Activity",
+        "Created At", "AI Analysis Summary", "SWOT Analysis"
+    ])
+
+    for l in leads:
+        owner = users_by_id.get(l.owner_id)
+        owner_name = owner.name if owner else ""
+
+        # Flatten AI analysis into readable text
+        ai_text = _flatten_ai(l.ai_analysis_results)
+
+        # Clean SWOT
+        swot_raw = l.swot_analysis or ""
+        if swot_raw.startswith("{") or swot_raw.startswith("["):
+            swot_text = _flatten_ai(swot_raw)
+        else:
+            swot_text = swot_raw[:800]
+
+        writer.writerow([
+            l.id,
+            l.company_name or "",
+            l.website or "",
+            l.industry or "",
+            l.email or "",
+            l.phone or "",
+            l.address or "",
+            l.source or "",
+            l.status or "",
+            l.lead_score if hasattr(l, "lead_score") and l.lead_score is not None else "",
+            l.deal_value if hasattr(l, "deal_value") and l.deal_value is not None else "",
+            owner_name,
+            "Yes" if l.is_converted else "No",
+            (l.notes or "")[:300],
+            l.last_activity or "",
+            l.created_at.strftime("%Y-%m-%d %H:%M") if l.created_at else "",
+            ai_text[:800],
+            swot_text,
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=serphawk_leads.csv"}
+    )
+
 @app.post("/leads")
 def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
@@ -8948,21 +9630,22 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
             current_count = session.exec(select(func.count(Lead.id)).where(Lead.tenant_id == tenant_id)).one()
             if current_count >= tenant.limit_clients:
                 raise HTTPException(status_code=403, detail=f"Lead limit reached. Maximum allowed: {tenant.limit_clients}")
-    if body.email:
-        existing_lead = session.exec(select(Lead).where(Lead.email == body.email, Lead.tenant_id == current_tenant_id.get())).first()
-        if existing_lead:
-            raise HTTPException(status_code=400, detail="A lead with this email already exists in your workspace.")
-            
-    if body.company_name:
-        existing_company = session.exec(select(Lead).where(Lead.company_name == body.company_name, Lead.tenant_id == current_tenant_id.get())).first()
-        if existing_company:
-            raise HTTPException(status_code=400, detail="A lead with this company name already exists in your workspace.")
-            
     lead = Lead(**body.dict())
     lead.tenant_id = current_tenant_id.get()
     session.add(lead)
     session.commit()
     session.refresh(lead)
+    
+    try:
+        _notify_admins(
+            session, current_tenant_id.get(),
+            title=f"🎯 New Lead: {lead.company_name or lead.first_name}",
+            message=f"Status: {lead.status} | Value: ${lead.estimated_value or 0}",
+            notif_type="warning",
+            link=f"/leads/{lead.id}"
+        )
+    except Exception:
+        pass
     
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -8971,6 +9654,17 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
         send_ai_polished_whatsapp_message("New Lead Added", lead.dict(), f"{base_url}/leads/{lead.id}")
     except Exception as e:
         print("WhatsApp Error:", e)
+
+    # ── AUTO-RESEARCH ──
+    try:
+        _trigger_background_research(
+            entity_id=lead.id,
+            entity_type="lead",
+            company_name=lead.company_name or "",
+            website=lead.website or ""
+        )
+    except Exception as e:
+        print(f"AutoResearch trigger error for lead {lead.id}: {e}")
         
     return lead
 
@@ -8980,6 +9674,241 @@ def get_lead(lead_id: int, session: Session = Depends(get_session)):
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     return lead
+
+@app.get("/leads/{lead_id}/activities")
+def get_lead_activities(lead_id: int, session: Session = Depends(get_session)):
+    return {"activities": []}
+
+@app.get("/leads/{lead_id}/timeline")
+def get_lead_timeline(lead_id: int, session: Session = Depends(get_session)):
+    events: list[dict] = []
+    # Activities
+    for a in session.exec(select(ActivityLog).where(ActivityLog.lead_id == lead_id)).all():
+        events.append({"type": "activity", "id": a.id, "title": a.action or a.method or "Activity", "detail": a.content or "", "date": a.createdAt.isoformat() if a.createdAt else None})
+    # Emails
+    for e in session.exec(select(SentEmail).where(SentEmail.lead_id == lead_id)).all():
+        events.append({"type": "email", "id": e.id, "title": f"Email: {e.subject or 'No subject'}", "detail": e.to_email or "", "date": e.sent_at.isoformat() if e.sent_at else None})
+    # Notes
+    for n in session.exec(select(ClientNote).where(ClientNote.lead_id == lead_id)).all():
+        events.append({"type": "note", "id": n.id, "title": "Note Added", "detail": n.content or "", "date": n.created_at.isoformat() if n.created_at else None})
+    # Conversations
+    for c in session.exec(select(ConversationLog).where(ConversationLog.lead_id == lead_id)).all():
+        events.append({"type": "conversation", "id": c.id, "title": c.title or "Conversation", "detail": c.description or "", "date": c.created_at.isoformat() if c.created_at else None})
+    
+    events.sort(key=lambda x: x["date"] or "", reverse=True)
+    return {"timeline": events}
+
+@app.get("/leads/{lead_id}/activities")
+def get_lead_activities(lead_id: int, session: Session = Depends(get_session)):
+    acts = session.exec(select(ActivityLog).where(ActivityLog.lead_id == lead_id).order_by(ActivityLog.createdAt.desc())).all()
+    return {"activities": [a.dict() for a in acts]}
+
+@app.get("/leads/{lead_id}/notes")
+def get_lead_notes(lead_id: int, session: Session = Depends(get_session)):
+    notes = session.exec(select(ClientNote).where(ClientNote.lead_id == lead_id).order_by(ClientNote.created_at.desc())).all()
+    return {"notes": [n.dict() for n in notes]}
+
+class LeadNoteCreate(BaseModel):
+    content: str
+    author_name: str = "Admin"
+    tags: Optional[List[str]] = []
+
+@app.post("/leads/{lead_id}/notes")
+def create_lead_note(lead_id: int, body: LeadNoteCreate, session: Session = Depends(get_session)):
+    note = ClientNote(lead_id=lead_id, content=body.content, author_name=body.author_name, tags=body.tags)
+    session.add(note)
+    session.commit()
+    session.refresh(note)
+    return note.dict()
+
+@app.get("/leads/{lead_id}/conversations")
+def get_lead_conversations(lead_id: int, session: Session = Depends(get_session)):
+    convs = session.exec(select(ConversationLog).where(ConversationLog.lead_id == lead_id).order_by(ConversationLog.created_at.desc())).all()
+    return {"conversations": [c.dict() for c in convs]}
+
+class LeadConversationCreate(BaseModel):
+    title: str
+    type: str = "call"
+    description: Optional[str] = None
+    author_name: str = "Admin"
+
+@app.post("/leads/{lead_id}/conversations")
+def create_lead_conversation(lead_id: int, body: LeadConversationCreate, session: Session = Depends(get_session)):
+    conv = ConversationLog(lead_id=lead_id, title=body.title, type=body.type, description=body.description, author_name=body.author_name)
+    session.add(conv)
+    session.commit()
+    session.refresh(conv)
+    return conv.dict()
+
+@app.get("/leads/{lead_id}/files")
+def get_lead_files(lead_id: int, session: Session = Depends(get_session)):
+    return {"files": []}
+
+@app.post("/leads/{lead_id}/auto-research")
+def auto_research_lead(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+        
+    try:
+        # Trigger the same deep background research we use on creation
+        _trigger_background_research(
+            entity_id=lead_id,
+            entity_type="lead",
+            company_name=lead.company_name or "",
+            website=lead.website or ""
+        )
+        return {"ok": True, "message": "Research started in background"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
+
+@app.post("/leads/{lead_id}/extract-services")
+async def extract_lead_services_endpoint(lead_id: int, session: Session = Depends(get_session)):
+    """
+    Scrapes the lead's website and uses AI to extract services they offer.
+    Falls back to LLM world-knowledge when website is unreachable.
+    Stores results in MarketplaceService table.
+    """
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    website_url = lead.website
+    company_name = lead.company_name or "Unknown Company"
+
+    if not website_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Lead has no website URL. Add one in the lead profile first."
+        )
+
+    # ── Step 1: Try scraping (fail gracefully on any network error) ────────────
+    website_text = ""
+    scrape_method = "website_scrape"
+    try:
+        from modules.scraper import scrape_website
+        website_text = await scrape_website(website_url)
+        if website_text.startswith("ERROR"):
+            print(f"[extract-services] Scrape failed for {website_url}: {website_text[:100]}. Falling back to LLM.")
+            website_text = ""
+            scrape_method = "llm_fallback"
+    except Exception as scrape_err:
+        print(f"[extract-services] Scraper exception ({website_url}): {scrape_err}. Falling back to LLM.")
+        scrape_method = "llm_fallback"
+
+    # ── Step 2: Extract services (from scraped text, or via LLM knowledge) ─────
+    import json as _json
+    from modules.llm_engine import extract_client_services as _extract_services, get_openai_client
+
+    services = []
+
+    if website_text:
+        services = _extract_services(website_text, company_name)
+
+    # If scraping failed or extracted nothing → use LLM world-knowledge fallback
+    if not services:
+        scrape_method = "llm_fallback"
+        try:
+            oai = get_openai_client()
+            fallback_prompt = f"""You are a B2B business intelligence expert.
+
+The company "{company_name}" has website: {website_url}
+Industry: {lead.industry or "unknown"}
+
+We could not access their website. Based on the company name, domain, and industry,
+list the most likely services they offer.
+
+Return ONLY valid JSON:
+{{
+  "services": [
+    {{
+      "name": "Service name",
+      "brief": "1-2 sentence description of this service",
+      "category": "One of: SEO, Web Design, Marketing, Plumbing, Legal, Accounting, Consulting, Construction, Healthcare, Real Estate, IT Services, Landscaping, Cleaning, Electrical, HVAC, Retail, Education, Finance, Transportation, Other",
+      "approx_cost": 1200,
+      "cost_is_estimated": true
+    }}
+  ]
+}}
+
+Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for fallback."""
+            resp = oai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": fallback_prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.3,
+            )
+            services = _json.loads(resp.choices[0].message.content).get("services", [])
+        except Exception as llm_err:
+            print(f"[extract-services] LLM fallback also failed: {llm_err}")
+
+    if not services:
+        return {
+            "ok": False,
+            "extracted_count": 0,
+            "marketplace_count": 0,
+            "scrape_method": scrape_method,
+            "message": "Could not extract services. Try adding the Industry field to improve AI fallback accuracy.",
+        }
+
+    # ── Step 3: Save to Lead ai_analysis_results (simulate services_offered) ────────
+    if lead.ai_analysis_results:
+        if isinstance(lead.ai_analysis_results, str):
+            try:
+                import json as _j
+                analysis_data = _j.loads(lead.ai_analysis_results)
+            except:
+                analysis_data = {}
+        else:
+            analysis_data = dict(lead.ai_analysis_results)
+    else:
+        analysis_data = {}
+    analysis_data["product_portfolio"] = services
+    lead.ai_analysis_results = analysis_data
+    session.add(lead)
+
+    # ── Step 4: Upsert into MarketplaceService (skip exact name duplicates) ───
+    existing = session.exec(
+        select(MarketplaceService).where(
+            MarketplaceService.provider_name == company_name,
+            MarketplaceService.is_active == True,
+        )
+    ).all()
+    existing_names = {s.service_name.lower() for s in existing}
+
+    added = 0
+    for svc in services:
+        svc_name = svc.get("name", "").strip()
+        if not svc_name or svc_name.lower() in existing_names:
+            continue
+        ms = MarketplaceService(
+            service_name=svc_name,
+            normalized_name=svc_name,
+            category=svc.get("category"),
+            description=svc.get("brief"),
+            estimated_cost=float(str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip() if str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip().replace(".","").isdigit() else 0),
+            cost_is_estimated=svc.get("cost_is_estimated", True),
+            provider_name=company_name,
+            provider_client_id=None,
+            provider_industry=lead.industry,
+            provider_address=lead.address,
+            source=scrape_method,
+            tenant_id=current_tenant_id.get(),
+        )
+        session.add(ms)
+        existing_names.add(svc_name.lower())
+        added += 1
+
+    session.commit()
+
+    method_label = "live website" if scrape_method == "website_scrape" else "AI knowledge (site unreachable)"
+    return {
+        "ok": True,
+        "extracted_count": len(services),
+        "marketplace_count": added,
+        "scrape_method": scrape_method,
+        "message": f"Extracted {len(services)} services via {method_label}. Added {added} to Marketplace.",
+    }
 
 @app.put("/leads/{lead_id}")
 def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depends(get_session)):
@@ -8993,10 +9922,197 @@ def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depend
     session.refresh(lead)
     return lead
 
+
+@app.post("/leads/{lead_id}/generate-outbound-draft")
+def generate_lead_outbound_draft(lead_id: int, session: Session = Depends(get_session)):
+    check_tenant_limit(session, "emails")
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+        
+    try:
+        from modules.llm_engine import get_openai_client
+        import json as _json
+        client_ai = get_openai_client()
+        
+        # Get existing research
+        research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+        
+        # If no OSINT data yet, run deep investigation synchronously (blocking) so we have rich context
+        if not research or not research.email_agent_data:
+            from modules.llm_engine import deep_investigate_company
+            url = lead.website or ""
+            if not url and lead.company_name:
+                slug = lead.company_name.lower().replace(" ", "").replace(",","").replace(".","")
+                url = f"https://www.{slug}.com"
+            
+            if url:
+                print(f"[DraftGen] No existing research for lead {lead_id}. Running deep investigation first...")
+                try:
+                    osint_data = deep_investigate_company(
+                        company_name=lead.company_name or "Unknown",
+                        website=url,
+                        scraped_text=""
+                    )
+                    # Save research so it's available and also for context
+                    if not research:
+                        research = ClientResearch(lead_id=lead_id, tenant_id=current_tenant_id.get())
+                        session.add(research)
+                    research.company_overview = osint_data.get("company_overview", "")
+                    research.email_agent_data = _json.dumps(osint_data)
+                    # Update lead phone/email if found
+                    contacts = osint_data.get("contacts", []) or []
+                    contact = contacts[0] if contacts else {}
+                    company_info = osint_data.get("company_info", {}) or {}
+                    if not lead.email:
+                        email_found = contact.get("email") or company_info.get("extracted_emails","").split(",")[0].strip()
+                        if email_found: lead.email = email_found
+                    if not lead.phone:
+                        phone_found = contact.get("phone_number") or company_info.get("extracted_phone_numbers","").split(",")[0].strip()
+                        if phone_found: lead.phone = phone_found
+                    session.add(lead)
+                    session.commit()
+                    print(f"[DraftGen] Deep investigation complete for lead {lead_id}")
+                except Exception as osint_err:
+                    session.rollback()
+                    print(f"[DraftGen] OSINT failed (continuing with draft anyway): {osint_err}")
+                    # Re-fetch after rollback to avoid stale session state
+                    research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+
+        research_context = ""
+        if research:
+            research_context = f"""
+            Company Overview: {research.company_overview or 'N/A'}
+            Pain Points: {research.pain_points or 'N/A'}
+            Business Goals: {research.business_goals or 'N/A'}
+            """
+            if research.email_agent_data:
+                try:
+                    ea_data = _json.loads(research.email_agent_data)
+                    research_context += f"\nEmail Agent Intel: {_json.dumps(ea_data.get('company_info', {}), indent=2)}"
+                except:
+                    pass
+
+        # Get Notes (Leads don't have notes implemented yet, skipping)
+        notes = []
+        
+        interaction_context = ""
+        if notes:
+            interaction_context += "Recent Notes:\n" + "\n".join([f"- {n.content}" for n in notes]) + "\n"
+
+
+        prompt = f"""
+        You are an expert SDR (Sales Development Representative) at an agency. 
+        Write a highly personalized, cold outreach email draft for the following prospect.
+        Company: {lead.company_name or 'Unknown'}
+        Website: {lead.website or 'Unknown'}
+        {research_context}
+
+        {interaction_context}
+        If there are recent notes or conversations above, make sure the email acknowledges them appropriately as a follow-up. If none exist, write a standard cold outreach email based on the research.
+
+        
+        Return ONLY valid JSON matching this schema exactly (no markdown formatting):
+        {{
+            "subject": "Email subject",
+            "english_body": "Email body in English",
+            "spanish_body": "Email body translated to Spanish",
+            "whatsapp_draft": "Short, punchy WhatsApp message (plain text, emojis allowed)"
+        }}
+        """
+        
+        resp = client_ai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=800,
+        )
+        content = resp.choices[0].message.content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+            
+        data = _json.loads(content)
+        
+        # Save as a draft in SentEmail
+        from database import SentEmail
+        to_email = lead.email or "unknown@example.com"
+        
+        draft = SentEmail(
+            tenant_id=current_tenant_id.get(),
+            lead_id=lead_id,
+            to_email=to_email,
+            subject=data.get("subject", "Proposal"),
+            english_body=data.get("english_body", ""),
+            spanish_body=data.get("spanish_body", ""),
+            draft_json=_json.dumps(data),
+            manual=True,
+            sent_at=datetime.utcnow()
+        )
+        session.add(draft)
+        
+        # ── Safe upsert research (use existing row, never re-insert) ──────────
+        if not research:
+            research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+        if not research:
+            research = ClientResearch(lead_id=lead_id, tenant_id=current_tenant_id.get())
+            session.add(research)
+        
+        ea_payload = {}
+        if research.email_agent_data:
+            try:
+                ea_payload = _json.loads(research.email_agent_data)
+            except:
+                pass
+                
+        # Ensure company_info exists so the UI doesn't show empty fields if auto-research wasn't run
+        if "company_info" not in ea_payload:
+            ea_payload["company_info"] = {
+                "company_name": lead.company_name or "Unknown Company",
+                "extracted_emails": lead.email or "",
+                "extracted_phone_numbers": lead.phone or "",
+                "company_social_media": {},
+                "summary": "AI Draft generated. Run 'AI Agent Analysis' in Pre-Sales tab for deep OSINT data."
+            }
+            
+        ea_payload["draft"] = data
+        ea_payload["email_hook"] = data.get("whatsapp_draft", "Custom outreach generated from latest interactions.")
+        
+        research.email_agent_data = _json.dumps(ea_payload)
+        
+        session.commit()
+        
+        return {"ok": True, "draft": data}
+    except Exception as e:
+        session.rollback()
+        print(f"Error generating lead draft: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to generate draft: {str(e)}")
+
+
+@app.post("/leads/{lead_id}/swot")
+async def generate_lead_swot(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if not lead.website:
+        raise HTTPException(status_code=400, detail="Lead has no website URL configured")
+        
+    from modules.llm_engine import generate_swot_analysis
+    import json
+    
+    swot_data = await generate_swot_analysis(lead.website, lead.company_name or "Lead")
+    lead.swot_analysis = json.dumps(swot_data)
+    session.add(lead)
+    session.commit()
+    session.refresh(lead)
+    return {"ok": True, "swot_analysis": swot_data}
+
 from sqlmodel import text
 
 @app.delete("/debug/purge-leads")
 def purge_leads_debug(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     queries = [
         "DELETE FROM sent_emails WHERE lead_id IS NOT NULL",
         "DELETE FROM activity_logs WHERE lead_id IS NOT NULL",
@@ -9053,7 +10169,7 @@ async def analyze_lead_ai(lead_id: int, body: LeadAIAnalyzeRequest, session: Ses
     from database import Lead
     lead = session.get(Lead, lead_id)
     if not lead:
-        return {"ok": False, "error": "Lead not found"}
+        raise HTTPException(status_code=404, detail="Lead not found")
         
     url = lead.website or f"https://{lead.company_name.lower().replace(' ', '')}.com"
     
@@ -9175,7 +10291,7 @@ Return ONLY valid JSON matching exactly:
 
     except Exception as e:
         print(f"Error generating AI analysis: {e}")
-        return {"ok": False, "error": "AI generation failed."}
+        raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
         
     lead.ai_analysis_results = results
     
@@ -9230,6 +10346,17 @@ def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)
         contact.account_id = account.id
         contact.client_id = client.id
         session.add(contact)
+        
+    # 3.5 Re-link Research Data and Sent Emails
+    research_entries = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead.id)).all()
+    for r in research_entries:
+        r.client_id = client.id
+        session.add(r)
+        
+    sent_emails = session.exec(select(SentEmail).where(SentEmail.lead_id == lead.id)).all()
+    for e in sent_emails:
+        e.client_id = client.id
+        session.add(e)
     
     # 4. Mark Lead as converted
     lead.is_converted = True
@@ -9337,12 +10464,6 @@ def get_contact_children(contact_id: int, session: Session = Depends(get_session
 def create_contact(body: ContactCreateRequest, session: Session = Depends(get_session)):
     contact_data = body.dict(exclude={"create_new_lead"})
     contact = Contact(**contact_data)
-    
-    if contact.email:
-        existing_contact = session.exec(select(Contact).where(Contact.email == contact.email, Contact.tenant_id == current_tenant_id.get())).first()
-        if existing_contact:
-            raise HTTPException(status_code=400, detail="A contact with this email already exists in your workspace.")
-            
     if contact.first_name and contact.last_name:
         contact.full_name = f"{contact.first_name} {contact.last_name}"
     elif contact.first_name:
@@ -9599,6 +10720,84 @@ def add_lead_followup(lead_id: int, body: ClientFollowUpRequest, session: Sessio
     return {"success": True, "message": "Follow-up added to lead."}
 
 
+class LeadNoteRequest(BaseModel):
+    content: str
+
+
+def _get_lead_note_author(session: Session, user_id: Optional[int]) -> str:
+    if not user_id:
+        return "Anonymous"
+    from database import User as UserModel
+    user = session.get(UserModel, user_id)
+    if not user:
+        return "Anonymous"
+    return user.name or user.email or f"User {user_id}"
+
+
+@app.get("/leads/{lead_id}/notes")
+def get_lead_notes(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    notes = session.exec(
+        select(LeadNote).where(LeadNote.lead_id == lead_id).order_by(LeadNote.created_at.desc())
+    ).all()
+    return {"ok": True, "notes": [
+        {
+            "id": n.id,
+            "content": n.content,
+            "author_name": n.author_name,
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+        }
+        for n in notes
+    ]}
+
+
+@app.post("/leads/{lead_id}/notes")
+def add_lead_note(lead_id: int, body: LeadNoteRequest, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    content = (body.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Note cannot be empty")
+
+    from datetime import datetime
+    now = datetime.utcnow()
+    author_id = current_salesperson_id.get()
+
+    note = LeadNote(
+        lead_id=lead_id,
+        content=content,
+        author_id=author_id,
+        author_name=_get_lead_note_author(session, author_id),
+        created_at=now,
+    )
+    session.add(note)
+
+    timestamped = f"[{now.strftime('%Y-%m-%d %H:%M')}] {content}"
+    existing_notes = lead.notes or ""
+    lead.notes = existing_notes + "\n" + timestamped if existing_notes else timestamped
+    session.add(lead)
+
+    activity = ActivityLog(
+        lead_id=lead_id,
+        action="Added Note",
+        details=content,
+        timestamp=now,
+    )
+    session.add(activity)
+
+    session.commit()
+    session.refresh(note)
+    return {"ok": True, "note": {
+        "id": note.id,
+        "content": note.content,
+        "author_name": note.author_name,
+        "created_at": note.created_at.isoformat() if note.created_at else None,
+    }}
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # ACTIVITIES: MEETINGS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -9687,10 +10886,28 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
     session.commit()
     session.refresh(m)
 
+    try:
+        dt_str = m.scheduled_at.strftime("%b %d, %I:%M %p") if m.scheduled_at else "TBD"
+        _notify_admins(
+            session, current_tenant_id.get(),
+            title=f"📅 Meeting Scheduled: {m.title}",
+            message=f"Time: {dt_str} | Status: {m.status}",
+            notif_type="info",
+            link=f"/meetings"
+        )
+    except Exception:
+        pass
+
+    # ── EMAIL NOTIFICATION TO ATTENDEES ──
+    dt_str = m.scheduled_at.strftime("%Y-%m-%d %H:%M") if m.scheduled_at else "TBD"
+    subject = f"Meeting Scheduled: {m.title}"
+    notes = (m.notes or "").strip()
+    recips = [a.strip() for a in (m.attendees or []) if a and a.strip()]
+
     to_email = None
     if m.client_id:
         c = session.get(ClientProfile, m.client_id)
-        if c: to_email = c.email
+        if c: to_email = c.user.email if c.user else None
     elif m.lead_id:
         l = session.get(Lead, m.lead_id)
         if l: to_email = l.email
@@ -9698,26 +10915,114 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
         ct = session.get(Contact, m.contact_id)
         if ct: to_email = ct.email
 
-    if to_email:
+    if to_email and to_email.strip() not in recips:
+        recips.append(to_email.strip())
+
+    def _render_meeting_invite(recipient_email):
+        import html as _html
+        plain = (
+            f"Hello,\n\n"
+            f"A meeting has been scheduled:\n\n"
+            f"  Title     : {m.title}\n"
+            f"  Date/Time : {dt_str}\n"
+            f"  Type      : {m.meeting_type}\n"
+            f"  Location  : {m.location or 'TBD'}\n"
+            f"  Duration  : {m.duration_minutes or 'TBD'} min\n"
+            f"  Attendees : {', '.join(recips) or '—'}"
+        )
+        if notes:
+            plain += f"\n\nNotes:\n{notes}"
+        plain += "\n\nThanks,\nSerpHawk CRM"
+
+        esc = _html.escape
+        title = esc(m.title or "Meeting")
+        date_time = esc(dt_str)
+        mtype = esc(m.meeting_type or "Meeting")
+        location = esc(m.location or "TBD")
+        duration = f"{int(m.duration_minutes)} min" if m.duration_minutes else "TBD"
+        attendees = esc(", ".join(recips) or "—")
+        notes_html = esc(notes)
+
+        rows = [
+            ("Title", title),
+            ("Date/Time", date_time),
+            ("Type", mtype),
+            ("Location", location),
+            ("Duration", duration),
+            ("Attendees", attendees),
+        ]
+        detail_rows = "".join(
+            f"""<tr>
+            <td style="padding:10px 16px;border-bottom:1px solid #eef2f7;color:#64748b;font-size:13px;font-weight:600;width:130px;vertical-align:top">{label}</td>
+            <td style="padding:10px 16px;border-bottom:1px solid #eef2f7;color:#0f172a;font-size:14px;font-weight:600;vertical-align:top">{value}</td>
+          </tr>"""
+            for label, value in rows
+        )
+
+        notes_block = ""
+        if notes_html:
+            notes_block = f"""
+          <div style="padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0">
+            <p style="margin:0 0 6px;color:#64748b;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Notes</p>
+            <p style="margin:0;color:#334155;font-size:14px;line-height:1.6;white-space:pre-wrap">{notes_html}</p>
+          </div>"""
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,0.08)">
+          <tr>
+            <td style="background:linear-gradient(135deg,#1e3a8a,#2563eb);padding:28px 32px">
+              <p style="margin:0;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#93c5fd">SerpHawk CRM</p>
+              <p style="margin:8px 0 0;font-size:22px;font-weight:800;color:#ffffff">📅 Meeting Scheduled</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 32px">
+              <p style="margin:0 0 16px;color:#475569;font-size:14px;line-height:1.6">Hello, a new meeting has been scheduled for you:</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:16px">
+                {detail_rows}
+              </table>
+              {notes_block}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 32px 24px;border-top:1px solid #eef2f7">
+              <p style="margin:0;color:#64748b;font-size:12px;line-height:1.5">Thanks,<br><span style="font-weight:700;color:#1d4ed8">SerpHawk CRM</span></p>
+              <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:14px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+        return subject, html_body, plain
+
+    for to_email in recips:
+        if not to_email:
+            continue
         try:
-            dt_str = m.scheduled_at.strftime("%Y-%m-%d %H:%M") if m.scheduled_at else "TBD"
-            subject = f"Meeting Scheduled: {m.title}"
-            content = f"Hello,\n\nA meeting has been scheduled for {dt_str}.\nTopic: {m.title}\n\nThanks,\nSerpHawk CRM"
-            
-            _send_notification_email(to_email, subject, content)
-            
+            subj, html_body, plain = _render_meeting_invite(to_email)
+            _send_notification_email(to_email, subj, html_body)
             session.add(SentEmail(
+                tenant_id=current_tenant_id.get(),
                 client_id=m.client_id,
                 lead_id=m.lead_id,
-                to_address=to_email,
-                subject=subject,
-                body_content=content,
+                to_email=to_email,
+                subject=subj,
+                english_body=plain,
                 status="Sent",
-                provider="System"
             ))
             session.commit()
         except Exception as e:
-            print("Failed to send meeting email:", e)
+            print("Failed to send meeting invite email:", e)
+            session.rollback()
             
     # ── WHATSAPP NOTIFICATION ──
     try:
@@ -9812,6 +11117,7 @@ class ProductCreateRequest(BaseModel):
     sku: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
+    photo_url: Optional[str] = None
     unit_price: float = 0.0
     currency: str = "USD"
     tax_rate: float = 0.0
@@ -9823,6 +11129,7 @@ class ProductUpdateRequest(BaseModel):
     sku: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
+    photo_url: Optional[str] = None
     unit_price: Optional[float] = None
     tax_rate: Optional[float] = None
     stock_quantity: Optional[int] = None
@@ -9893,6 +11200,11 @@ class QuoteCreateRequest(BaseModel):
     terms: Optional[str] = None
     owner_id: Optional[int] = None
     items: list[dict] = []
+    send_email: bool = False
+
+class QuoteEmailSendRequest(BaseModel):
+    subject: Optional[str] = None
+    body_html: Optional[str] = None
 
 @app.get("/quotes")
 def list_quotes(status: Optional[str] = None, client_id: Optional[int] = None, lead_id: Optional[int] = None, session: Session = Depends(get_session)):
@@ -9960,8 +11272,225 @@ def create_quote(body: QuoteCreateRequest, session: Session = Depends(get_sessio
         )
         session.add(qi)
     session.commit()
-    
-    return {"quote": _quote_dict(q, session)}
+
+    # Send a "Quote created" email to the linked lead/client/contact email
+    # (best-effort) only when the user explicitly opts in with `send_email`.
+    email_sent = False
+    email_error = None
+    if body.send_email:
+        try:
+            email_sent = _send_quote_created_email(q, session)
+        except Exception as e:
+            email_error = str(e)
+            print(f"[Quote email failed] {e}")
+
+    resp = {"quote": _quote_dict(q, session)}
+    if email_sent:
+        resp["email_sent"] = True
+    elif email_error:
+        resp["email_error"] = email_error
+    return resp
+
+
+@app.post("/quotes/{quote_id}/send-email")
+def send_quote_email(quote_id: int, body: Optional[QuoteEmailSendRequest] = None, session: Session = Depends(get_session)):
+    """Send the quote details by email to the linked lead/client/contact (best-effort).
+    If `body.subject` / `body.body_html` are provided they override the auto-generated content,
+    letting the user send an edited version of the email."""
+    q = session.get(CRMQuote, quote_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    recipient_email, recipient_name, _ = _quote_email_recipient(q, session)
+    try:
+        sent = _send_quote_created_email(
+            q, session,
+            subject_override=body.subject if body else None,
+            body_html_override=body.body_html if body else None,
+        )
+    except Exception as e:
+        sent = False
+        print(f"[Quote email failed] {e}")
+    return {
+        "email_sent": sent,
+        "recipient_email": recipient_email,
+        "recipient_name": recipient_name,
+        "quote": _quote_dict(q, session),
+    }
+
+
+@app.get("/quotes/{quote_id}/email-preview")
+def quote_email_preview(quote_id: int, session: Session = Depends(get_session)):
+    """Return a structured preview of the email that would be sent for a quote,
+    so the UI can show its details and ask for the user's permission first."""
+    q = session.get(CRMQuote, quote_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    recipient_email, recipient_name, company_name = _quote_email_recipient(q, session)
+    subject, body_html, items = _quote_email_content(q, session, recipient_name)
+    sender_email, _password, _smtp_server, _smtp_port = _quote_smtp_sender(session)
+    return {
+        "from_email": sender_email,
+        "recipient_email": recipient_email,
+        "recipient_name": recipient_name,
+        "company_name": company_name,
+        "subject": subject,
+        "body_html": body_html,
+        "quote": _quote_dict(q, session),
+        "items": [i.model_dump() for i in items],
+        "sendable": bool(recipient_email) and bool(sender_email),
+    }
+
+
+def _quote_email_recipient(q: CRMQuote, session: Session):
+    """Resolve (recipient_email, recipient_name, company_name) for a quote.
+    Priority: contact → lead → client(user)."""
+    if q.lead_id:
+        lead = session.get(Lead, q.lead_id)
+    else:
+        lead = None
+    if q.client_id:
+        client = session.get(ClientProfile, q.client_id)
+    else:
+        client = None
+    if q.contact_id:
+        contact = session.get(Contact, q.contact_id)
+    else:
+        contact = None
+
+    recipient_email = None
+    recipient_name = None
+
+    if contact and contact.email:
+        recipient_email = contact.email
+        recipient_name = contact.full_name or f"{contact.first_name or ''} {contact.last_name or ''}".strip() or None
+
+    if not recipient_email and lead and lead.email:
+        recipient_email = lead.email
+        recipient_name = lead.company_name or lead.email
+
+    if not recipient_email and client and client.userId:
+        user = session.get(User, client.userId)
+        recipient_email = getattr(user, "email", None) or None
+        recipient_name = client.companyName
+
+    company_name = None
+    if lead:
+        company_name = lead.company_name
+    if not company_name and client:
+        company_name = client.companyName
+
+    return recipient_email, recipient_name, company_name
+
+
+def _quote_email_content(q: CRMQuote, session: Session, recipient_name=None):
+    """Build the subject and HTML body of the quote email.
+    Used both for actually sending it and for previewing it before sending,
+    so the preview always reflects exactly what the recipient will receive."""
+    # ── Build items table ──
+    rows = ""
+    items = session.exec(select(QuoteItem).where(QuoteItem.quote_id == q.id)).all()
+    for it in items:
+        rows += f"<tr><td style='padding:8px;border-bottom:1px solid #e2e8f0'>{it.description}</td><td style='padding:8px;border-bottom:1px solid #e2e8f0;text-align:center'>{it.quantity}</td><td style='padding:8px;border-bottom:1px solid #e2e8f0;text-align:right'>{q.currency} {it.unit_price:,.2f}</td></tr>"
+
+    # ── Notes / Terms section ──
+    extra_section = ""
+    if q.notes:
+        extra_section += f"<p style='color:#475569;line-height:1.6;margin:12px 0 0'><strong>Notes:</strong> {q.notes}</p>"
+    if q.terms:
+        extra_section += f"<p style='color:#475569;line-height:1.6;margin:8px 0 0'><strong>Terms:</strong> {q.terms}</p>"
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div style="background:#1e293b;color:#fff;padding:22px 28px">
+        <strong style="font-size:18px">SerpHawk CRM</strong>
+      </div>
+      <div style="padding:28px">
+        <h2 style="color:#0f172a;margin:0 0 8px">New Quote ready for you</h2>
+        <p style="color:#475569;line-height:1.6;margin:0 0 4px">Hi{' ' + recipient_name if recipient_name else ''},</p>
+        <p style="color:#475569;line-height:1.6;margin:0 0 16px">A new quote has been created for your business. Here are the details:</p>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+          <tr><td style="padding:6px 8px;color:#64748b">Quote Number</td><td style="padding:6px 8px;text-align:right;font-weight:600;color:#0f172a">{q.quote_number or q.id}</td></tr>
+          <tr><td style="padding:6px 8px;color:#64748b">Title</td><td style="padding:6px 8px;text-align:right;color:#0f172a">{q.title or ''}</td></tr>
+          <tr><td style="padding:6px 8px;color:#64748b">Total Amount</td><td style="padding:6px 8px;text-align:right;font-weight:800;color:#0f172a">{q.currency} {q.grand_total:,.2f}</td></tr>
+          <tr><td style="padding:6px 8px;color:#64748b">Valid Until</td><td style="padding:6px 8px;text-align:right;color:#0f172a">{q.valid_until or 'N/A'}</td></tr>
+          <tr><td style="padding:6px 8px;color:#64748b">Status</td><td style="padding:6px 8px;text-align:right;color:#0f172a">{q.status}</td></tr>
+        </table>
+        {'' if not items else "<h3 style='color:#0f172a;font-size:15px;margin:0 0 6px'>Items</h3><table style='width:100%;border-collapse:collapse'><tr><th style='padding:8px;text-align:left;color:#475569;border-bottom:2px solid #e2e8f0'>Description</th><th style='padding:8px;text-align:center;color:#475569;border-bottom:2px solid #e2e8f0'>Qty</th><th style='padding:8px;text-align:right;color:#475569;border-bottom:2px solid #e2e8f0'>Amount</th></tr>" + rows + "</table>"}
+        {extra_section}
+        <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">If you have any questions about this quote, just reply to this email or contact your account manager.</p>
+        <p style="color:#64748b;font-size:13px;line-height:1.6;margin:4px 0 0">This is an automated message from the SerpHawk CRM.</p>
+        <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
+      </div>
+    </div>
+    """
+    subject = f"New Quote {q.quote_number or q.id} — {q.title or 'Quote'} ({q.currency} {q.grand_total:,.2f})"
+    return subject, html, items
+
+
+def _quote_smtp_sender(session: Session):
+    """Resolve the sender mailbox used for quote emails (per-tenant settings first,
+    then env vars). Returns (sender_email, password, smtp_server, smtp_port)."""
+    import os
+
+    sender = None
+    password = None
+    smtp_server = None
+    smtp_port = None
+
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        es = session.exec(select(EmailSettings).where(EmailSettings.tenant_id == tenant_id)).first()
+        if es:
+            sender = es.from_email
+            password = es.smtp_pass
+            smtp_server = es.smtp_host
+            smtp_port = es.smtp_port
+
+    if not sender or not password:
+        sender = sender or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
+        password = password or os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
+        smtp_server = smtp_server or os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "mail.serphawk.in")
+        smtp_port = smtp_port or os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
+
+    return sender, password, smtp_server, smtp_port
+
+
+def _send_quote_created_email(q: CRMQuote, session: Session, subject_override=None, body_html_override=None) -> bool:
+    """Email the lead (or client / contact) linked to the quote with the new quote details.
+    Optionally use an edited subject / body written by the user.
+    Returns True if the email was sent successfully, False otherwise."""
+    # ── Resolve SMTP credentials: per-tenant EmailSettings first, then env vars ──
+    sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
+
+    if not sender or not password:
+        print("[Quote email skipped] SMTP not configured")
+        return False
+
+    # ── Resolve recipient email: contact → lead → client ──
+    recipient_email, recipient_name, _ = _quote_email_recipient(q, session)
+
+    if not recipient_email:
+        print(f"[Quote email skipped] no linked lead/client/contact email for quote {q.quote_number}")
+        return False
+
+    subject, html, _ = _quote_email_content(q, session, recipient_name)
+    if subject_override:
+        subject = subject_override
+    if body_html_override:
+        html = body_html_override
+
+    from modules.email_sender import send_email_outlook
+    send_email_outlook(
+        to_email=recipient_email,
+        subject=subject,
+        body=html,
+        sender_email=sender,
+        sender_password=password,
+        smtp_server=smtp_server,
+        smtp_port=int(smtp_port),
+    )
+    print(f"Quote email sent to {recipient_email} for quote {q.quote_number or q.id}")
+    return True
 
 @app.get("/quotes/{quote_id}")
 def get_quote(quote_id: int, session: Session = Depends(get_session)):
@@ -9971,248 +11500,73 @@ def get_quote(quote_id: int, session: Session = Depends(get_session)):
     return {"quote": _quote_dict(q, session)}
 
 @app.get("/quotes/{quote_id}/pdf")
-def quote_pdf(quote_id: int, provider: Optional[str] = None, download: bool = False, session: Session = Depends(get_session)):
+def quote_pdf(quote_id: int, provider: Optional[str] = None, session: Session = Depends(get_session)):
     """Generate a professional PDF for a quote."""
     from fastapi.responses import StreamingResponse
-    import io
-    import os
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.utils import ImageReader
 
     q = session.get(CRMQuote, quote_id)
     if not q:
         raise HTTPException(status_code=404, detail="Quote not found")
         
     client_name = ""
+    client_company = ""
+    client_email = ""
+    client_phone = ""
+    client_address = ""
     if q.client_id:
         c = session.get(ClientProfile, q.client_id)
         if c: 
             user = session.get(User, c.userId) if c.userId else None
             client_name = c.companyName or (user.name if user else f"Client #{c.id}")
+            client_company = c.companyName or ""
+            client_email = user.email if user else ""
+            client_phone = c.phone or ""
+            client_address = c.address or ""
     elif q.lead_id:
         l = session.get(Lead, q.lead_id)
-        if l: client_name = l.company_name or l.contact_name or f"Lead #{l.id}"
+        if l:
+            client_name = l.company_name or l.email or f"Lead #{l.id}"
+            client_company = l.company_name or ""
+            client_email = l.email or ""
+            client_phone = l.phone or ""
+            client_address = l.address or ""
 
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=40, bottomMargin=40, leftMargin=40, rightMargin=40)
-    styles = getSampleStyleSheet()
-    
-    # Custom Styles
-    title_style = ParagraphStyle("Title", fontName="Helvetica-Bold", fontSize=22, leading=26, textColor=colors.HexColor("#000000"))
-    normal_b = ParagraphStyle("NormalB", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10, textColor=colors.HexColor("#111111"))
-    normal = ParagraphStyle("NormalR", parent=styles["Normal"], fontName="Helvetica", fontSize=10, textColor=colors.HexColor("#333333"))
-    small = ParagraphStyle("Small", parent=normal, fontSize=8, textColor=colors.HexColor("#555555"))
-    h3 = ParagraphStyle("H3", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=12, spaceAfter=8)
-
-    els = []
-    
-    is_dapros = (provider == "DAPROS")
-    
-    if is_dapros:
-        curr = "$"
-        title_text = "COTIZACIÓN"
-        logo_el = Paragraph("DaPros", ParagraphStyle("RightB", parent=title_style, alignment=2, fontSize=28, leading=32, textColor=colors.HexColor("#000000")))
-        contact_info = [
-             Paragraph("+52 33 5018 8216 | contacto@dapros.com.mx", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("DaPros, Diseño Web en Guadalajara", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("Canarias 1178, 44620 Guadalajara", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("Jal., México", ParagraphStyle("Right", parent=normal, alignment=2))
-        ]
-        payment_name = "DaPros"
-        place = "Guadalajara"
-        
-        lbl_quote_for = "COTIZACIÓN PARA:"
-        lbl_quote_details = "DETALLES:"
-        lbl_quote_num = "No. Cotización:"
-        lbl_date = "Fecha:"
-        lbl_valid = "Válido Hasta:"
-        lbl_status = "Estado -"
-        lbl_title = "Título -"
-        lbl_item = "ARTÍCULO"
-        lbl_desc = "DESCRIPCIÓN"
-        lbl_qty = "CANT."
-        lbl_price = "PRECIO U."
-        lbl_total = "TOTAL"
-        lbl_subtotal = "Subtotal:"
-        lbl_tax = "Impuestos:"
-        lbl_notes = "NOTAS Y TÉRMINOS:"
-        lbl_approval = "INFORMACIÓN DE APROBACIÓN:"
-        lbl_signature = "FIRMA/SELLO"
-        lbl_prepared = "Preparado Por:"
-        lbl_place = "Lugar:"
-    else:
-        curr = "₹"
-        title_text = "PROFORMA QUOTATION"
-        logo_path = os.path.join(os.path.dirname(__file__), "logo.jpg")
-        if os.path.exists(logo_path):
-            img_reader = ImageReader(logo_path)
-            img_w, img_h = img_reader.getSize()
-            aspect = img_h / float(img_w)
-            logo_el = Image(logo_path, width=120, height=120 * aspect)
-        else:
-            logo_el = Paragraph("SERP HAWK", ParagraphStyle("RightB", parent=title_style, alignment=2, fontSize=16))
-
-        contact_info = [
-             Paragraph("089213 81769 | info@serphawk.com", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("B, 2nd Floor, Bannerghatta Slip Rd, KEB Colony", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("New Gurappana Palya, 1st Stage, BTM 1st Stage", ParagraphStyle("Right", parent=normal, alignment=2)),
-             Paragraph("Bengaluru, Karnataka 560029", ParagraphStyle("Right", parent=normal, alignment=2))
-        ]
-        payment_name = "SERP HAWK"
-        place = "Bengaluru"
-
-        lbl_quote_for = "QUOTE FOR:"
-        lbl_quote_details = "QUOTE DETAILS:"
-        lbl_quote_num = "Quote Number:"
-        lbl_date = "Date:"
-        lbl_valid = "Valid Until:"
-        lbl_status = "Status -"
-        lbl_title = "Title -"
-        lbl_item = "ITEM"
-        lbl_desc = "DESCRIPTION"
-        lbl_qty = "QTY"
-        lbl_price = "UNIT PRICE"
-        lbl_total = "TOTAL"
-        lbl_subtotal = "Sub Total:"
-        lbl_tax = "Tax:"
-        lbl_notes = "NOTES & TERMS:"
-        lbl_approval = "APPROVAL INFORMATION:"
-        lbl_signature = "SIGNATURE/STAMP"
-        lbl_prepared = "Prepared By:"
-        lbl_place = "Place:"
-
-    # Header Section
-    header_data = [
-        [
-            Paragraph(title_text, title_style),
-            logo_el
-        ],
-        [
-            [Paragraph(f"{lbl_quote_num} {q.quote_number or q.id}", normal),
-             Paragraph(f"{lbl_date} {q.created_at.strftime('%B %d, %Y') if q.created_at else '—'}", normal),
-             Paragraph(f"{lbl_valid} {q.valid_until or '—'}", normal)],
-            contact_info
-        ]
-    ]
-    header_table = Table(header_data, colWidths=[260, 255])
-    header_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 25),
-        ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
-    ]))
-    els.append(header_table)
-    els.append(Spacer(1, 30))
-
-    # Info Section
-    info_data = [
-        [Paragraph(lbl_quote_for, h3), Paragraph("", h3), Paragraph(lbl_quote_details, h3)],
-        [
-            [Paragraph(client_name or "—", normal_b), Paragraph("Address / Dirección", normal)],
-            "",
-            [Paragraph(f"{lbl_status} {q.status}", normal), Paragraph(f"{lbl_title} {q.title}", normal)]
-        ]
-    ]
-    info_table = Table(info_data, colWidths=[171, 171, 173])
-    info_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    els.append(info_table)
-    els.append(Spacer(1, 30))
-
-    # Line Items Table
-    items_header = [lbl_item, lbl_desc, lbl_qty, lbl_price, lbl_total]
-    items_data = [items_header]
-    
     quote_items = session.exec(select(QuoteItem).where(QuoteItem.quote_id == q.id)).all()
-    for idx, li in enumerate(quote_items, 1):
+    items = []
+    for li in quote_items:
         amt = float(li.unit_price or 0)
         qty = li.quantity or 1
-        desc = li.description or ''
-        items_data.append([str(idx) + ".", desc, str(qty), f"{curr}{amt:.2f}", f"{curr}{(amt*qty):.2f}"])
-        
-    if not quote_items:
-        items_data.append(["-", "No items added", "-", "-", "-"])
-        
-    lt = Table(items_data, colWidths=[40, 220, 60, 90, 105])
-    
-    # Base table style
-    ts = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#5472d3")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("PADDING", (0, 0), (-1, -1), 10),
-        ("ALIGN", (2, 0), (4, -1), "RIGHT"),
-        ("ALIGN", (0, 0), (0, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]
-    
-    # Alternating row colors
-    for i in range(1, len(items_data)):
-        bg = colors.HexColor("#f8f9fa") if i % 2 != 0 else colors.white
-        ts.append(("BACKGROUND", (0, i), (-1, i), bg))
-        
-    lt.setStyle(TableStyle(ts))
-    els.append(lt)
-    els.append(Spacer(1, 15))
-    
-    # Totals Section
-    totals_data = [
-        ["", lbl_subtotal, f"{curr}{q.grand_total:.2f}"],
-        ["", lbl_tax, f"{curr}0.00"],
-    ]
-    tt = Table(totals_data, colWidths=[295, 110, 110])
-    tt.setStyle(TableStyle([
-        ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
-        ("ALIGN", (1, 0), (2, -1), "RIGHT"),
-        ("PADDING", (0, 0), (-1, -1), 5),
-    ]))
-    els.append(tt)
-    els.append(Spacer(1, 10))
-    
-    grand_total_data = [["", f"{lbl_total}: {curr}{q.grand_total:.2f}"]]
-    gt = Table(grand_total_data, colWidths=[295, 220])
-    gt.setStyle(TableStyle([
-        ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#f1f5f9")),
-        ("FONTNAME", (1, 0), (1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (1, 0), (1, 0), 16),
-        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ("PADDING", (1, 0), (1, 0), 10),
-    ]))
-    els.append(gt)
-    els.append(Spacer(1, 40))
-    
-    if q.notes:
-        els.append(Paragraph(f"<b>{lbl_notes}</b>", normal))
-        els.append(Paragraph(q.notes, normal))
-        els.append(Spacer(1, 40))
-    
-    # Footer Section
-    footer_data = [
-        [Paragraph(lbl_approval, h3), Paragraph(lbl_signature, h3)],
-        [
-            [Paragraph(f"<b>{lbl_prepared}</b> {payment_name}", normal), 
-             Paragraph(f"<b>{lbl_date}</b> ___________________", normal)],
-            [Paragraph(f"{lbl_place} {place}", normal), Paragraph(f"{lbl_date} ____________", normal)]
-        ]
-    ]
-    ft = Table(footer_data, colWidths=[257, 258])
-    ft.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    els.append(ft)
-    
-    doc.build(els)
-    buf.seek(0)
-    disp = "attachment" if download else "inline"
-    return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f'{disp}; filename="quote-{q.quote_number or q.id}.pdf"'
+        items.append({
+            "description": li.description or "",
+            "quantity": qty,
+            "unit_price": amt,
+            "total": amt * qty,
+        })
+
+    from modules.pdf_export import quote_pdf as _quote_pdf
+    pdf = _quote_pdf({
+        "quote_number": q.quote_number or str(q.id),
+        "title": q.title,
+        "status": q.status,
+        "client_name": client_name,
+        "client_company": client_company,
+        "client_email": client_email,
+        "client_phone": client_phone,
+        "client_address": client_address,
+        "currency": q.currency or "$",
+        "items": items,
+        "subtotal": float(q.subtotal) if q.subtotal else None,
+        "tax_rate": 0,
+        "grand_total": float(q.grand_total),
+        "valid_until": q.valid_until,
+        "created_at": q.created_at,
+        "notes": q.notes,
+        "terms": q.terms,
+        "payment_terms": getattr(q, "payment_terms", None) or "",
+        "delivery": getattr(q, "delivery", None) or "",
+    })
+    return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="quote-{q.quote_number or q.id}.pdf"'
     })
 
 @app.put("/quotes/{quote_id}")
@@ -10263,10 +11617,54 @@ def list_sales_orders(status: Optional[str] = None, client_id: Optional[int] = N
     orders = session.exec(q).all()
     return {"orders": [_so_dict(o, session) for o in orders]}
 
+def _sales_order_recipient(o: SalesOrder, session: Session):
+    """Resolve the recipient (email, name) for a sales order.
+    Priority: lead → client's linked account user → contact linked to the client."""
+    recipient_email = None
+    recipient_name = None
+
+    if o.lead_id:
+        lead = session.get(Lead, o.lead_id)
+        if lead and lead.email:
+            recipient_email = lead.email
+            recipient_name = lead.company_name or lead.email
+
+    if not recipient_email and o.client_id:
+        client = session.get(ClientProfile, o.client_id)
+        if client:
+            if client.userId:
+                user = session.get(User, client.userId)
+                if user and getattr(user, "email", None):
+                    recipient_email = user.email
+                    recipient_name = client.companyName
+            if not recipient_email:
+                contact = session.exec(
+                    select(Contact).where(Contact.client_id == o.client_id, Contact.email.is_not(None)).limit(1)
+                ).first()
+                if contact and contact.email:
+                    recipient_email = contact.email
+                    recipient_name = (
+                        contact.full_name
+                        or f"{contact.first_name or ''} {contact.last_name or ''}".strip()
+                        or client.companyName
+                    )
+            if recipient_email and not recipient_name:
+                recipient_name = client.companyName
+
+    return recipient_email, recipient_name
+
+
 def _so_dict(o: SalesOrder, session: Session) -> dict:
     client = session.get(ClientProfile, o.client_id) if o.client_id else None
+    lead = session.get(Lead, o.lead_id) if o.lead_id else None
     d = o.model_dump()
-    d["client_name"] = client.companyName if client else None
+    d["client_name"] = (
+        (client.companyName if client else None)
+        or (lead.company_name if lead else None)
+    )
+    recipient_email, recipient_name = _sales_order_recipient(o, session)
+    d["recipient_email"] = recipient_email
+    d["recipient_name"] = recipient_name
     return d
 
 @app.post("/sales-orders")
@@ -10357,6 +11755,218 @@ def delete_purchase_order(order_id: int, session: Session = Depends(get_session)
     return {"ok": True}
 
 
+# ── PDF Export Request Model ──────────────────────────────────────────────
+
+class ExportPdfRequest(BaseModel):
+    email: Optional[str] = None
+
+
+# ── Sales Order PDF Export ───────────────────────────────────────────────
+
+@app.post("/sales-orders/export-pdf")
+def export_sales_orders_pdf(body: ExportPdfRequest, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from database import ClientProfile, Lead
+    from modules.pdf_export import sales_order_pdf, send_pdf_email
+    tenant_id = current_tenant_id.get()
+    q = select(SalesOrder).order_by(SalesOrder.created_at.desc())
+    if tenant_id:
+        q = q.where(SalesOrder.tenant_id == tenant_id)
+    orders = session.exec(q).all()
+    data = []
+    for o in orders:
+        client = session.get(ClientProfile, o.client_id) if o.client_id else None
+        lead = session.get(Lead, o.lead_id) if o.lead_id else None
+        d = o.model_dump()
+        d["client_name"] = client.companyName if client else (lead.company_name if lead else None)
+        data.append(d)
+    pdf = sales_order_pdf(data)
+    if body.email:
+        try:
+            send_pdf_email(
+                body.email, "Sales Orders PDF", "<p>The requested sales orders report is attached.</p>",
+                pdf, "sales_orders.pdf"
+            )
+            return {"sent": True, "recipient": body.email, "count": len(data)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=sales_orders.pdf"}
+    )
+
+
+@app.get("/sales-orders/{order_id}/pdf")
+def export_single_sales_order_pdf(order_id: int, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from database import ClientProfile, Lead
+    from modules.pdf_export import single_sales_order_pdf
+    o = session.get(SalesOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    client_name = None
+    lead_name = None
+    if o.client_id:
+        c = session.get(ClientProfile, o.client_id)
+        if c:
+            client_name = c.companyName
+    if o.lead_id:
+        l = session.get(Lead, o.lead_id)
+        if l:
+            lead_name = l.company_name
+    pdf = single_sales_order_pdf(o.model_dump(), client_name=client_name, lead_name=lead_name)
+    filename = f"sales_order_{o.order_number or o.id}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@app.post("/sales-orders/{order_id}/send-pdf")
+def send_single_sales_order_pdf_email(order_id: int, body: ExportPdfRequest, session: Session = Depends(get_session)):
+    """Email a single sales order as a PDF attachment. Uses the provided email
+    or falls back to the linked lead/client email."""
+    from modules.pdf_export import single_sales_order_pdf
+    from database import ClientProfile, Lead
+    o = session.get(SalesOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+    default_email, default_name = _sales_order_recipient(o, session)
+    recipient = (body.email or "").strip() or default_email
+    if not recipient:
+        raise HTTPException(status_code=400, detail="No recipient email. Provide an email or link this order to a lead/client that has one.")
+    client_name = None
+    lead_name = None
+    if o.client_id:
+        c = session.get(ClientProfile, o.client_id)
+        if c:
+            client_name = c.companyName
+    if o.lead_id:
+        l = session.get(Lead, o.lead_id)
+        if l:
+            lead_name = l.company_name
+    pdf = single_sales_order_pdf(o.model_dump(), client_name=client_name, lead_name=lead_name)
+    filename = f"{o.order_number or f'SO-{o.id}'}.pdf"
+    subject = f"Sales Order {o.order_number or o.id} — {client_name or lead_name or ''}".strip()
+    name_line = f"Hi {default_name}," if default_name else ""
+    body_html = (
+        f"<p>{name_line}</p>"
+        f"<p>Please find your sales order <strong>{o.order_number or o.id}</strong> attached.</p>"
+        f"<p>Grand Total: <strong>{o.currency or 'USD'} {o.grand_total:,.2f}</strong></p>"
+        "<p>Thank you.</p>"
+    )
+    # Resolve SMTP the same way quote emails do: per-tenant EmailSettings, then env vars.
+    sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
+    if not sender or not password:
+        raise HTTPException(status_code=500, detail="SMTP not configured. Add email settings in the Mail Settings page.")
+    try:
+        from modules.email_sender import send_email_outlook
+        send_email_outlook(
+            to_email=recipient,
+            subject=subject,
+            body=body_html,
+            sender_email=sender,
+            sender_password=password,
+            smtp_server=smtp_server,
+            smtp_port=int(smtp_port),
+            attachments=[(filename, pdf, "application/pdf")],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return {"sent": True, "recipient": recipient, "default_recipient": default_email, "order_number": o.order_number}
+
+
+# ── Purchase Order PDF Export ────────────────────────────────────────────
+
+@app.post("/purchase-orders/export-pdf")
+def export_purchase_orders_pdf(body: ExportPdfRequest, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from modules.pdf_export import purchase_order_pdf, send_pdf_email
+    tenant_id = current_tenant_id.get()
+    q = select(PurchaseOrder).order_by(PurchaseOrder.created_at.desc())
+    if tenant_id:
+        q = q.where(PurchaseOrder.tenant_id == tenant_id)
+    orders = session.exec(q).all()
+    data = [o.model_dump() for o in orders]
+    pdf = purchase_order_pdf(data)
+    if body.email:
+        try:
+            send_pdf_email(
+                body.email, "Purchase Orders PDF", "<p>The requested purchase orders report is attached.</p>",
+                pdf, "purchase_orders.pdf"
+            )
+            return {"sent": True, "recipient": body.email, "count": len(data)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=purchase_orders.pdf"}
+    )
+
+
+@app.get("/purchase-orders/{order_id}/pdf")
+def export_single_purchase_order_pdf(order_id: int, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from modules.pdf_export import single_purchase_order_pdf
+    o = session.get(PurchaseOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    pdf = single_purchase_order_pdf(o.model_dump())
+    filename = f"purchase_order_{o.po_number or o.id}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+# ── POS Receipt PDF Export ───────────────────────────────────────────────
+
+class PosReceiptRequest(BaseModel):
+    companyName: str = "SERPHAWK"
+    ticketNumber: Optional[Union[str, int]] = None
+    date: Optional[str] = None
+    customer: str = "Público en General"
+    products: list = []
+    subtotal: Optional[float] = None
+    taxRate: Optional[float] = 0
+    taxAmount: Optional[float] = None
+    total: Optional[float] = None
+    paymentMethod: str = "Efectivo"
+    amountPaid: Optional[float] = None
+    change: Optional[float] = None
+    currency: str = "$"
+    taxIncluded: bool = True
+    taxLabel: str = "IVA"
+    email: Optional[str] = None
+
+@app.post("/export-pdf/receipt")
+def export_pos_receipt_pdf(body: PosReceiptRequest):
+    """Generate a clean A4 POS receipt (Serphawk) and return it as a PDF download."""
+    from fastapi.responses import Response
+    from modules.pdf_export import pos_receipt_pdf, send_pdf_email
+    pdf = pos_receipt_pdf(body.model_dump())
+    ticket = body.ticketNumber
+    filename = f"receipt_{ticket}.pdf" if ticket is not None and str(ticket) not in ("", "None") else "receipt.pdf"
+    if body.email:
+        try:
+            send_pdf_email(
+                body.email, f"Your receipt ({body.companyName})",
+                "<p>Your receipt is attached.</p>", pdf, filename
+            )
+            return {"sent": True, "recipient": body.email}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # SUPPORT: CASES
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -10367,6 +11977,8 @@ class CaseCreateRequest(BaseModel):
     status: str = "Open"
     priority: str = "Medium"
     category: Optional[str] = None
+    case_type: Optional[str] = "Bug"
+    url: Optional[str] = None
     lead_id: Optional[int] = None
     client_id: Optional[int] = None
     contact_id: Optional[int] = None
@@ -10378,9 +11990,10 @@ class CaseUpdateRequest(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
     category: Optional[str] = None
+    case_type: Optional[str] = None
+    url: Optional[str] = None
     assigned_to: Optional[int] = None
     resolution: Optional[str] = None
-    is_notified: Optional[bool] = None
 
 def _case_dict(c: Case, session: Session) -> dict:
     client = session.get(ClientProfile, c.client_id) if c.client_id else None
@@ -10391,7 +12004,6 @@ def _case_dict(c: Case, session: Session) -> dict:
     d["lead_name"] = lead.company_name if lead else None
     d["assignee_name"] = assignee.name if assignee else None
     d["resolved_at"] = c.resolved_at.isoformat() if c.resolved_at else None
-    d["is_notified"] = c.is_notified
     d["created_at"] = c.created_at.isoformat()
     d["updated_at"] = c.updated_at.isoformat()
     return d
@@ -10408,28 +12020,48 @@ def list_cases(status: Optional[str] = None, priority: Optional[str] = None, cli
     cases = session.exec(q).all()
     return {"cases": [_case_dict(c, session) for c in cases]}
 
+def _notify_admins(session, tenant_id, title, message, notif_type="info", link=None):
+    from database import User, Notification
+    from sqlmodel import select
+    admins = session.exec(select(User).where(User.role.in_(["admin", "Admin"]))).all()
+    for admin in admins:
+        if tenant_id and admin.tenant_id and admin.tenant_id != tenant_id:
+            continue
+        n = Notification(
+            user_id=admin.id,
+            title=title,
+            message=message,
+            type=notif_type,
+            is_read=False,
+            link=link
+        )
+        if tenant_id:
+            n.tenant_id = tenant_id
+        session.add(n)
+    session.commit()
+
 @app.post("/cases")
 def create_case(body: CaseCreateRequest, session: Session = Depends(get_session)):
     import random, string
+    tenant_id = current_tenant_id.get()
     c = Case(**body.model_dump())
+    if tenant_id:
+        c.tenant_id = tenant_id
     c.case_number = "CASE-" + "".join(random.choices(string.digits, k=5))
-    c.is_notified = True
     session.add(c)
     session.commit()
-    
-    # Create notification for assignee
-    if c.assignee_id:
-        n = Notification(
-            user_id=c.assignee_id,
-            title="New Support Case",
-            message=f"Case {c.case_number} has been created and assigned to you.",
-            type="info",
-            link=f"/support/cases/{c.id}"
-        )
-        session.add(n)
-        session.commit()
-
     session.refresh(c)
+    # Notify admins
+    try:
+        _notify_admins(
+            session, tenant_id,
+            title=f"🎫 New Case Raised: {c.case_number}",
+            message=f"{c.subject} — Priority: {c.priority} | Type: {c.case_type or 'Bug'}",
+            notif_type="warning",
+            link=f"/support/cases"
+        )
+    except Exception:
+        pass
     return {"case": _case_dict(c, session)}
 
 @app.get("/cases/{case_id}")
@@ -10444,42 +12076,31 @@ def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depend
     c = session.get(Case, case_id)
     if not c:
         raise HTTPException(status_code=404, detail="Case not found")
+    tenant_id = current_tenant_id.get() or c.tenant_id
     updates = body.model_dump(exclude_unset=True)
-    
-    status_changed = False
-    if "status" in updates and updates["status"] != c.status:
-        status_changed = True
-        
+    old_status = c.status
     if updates.get("status") in ("Resolved", "Closed") and not c.resolved_at:
         c.resolved_at = datetime.utcnow()
     for k, v in updates.items():
         setattr(c, k, v)
     c.updated_at = datetime.utcnow()
-    
-    if status_changed:
-        c.is_notified = True
-        if c.client_id:
-            n = Notification(
-                user_id=c.client_id,
-                title="Support Case Update",
-                message=f"Status for case {c.case_number} changed to {c.status}.",
-                type="info",
-                link=f"/support/cases/{c.id}"
-            )
-            session.add(n)
-        if c.assignee_id:
-            n2 = Notification(
-                user_id=c.assignee_id,
-                title="Support Case Update",
-                message=f"Status for case {c.case_number} changed to {c.status}.",
-                type="info",
-                link=f"/support/cases/{c.id}"
-            )
-            session.add(n2)
-            
     session.add(c)
     session.commit()
     session.refresh(c)
+    # Notify on status change
+    new_status = updates.get("status")
+    if new_status and new_status != old_status:
+        try:
+            icon = "✅" if new_status in ("Resolved", "Closed") else "🔄"
+            _notify_admins(
+                session, tenant_id,
+                title=f"{icon} Case {c.case_number}: {new_status}",
+                message=f"{c.subject} — Status changed from {old_status} → {new_status}",
+                notif_type="success" if new_status in ("Resolved", "Closed") else "info",
+                link=f"/support/cases"
+            )
+        except Exception:
+            pass
     return {"case": _case_dict(c, session)}
 
 @app.delete("/cases/{case_id}")
@@ -10572,7 +12193,7 @@ def mark_solution_helpful(solution_id: int, session: Session = Depends(get_sessi
     return {"helpful_count": s.helpful_count}
 
 @app.post("/leads/{lead_id}/simulate-call")
-def simulate_lead_call(lead_id: int, session: Session = Depends(get_session)):
+def simulate_lead_call(lead_id: int, req: Optional[SimulateCallRequest] = None, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
     if not lead: raise HTTPException(status_code=404, detail="Lead not found")
     
@@ -10613,8 +12234,11 @@ Instructions:
 2. Directly reference their specific company name, their industry, and any past notes or activities.
 3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
 4. Make it conversational, persuasive, and professional.
-5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
-6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
+5. Structure it logically but seamlessly.
+6. Output ONLY the spoken script as natural dialogue. Do NOT include markdown headings like **Introduction** or **Value Proposition**. It should read exactly like a transcript of someone speaking. Do not add any meta-commentary."""
+
+    if req and req.context:
+        prompt += f"\n\nAdditional Custom Context / Instructions from the Sales Rep:\n{req.context}\n(Please ensure you incorporate this custom instruction closely into the script)."
 
     from modules.llm_engine import get_openai_client
     try:
@@ -10643,7 +12267,7 @@ Instructions:
     return {"ok": True, "call_id": call.id, "pitch": pitch}
 
 @app.post("/contacts/{contact_id}/simulate-call")
-def simulate_contact_call(contact_id: int, session: Session = Depends(get_session)):
+def simulate_contact_call(contact_id: int, req: Optional[SimulateCallRequest] = None, session: Session = Depends(get_session)):
     contact = session.get(Contact, contact_id)
     if not contact: raise HTTPException(status_code=404, detail="Contact not found")
     
@@ -10684,8 +12308,11 @@ Instructions:
 2. Directly reference their specific name, their role/title, and any past notes.
 3. Pitch SERP Hawk's services (e.g. SEO, link building, digital marketing) as the solution to their specific needs.
 4. Make it conversational, persuasive, and professional.
-5. Structure it logically: Intro -> Value Proposition -> Direct referencing of their situation -> Call to Action (Next steps).
-6. Output ONLY the script, no meta-commentary. Use clear Markdown for readability."""
+5. Structure it logically but seamlessly.
+6. Output ONLY the spoken script as natural dialogue. Do NOT include markdown headings like **Introduction** or **Value Proposition**. It should read exactly like a transcript of someone speaking. Do not add any meta-commentary."""
+
+    if req and req.context:
+        prompt += f"\n\nAdditional Custom Context / Instructions from the Sales Rep:\n{req.context}\n(Please ensure you incorporate this custom instruction closely into the script)."
 
     from modules.llm_engine import get_openai_client
     try:
@@ -10737,7 +12364,7 @@ def get_work_queue(
         # 1. Tasks
         tasks_q = session.query(Task).filter(Task.due_date >= start_dt, Task.due_date <= end_dt)
         if not is_admin:
-            tasks_q = tasks_q.filter(Task.assignee_id == user_id)
+            tasks_q = tasks_q.filter(Task.assigned_to == user_id)
         tasks = tasks_q.all()
         
         # 2. Meetings
@@ -10771,6 +12398,15 @@ def get_work_queue(
             deals_q = deals_q.filter(Deal.owner_id == user_id)
         deals = deals_q.all()
         
+        # 7. Tickets (Dev Team)
+        user = session.get(User, user_id)
+        tickets = []
+        if is_admin or (user and user.role in ["ProjectMember", "Intern"]):
+            tickets_q = session.query(ProjectTicket)
+            if not is_admin and user and user.name:
+                tickets_q = tickets_q.filter(ProjectTicket.current_owner.ilike(user.name))
+            tickets = tickets_q.all()
+        
         return {
             "ok": True,
             "date": target_date.isoformat(),
@@ -10779,7 +12415,8 @@ def get_work_queue(
             "calls": calls,
             "leads": leads,
             "contacts": contacts,
-            "deals": deals
+            "deals": deals,
+            "tickets": tickets
         }
     except Exception as e:
         print("Work Queue Error:", e)
@@ -11021,6 +12658,7 @@ def verify_extracted_email(email_id: int, data: VerifyEmailRequest, session: Ses
 
 from fastapi.responses import PlainTextResponse
 
+
 @app.post("/whatsapp-webhook")
 async def whatsapp_webhook(
     background_tasks: BackgroundTasks,
@@ -11036,92 +12674,126 @@ async def whatsapp_webhook(
     from modules.whatsapp import send_whatsapp_message
     import json
 
-    # Helper: normalise the sender number so we can push outbound messages
-    # From arrives as "whatsapp:+919502901416" — strip the prefix for our helper
-    # which re-adds it internally.
-    sender_number = From  # keep original for DB lookups
-    # We pass From directly to send_whatsapp_message; that function handles the prefix.
-
     # ── Empty TwiML we always return so Twilio never waits / times-out ───
     EMPTY_TWIML = PlainTextResponse(
         '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
         media_type="application/xml"
     )
 
-    # 1. Authorize sender dynamically
+    # 1. Authorize sender dynamically — match by last 10 digits of phone
     from database import User
-    from main import current_tenant_id
-    
     sender_phone = From.replace("whatsapp:", "").replace("+", "").replace("-", "").replace(" ", "").strip()
     match_str = sender_phone[-10:] if len(sender_phone) >= 10 else sender_phone
-    
+
     auth_user = session.exec(select(User).where(User.phone.like(f"%{match_str}%"))).first()
-    
+
     if not auth_user:
         print(f"[WhatsApp] Unauthorized sender {From} tried to use the bot.")
         return EMPTY_TWIML
-        
+
     allowed_roles = {"admin", "superadmin", "salesmanager", "employee"}
     if (auth_user.role or "").lower().replace(" ", "") not in allowed_roles:
         print(f"[WhatsApp] Sender {From} authorized but lacks CRM bot role ({auth_user.role}).")
         return EMPTY_TWIML
-        
-    # Inject tenant context so downstream DB operations attach to the right tenant
+
+    # Inject tenant context — use current_tenant_id defined at module level in main.py
     current_tenant_id.set(auth_user.tenant_id)
-    
-    msg_text = Body.strip().lower()  # Note: refreshed after voice transcription below
-    
-    # 2. Check for existing session (pending action or active live chat)
-    ws_session = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == From)).first()
-    
-    # 2.0 Check Session Expiration & Authentication
+    tenant_id = auth_user.tenant_id
+
+    msg_text = Body.strip().lower()
+
+    # 2. Load existing session
+    ws_session = session.exec(
+        select(WhatsAppSession).where(WhatsAppSession.phone_number == From)
+    ).first()
+
+    # 2.0 Check Session Expiration (24h)
     if ws_session:
         from datetime import datetime, timedelta
         if datetime.utcnow() - ws_session.created_at > timedelta(hours=24):
-            session.delete(ws_session)
-            session.commit()
+            try:
+                session.delete(ws_session)
+                session.commit()
+            except Exception:
+                session.rollback()
             ws_session = None
-            
+
+    # 2.1 Security Key Auth
     expected_key = os.environ.get("WHATSAPP_SECURITY_KEY")
     if expected_key:
-        if not ws_session:
-            new_session = WhatsAppSession(
-                phone_number=From,
-                pending_action="auth"
+        greeting_words = {"hi", "hello", "hey", "start", "login", "reset", "authenticate"}
+
+        # If user greets/starts OR has no active session: prompt for password
+        if not ws_session or (msg_text in greeting_words and ws_session.pending_action != "auth"):
+            if not ws_session:
+                ws_session = WhatsAppSession(
+                    phone_number=From,
+                    pending_action="auth"
+                )
+            else:
+                ws_session.pending_action = "auth"
+                ws_session.action_data = None
+            session.add(ws_session)
+            try:
+                session.commit()
+            except Exception:
+                session.rollback()
+            send_whatsapp_message(
+                "🔒 *Security Key Required*\n\nPlease enter your passcode to access SerpHawk CRM 🦅",
+                From
             )
-            session.add(new_session)
-            session.commit()
-            send_whatsapp_message("🔒 Security Key required. Please enter your passcode to access the CRM.", From)
             return EMPTY_TWIML
-            
+
         if ws_session.pending_action == "auth":
             if Body.strip() == expected_key:
-                from datetime import datetime
+                from datetime import datetime as _dt
                 ws_session.pending_action = None
-                ws_session.created_at = datetime.utcnow() # Reset timer for 24h
-                session.commit()
-                send_whatsapp_message("✅ Access Granted. Welcome to the CRM! What would you like to do? (e.g. 'Add lead John Doe from example.com')", From)
+                ws_session.action_data = None
+                ws_session.created_at = _dt.utcnow()
+                session.add(ws_session)
+                try:
+                    session.commit()
+                except Exception:
+                    session.rollback()
+                send_whatsapp_message(
+                    "✅ *Access Granted! Welcome to SerpHawk CRM 🦅*\n\n"
+                    "I'm *Hawk*, your AI CRM assistant. You can now tell me or send a voice note to:\n\n"
+                    "📋 *View Data:*\n"
+                    "• _List my clients_\n"
+                    "• _Show leads_\n"
+                    "• _Show upcoming meetings_\n"
+                    "• _Show my tasks_\n\n"
+                    "⚡ *Actions:*\n"
+                    "• _Add lead Acme Corp, website acme.com_\n"
+                    "• _Add client Apex Media_\n"
+                    "• _Add note to lead Acme: interested in SEO audit_\n"
+                    "• _Assign salesperson Varshith to lead Acme_\n"
+                    "• _Schedule meeting with Acme tomorrow at 3pm_\n\n"
+                    "🎙️ *Voice Notes:* Just hold the mic and speak naturally!\n"
+                    "📸 *Business Cards:* Send a photo of any business card.",
+                    From
+                )
             else:
-                send_whatsapp_message("❌ Incorrect Security Key. Access denied.", From)
+                send_whatsapp_message(
+                    "❌ Incorrect Security Key. Please enter your passcode to access the CRM (or send 'hi' to restart).",
+                    From
+                )
             return EMPTY_TWIML
-            
-    # ── Step 0: Voice message detection & transcription ───────────────────
-    # Twilio sets NumMedia >= 1 and MediaContentType0 = audio/* for voice notes.
+
+    # ── Step 0: Voice message transcription ──────────────────────────────
     voice_transcript = None
     if int(NumMedia or 0) >= 1 and MediaUrl0 and (MediaContentType0 or "").startswith("audio/"):
         account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
-        auth_token  = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
         try:
             from modules.whatsapp import transcribe_voice_message
-            # ① Immediately ACK so the user knows we got it
             send_whatsapp_message(
                 "🎙️ Got your voice note! Transcribing and processing... give me a moment ⏳",
                 From
             )
             voice_transcript = transcribe_voice_message(MediaUrl0, account_sid, auth_token)
-            # Use the transcript as the body for downstream processing
             Body = voice_transcript
-            msg_text = voice_transcript.strip().lower()  # IMPORTANT: refresh msg_text with actual transcript
+            msg_text = voice_transcript.strip().lower()
             print(f"[Voice] Final transcript: {voice_transcript}")
         except Exception as ve:
             print(f"[Voice] Transcription failed: {ve}")
@@ -11131,277 +12803,271 @@ async def whatsapp_webhook(
                 From
             )
             return EMPTY_TWIML
-            
-    # ── Step 0.5: Image detection & processing (Business Cards, IDs) ──────
+
+    # ── Step 0.5: Image/Business-card processing ─────────────────────────
     image_data = None
     if int(NumMedia or 0) >= 1 and MediaUrl0 and (MediaContentType0 or "").startswith("image/"):
         account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
-        auth_token  = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
         try:
-            send_whatsapp_message(
-                "🖼️ Got your image! Scanning for details... ⏳",
-                From
-            )
-            print(f"[Image] Downloading image from: {MediaUrl0}")
-            import requests, base64
+            send_whatsapp_message("🖼️ Got your image! Scanning for details... ⏳", From)
+            import requests as _req, base64
             from requests.auth import HTTPBasicAuth
-            img_resp = requests.get(
+            img_resp = _req.get(
                 MediaUrl0,
                 auth=HTTPBasicAuth(account_sid, auth_token),
                 timeout=30
             )
             img_resp.raise_for_status()
-            base64_img = base64.b64encode(img_resp.content).decode('utf-8')
-            image_data = {
-                "base64": base64_img,
-                "mime_type": MediaContentType0
-            }
-            print(f"[Image] Successfully downloaded and encoded image ({len(img_resp.content)} bytes)")
-        except Exception as e:
-            print(f"[Image] Failed to download or process image: {e}")
-            send_whatsapp_message(
-                "❌ Sorry, I couldn't process the image you sent.",
-                From
-            )
+            base64_img = base64.b64encode(img_resp.content).decode("utf-8")
+            image_data = {"base64": base64_img, "mime_type": MediaContentType0}
+            print(f"[Image] Downloaded {len(img_resp.content)} bytes")
+        except Exception as ie:
+            print(f"[Image] Failed: {ie}")
+            send_whatsapp_message("❌ Sorry, I couldn't process the image you sent.", From)
             return EMPTY_TWIML
 
-    # 2.1 Handle Active Live Chat Messages
+    # 2.2 Handle Active Live Chat
     if ws_session and ws_session.active_live_chat_session:
-        print(f"[WhatsApp Flow] User is in active live chat session: {ws_session.active_live_chat_session}")
-        if msg_text == "end":
+        print(f"[WhatsApp] User in live chat: {ws_session.active_live_chat_session}")
+        if msg_text in ("end", "stop", "exit"):
             from database import LiveChatSession
-            lcs = session.exec(select(LiveChatSession).where(LiveChatSession.session_id == ws_session.active_live_chat_session)).first()
+            lcs = session.exec(
+                select(LiveChatSession).where(
+                    LiveChatSession.session_id == ws_session.active_live_chat_session
+                )
+            ).first()
             if lcs:
                 lcs.status = "ended"
-            session.delete(ws_session)
-            session.commit()
-            send_whatsapp_message("✅ Live chat ended. You can now send CRM commands again.", From)
-            return EMPTY_TWIML
+            try:
+                session.delete(ws_session)
+                session.commit()
+            except Exception:
+                session.rollback()
+            send_whatsapp_message("✅ Live chat ended. Send a new command whenever you're ready.", From)
         else:
             from database import LiveChatMessage
-            # Forward msg to live chat
             chat_msg = LiveChatMessage(
                 session_id=ws_session.active_live_chat_session,
                 sender="admin",
                 message=Body.strip()
             )
             session.add(chat_msg)
-            session.commit()
-            print("[WhatsApp Flow] Message forwarded to live chat. Exiting.")
-            return EMPTY_TWIML
-    
-    # 2.2 Handle Pending Actions
+            try:
+                session.commit()
+            except Exception:
+                session.rollback()
+        return EMPTY_TWIML
+
+    # 2.3 Handle Pending Actions (awaiting YES/NO/1/2/3 or corrections)
     previous_state = None
-    if ws_session and ws_session.pending_action:
-        print(f"[WhatsApp Flow] User has pending action: {ws_session.pending_action}")
+    if ws_session and ws_session.pending_action and ws_session.pending_action != "auth":
+        print(f"[WhatsApp] Pending action: {ws_session.pending_action}")
         action = ws_session.pending_action
-        args = json.loads(ws_session.action_data)
-        
+        args = json.loads(ws_session.action_data or "{}")
+
+        # Determine if user is confirming
         is_confirm = False
         if action == "add_entity" and msg_text in ["1", "2", "3"]:
             is_confirm = True
-        elif action != "add_entity" and msg_text in ["yes", "y"]:
+        elif action != "add_entity" and msg_text in ["yes", "y", "confirm", "ok", "yep", "yeah"]:
             is_confirm = True
 
         if is_confirm:
-            reply_msg = "Action confirmed and executed."
-            
-            # Execute actions based on type
-            if action == "claim_live_chat":
-                session_id = args.get("session_id")
-                from database import LiveChatSession
-                lcs = session.exec(select(LiveChatSession).where(LiveChatSession.session_id == session_id)).first()
-                if lcs:
-                    lcs.status = "active"
-                    ws_session.active_live_chat_session = session_id
-                    ws_session.pending_action = None
-                    ws_session.action_data = None
-                    session.commit()
-                    send_whatsapp_message(
-                        "✅ Live chat connected! Anything you type now will be sent to the visitor. Type *END* to disconnect.",
-                        From
-                    )
-                    return EMPTY_TWIML
-                else:
-                    reply_msg = "Live chat session expired or not found."
-                    session.delete(ws_session)
-            # ── Action: add_entity (replaces add_lead and add_client) ────────
-            elif action == "add_entity":
-                name = args.get('name', 'Unknown')
-                email = args.get('email')
-                phone = args.get('phone')
-                website = args.get('website')
-                notes_text = args.get('notes')
+            reply_msg = "✅ Action completed!"
 
-                if msg_text == "1": # Client
+            # ── add_entity ───────────────────────────────────────────────
+            if action == "add_entity":
+                name = args.get("name", "Unknown")
+                email = args.get("email")
+                phone = args.get("phone")
+                website = args.get("website")
+                notes_text = args.get("notes")
+
+                if msg_text == "1":  # Client
                     from database import ClientProfile, ClientNote
                     new_client = ClientProfile(
                         companyName=name,
                         phone=phone,
                         websiteUrl=website,
                         status="Active",
-                        lead_source="WhatsApp Voice",
+                        lead_source="WhatsApp",
+                        tenant_id=tenant_id,
                     )
                     if email:
                         new_client.customFields = {"email": email}
                     session.add(new_client)
                     session.commit()
                     session.refresh(new_client)
-
                     if notes_text:
-                        initial_note = ClientNote(
+                        session.add(ClientNote(
                             client_id=new_client.id,
                             content=notes_text,
                             author_name="WhatsApp Agent",
-                            tags=["voice", "onboarding"]
-                        )
-                        session.add(initial_note)
+                            tags=["whatsapp", "onboarding"],
+                            tenant_id=tenant_id,
+                        ))
                         session.commit()
-                    
                     reply_msg = (
                         f"✅ Client *{name}* added to CRM!\n"
-                        + (f"📧 Email: {email}\n" if email else "")
-                        + (f"📞 Phone: {phone}\n" if phone else "")
-                        + (f"🌐 Website: {website}\n" if website else "")
+                        + (f"📧 {email}\n" if email else "")
+                        + (f"📞 {phone}\n" if phone else "")
+                        + (f"🌐 {website}\n" if website else "")
                     )
 
-                elif msg_text == "2": # Lead
-                    from database import Lead, ClientProfile, ClientResearch
+                elif msg_text == "2":  # Lead
+                    from database import Lead
                     new_lead = Lead(
                         company_name=name,
                         website=website,
+                        email=email,
+                        phone=phone,
                         source="WhatsApp",
-                        status="New"
+                        status="New",
+                        tenant_id=tenant_id,
+                        notes=notes_text,
                     )
                     session.add(new_lead)
-                    
-                    new_client = ClientProfile(
-                        companyName=name,
-                        websiteUrl=website,
-                        status="Pending"
-                    )
-                    if email:
-                        new_client.customFields = {"email": email}
-                    if phone:
-                        new_client.phone = phone
-                    session.add(new_client)
                     session.commit()
                     session.refresh(new_lead)
-                    session.refresh(new_client)
+                    reply_msg = f"✅ Lead *{name}* added! 🎯\nRunning background research..."
 
-                    reply_msg = f"✅ Lead *{name}* added! Starting smart research in the background..."
-                    
-                    async def research_and_save(c_name, c_url, l_id, client_id):
+                    # Background HTTP call to smart-research (avoids asyncio.run in thread)
+                    def _bg_research(lead_id, c_name, c_url, from_number):
+                        import requests as _r
                         try:
-                            res = await smart_research(SmartResearchRequest(company_name=c_name, company_url=c_url))
-                            with Session(engine) as db_session:
-                                cr = ClientResearch(
-                                    lead_id=l_id,
-                                    client_id=client_id,
-                                    email_agent_data=json.dumps(res)
-                                )
-                                db_session.add(cr)
-                                db_session.commit()
-                                from modules.whatsapp import send_whatsapp_message
-                                send_whatsapp_message(f"✅ Research complete for *{c_name}*! AI draft is ready.", From)
-                        except Exception as e:
-                            print("Error in bg research:", e)
+                            base = os.environ.get("BASE_URL", "http://localhost:8000")
+                            resp = _r.post(
+                                f"{base}/smart-research",
+                                json={"company_name": c_name, "company_url": c_url},
+                                timeout=120
+                            )
+                            if resp.ok:
+                                from modules.whatsapp import send_whatsapp_message as _send
+                                _send(f"✅ Research complete for *{c_name}*! AI draft is ready in the CRM.", from_number)
+                        except Exception as ex:
+                            print(f"[WhatsApp BG Research] Error: {ex}")
 
-                    background_tasks.add_task(research_and_save, name, website, new_lead.id, new_client.id)
+                    background_tasks.add_task(_bg_research, new_lead.id, name, website or "", From)
 
-                elif msg_text == "3": # Contact
+                elif msg_text == "3":  # Contact
                     from database import Contact
+                    name_parts = name.split(" ", 1)
                     new_contact = Contact(
-                        first_name=name,
+                        first_name=name_parts[0],
+                        last_name=name_parts[1] if len(name_parts) > 1 else None,
+                        full_name=name,
                         email=email,
-                        mobile_number=phone
+                        mobile_number=phone,
+                        tenant_id=tenant_id,
+                        notes=notes_text,
                     )
                     session.add(new_contact)
                     session.commit()
-                    reply_msg = f"✅ Contact *{name}* added to CRM!"
+                    reply_msg = f"✅ Contact *{name}* added!\n" + (f"📧 {email}\n" if email else "") + (f"📞 {phone}\n" if phone else "")
 
-                session.delete(ws_session)
-
-            # ── Action: schedule_meeting ─────────────────────────────────────
+            # ── schedule_meeting ─────────────────────────────────────────
             elif action == "schedule_meeting":
-                from database import ScheduledCall
-                target_name = args.get('target_name', 'Unknown')
-                time_str    = args.get('time_str', 'TBD')
+                from database import Meeting
+                target_name = args.get("target_name", "Unknown")
+                time_str = args.get("time_str", "TBD")
+                meeting_type = args.get("meeting_type", "Meeting")
+                notes = args.get("notes", "Scheduled via WhatsApp")
 
-                new_call = ScheduledCall(
-                    title=f"Meeting with {target_name}",
-                    entity_name=target_name,
-                    notes=f"Scheduled via WhatsApp voice: {time_str}",
-                    assigned_to="Admin",
-                    status="Scheduled"
-                )
-                session.add(new_call)
-                session.commit()
-
-                reply_msg = f"📅 Meeting with *{target_name}* scheduled for *{time_str}*! Added to your calendar."
-                session.delete(ws_session)
-
-            # ── Action: add_note ─────────────────────────────────────────────
-            elif action == "add_note":
-                from database import ClientNote, ClientProfile
-                target_name = args.get('target_name', '')
-                content     = args.get('content', '')
-
-                # Try to find the client by name (case-insensitive partial match)
-                client = session.exec(
-                    select(ClientProfile).where(
-                        ClientProfile.companyName.ilike(f"%{target_name}%")
-                    )
+                # Try to find linked client or lead
+                from database import ClientProfile, Lead
+                client_match = session.exec(
+                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{target_name}%"))
                 ).first()
+                lead_match = None
+                if not client_match:
+                    lead_match = session.exec(
+                        select(Lead).where(Lead.company_name.ilike(f"%{target_name}%"))
+                    ).first()
+
+                new_meeting = Meeting(
+                    title=f"{meeting_type} with {target_name}",
+                    description=notes,
+                    meeting_type=meeting_type,
+                    status="Scheduled",
+                    notes=f"Scheduled via WhatsApp: {time_str}",
+                    client_id=client_match.id if client_match else None,
+                    lead_id=lead_match.id if lead_match else None,
+                    tenant_id=tenant_id,
+                )
+                session.add(new_meeting)
+                session.commit()
+                reply_msg = f"📅 *{meeting_type}* with *{target_name}* scheduled for *{time_str}*!\nAdded to your calendar. ✅"
+
+            # ── add_note ─────────────────────────────────────────────────
+            elif action == "add_note":
+                from database import ClientNote, ClientProfile, Lead
+                target_name = args.get("target_name", "")
+                content = args.get("content", "")
+
+                # Try client first, then lead
+                client = session.exec(
+                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{target_name}%"))
+                ).first()
+                lead = None
+                if not client:
+                    lead = session.exec(
+                        select(Lead).where(Lead.company_name.ilike(f"%{target_name}%"))
+                    ).first()
 
                 if client:
                     note = ClientNote(
                         client_id=client.id,
                         content=content,
-                        author_name="WhatsApp Agent",
-                        tags=["voice"]
+                        author_name=auth_user.name or "WhatsApp Agent",
+                        tags=["whatsapp"],
+                        tenant_id=tenant_id,
                     )
                     session.add(note)
                     session.commit()
-                    reply_msg = f"📝 Note added to *{client.companyName}*: \"{content[:80]}{'...' if len(content) > 80 else ''}\""
+                    snippet = content[:80] + ("..." if len(content) > 80 else "")
+                    reply_msg = f"📝 Note added to *{client.companyName}*:\n\"{snippet}\""
+                elif lead:
+                    # Append to lead's notes field
+                    from datetime import datetime
+                    lead.notes = f"{lead.notes or ''}\n[{datetime.utcnow().strftime('%Y-%m-%d')} WhatsApp] {content}".strip()
+                    lead.last_activity = f"WhatsApp note: {content[:50]}"
+                    session.commit()
+                    reply_msg = f"📝 Note added to lead *{lead.company_name}*:\n\"{content[:80]}\""
                 else:
                     reply_msg = (
-                        f"⚠️ Couldn't find a client named *{target_name}*. "
-                        f"Please check the name and try again."
+                        f"⚠️ Couldn't find *{target_name}* in clients or leads.\n"
+                        "Check the name and try again."
                     )
-                session.delete(ws_session)
 
-            # ── Action: add_task ─────────────────────────────────────────────
+            # ── add_task ─────────────────────────────────────────────────
             elif action == "add_task":
                 from database import Task, ClientProfile
-                title       = args.get('title', 'Untitled Task')
-                description = args.get('description')
-                due_date    = args.get('due_date')
-                priority    = args.get('priority', 'Medium')
-                client_name = args.get('client_name')
+                title = args.get("title", "Untitled Task")
+                description = args.get("description")
+                due_date = args.get("due_date")
+                priority = args.get("priority", "Medium")
+                client_name = args.get("client_name")
 
-                # Optionally link to a client
                 client_id = None
                 if client_name:
                     client = session.exec(
-                        select(ClientProfile).where(
-                            ClientProfile.companyName.ilike(f"%{client_name}%")
-                        )
+                        select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{client_name}%"))
                     ).first()
                     if client:
                         client_id = client.id
 
                 new_task = Task(
                     title=title,
-                    description=description or f"Created via WhatsApp voice command.",
+                    description=description or "Created via WhatsApp",
                     status="Todo",
                     priority=priority,
                     due_date=due_date,
-                    client_id=client_id
+                    client_id=client_id,
+                    tenant_id=tenant_id,
                 )
                 session.add(new_task)
                 session.commit()
-
                 reply_msg = (
                     f"✅ Task created!\n"
                     f"📌 *{title}*\n"
@@ -11409,59 +13075,469 @@ async def whatsapp_webhook(
                     + (f"🔥 Priority: {priority}\n" if priority else "")
                     + (f"🏢 Client: {client_name}\n" if client_name else "")
                 )
+
+            # ── assign_salesperson ────────────────────────────────────────
+            elif action == "assign_salesperson":
+                from database import ClientProfile, Lead, User as _User
+                entity_name = args.get("entity_name", "")
+                salesperson_name = args.get("salesperson_name", "")
+                entity_type = args.get("entity_type", "client").lower()
+
+                # Find the salesperson/employee by name
+                sales_user = session.exec(
+                    select(_User).where(_User.name.ilike(f"%{salesperson_name}%"))
+                ).first()
+
+                if not sales_user:
+                    reply_msg = f"⚠️ Employee *{salesperson_name}* not found in the system. Check the name and try again."
+                else:
+                    entity_found = False
+                    if entity_type in ("client", "both"):
+                        client = session.exec(
+                            select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{entity_name}%"))
+                        ).first()
+                        if client:
+                            client.assignedEmployeeId = sales_user.id
+                            session.commit()
+                            reply_msg = f"👤 *{salesperson_name}* assigned to client *{client.companyName}*! ✅"
+                            entity_found = True
+
+                    if not entity_found:
+                        lead = session.exec(
+                            select(Lead).where(Lead.company_name.ilike(f"%{entity_name}%"))
+                        ).first()
+                        if lead:
+                            lead.owner_id = sales_user.id
+                            session.commit()
+                            reply_msg = f"👤 *{salesperson_name}* assigned to lead *{lead.company_name}*! ✅"
+                            entity_found = True
+
+                    if not entity_found:
+                        reply_msg = f"⚠️ Couldn't find *{entity_name}* in clients or leads. Check the name and try again."
+
+            # ── update_lead_status ────────────────────────────────────────
+            elif action == "update_lead_status":
+                from database import Lead
+                lead_name = args.get("lead_name", "")
+                new_status = args.get("new_status", "")
+
+                lead = session.exec(
+                    select(Lead).where(Lead.company_name.ilike(f"%{lead_name}%"))
+                ).first()
+                if lead:
+                    old_status = lead.status
+                    lead.status = new_status
+                    from datetime import datetime
+                    lead.last_activity = f"Status changed to {new_status} via WhatsApp"
+                    session.commit()
+                    reply_msg = f"✅ Lead *{lead.company_name}* status updated:\n{old_status} → *{new_status}*"
+                else:
+                    reply_msg = f"⚠️ Lead *{lead_name}* not found. Check the name and try again."
+
+            # ── update_client_status ──────────────────────────────────────
+            elif action == "update_client_status":
+                from database import ClientProfile
+                client_name = args.get("client_name", "")
+                new_status = args.get("new_status", "")
+
+                client = session.exec(
+                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{client_name}%"))
+                ).first()
+                if client:
+                    old_status = client.status
+                    client.status = new_status
+                    session.commit()
+                    reply_msg = f"✅ Client *{client.companyName}* status updated:\n{old_status} → *{new_status}*"
+                else:
+                    reply_msg = f"⚠️ Client *{client_name}* not found."
+
+            # ── generate_email_draft ─────────────────────────────────────
+            elif action == "generate_email_draft":
+                from database import ClientProfile, Lead
+                entity_name = args.get("entity_name", "")
+                context_hint = args.get("context", "")
+
+                client = session.exec(
+                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{entity_name}%"))
+                ).first()
+                lead = None
+                if not client:
+                    lead = session.exec(
+                        select(Lead).where(Lead.company_name.ilike(f"%{entity_name}%"))
+                    ).first()
+
+                entity = client or lead
+                if not entity:
+                    reply_msg = f"⚠️ *{entity_name}* not found in clients or leads."
+                else:
+                    real_name = getattr(entity, "companyName", None) or getattr(entity, "company_name", entity_name)
+                    website = getattr(entity, "websiteUrl", None) or getattr(entity, "website", "")
+                    reply_msg = f"✍️ Generating AI email draft for *{real_name}*... I'll send it back shortly!"
+
+                    def _gen_draft(e_name, e_website, e_context, from_number):
+                        try:
+                            from modules.llm_engine import get_openai_client as _oai, generate_email, analyze_content
+                            analysis = analyze_content(f"Company: {e_name}\nWebsite: {e_website}\nContext: {e_context}")
+                            draft = generate_email(analysis)
+                            subject = draft.get("subject", "")
+                            body = draft.get("english_body", "")[:600]
+                            wa_draft = draft.get("whatsapp_draft", "")
+                            msg = (
+                                f"📧 *Email Draft for {e_name}:*\n\n"
+                                f"*Subject:* {subject}\n\n"
+                                f"{body}{'...' if len(draft.get('english_body','')) > 600 else ''}\n\n"
+                                + (f"💬 *WhatsApp Draft:*\n{wa_draft}" if wa_draft else "")
+                            )
+                            from modules.whatsapp import send_whatsapp_message as _send
+                            _send(msg, from_number)
+                        except Exception as ex:
+                            print(f"[WhatsApp Draft] Error: {ex}")
+                            from modules.whatsapp import send_whatsapp_message as _send
+                            _send(f"❌ Draft generation failed for *{e_name}*. Try again!", from_number)
+
+                    background_tasks.add_task(_gen_draft, real_name, website, context_hint, From)
+
+            # ── send_success_message ──────────────────────────────────────
+            elif action == "send_success_message":
+                from database import ClientProfile, Lead, ClientResearch
+                entity_name = args.get("entity_name", "")
+
+                client = session.exec(
+                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{entity_name}%"))
+                ).first()
+                lead = None
+                if not client:
+                    lead = session.exec(
+                        select(Lead).where(Lead.company_name.ilike(f"%{entity_name}%"))
+                    ).first()
+
+                entity = client or lead
+                if not entity:
+                    reply_msg = f"⚠️ *{entity_name}* not found."
+                else:
+                    real_name = getattr(entity, "companyName", None) or getattr(entity, "company_name", entity_name)
+                    # Look for existing research
+                    research = None
+                    if client:
+                        research = session.exec(
+                            select(ClientResearch).where(ClientResearch.client_id == client.id)
+                        ).first()
+                    elif lead:
+                        research = session.exec(
+                            select(ClientResearch).where(ClientResearch.lead_id == lead.id)
+                        ).first()
+
+                    if research and research.email_agent_data:
+                        try:
+                            res_data = json.loads(research.email_agent_data) if isinstance(research.email_agent_data, str) else research.email_agent_data
+                            verdict = res_data.get("executive_verdict") or res_data.get("company_overview", "")
+                            opportunity = res_data.get("serphawk_opportunity", {})
+                            fit_score = opportunity.get("fit_score", "N/A")
+                            pitch_angle = opportunity.get("pitch_angle", "N/A")
+                            rec_services = opportunity.get("recommended_services", [])
+                            swot = getattr(entity, "swot_analysis", None)
+
+                            success_msg = (
+                                f"🤖 *Agent Report: {real_name}*\n\n"
+                                f"📊 *Fit Score:* {fit_score}/10\n\n"
+                                f"📋 *Overview:*\n{verdict[:300]}{'...' if len(verdict) > 300 else ''}\n\n"
+                                f"🎯 *Pitch Angle:*\n{pitch_angle[:200]}\n\n"
+                                + (f"✨ *Recommended Services:*\n" + "\n".join([f"• {s}" for s in rec_services[:5]]) if rec_services else "")
+                                + (f"\n\n📊 *SWOT:*\n{swot[:300]}" if swot else "")
+                            )
+                            reply_msg = success_msg
+                        except Exception as e:
+                            reply_msg = f"⚠️ Research data found but couldn't parse it for *{real_name}*."
+                    else:
+                        reply_msg = (
+                            f"⏳ No agent research found for *{real_name}* yet.\n"
+                            f"Say _'research {entity_name}'_ to kick off a new analysis!"
+                        )
+
+            # ── quick_followup ────────────────────────────────────────────
+            elif action == "quick_followup":
+                from database import Task, ClientProfile, Lead
+                entity_name = args.get("entity_name", "")
+                time_str = args.get("time_str", "soon")
+                note = args.get("note", "")
+
+                client = session.exec(
+                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{entity_name}%"))
+                ).first()
+                lead = None
+                if not client:
+                    lead = session.exec(
+                        select(Lead).where(Lead.company_name.ilike(f"%{entity_name}%"))
+                    ).first()
+
+                real_name = (client and client.companyName) or (lead and lead.company_name) or entity_name
+                client_id = client.id if client else None
+
+                task = Task(
+                    title=f"Follow up with {real_name}",
+                    description=note or f"Follow up scheduled for {time_str}",
+                    status="Todo",
+                    priority="High",
+                    due_date=time_str,
+                    client_id=client_id,
+                    tenant_id=tenant_id,
+                )
+                session.add(task)
+                session.commit()
+                reply_msg = f"⏰ Follow-up reminder set for *{real_name}* on *{time_str}*! ✅"
+
+            try:
                 session.delete(ws_session)
-            
-            session.commit()
-            print("[WhatsApp Flow] Executed pending action successfully.")
-            # ② Proactively send the action result via WhatsApp API
+                session.commit()
+            except Exception:
+                try:
+                    session.rollback()
+                except Exception:
+                    pass
+
             send_whatsapp_message(reply_msg, From)
             return EMPTY_TWIML
 
-        elif msg_text in ["no", "cancel", "n"]:
-            session.delete(ws_session)
-            session.commit()
-            print("[WhatsApp Flow] Pending action cancelled explicitly by user.")
-            send_whatsapp_message("❌ Action cancelled. Send a new command whenever you're ready.", From)
-            return EMPTY_TWIML
-        else:
-            # They didn't say yes/no/1/2/3, so they are providing a correction.
-            print("[WhatsApp Flow] User provided correction to pending action.")
-            previous_state = {
-                "action": ws_session.pending_action,
-                "parameters": json.loads(ws_session.action_data)
-            }
-            # We explicitly DO NOT delete the ws_session here. 
-            # We pass previous_state to the LLM, and update the session in Step 3.
-            
-    # 3. No pending session (or a correction) — parse via AI
-    print(f"[WhatsApp Flow] Processing command: {Body}")
-    result = process_whatsapp_command(Body, previous_state, image_data)
-    action_name_top = result.get("action", "none")
-    print(f"[WhatsApp Flow] AI Result: action={action_name_top}, params={result.get('parameters')}")
-
-    # ── Instant-execute read-only actions (no YES/NO confirm needed) ──────────
-    INSTANT_ACTIONS = {"radar_search", "get_call_pitch", "research_client"}
-    if action_name_top in INSTANT_ACTIONS:
-        if ws_session:
+        elif msg_text in ("no", "cancel", "n", "nope", "stop"):
             try:
                 session.delete(ws_session)
                 session.commit()
             except Exception:
                 session.rollback()
+            send_whatsapp_message("❌ Action cancelled. Send a new command whenever you're ready.", From)
+            return EMPTY_TWIML
+        else:
+            # User is correcting — pass to AI with previous state
+            print("[WhatsApp] User correcting previous command.")
+            previous_state = {
+                "action": ws_session.pending_action,
+                "parameters": json.loads(ws_session.action_data or "{}")
+            }
 
-    if action_name_top == "radar_search":
-        params_r = result["parameters"]
-        query_r = params_r.get("query", "")
-        location_r = params_r.get("location", "")
+    # 3. Parse via AI
+    print(f"[WhatsApp] Processing command: {Body[:100]}")
+    result = process_whatsapp_command(Body, previous_state, image_data)
+    action_name = result.get("action", "none")
+    params = result.get("parameters", {})
+    print(f"[WhatsApp] AI result: action={action_name}, params={params}")
+
+    # ── INSTANT (read-only) actions — no confirmation needed ─────────────
+    INSTANT_ACTIONS = {
+        "radar_search", "get_call_pitch", "research_client",
+        "list_clients", "list_leads", "list_tasks",
+        "list_upcoming_meetings", "get_client_summary",
+    }
+
+    # Clear any stale session before instant actions
+    if action_name in INSTANT_ACTIONS and ws_session:
+        try:
+            session.delete(ws_session)
+            session.commit()
+            ws_session = None
+        except Exception:
+            session.rollback()
+
+    # ── list_clients ──────────────────────────────────────────────────────
+    if action_name == "list_clients":
+        from database import ClientProfile
+        status_filter = params.get("status_filter")
+        limit = min(int(params.get("limit", 10)), 20)
+        q = select(ClientProfile)
+        if tenant_id:
+            q = q.where(ClientProfile.tenant_id == tenant_id)
+        if status_filter:
+            q = q.where(ClientProfile.status == status_filter)
+        q = q.limit(limit)
+        clients = session.exec(q).all()
+        if clients:
+            lines = [f"📋 *Your Clients ({len(clients)}):*\n"]
+            for c in clients:
+                status_emoji = {"Active": "🟢", "Hold": "🟡", "Pending": "🔵"}.get(c.status, "⚪")
+                lines.append(f"{status_emoji} *{c.companyName or 'Unnamed'}* — {c.status}")
+                if c.websiteUrl:
+                    lines.append(f"   🌐 {c.websiteUrl}")
+            lines.append(f"\n💬 Say _'tell me about [name]'_ for full details.")
+            send_whatsapp_message("\n".join(lines), From)
+        else:
+            send_whatsapp_message("📋 No clients found" + (f" with status *{status_filter}*" if status_filter else "") + ".", From)
+        return EMPTY_TWIML
+
+    # ── list_leads ────────────────────────────────────────────────────────
+    elif action_name == "list_leads":
+        from database import Lead
+        status_filter = params.get("status_filter")
+        limit = min(int(params.get("limit", 10)), 20)
+        q = select(Lead)
+        if tenant_id:
+            q = q.where(Lead.tenant_id == tenant_id)
+        if status_filter:
+            q = q.where(Lead.status == status_filter)
+        q = q.order_by(Lead.created_at.desc()).limit(limit)
+        leads = session.exec(q).all()
+        if leads:
+            status_emojis = {"New": "🆕", "Contacted": "📞", "Qualified": "⭐", "Proposal Sent": "📄", "Closed Won": "🏆", "Closed Lost": "❌"}
+            lines = [f"🎯 *Your Leads ({len(leads)}):*\n"]
+            for l in leads:
+                emoji = status_emojis.get(l.status, "🔵")
+                lines.append(f"{emoji} *{l.company_name}* — {l.status}")
+                if l.website:
+                    lines.append(f"   🌐 {l.website}")
+            lines.append(f"\n💬 Say _'update lead [name] to Qualified'_ to change status.")
+            send_whatsapp_message("\n".join(lines), From)
+        else:
+            send_whatsapp_message("🎯 No leads found" + (f" with status *{status_filter}*" if status_filter else "") + ".", From)
+        return EMPTY_TWIML
+
+    # ── list_tasks ────────────────────────────────────────────────────────
+    elif action_name == "list_tasks":
+        from database import Task
+        status_filter = params.get("status_filter")
+        limit = min(int(params.get("limit", 10)), 20)
+        q = select(Task)
+        if tenant_id:
+            q = q.where(Task.tenant_id == tenant_id)
+        if status_filter:
+            q = q.where(Task.status == status_filter)
+        else:
+            q = q.where(Task.status.in_(["Todo", "In Progress"]))
+        q = q.order_by(Task.created_at.desc()).limit(limit)
+        tasks = session.exec(q).all()
+        if tasks:
+            priority_emojis = {"Urgent": "🚨", "High": "🔴", "Medium": "🟡", "Low": "🟢"}
+            lines = [f"✅ *Your Pending Tasks ({len(tasks)}):*\n"]
+            for t in tasks:
+                p_emoji = priority_emojis.get(t.priority, "⚪")
+                lines.append(f"{p_emoji} *{t.title}*")
+                if t.due_date:
+                    lines.append(f"   📅 Due: {t.due_date}")
+                if t.status:
+                    lines.append(f"   📌 Status: {t.status}")
+            send_whatsapp_message("\n".join(lines), From)
+        else:
+            send_whatsapp_message("✅ No pending tasks! You're all caught up 🎉", From)
+        return EMPTY_TWIML
+
+    # ── list_upcoming_meetings ────────────────────────────────────────────
+    elif action_name == "list_upcoming_meetings":
+        from database import ScheduledCall, Meeting
+        from datetime import datetime as _dt
+        limit = min(int(params.get("limit", 10)), 20)
+        now = _dt.utcnow()
+
+        # Query both Meeting and ScheduledCall tables
+        mtgs = session.exec(
+            select(Meeting)
+            .where(Meeting.status == "Scheduled")
+            .order_by(Meeting.scheduled_at.asc())
+            .limit(limit)
+        ).all()
+
+        sched_calls = session.exec(
+            select(ScheduledCall)
+            .where(ScheduledCall.status == "Scheduled")
+            .order_by(ScheduledCall.created_at.desc())
+            .limit(limit)
+        ).all()
+
+        lines = [f"📅 *Upcoming Meetings & Calls:*\n"]
+        total = 0
+        for m in mtgs:
+            time_str = m.scheduled_at.strftime("%d %b, %I:%M %p") if m.scheduled_at else "Time TBD"
+            lines.append(f"📋 *{m.title}*\n   🕐 {time_str} | 📁 {m.meeting_type}")
+            total += 1
+        for sc in sched_calls:
+            lines.append(f"📞 *{sc.title}*\n   👤 {sc.entity_name or 'Unknown'} | 📁 {sc.status}")
+            total += 1
+
+        if total == 0:
+            send_whatsapp_message("📅 No upcoming meetings or calls scheduled.", From)
+        else:
+            lines.append(f"\n💬 Say _'schedule meeting with [name] tomorrow 5pm'_ to add one.")
+            send_whatsapp_message("\n".join(lines), From)
+        return EMPTY_TWIML
+
+    # ── get_client_summary ────────────────────────────────────────────────
+    elif action_name == "get_client_summary":
+        from database import ClientProfile, Lead, ClientNote, ClientResearch
+        name_q = params.get("name", "")
+
+        client = session.exec(
+            select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{name_q}%"))
+        ).first()
+        lead = None
+        if not client:
+            lead = session.exec(
+                select(Lead).where(Lead.company_name.ilike(f"%{name_q}%"))
+            ).first()
+
+        if client:
+            # Build rich summary
+            notes = session.exec(
+                select(ClientNote).where(ClientNote.client_id == client.id)
+                .order_by(ClientNote.created_at.desc()).limit(3)
+            ).all()
+            research = session.exec(
+                select(ClientResearch).where(ClientResearch.client_id == client.id)
+            ).first()
+
+            status_emoji = {"Active": "🟢", "Hold": "🟡", "Pending": "🔵"}.get(client.status, "⚪")
+            email_val = (client.customFields or {}).get("email", "") if client.customFields else ""
+            assigned_user = None
+            if client.assignedEmployeeId:
+                from database import User as _U
+                assigned_user = session.exec(select(_U).where(_U.id == client.assignedEmployeeId)).first()
+
+            lines = [
+                f"🏢 *{client.companyName}*\n",
+                f"{status_emoji} Status: {client.status}",
+                f"🌐 {client.websiteUrl or 'No website'}",
+                (f"📧 {email_val}" if email_val else ""),
+                (f"📞 {client.phone}" if client.phone else ""),
+                (f"💰 Deal Value: ${client.deal_value:,.0f}" if client.deal_value else ""),
+                (f"🏭 Industry: {client.industry}" if client.industry else ""),
+                (f"👤 Assigned to: {assigned_user.name}" if assigned_user else ""),
+                (f"📊 Lead Score: {client.lead_score}/100" if client.lead_score else ""),
+                "",
+            ]
+            if notes:
+                lines.append("📝 *Recent Notes:*")
+                for n in notes:
+                    snippet = n.content[:100] + ("..." if len(n.content) > 100 else "")
+                    lines.append(f"• {snippet}")
+
+            if research:
+                lines.append("\n🤖 *AI Research:* Available — say _'agent results for {name_q}'_ to view")
+
+            lines.append(f"\n💬 Options:\n• _Note that {name_q} ..._\n• _Assign [person] to {name_q}_\n• _Generate draft for {name_q}_")
+            send_whatsapp_message("\n".join(filter(None, lines)), From)
+        elif lead:
+            lines = [
+                f"🎯 *Lead: {lead.company_name}*\n",
+                f"📊 Status: {lead.status}",
+                (f"🌐 {lead.website}" if lead.website else ""),
+                (f"📧 {lead.email}" if lead.email else ""),
+                (f"📞 {lead.phone}" if lead.phone else ""),
+                (f"🏭 {lead.industry}" if lead.industry else ""),
+                (f"📋 Notes: {lead.notes[:150]}" if lead.notes else ""),
+                "",
+                f"💬 Options:\n• _Update lead {name_q} to Qualified_\n• _Generate draft for {name_q}_\n• _Research {name_q}_"
+            ]
+            send_whatsapp_message("\n".join(filter(None, lines)), From)
+        else:
+            send_whatsapp_message(f"⚠️ *{name_q}* not found in clients or leads. Check the name and try again.", From)
+        return EMPTY_TWIML
+
+    # ── radar_search ──────────────────────────────────────────────────────
+    elif action_name == "radar_search":
+        query_r = params.get("query", "")
+        location_r = params.get("location", "")
         full_query = f"{query_r} {location_r}".strip()
-        print(f"[WhatsApp Radar] Starting research on: {full_query}")
         send_whatsapp_message(f"🔍 Running radar research on *{full_query}*... give me a moment ⏳", From)
         try:
             import asyncio
             from modules.scraper import scrape_website
             from modules.llm_engine import analyze_content
-            # If it looks like a URL, scrape it; otherwise use AI knowledge directly
-            if query_r.startswith("http") or "." in query_r.split()[0]:
+            if query_r.startswith("http") or ("." in query_r.split()[0] if query_r.split() else False):
                 url = query_r if query_r.startswith("http") else f"https://{query_r}"
                 try:
                     scraped = asyncio.run(scrape_website(url))
@@ -11470,8 +13546,7 @@ async def whatsapp_webhook(
                 except Exception:
                     analysis = analyze_content(f"Research this website and business: {url}")
             else:
-                # Keyword/market — use AI knowledge
-                analysis = analyze_content(f"Market/keyword research: {full_query}\nProvide a market analysis, key players, recommended services.")
+                analysis = analyze_content(f"Market/keyword research: {full_query}\nProvide market analysis, key players, recommended services.")
 
             company = analysis.get("company_name", full_query)
             what_they_do = analysis.get("what_they_do", "N/A")
@@ -11483,44 +13558,41 @@ async def whatsapp_webhook(
                 f"📋 *What they do:*\n{what_they_do}\n\n"
             )
             if services:
-                radar_msg += f"💡 *Relevant services for them:*\n" + "\n".join([f"• {s}" for s in services[:5]]) + "\n\n"
+                radar_msg += "💡 *Relevant services for them:*\n" + "\n".join([f"• {s}" for s in services[:5]]) + "\n\n"
             if contacts:
-                radar_msg += f"👥 *Key contacts found:*\n"
+                radar_msg += "👥 *Key contacts found:*\n"
                 for c in contacts[:3]:
-                    name = c.get("name") or "Unknown"
-                    role = c.get("role") or ""
-                    email = c.get("email") or ""
-                    phone = c.get("phone_number") or ""
-                    radar_msg += f"• {name}" + (f" ({role})" if role else "") + (f" — {email}" if email else "") + (f" 📞 {phone}" if phone else "") + "\n"
-            radar_msg += "\n💬 Reply *pitch for [name]* to get a call pitch, or *add [name]* to CRM!"
+                    n = c.get("name") or "Unknown"
+                    r = c.get("role") or ""
+                    e = c.get("email") or ""
+                    p = c.get("phone_number") or ""
+                    radar_msg += f"• {n}" + (f" ({r})" if r else "") + (f" — {e}" if e else "") + (f" 📞{p}" if p else "") + "\n"
+            radar_msg += "\n💬 Reply *pitch for [name]* or *add [name]* to CRM!"
             send_whatsapp_message(radar_msg, From)
-        except Exception as re:
-            print(f"[WhatsApp Radar] Error: {re}")
-            send_whatsapp_message(f"❌ Radar research failed for *{full_query}*. Try again or check the name/URL.", From)
+        except Exception as re_err:
+            print(f"[WhatsApp Radar] Error: {re_err}")
+            send_whatsapp_message(f"❌ Radar research failed for *{full_query}*. Try again!", From)
         return EMPTY_TWIML
 
-    elif action_name_top == "get_call_pitch":
-        params_p = result["parameters"]
-        client_name_p = params_p.get("client_name", "")
-        print(f"[WhatsApp Pitch] Getting pitch for: {client_name_p}")
+    # ── get_call_pitch ────────────────────────────────────────────────────
+    elif action_name == "get_call_pitch":
+        client_name_p = params.get("client_name", "")
         try:
             from database import ClientProfile, Lead
-            from sqlalchemy import or_
-            # Fuzzy search across clients and leads
             search_term = f"%{client_name_p}%"
             client_p = session.exec(
-                select(ClientProfile).where(ClientProfile.company_name.ilike(search_term))
+                select(ClientProfile).where(ClientProfile.companyName.ilike(search_term))
             ).first()
             lead_p = None
             if not client_p:
                 lead_p = session.exec(
-                    select(Lead).where(or_(Lead.name.ilike(search_term), Lead.company.ilike(search_term)))
+                    select(Lead).where(Lead.company_name.ilike(search_term))
                 ).first()
 
             entity_name = None
             pitch_text = None
             if client_p:
-                entity_name = client_p.company_name
+                entity_name = client_p.companyName
                 if client_p.call_pitch_text:
                     pitch_text = client_p.call_pitch_text
                 else:
@@ -11534,7 +13606,7 @@ async def whatsapp_webhook(
                     client_p.call_pitch_text = pitch_text
                     session.commit()
             elif lead_p:
-                entity_name = lead_p.name or lead_p.company or client_name_p
+                entity_name = lead_p.company_name
                 from modules.llm_engine import get_openai_client as _oai
                 _c = _oai()
                 _r = _c.chat.completions.create(
@@ -11544,25 +13616,21 @@ async def whatsapp_webhook(
                 pitch_text = _r.choices[0].message.content
 
             if pitch_text:
-                pitch_msg = f"📞 *Call Pitch for {entity_name}:*\n\n{pitch_text}"
+                send_whatsapp_message(f"📞 *Call Pitch for {entity_name}:*\n\n{pitch_text}", From)
             else:
-                pitch_msg = f"❌ Couldn't find *{client_name_p}* in your CRM. Add them first or try a different name."
-            send_whatsapp_message(pitch_msg, From)
+                send_whatsapp_message(f"❌ Couldn't find *{client_name_p}* in your CRM. Add them first or try a different name.", From)
         except Exception as pe:
             print(f"[WhatsApp Pitch] Error: {pe}")
             send_whatsapp_message(f"❌ Error getting pitch for *{client_name_p}*. Try again!", From)
         return EMPTY_TWIML
 
-    elif action_name_top == "research_client":
-        params_rc = result["parameters"]
-        query_rc = params_rc.get("query", "")
-        print(f"[WhatsApp Research] Researching: {query_rc}")
+    # ── research_client ───────────────────────────────────────────────────
+    elif action_name == "research_client":
+        query_rc = params.get("query", "")
         send_whatsapp_message(f"🔬 Researching *{query_rc}*... give me a moment ⏳", From)
         try:
             from database import ClientProfile, Lead
-            from sqlalchemy import or_
             from modules.llm_engine import analyze_content
-            # Check if it's a URL or a name
             if query_rc.startswith("http") or ("." in query_rc and " " not in query_rc):
                 url = query_rc if query_rc.startswith("http") else f"https://{query_rc}"
                 try:
@@ -11574,13 +13642,12 @@ async def whatsapp_webhook(
                 except Exception:
                     analysis = analyze_content(f"Research this company from their website: {url}")
             else:
-                # Name-based — check DB first for extra context, then AI research
                 search_term = f"%{query_rc}%"
-                client_rc = session.exec(select(ClientProfile).where(ClientProfile.company_name.ilike(search_term))).first()
-                lead_rc = session.exec(select(Lead).where(or_(Lead.name.ilike(search_term), Lead.company.ilike(search_term)))).first()
+                client_rc = session.exec(select(ClientProfile).where(ClientProfile.companyName.ilike(search_term))).first()
+                lead_rc = session.exec(select(Lead).where(Lead.company_name.ilike(search_term))).first()
                 extra_ctx = ""
                 if client_rc:
-                    extra_ctx = f"CRM info — website: {client_rc.website or 'unknown'}, email: {client_rc.email or 'unknown'}, notes: {client_rc.notes or ''}"
+                    extra_ctx = f"CRM info — website: {client_rc.websiteUrl or 'unknown'}, notes: {client_rc.tagline or ''}"
                 elif lead_rc:
                     extra_ctx = f"CRM info — website: {lead_rc.website or 'unknown'}, email: {lead_rc.email or 'unknown'}"
                 analysis = analyze_content(f"Research this company: {query_rc}\n{extra_ctx}")
@@ -11591,10 +13658,7 @@ async def whatsapp_webhook(
             contacts = analysis.get("contacts", [])
             socials = analysis.get("company_social_media", {})
 
-            res_msg = (
-                f"🔬 *Research: {company}*\n\n"
-                f"📋 *About:*\n{what_they_do}\n\n"
-            )
+            res_msg = f"🔬 *Research: {company}*\n\n📋 *About:*\n{what_they_do}\n\n"
             if services:
                 res_msg += "💡 *Best services for them:*\n" + "\n".join([f"• {s}" for s in services[:4]]) + "\n\n"
             if contacts:
@@ -11614,48 +13678,59 @@ async def whatsapp_webhook(
             print(f"[WhatsApp Research] Error: {rce}")
             send_whatsapp_message(f"❌ Research failed for *{query_rc}*. Try again!", From)
         return EMPTY_TWIML
-    
-    # action_name_top was already checked for instant actions above; remaining confirm-flow actions
-    INSTANT_ACTIONS = {"radar_search", "get_call_pitch", "research_client"}
-    if result["action"] not in ["none", "error"] and result["action"] not in INSTANT_ACTIONS:
-        # Save pending session to await YES/NO
+
+    # ── Confirm-flow actions: save session and ask user to confirm ────────
+    CONFIRM_ACTIONS = {
+        "add_entity", "schedule_meeting", "add_note", "add_task",
+        "assign_salesperson", "update_lead_status", "update_client_status",
+        "generate_email_draft", "send_success_message", "quick_followup",
+    }
+
+    if action_name in CONFIRM_ACTIONS:
+        # Save pending session (replace existing if any)
         try:
             if ws_session:
                 session.delete(ws_session)
-                session.flush()  # flush delete before adding new row
+                session.flush()
             new_session = WhatsAppSession(
                 phone_number=From,
-                pending_action=result["action"],
-                action_data=json.dumps(result["parameters"])
+                pending_action=action_name,
+                action_data=json.dumps(params)
             )
             session.add(new_session)
             session.commit()
-            print(f"[WhatsApp Flow] Session saved: action={result['action']}, params={result['parameters']}")
+            print(f"[WhatsApp] Session saved: action={action_name}")
         except Exception as db_err:
-            print(f"[WhatsApp Flow] ERROR saving session: {db_err}")
+            print(f"[WhatsApp] ERROR saving session: {db_err}")
             try:
                 session.rollback()
             except Exception:
                 pass
 
-        # ── Build rich confirmation message ───────────────────────────────
-        action_name = result["action"]
-        params = result["parameters"]
-
+        # Build confirmation message
         action_labels = {
-            "add_entity":       "👤 Add New Entity",
-            "add_note":         "📝 Add Note",
-            "schedule_meeting": "📅 Schedule Meeting",
-            "add_task":         "✅ Create Task",
+            "add_entity":           "👤 Add New Entity",
+            "add_note":             "📝 Add Note",
+            "schedule_meeting":     "📅 Schedule Meeting",
+            "add_task":             "✅ Create Task",
+            "assign_salesperson":   "👤 Assign Salesperson",
+            "update_lead_status":   "📊 Update Lead Status",
+            "update_client_status": "📊 Update Client Status",
+            "generate_email_draft": "📧 Generate Email Draft",
+            "send_success_message": "🤖 Get Agent Results",
+            "quick_followup":       "⏰ Schedule Follow-up",
         }
         label = action_labels.get(action_name, action_name.replace("_", " ").title())
 
         field_icons = {
-            "name":           "👤", "email": "📧", "phone": "📞", 
-            "website":        "🌐", "notes": "📋",
-            "target_name":    "👤", "content":         "📋", "time_str": "🕐",
-            "title":          "📌", "description":     "📋", "due_date": "📅",
-            "priority":       "🔥", "client_name":     "🏢",
+            "name": "👤", "email": "📧", "phone": "📞", "website": "🌐",
+            "notes": "📋", "target_name": "👤", "content": "📋",
+            "time_str": "🕐", "title": "📌", "description": "📋",
+            "due_date": "📅", "priority": "🔥", "client_name": "🏢",
+            "entity_name": "🏢", "salesperson_name": "👤",
+            "lead_name": "🎯", "new_status": "📊",
+            "entity_type": "📁", "context": "💬",
+            "note": "📝", "meeting_type": "📋",
         }
         param_lines = ""
         for k, v in params.items():
@@ -11663,10 +13738,10 @@ async def whatsapp_webhook(
                 icon = field_icons.get(k, "•")
                 param_lines += f"\n{icon} {k.replace('_', ' ').title()}: {v}"
 
-        # Show transcript snippet for voice messages
+        # Voice transcript prefix
         voice_prefix = ""
         if voice_transcript:
-            short_transcript = voice_transcript[:150] + ('...' if len(voice_transcript) > 150 else '')
+            short_transcript = voice_transcript[:150] + ("..." if len(voice_transcript) > 150 else "")
             voice_prefix = f"🎙️ *I heard:* \"{short_transcript}\"\n\n"
 
         if action_name == "add_entity":
@@ -11678,7 +13753,7 @@ async def whatsapp_webhook(
                 f"2️⃣ Lead\n"
                 f"3️⃣ Contact\n\n"
                 f"❌ Reply *NO* to cancel\n"
-                f"✏️ *To edit:* Just reply with your corrections (e.g. 'change name to xyz')"
+                f"✏️ *To edit:* Reply with your corrections"
             )
         else:
             confirm_msg = (
@@ -11686,33 +13761,37 @@ async def whatsapp_webhook(
                 f"📋 *Proposed Action:* {label}{param_lines}\n\n"
                 f"✅ Reply *YES* to confirm\n"
                 f"❌ Reply *NO* to cancel\n"
-                f"✏️ *To edit:* Just reply with your corrections (e.g., 'change time to tomorrow')"
+                f"✏️ *To edit:* Reply with your corrections (e.g., 'change time to tomorrow 3pm')"
             )
 
-        # ③ Proactively push the confirmation — no TwiML reliance
-        print(f"[WhatsApp Flow] Sending confirmation message to user: {confirm_msg[:80]}...")
         send_whatsapp_message(confirm_msg, From)
         return EMPTY_TWIML
 
     else:
         # Conversational reply or unrecognized input
-        print("[WhatsApp Flow] Sending conversational fallback.")
-        if ws_session:
+        if ws_session and ws_session.pending_action not in ("auth", None):
             try:
                 session.delete(ws_session)
                 session.commit()
-                print("[WhatsApp Flow] Cleared stale pending session.")
             except Exception:
                 session.rollback()
 
         reply = result.get(
             "reply",
-            "🤖 I didn't quite understand that.\n\nTry:\n• _Add client Acme Corp_\n• _Schedule meeting with Ravi tomorrow at 3pm_\n• _Note that Blue Barrier is interested in SEO_\n• Or just send a voice note!"
+            "🤖 I didn't quite understand that.\n\nTry:\n"
+            "• _Add client Acme Corp_\n"
+            "• _List my leads_\n"
+            "• _Schedule meeting with Ravi tomorrow at 3pm_\n"
+            "• _Note that Blue Barrier is interested in SEO_\n"
+            "• _Assign Ravi to Acme_\n"
+            "• Or just send a voice note! 🎙️"
         )
         if voice_transcript:
             reply = f"🎙️ *I heard:* \"{voice_transcript[:100]}\"\n\n{reply}"
         send_whatsapp_message(reply, From)
         return EMPTY_TWIML
+
+
 
 # --- Email Tracking Endpoint ---
 
@@ -11777,12 +13856,14 @@ from sqlalchemy import inspect, text
 
 @app.get("/admin/db/tables")
 def get_db_tables(session: Session = Depends(get_session)):
+    _require_roles(session, ["Admin"])
     inspector = inspect(session.bind)
     tables = inspector.get_table_names()
     return {"tables": tables}
 
 @app.get("/admin/db/tables/{table_name}")
 def get_db_table_data(table_name: str, page: int = 1, per_page: int = 50, sort_col: str = None, sort_dir: str = "asc", session: Session = Depends(get_session)):
+    _require_roles(session, ["Admin"])
     inspector = inspect(session.bind)
     if table_name not in inspector.get_table_names():
         raise HTTPException(status_code=404, detail="Table not found")
@@ -11814,6 +13895,7 @@ def get_db_table_data(table_name: str, page: int = 1, per_page: int = 50, sort_c
 
 @app.get("/admin/db/export/{table_name}")
 def export_db_table(table_name: str, session: Session = Depends(get_session)):
+    _require_roles(session, ["Admin"])
     from fastapi.responses import StreamingResponse
     import csv, io
     inspector = inspect(session.bind)
@@ -11881,11 +13963,120 @@ def get_inventory(session: Session = Depends(get_session)):
                  "supplier_email": s.supplier_email, "lot_number": s.lot_number,
                  "unit_cost": s.unit_cost, "currency": s.currency,
                  "lead_time_days": s.lead_time_days, "min_order_qty": s.min_order_qty,
-                 "is_preferred": s.is_preferred, "notes": s.notes}
+                 "is_preferred": s.is_preferred, "notes": s.notes,
+                 "supplier_user_id": s.supplier_user_id,
+                 "credentials_ready": bool(s.login_password),
+                 "credentials_sent": bool(s.credentials_sent)}
                 for s in suppliers
             ]
         })
     return {"items": result, "total": len(result)}
+
+@app.post("/inventory/export-pdf")
+def export_inventory_pdf(body: ExportPdfRequest, session: Session = Depends(get_session)):
+    import io
+    from fastapi.responses import Response
+    from modules.pdf_export import inventory_pdf, send_pdf_email
+    tenant_id = current_tenant_id.get()
+    q = select(InventoryItem).order_by(InventoryItem.created_at.desc())
+    if tenant_id:
+        q = q.where(InventoryItem.tenant_id == tenant_id)
+    items = session.exec(q).all()
+    data = [{
+        "code": it.code, "name": it.name, "description": it.description,
+        "category": it.category, "tags": it.tags or [],
+        "unit": it.unit, "current_stock": it.current_stock,
+        "min_stock": it.min_stock, "photo_url": it.photo_url,
+    } for it in items]
+    pdf = inventory_pdf(data)
+    if body.email:
+        try:
+            send_pdf_email(
+                body.email, "Inventory List PDF", "<p>The requested inventory list is attached.</p>",
+                pdf, "inventory_list.pdf"
+            )
+            return {"sent": True, "recipient": body.email, "count": len(data)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=inventory_list.pdf"}
+    )
+
+@app.get("/inventory/{item_id}/pdf")
+def export_single_inventory_pdf(item_id: int, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from modules.pdf_export import single_inventory_pdf
+    item = session.get(InventoryItem, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    suppliers = session.exec(select(InventorySupplier).where(InventorySupplier.item_id == item.id)).all()
+    pdf = single_inventory_pdf({
+        "code": item.code, "name": item.name, "description": item.description,
+        "category": item.category, "unit": item.unit,
+        "current_stock": item.current_stock, "min_stock": item.min_stock,
+        "photo_url": item.photo_url, "tags": item.tags or [],
+    })
+    filename = f"inventory_{item.code or item.id}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+class MultiInvPdfRequest(BaseModel):
+    item_ids: List[int]
+
+@app.post("/inventory/pdf")
+def export_multi_inventory_pdf(body: MultiInvPdfRequest, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from modules.pdf_export import multi_inventory_pdf
+    ids = list(dict.fromkeys(body.item_ids))
+    if not ids:
+        raise HTTPException(status_code=400, detail="No items selected")
+    if len(ids) > 100:
+        raise HTTPException(status_code=400, detail="Select at most 100 items at a time")
+    items = []
+    for pid in ids:
+        item = session.get(InventoryItem, pid)
+        if item:
+            items.append({
+                "code": item.code, "name": item.name, "description": item.description,
+                "category": item.category, "unit": item.unit,
+                "current_stock": item.current_stock, "min_stock": item.min_stock,
+                "photo_url": item.photo_url, "tags": item.tags or [],
+            })
+    if not items:
+        raise HTTPException(status_code=404, detail="Items not found")
+    pdf = multi_inventory_pdf(items)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=inventory_items.pdf"}
+    )
+
+@app.post("/products/export-pdf")
+def export_catalog_pdf(body: ExportPdfRequest, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from modules.pdf_export import catalog_pdf, send_pdf_email
+    products = session.exec(select(Product).order_by(Product.name)).all()
+    data = [p.model_dump() for p in products]
+    pdf = catalog_pdf(data)
+    if body.email:
+        try:
+            send_pdf_email(
+                body.email, "Product Catalog PDF", "<p>The requested product catalog is attached.</p>",
+                pdf, "product_catalog.pdf"
+            )
+            return {"sent": True, "recipient": body.email, "count": len(data)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=product_catalog.pdf"}
+    )
 
 @app.post("/inventory")
 def create_inventory_item(data: InventoryItemCreate, session: Session = Depends(get_session)):
@@ -11930,15 +14121,28 @@ def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session =
     
     supplier_user_id = None
     credentials_created = False
+    generated_password = None
     
     # Auto-create supplier login if email provided
     if data.supplier_email:
+        generated_password = _generate_unique_password()
+        hashed = _hash_password(generated_password)
         existing_user = session.exec(select(User).where(User.email == data.supplier_email)).first()
-        if not existing_user:
+        if existing_user:
+            # Update role + reset password so we always have fresh credentials to show
+            existing_user.role = "Supplier"
+            existing_user.password = hashed
+            existing_user.hashed_password = hashed
+            existing_user.is_active = True
+            existing_user.status = "Active"
+            session.add(existing_user)
+            session.commit()
+            supplier_user_id = existing_user.id
+        else:
             supplier_user = User(
                 email=data.supplier_email,
-                password=_hash_password("password123"),
-                hashed_password=_hash_password("password123"),
+                password=hashed,
+                hashed_password=hashed,
                 name=data.supplier_name,
                 role="Supplier",
                 is_active=True,
@@ -11948,16 +14152,12 @@ def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session =
             session.commit()
             session.refresh(supplier_user)
             supplier_user_id = supplier_user.id
-            credentials_created = True
-        else:
-            # Update role to Supplier if not already
-            if existing_user.role != "Supplier":
-                existing_user.role = "Supplier"
-                session.add(existing_user)
-                session.commit()
-            supplier_user_id = existing_user.id
+        credentials_created = True
     
     supplier = InventorySupplier(item_id=item_id, supplier_user_id=supplier_user_id, **data.dict())
+    if generated_password:
+        supplier.login_password = generated_password
+        supplier.credentials_sent = False
     session.add(supplier)
     session.commit()
     session.refresh(supplier)
@@ -11969,9 +14169,9 @@ def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session =
         "supplier_user_id": supplier_user_id,
         "credentials_created": credentials_created,
     }
-    if credentials_created:
+    if credentials_created and generated_password:
         result["login_email"] = data.supplier_email
-        result["login_password"] = "password123"
+        result["login_password"] = generated_password
     
     return result
 
@@ -11995,6 +14195,131 @@ def update_supplier(supplier_id: int, data: InventorySupplierCreate, session: Se
     session.commit()
     session.refresh(s)
     return s
+
+@app.post("/inventory/suppliers/{supplier_id}/send-credentials")
+def send_supplier_credentials(supplier_id: int, session: Session = Depends(get_session)):
+    """Email the supplier's portal login credentials to their inbox (manual send button)."""
+    s = session.get(InventorySupplier, supplier_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    if not s.supplier_email:
+        raise HTTPException(status_code=400, detail="Supplier has no email address on file")
+    if not s.login_password:
+        raise HTTPException(status_code=400, detail="No login credentials exist for this supplier")
+
+    login_url = (os.environ.get("FRONTEND_URL") or "https://crm-seo.allytechcourses.com").rstrip("/") + "/login"
+    subject = "Your SERP Hawk Supplier Portal Login"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div style="background:#1e293b;color:#fff;padding:22px 28px">
+        <strong style="font-size:18px">🦅 SERP Hawk Supplier Portal</strong>
+      </div>
+      <div style="padding:28px">
+        <h2 style="color:#0f172a;font-size:20px;margin:0 0 12px">Your supplier account is ready</h2>
+        <p style="color:#475569;line-height:1.6;margin:0 0 20px">
+          Hello <strong>{s.supplier_name}</strong>,<br/><br/>
+          An account has been created for you so you can update pricing, stock levels, lot numbers,
+          and delivery timelines for the items we source from you. Use the credentials below to sign in.
+        </p>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px;margin:0 0 20px">
+          <div style="margin-bottom:14px">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Login URL</div>
+            <a href="{login_url}" style="color:#2563eb;font-weight:600;word-break:break-all">{login_url}</a>
+          </div>
+          <div style="margin-bottom:14px">
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Email</div>
+            <div style="color:#0f172a;font-weight:600;word-break:break-all">{s.supplier_email}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Password</div>
+            <div style="color:#0f172a;font-weight:800;font-family:monospace;font-size:16px;letter-spacing:1px">{s.login_password}</div>
+          </div>
+        </div>
+        <a href="{login_url}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:600">Open the Supplier Portal</a>
+        <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">
+          If you did not expect this email, you can safely ignore it. We recommend changing your password after your first login.
+        </p>
+        <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
+      </div>
+    </div>
+    """
+    sent = False
+    try:
+        from modules.email_sender import send_email_outlook
+        sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
+        if sender and password:
+            send_email_outlook(s.supplier_email, subject, html, sender, password,
+                               smtp_server=smtp_server or "mail.serphawk.in", smtp_port=smtp_port or 587)
+            sent = True
+    except Exception as e:
+        print(f"[Supplier credentials email failed] {e}")
+
+    s.credentials_sent = sent
+    session.add(s)
+    session.commit()
+
+    if not sent:
+        raise HTTPException(status_code=500, detail="Email could not be sent. Check SMTP configuration.")
+    return {"ok": True, "email_sent": True, "recipient": s.supplier_email}
+class SupplierAddItemRequest(BaseModel):
+    supplier_name: str
+    supplier_email: str
+    code: str
+    name: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = []
+    photo_url: Optional[str] = None
+    unit: Optional[str] = None
+    min_stock: float = 0
+    current_stock: float = 0
+    unit_cost: Optional[float] = None
+    currency: str = "USD"
+    lead_time_days: Optional[int] = None
+    lot_number: Optional[str] = None
+    notes: Optional[str] = None
+
+@app.post("/supplier/inventory/add-item")
+def supplier_add_item(req: SupplierAddItemRequest, session: Session = Depends(get_session)):
+    tenant_id = current_tenant_id.get()
+    
+    # Create the item
+    item = InventoryItem(
+        tenant_id=tenant_id,
+        code=req.code,
+        name=req.name,
+        description=req.description,
+        category=req.category,
+        tags=req.tags or [],
+        photo_url=req.photo_url,
+        unit=req.unit,
+        min_stock=req.min_stock,
+        current_stock=req.current_stock
+    )
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    
+    # Check if a user for this supplier exists to grab ID
+    user = session.exec(select(User).where(User.email == req.supplier_email).where(User.tenant_id == tenant_id)).first()
+    supplier_user_id = user.id if user else None
+
+    # Attach this supplier to the item
+    supplier = InventorySupplier(
+        item_id=item.id,
+        supplier_name=req.supplier_name,
+        supplier_email=req.supplier_email,
+        supplier_user_id=supplier_user_id,
+        unit_cost=req.unit_cost,
+        currency=req.currency,
+        lead_time_days=req.lead_time_days,
+        lot_number=req.lot_number,
+        notes=req.notes
+    )
+    session.add(supplier)
+    session.commit()
+    
+    return {"ok": True, "item_id": item.id}
 
 @app.get("/supplier/inventory")
 def get_supplier_inventory(email: str, session: Session = Depends(get_session)):
@@ -12351,7 +14676,19 @@ def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_
     existing = session.exec(select(User).where(User.email == body.email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already exists")
-        
+
+    # Require a verified signup OTP for this email before creating the account
+    from database import EmailOTP
+    otp_rec = session.exec(
+        select(EmailOTP).where(
+            EmailOTP.email == body.email,
+            EmailOTP.purpose == "signup",
+            EmailOTP.verified == True,
+        )
+    ).first()
+    if not otp_rec:
+        raise HTTPException(status_code=400, detail="Please verify your email before creating the account.")
+
     tenant = Tenant(
         name=f"Demo Tenant {body.email}",
         is_trial=True,
@@ -12397,6 +14734,7 @@ def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_
 
 @app.get("/dev/diagnostic")
 def diagnostic(session: Session = Depends(get_session)):
+    _require_roles(session, ["SuperAdmin"])
     demo_users = session.exec(select(User).where(User.role == "Demo")).all()
     results = {}
     for user in demo_users:
@@ -12440,6 +14778,7 @@ def complete_onboarding(body: OnboardingRequest, session: Session = Depends(get_
 @app.get("/telemetry/demo-accounts")
 def get_demo_accounts(session: Session = Depends(get_session)):
     """Fetch all demo accounts for the Telemetry Dashboard."""
+    _require_roles(session, ["Admin"])
     from database import User
     from sqlmodel import select
     demo_users = session.exec(select(User).where(User.role == "Demo").order_by(User.createdAt.desc())).all()
@@ -12467,10 +14806,13 @@ def get_demo_limits(session: Session = Depends(get_session)):
     if not tenant:
         return {"success": False, "message": "Tenant not found"}
         
+    lead_count = session.exec(select(func.count(Lead.id)).where(Lead.tenant_id == tenant_id)).one()
+
     return {
         "success": True,
         "limits": {
             "clients": {"usage": tenant.usage_clients, "limit": tenant.limit_clients},
+            "leads": {"usage": lead_count, "limit": tenant.limit_clients},
             "emails": {"usage": tenant.usage_emails, "limit": tenant.limit_emails},
             "searches": {"usage": tenant.usage_searches, "limit": tenant.limit_searches},
             "projects": {"usage": tenant.usage_projects, "limit": tenant.limit_projects}
@@ -12497,22 +14839,12 @@ def request_demo_upgrade(session: Session = Depends(get_session)):
         session.add(n)
         
     session.commit()
-    
-    # Send email notification to admin
-    try:
-        from modules.email_sender import send_email_outlook
-        sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
-        if sender and password:
-            body_html = f"<p>Demo user <strong>{user.name}</strong> ({user.email}) has requested an account upgrade.</p>"
-            send_email_outlook("admin@serphawk.com", "Demo Account Upgrade Request", body_html, sender, password, smtp_server, smtp_port)
-    except Exception as e:
-        print(f"Failed to send admin upgrade email: {e}")
-        
     return {"success": True, "message": "Upgrade request sent to admin."}
 
 @app.get("/telemetry/demo-account/{user_id}")
 def get_demo_account_detail(user_id: int, session: Session = Depends(get_session)):
     """Return full summary of a Demo user's activity - queries by tenant_id."""
+    _require_roles(session, ["Admin"])
     from database import (User, Tenant, ClientProfile, Lead, RadarAnalysis, SentEmail, Contact, Meeting, CallLog, Project, Notification, ClientResearch, CompetitorAnalysis)
     from sqlmodel import select
 
@@ -12630,6 +14962,7 @@ def backfill_tenant_data(user_id: int, session: Session = Depends(get_session)):
     Admin tool: Fix existing data with NULL tenant_id for a demo user.
     Patches old records created before tenant isolation was enforced.
     """
+    _require_roles(session, ["Admin"])
     from database import (User, ClientProfile, Lead, Contact, Meeting, CallLog, Project, SentEmail, RadarAnalysis)
     from sqlmodel import select
 
@@ -12732,16 +15065,6 @@ def request_upgrade(
         session.add(notification)
         session.commit()
     
-    # Send email notification to admin
-    try:
-        from modules.email_sender import send_email_outlook
-        sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
-        if sender and password:
-            body_html = f"<p>Demo user <strong>{user.name}</strong> ({user.email}) has requested a full account upgrade.</p>"
-            send_email_outlook("admin@serphawk.com", "Demo Upgrade Request", body_html, sender, password, smtp_server, smtp_port)
-    except Exception as e:
-        print(f"Failed to send admin upgrade email: {e}")
-        
     return {"status": "success", "message": "Upgrade request sent to admin."}
 
 class EmailSettingsRequest(BaseModel):
@@ -12761,10 +15084,25 @@ def get_email_settings(session: Session = Depends(get_session)):
     return settings or {}
 
 @app.post("/settings/email")
-def save_email_settings(body: EmailSettingsRequest, session: Session = Depends(get_session)):
+def save_email_settings(body: EmailSettingsRequest, otp_verified: bool = False, session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
-    if not tenant_id:
+    uid = current_salesperson_id.get()
+    if not tenant_id or not uid:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    # Check OTP verification for the from_email address
+    if not otp_verified:
+        from database import EmailOTP
+        verified = session.exec(
+            select(EmailOTP).where(
+                EmailOTP.user_id == uid,
+                EmailOTP.email == body.from_email,
+                EmailOTP.purpose == "smtp_settings",
+                EmailOTP.verified == True,
+            )
+        ).first()
+        if not verified:
+            raise HTTPException(status_code=400, detail="Email address not verified. Please complete OTP verification first.")
     
     settings = session.exec(select(EmailSettings).where(EmailSettings.tenant_id == tenant_id)).first()
     if not settings:
@@ -12778,3 +15116,120 @@ def save_email_settings(body: EmailSettingsRequest, session: Session = Depends(g
     
     session.commit()
     return {"success": True}
+
+# ──────────────────────────────────────────────────────
+# EMAIL OTP: Send & Verify OTP for mail account setup
+# ──────────────────────────────────────────────────────
+
+class SendEmailOTPRequest(BaseModel):
+    email: str
+    purpose: str = "smtp_settings"  # smtp_settings | integration
+
+class VerifyEmailOTPRequest(BaseModel):
+    email: str
+    otp_code: str
+    purpose: str = "smtp_settings"
+
+@app.post("/email-otp/send")
+def send_email_otp(body: SendEmailOTPRequest, session: Session = Depends(get_session)):
+    """Generate a 6-digit OTP, persist it, and email it to the given address."""
+    import secrets
+    from database import EmailOTP
+
+    # Signup OTPs are not tied to a logged-in user (account doesn't exist yet)
+    if body.purpose == "signup":
+        uid = None
+        existing_user = session.exec(select(User).where(User.email == body.email)).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Email already registered. Please sign in instead.")
+    else:
+        uid = current_salesperson_id.get()
+        if not uid:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # Invalidate any previous unused OTPs for this user + email + purpose
+    old_q = select(EmailOTP).where(
+        EmailOTP.email == body.email,
+        EmailOTP.purpose == body.purpose,
+        EmailOTP.verified == False,
+    )
+    old = session.exec(old_q).all()
+    for o in old:
+        session.delete(o)
+
+    otp_code = f"{secrets.randbelow(900000) + 100000}"  # 6-digit code
+    session.add(EmailOTP(
+        user_id=uid,
+        email=body.email,
+        otp_code=otp_code,
+        purpose=body.purpose,
+        expires_at=datetime.utcnow() + timedelta(minutes=10),
+    ))
+    session.commit()
+
+    from modules.email_sender import send_otp_email
+    sent = send_otp_email(body.email, otp_code, purpose=body.purpose.replace("_", " "))
+
+    return {
+        "success": True,
+        "delivered": sent,
+        "message": "OTP sent to the email address.",
+        "debug_otp": otp_code if not sent else None,
+    }
+
+
+@app.post("/email-otp/verify")
+def verify_email_otp(body: VerifyEmailOTPRequest, session: Session = Depends(get_session)):
+    """Verify the OTP code. Returns { verified: true } on success."""
+    from database import EmailOTP
+    from datetime import datetime as _dt
+
+    # Signup OTPs are not tied to a logged-in user
+    if body.purpose == "signup":
+        uid = None
+    else:
+        uid = current_salesperson_id.get()
+        if not uid:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    rec = session.exec(
+        select(EmailOTP).where(
+            EmailOTP.user_id == uid,
+            EmailOTP.email == body.email,
+            EmailOTP.otp_code == body.otp_code,
+            EmailOTP.purpose == body.purpose,
+        )
+    ).first()
+
+    if not rec or rec.verified or rec.expires_at < _dt.utcnow():
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP code.")
+
+    rec.verified = True
+    session.commit()
+
+    return {"success": True, "verified": True, "message": "Email verified successfully."}
+
+@app.get("/leads/{lead_id}/research")
+def get_lead_research(lead_id: int, session: Session = Depends(get_session)):
+    research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+    if not research:
+        return {"research": None}
+    return {"research": {
+        "id": research.id, "company_overview": research.company_overview,
+        "competitors": research.competitors, "tech_stack": research.tech_stack,
+        "recent_news": research.recent_news, "pain_points": research.pain_points,
+        "business_goals": research.business_goals, "key_decision_makers": research.key_decision_makers,
+        "email_agent_data": research.email_agent_data,
+        "updated_at": research.updated_at.isoformat(),
+    }}
+
+@app.get("/leads/{lead_id}/sent-emails")
+def get_lead_sent_emails(lead_id: int, session: Session = Depends(get_session)):
+    """Return all sent emails associated with a lead, for the Opportunities tab."""
+    emails = session.exec(
+        select(SentEmail)
+        .where(SentEmail.lead_id == lead_id)
+        .order_by(SentEmail.sent_at.desc())
+    ).all()
+    return {"emails": [e.dict() for e in emails]}
+
