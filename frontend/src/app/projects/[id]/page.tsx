@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react";
 import { 
   StickyNote, Users, Check, Loader2, ArrowLeft, 
-  MessageSquare, Plus, Clock, UserPlus, Trash2, 
-  ChevronRight, Activity, Target, Shield, Briefcase, X, User
+   MessageSquare, Plus, Clock, UserPlus, Trash2,
+   ChevronRight, Activity, Target, Shield, Briefcase, X, User,
+   CheckCircle2, BarChart3, ListChecks, AlertCircle
 } from "lucide-react";
 import { API_BASE_URL } from '@/config';
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ export default function ProjectDetailPage() {
   const { user } = useRole();
   const { t } = useLanguage();
   const [data, setData] = useState<any>(null);
+   const [dashboard, setDashboard] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
   // Update state
@@ -40,6 +42,8 @@ export default function ProjectDetailPage() {
       const res = await fetch(`${API_BASE_URL}/projects/${id}`);
       const projectData = await res.json();
       setData(projectData);
+      const dashboardRes = await fetch(`${API_BASE_URL}/projects/${id}/dashboard`);
+      if (dashboardRes.ok) setDashboard(await dashboardRes.json());
       
       // Fetch users for assignment
       const [empRes, intRes] = await Promise.all([
@@ -243,6 +247,72 @@ export default function ProjectDetailPage() {
 
         {/* Left Column: Progress & Description */}
         <div className="lg:col-span-2 space-y-8 font-poppins text-gray-800 dark:text-zinc-100">
+                {/* Ticket-driven delivery dashboard */}
+                {dashboard && (
+                   <div className="space-y-6">
+                      <div className="flex items-center gap-3">
+                         <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600"><BarChart3 className="w-5 h-5" /></div>
+                         <div>
+                            <h2 className="text-xl font-black text-gray-900 dark:text-zinc-50">Delivery Dashboard</h2>
+                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Live metrics from project tickets</p>
+                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                         {[
+                            ['Tickets Raised', dashboard.tickets.total, 'text-blue-600', ListChecks],
+                            ['In Development', dashboard.tickets.in_dev, 'text-violet-600', Activity],
+                            ['In QA', dashboard.tickets.in_qa, 'text-amber-600', AlertCircle],
+                            ['In Production', dashboard.tickets.in_production, 'text-emerald-600', CheckCircle2],
+                         ].map(([label, value, color, Icon]: any) => (
+                            <div key={label} className="bg-white dark:bg-zinc-900 p-5 rounded-3xl border shadow-sm">
+                               <Icon className={`w-4 h-4 ${color} mb-4`} />
+                               <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</p>
+                               <p className="text-3xl font-black text-gray-900 dark:text-zinc-50 mt-1">{value}</p>
+                            </div>
+                         ))}
+                      </div>
+
+                      <div className="bg-white dark:bg-zinc-900 p-7 rounded-[2.5rem] border shadow-sm">
+                         <div className="flex items-center justify-between mb-6">
+                            <div>
+                               <h3 className="text-sm font-black uppercase tracking-widest text-gray-700 dark:text-zinc-200">Created vs Production</h3>
+                               <p className="text-xs text-gray-400 mt-1">Cumulative tickets raised compared with tickets released to production</p>
+                            </div>
+                            <span className="text-xs font-black text-emerald-600">{dashboard.tickets.done} released</span>
+                         </div>
+                         <div className="h-44 flex items-end gap-1 border-b border-gray-100 dark:border-zinc-800 pb-1">
+                            {(dashboard.tracker || []).slice(-30).map((point: any) => {
+                               const max = Math.max(1, ...((dashboard.tracker || []).map((p: any) => p.created)));
+                               return <div key={point.date} className="flex-1 h-full flex items-end gap-0.5" title={`${point.date}: ${point.created} created, ${point.production} production`}>
+                                  <div className="w-1/2 bg-blue-400 rounded-t" style={{ height: `${(point.created / max) * 100}%` }} />
+                                  <div className="w-1/2 bg-emerald-500 rounded-t" style={{ height: `${(point.production / max) * 100}%` }} />
+                               </div>;
+                            })}
+                         </div>
+                         <div className="flex gap-5 mt-4 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                            <span><i className="inline-block w-2 h-2 rounded-full bg-blue-400 mr-2" />Created</span>
+                            <span><i className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-2" />Production</span>
+                            <span className="ml-auto">{dashboard.tickets.not_started} not started</span>
+                         </div>
+                      </div>
+
+                      <div className="bg-white dark:bg-zinc-900 p-7 rounded-[2.5rem] border shadow-sm">
+                         <div className="flex items-center justify-between mb-5">
+                            <h3 className="text-sm font-black uppercase tracking-widest text-gray-700 dark:text-zinc-200">Developer Statistics</h3>
+                            <span className="text-xs font-bold text-gray-400">{dashboard.developer_count} developers</span>
+                         </div>
+                         <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                               <thead><tr className="text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100 dark:border-zinc-800"><th className="py-3">Developer</th><th>Total</th><th>Not Started</th><th>Dev</th><th>QA</th><th>Done</th></tr></thead>
+                               <tbody>{(dashboard.developers || []).map((developer: any) => <tr key={developer.id} className="border-b border-gray-50 dark:border-zinc-800/60 last:border-0"><td className="py-4 font-black text-gray-800 dark:text-zinc-100">{developer.name}<span className="block text-[10px] font-normal text-gray-400">{developer.email}</span></td><td className="font-bold">{developer.total}</td><td>{developer.not_started}</td><td>{developer.in_dev}</td><td>{developer.in_qa}</td><td className="font-black text-emerald-600">{developer.done}</td></tr>)}</tbody>
+                            </table>
+                         </div>
+                         {dashboard.tickets.unassigned > 0 && <p className="mt-4 text-xs font-bold text-amber-600">{dashboard.tickets.unassigned} ticket(s) need an owner.</p>}
+                      </div>
+                   </div>
+                )}
+
            {/* Progress Card */}
            <div className="bg-white dark:bg-zinc-900 p-8 md:p-10 rounded-[3rem] border shadow-sm relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:rotate-12 transition-transform">
