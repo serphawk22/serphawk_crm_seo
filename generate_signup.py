@@ -1,4 +1,22 @@
-"use client";
+import re
+
+with open('frontend/src/app/signup/page.tsx', 'r') as f:
+    signup_content = f.read()
+
+with open('frontend/src/app/login/page.tsx', 'r') as f:
+    login_content = f.read()
+
+# We want to extract the right panel (visual abstract) from login_content
+right_panel_match = re.search(r'\{/\* ── RIGHT PANEL \(Visual/Abstract\) ── \*/\}(.*?)\s+</div>\s+</div>\s+\);\s+\}', login_content, re.DOTALL)
+right_panel = right_panel_match.group(0) if right_panel_match else ""
+
+# We want to use the SignupLanguageSwitcher from signup_content
+signup_lang_match = re.search(r'const SIGNUP_LANGUAGES = \[.*?\] as const;\s+function SignupLanguageSwitcher\(\) \{.*?\}\s+(?=const FEATURES|export default)', signup_content, re.DOTALL)
+signup_lang = signup_lang_match.group(0) if signup_lang_match else ""
+
+# The new signup page will combine:
+# 1. Imports from signup_content (but we ensure they match what's needed for the dark layout)
+imports = """"use client";
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
@@ -14,132 +32,21 @@ import EmailOTPVerification from "@/components/EmailOTPVerification";
 import { useTranslation } from "react-i18next";
 import "@/i18n/config";
 
-const SIGNUP_LANGUAGES = [
-  { code: "en", nativeName: "English", name: "English", flag: "🇺🇸" },
-  { code: "es", nativeName: "Español", name: "Spanish", flag: "🇪🇸" },
-] as const;
+"""
 
-function SignupLanguageSwitcher() {
-  const { language, setLanguage, t } = useLanguage();
-  const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+# 2. SignupLanguageSwitcher logic
+# but we need to adjust its CSS classes to match the dark theme in LoginLanguageSwitcher
+dark_signup_lang = signup_lang.replace('bg-white border border-slate-200', 'bg-[#0a0a0a] border border-zinc-800')
+dark_signup_lang = dark_signup_lang.replace('hover:bg-slate-50 border-transparent text-slate-600 hover:border-slate-200', 'hover:bg-zinc-800 border-transparent text-zinc-400 hover:border-zinc-700')
+dark_signup_lang = dark_signup_lang.replace('bg-slate-50', 'bg-zinc-900')
+dark_signup_lang = dark_signup_lang.replace('border-slate-100', 'border-zinc-800')
+dark_signup_lang = dark_signup_lang.replace('text-slate-500', 'text-zinc-400')
+dark_signup_lang = dark_signup_lang.replace('text-slate-700', 'text-zinc-300')
+dark_signup_lang = dark_signup_lang.replace('hover:bg-slate-50', 'hover:bg-zinc-900')
+dark_signup_lang = dark_signup_lang.replace('text-slate-400', 'text-zinc-500')
 
-  const currentCode = SIGNUP_LANGUAGES.find((l) => l.code === language)
-    ? language
-    : "en";
-
-  // Close on outside click
-  useEffect(() => {
-    function handleOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, []);
-
-  const changeLanguage = (code: string) => {
-    setIsOpen(false);
-    setLanguage(code);
-    localStorage.setItem("crm-language", code);
-    localStorage.setItem("language", code);
-
-    if (code === "en") {
-      sessionStorage.setItem("crm_gt_restore_en", "1");
-      document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${window.location.hostname}`;
-      window.location.reload();
-    } else {
-      document.cookie = `googtrans=/en/${code}; path=/;`;
-      document.cookie = `googtrans=/en/${code}; path=/; domain=${window.location.hostname}`;
-      document.cookie = `googtrans=/en/${code}; path=/; domain=.${window.location.hostname}`;
-      document.documentElement.classList.remove("notranslate");
-      document.documentElement.removeAttribute("translate");
-      const tryTrigger = (attempts = 0) => {
-        const sel = document.querySelector<HTMLSelectElement>(".goog-te-combo");
-        if (sel) { sel.value = code; sel.dispatchEvent(new Event("change")); }
-        else if (attempts < 25) setTimeout(() => tryTrigger(attempts + 1), 100);
-      };
-      tryTrigger();
-    }
-  };
-
-  const current = SIGNUP_LANGUAGES.find((l) => l.code === currentCode) ?? SIGNUP_LANGUAGES[0];
-
-  return (
-    <div className="relative" ref={containerRef}>
-      <motion.button
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        onClick={() => setIsOpen((v) => !v)}
-        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all border text-sm font-semibold ${
-          isOpen
-            ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-            : "hover:bg-zinc-900 border-transparent text-zinc-400 hover:border-zinc-800"
-        }`}
-      >
-        <Globe className="w-4 h-4 text-zinc-500" />
-        <span className="hidden sm:block">{t("auth.language")}</span>
-        <div className="flex items-center gap-1.5 ml-1">
-          <span className="text-base leading-none">{current.flag}</span>
-          <span className="uppercase text-[10px] font-black tracking-wider text-zinc-500">
-            {current.code}
-          </span>
-        </div>
-        <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
-      </motion.button>
-
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 8, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.97 }}
-            transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full mt-2 w-52 bg-[#0a0a0a] border border-zinc-800 rounded-2xl shadow-xl overflow-hidden z-50"
-          >
-            <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900">
-              <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">
-                {t("auth.select_language")}
-              </p>
-            </div>
-            <div className="p-2 space-y-1">
-              {SIGNUP_LANGUAGES.map((lang) => {
-                const isActive = lang.code === currentCode;
-                return (
-                  <button
-                    key={lang.code}
-                    onClick={() => changeLanguage(lang.code)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-left ${
-                      isActive
-                        ? "bg-indigo-50 text-indigo-700"
-                        : "hover:bg-zinc-900 text-zinc-300"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg leading-none">{lang.flag}</span>
-                      <div className="flex flex-col">
-                        <span className={`text-sm font-semibold leading-tight ${isActive ? "text-indigo-700" : "group-hover:text-indigo-600"}`}>
-                          {lang.nativeName}
-                        </span>
-                        <span className="text-[10px] text-zinc-500 font-medium">{lang.name}</span>
-                      </div>
-                    </div>
-                    {isActive && <Check className="w-4 h-4 text-indigo-600" />}
-                  </button>
-                );
-              })}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-
+# 3. Main Component logic
+main_logic = """
 export default function SignupPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -243,7 +150,10 @@ export default function SignupPage() {
   };
 
   if (!mounted) return <div className="min-h-screen bg-[#0a0a0a]" />;
+"""
 
+# 4. JSX Layout
+jsx_layout = """
   return (
     <div className="min-h-screen w-full flex bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-hidden">
       
@@ -438,44 +348,11 @@ export default function SignupPage() {
         </div>
       </div>
 
-{/* ── RIGHT PANEL (Visual/Abstract) ── */}
-      <div className="relative hidden lg:flex flex-1 items-center justify-center overflow-hidden border-l border-zinc-800 bg-[#0f0f11]">
-        
-        {/* Subtle mesh background */}
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.15] mix-blend-overlay z-10 pointer-events-none" />
-        
-        {/* Elegant abstract glow */}
-        <div className="absolute w-[800px] h-[800px] rounded-full bg-indigo-500/10 blur-[100px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-        <div className="absolute w-[600px] h-[600px] rounded-full bg-violet-500/10 blur-[100px] top-1/2 left-1/2 -translate-x-1/2 translate-y-1/4" />
+"""
 
-        {/* Clean central graphic or quote */}
-        <div className="relative z-20 max-w-md w-full px-8 flex flex-col items-start gap-8">
-          <div className="w-full rounded-2xl bg-zinc-900/40 border border-zinc-800/60 p-8 backdrop-blur-sm shadow-2xl">
-            <div className="flex items-center gap-3 mb-6">
-              <CheckCircle2 className="w-5 h-5 text-indigo-400" />
-              <span className="text-sm font-medium text-zinc-400 uppercase tracking-widest">{t("auth.enterprise_ready")}</span>
-            </div>
-            <p className="text-xl font-medium text-zinc-200 leading-relaxed mb-8">
-              {t("auth.testimonial")}
-            </p>
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-zinc-800" />
-              <div>
-                <p className="text-sm font-semibold text-zinc-200">{t("auth.testimonial_author")}</p>
-                <p className="text-xs text-zinc-500">{t("auth.testimonial_role")}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex gap-6 opacity-40 ml-2">
-            {/* Abstract geometric accents */}
-            <div className="w-2 h-2 rounded-full bg-zinc-500" />
-            <div className="w-2 h-2 rounded-full bg-zinc-700" />
-            <div className="w-2 h-2 rounded-full bg-zinc-700" />
-          </div>
-        </div>
-      </div>
+final_content = imports + dark_signup_lang + main_logic + jsx_layout + right_panel
 
-    </div>
-  );
-}
+with open('frontend/src/app/signup/page.tsx', 'w') as f:
+    f.write(final_content)
+
+print("Generated signup/page.tsx successfully!")
