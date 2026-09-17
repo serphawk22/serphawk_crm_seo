@@ -2699,11 +2699,13 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
         
         # Current active tasks
         active_tasks = session.exec(select(Task).where(Task.assigned_to == user.id, Task.status.notin_(["approved", "rejected"]))).all()
+        assigned_cases = session.exec(select(Case).where(Case.assigned_to == user.id)).all()
         
         return {
             "type": "sales",
             "clients_handling": clients_count,
             "leads_converted": converted_leads_count,
+            "cases_assigned": len(assigned_cases),
             "active_tasks": [
                 {"id": t.id, "title": t.title, "status": t.status, "priority": t.priority} 
                 for t in active_tasks
@@ -2721,13 +2723,15 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
         in_dev = sum(1 for t in tickets if t.current_state == "In Dev")
         in_qa = sum(1 for t in tickets if t.current_state == "Given to QA")
         in_prod = sum(1 for t in tickets if t.current_state == "Prod Release")
+        assigned_cases = session.exec(select(Case).where(Case.assigned_to == user.id)).all()
         
         return {
             "type": "dev",
             "total_tickets": total_tickets,
             "in_dev": in_dev,
             "in_qa": in_qa,
-            "in_prod": in_prod
+            "in_prod": in_prod,
+            "cases_assigned": len(assigned_cases)
         }
         
     return {"type": "unknown"}
