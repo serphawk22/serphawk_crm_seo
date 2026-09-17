@@ -446,240 +446,160 @@ app.include_router(leaderboard_router)
 @app.on_event("startup")
 def on_startup():
     patch_openai()
-    create_db_and_tables()
-    
-    # Ensure SuperAdmin exists
-    try:
-        from sqlmodel import Session, select
-        from database import engine, User
-        with Session(engine) as session:
-            users = session.exec(select(User).where(User.role == 'SuperAdmin')).all()
-            if not users:
-                su = User(name='Super Admin', email='superadmin@serphawk.in', password='password123', role='SuperAdmin', tenant_id=None)
-                session.add(su)
-                session.commit()
-                print("Provisioned default SuperAdmin user.")
-    except Exception as e:
-        print("Error provisioning SuperAdmin:", e)
-    
-    # Auto-migrate: Add missing columns if they don't exist
-    from sqlalchemy import text
-    try:
-        with engine.connect() as conn:
-            conn.execute(text('ALTER TABLE projects ADD COLUMN IF NOT EXISTS "projectMemberIds" JSON;'))
-            conn.commit()
-    except Exception as e:
-        print("Migration error for projects:", e)
+    import threading as _t
 
-    # Auto-migrate tenant limits
-    tenant_migrations = [
-        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS limit_projects INTEGER DEFAULT 5;",
-        "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS usage_projects INTEGER DEFAULT 0;"
-    ]
-    for sql in tenant_migrations:
+    def _run_startup_migrations():
         try:
-            with engine.connect() as conn:
-                conn.execute(text(sql))
-                conn.commit()
+            create_db_and_tables()
+            print("DB tables ready.")
         except Exception as e:
-            pass
+            print("create_db_and_tables error:", e)
 
-    # Auto-migrate proposals new columns
-    proposal_migrations = [
-        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL;",
-        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS recipient_type VARCHAR(20) DEFAULT 'client';",
-        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS line_items JSON DEFAULT '[]'::json;",
-        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'MXN';",
-        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS signed_by_ip VARCHAR(255);",
-        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS signature_data TEXT;"
-    ]
-    for sql in proposal_migrations:
         try:
-            with engine.connect() as conn:
-                conn.execute(text(sql))
-                conn.commit()
+            from sqlmodel import Session, select
+            from database import engine, User
+            with Session(engine) as session:
+                users = session.exec(select(User).where(User.role == 'SuperAdmin')).all()
+                if not users:
+                    su = User(name='Super Admin', email='superadmin@serphawk.in', password='password123', role='SuperAdmin', tenant_id=None)
+                    session.add(su)
+                    session.commit()
+                    print("Provisioned default SuperAdmin user.")
         except Exception as e:
-            print(f"Migration proposals: {e}")
-        
-    # Tenant ID Migrations (Dynamic reflection to catch all models)
-    from sqlmodel import SQLModel
-    tables_with_tenant = [
-        name for name, table in SQLModel.metadata.tables.items() 
-        if "tenant_id" in table.columns
-    ]
-    
-    for table in tables_with_tenant:
+            print("Error provisioning SuperAdmin:", e)
+
+        # ── ALL SCHEMA MIGRATIONS IN A SINGLE CONNECTION WITH TIMEOUT ──
+        from sqlalchemy import text
+        from sqlmodel import SQLModel
+
+        all_migrations = [
+            # projects
+            'ALTER TABLE projects ADD COLUMN IF NOT EXISTS "projectMemberIds" JSON;',
+            "ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type VARCHAR DEFAULT 'Development';",
+            'ALTER TABLE projects ADD COLUMN IF NOT EXISTS "clientId" INTEGER;',
+            'ALTER TABLE projects ADD COLUMN IF NOT EXISTS "leadId" INTEGER;',
+            # tenants
+            "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS limit_projects INTEGER DEFAULT 5;",
+            "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS usage_projects INTEGER DEFAULT 0;",
+            "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS limit_calls INTEGER DEFAULT 5;",
+            "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS usage_calls INTEGER DEFAULT 0;",
+            # proposals
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL;",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS recipient_type VARCHAR(20) DEFAULT 'client';",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS line_items JSON DEFAULT '[]'::json;",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'MXN';",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS signed_by_ip VARCHAR(255);",
+            "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS signature_data TEXT;",
+            # users
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS sidebar_preferences JSON;",
+            # client_profiles
+            "ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS call_pitch_done BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS call_pitch_text TEXT;",
+            "ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS swot_analysis TEXT;",
+            # leads
+            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS ai_analysis_results JSON;",
+            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS swot_analysis TEXT;",
+            # cases
+            "ALTER TABLE cases ADD COLUMN IF NOT EXISTS url VARCHAR(1000);",
+            "ALTER TABLE cases ADD COLUMN IF NOT EXISTS case_type VARCHAR(100) DEFAULT 'Bug';",
+        ]
+
         try:
+            from database import engine
             with engine.connect() as conn:
-                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE;'))
-                conn.execute(text(f'CREATE INDEX IF NOT EXISTS ix_{table}_tenant_id ON {table} (tenant_id);'))
-                
-                # Fix for existing records that have NULL tenant_id after migration
-                conn.execute(text(f'UPDATE {table} SET tenant_id = 1 WHERE tenant_id IS NULL;'))
-                
+                conn.execute(text("SET lock_timeout = '5s';"))
+                for sql in all_migrations:
+                    try:
+                        conn.execute(text(sql))
+                    except Exception:
+                        pass
                 conn.commit()
+            print("Schema migrations completed.")
         except Exception as e:
-            print(f"Migration error for {table}: {e}")
-            
-    print(f"Finished checking and adding tenant_id columns to {len(tables_with_tenant)} tables.")
-        
-    try:
-        # Ensure varshithh@gmail.com is an Admin and reset admin@serphawk.com password
-        session = Session(engine)
-        harshith = session.exec(select(User).where(User.email == "varshithh@gmail.com")).first()
-        if harshith:
-            harshith.role = "Admin"
-            session.add(harshith)
-            
-        admin = session.exec(select(User).where(User.email == "admin@serphawk.com")).first()
-        if admin:
-            admin.password = _hash_password("Admin123!")
-            session.add(admin)
-            
-        sm = session.exec(select(User).where(User.email == "varsh@gmail.com")).first()
-        if sm:
-            sm.password = _hash_password("Admin123!")
-            session.add(sm)
-            
-        emp = session.exec(select(User).where(User.email == "varshit@gmail.com")).first()
-        if emp:
-            emp.password = _hash_password("Admin123!")
-            session.add(emp)
+            print(f"Migration batch error: {e}")
 
-        # Dedicated Demo-role account used by the frontend demo login button.
-        # Reset its password on startup so the demo always works.
-        demo = session.exec(select(User).where(User.email == "demo@serphawk.com")).first()
-        if demo:
-            demo.password = _hash_password("DemoPass123!")
-            session.add(demo)
+        # Tenant ID Migrations
+        tables_with_tenant = [
+            name for name, table in SQLModel.metadata.tables.items()
+            if "tenant_id" in table.columns
+        ]
+        try:
+            from database import engine
+            with engine.connect() as conn:
+                conn.execute(text("SET lock_timeout = '5s';"))
+                for table in tables_with_tenant:
+                    try:
+                        conn.execute(text(f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE;'))
+                        conn.execute(text(f'CREATE INDEX IF NOT EXISTS ix_{table}_tenant_id ON {table} (tenant_id);'))
+                        conn.execute(text(f'UPDATE {table} SET tenant_id = 1 WHERE tenant_id IS NULL;'))
+                    except Exception:
+                        pass
+                conn.commit()
+            print(f"Tenant_id columns checked for {len(tables_with_tenant)} tables.")
+        except Exception as e:
+            print(f"Tenant migration error: {e}")
 
-        session.commit()
-        session.close()
-    except Exception as e:
-        print("Admin user init error:", e)
+        try:
+            from sqlmodel import Session, select
+            from database import engine, User
+            session = Session(engine)
+            harshith = session.exec(select(User).where(User.email == "varshithh@gmail.com")).first()
+            if harshith:
+                harshith.role = "Admin"
+                session.add(harshith)
+            admin = session.exec(select(User).where(User.email == "admin@serphawk.com")).first()
+            if admin:
+                admin.password = _hash_password("Admin123!")
+                session.add(admin)
+            sm = session.exec(select(User).where(User.email == "varsh@gmail.com")).first()
+            if sm:
+                sm.password = _hash_password("Admin123!")
+                session.add(sm)
+            emp = session.exec(select(User).where(User.email == "varshit@gmail.com")).first()
+            if emp:
+                emp.password = _hash_password("Admin123!")
+                session.add(emp)
+            demo = session.exec(select(User).where(User.email == "demo@serphawk.com")).first()
+            if demo:
+                demo.password = _hash_password("DemoPass123!")
+                session.add(demo)
+            session.commit()
+            session.close()
+            print("Admin/demo user passwords synced.")
+        except Exception as e:
+            print("Admin user init error:", e)
 
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN sidebar_preferences JSON;"))
-            conn.commit()
-            print("Successfully added sidebar_preferences to users table.")
-    except Exception as e:
-        print("sidebar_preferences column already exists or error:", e)
+        # Keep the Neon serverless DB awake + pool warm.
+        try:
+            import threading as _threading
+            from database import engine as _keepalive_engine
 
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);"))
-            conn.commit()
-            print("Successfully added phone to users table.")
-    except Exception as e:
-        print("phone column already exists or error:", e)
-        
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS call_pitch_done BOOLEAN DEFAULT FALSE;"))
-            conn.execute(text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS call_pitch_text TEXT;"))
-            conn.commit()
-            print("Successfully added call_pitch columns to client_profiles table.")
-    except Exception as e:
-        print("call_pitch columns already exist or error:", e)
-        
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS limit_calls INTEGER DEFAULT 5;"))
-            conn.execute(text("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS usage_calls INTEGER DEFAULT 0;"))
-            conn.commit()
-            print("Successfully added call limit/usage columns to tenants table.")
-    except Exception as e:
-        print("tenant call limit/usage columns already exist or error:", e)
-        
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE leads ADD COLUMN ai_analysis_results JSON;"))
-            conn.commit()
-            print("Successfully added ai_analysis_results to leads table.")
-    except Exception as e:
-        print("ai_analysis_results column already exists or error:", e)
-        
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
-            conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
-            conn.commit()
-            print("Successfully added swot_analysis to client_profiles and leads tables.")
-    except Exception as e:
-        print("swot_analysis column already exists or error:", e)
-        
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE projects ADD COLUMN project_type VARCHAR DEFAULT 'Development';"))
-            conn.commit()
-            print("Successfully added project_type to projects table.")
-    except Exception as e:
-        print("project_type column already exists or error:", e)
-        
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE projects ADD COLUMN \"clientId\" INTEGER;"))
-            conn.commit()
-            print("Successfully added clientId to projects table.")
-    except Exception as e:
-        print("clientId column already exists or error:", e)
-        
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE projects ADD COLUMN \"leadId\" INTEGER;"))
-            conn.commit()
-            print("Successfully added leadId to projects table.")
-    except Exception as e:
-        print("leadId column already exists or error:", e)
+            def _db_keepalive_loop():
+                import time as _time
+                from sqlalchemy import text as _text
+                while True:
+                    _time.sleep(60)
+                    try:
+                        with _keepalive_engine.connect() as _conn:
+                            _conn.execute(_text("SELECT 1"))
+                    except Exception as _e:
+                        print("Keepalive ping failed:", _e)
 
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(50);"))
-            conn.commit()
-            print("Successfully added phone to users table.")
-    except Exception as e:
-        print("phone column already exists or error:", e)
+            _threading.Thread(target=_db_keepalive_loop, daemon=True, name="db-keepalive").start()
+            print("DB keepalive started (pings every 60s).")
+        except Exception as e:
+            print("Could not start DB keepalive:", e)
 
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE tenants ADD COLUMN limit_calls INTEGER DEFAULT 5;"))
-            conn.execute(text("ALTER TABLE tenants ADD COLUMN usage_calls INTEGER DEFAULT 0;"))
-            conn.commit()
-            print("Successfully added call limits to tenants table.")
-    except Exception as e:
-        print("tenant call limits already exist or error:", e)
+        print("All startup tasks completed.")
 
-# Keep the Neon serverless DB awake + pool warm. Without this, the first
-    # requests after ~5min of idle trigger a slow cold-start (~5-7s each).
-    try:
-        import threading as _threading
-        from database import engine as _keepalive_engine
+    # Run in background so HTTP server starts immediately
+    _t.Thread(target=_run_startup_migrations, daemon=True, name="startup-migrations").start()
+    print("Server starting — DB migrations running in background...")
 
-        def _db_keepalive_loop():
-            import time as _time
-            from sqlalchemy import text as _text
-            while True:
-                _time.sleep(60)
-                try:
-                    with _keepalive_engine.connect() as _conn:
-                        _conn.execute(_text("SELECT 1"))
-                except Exception as _e:
-                    print("Keepalive ping failed:", _e)
 
-        _threading.Thread(target=_db_keepalive_loop, daemon=True, name="db-keepalive").start()
-        print("DB keepalive started (pings every 60s).")
-    except Exception as e:
-        print("Could not start DB keepalive:", e)
 
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS url VARCHAR(1000);"))
-            conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS case_type VARCHAR(100) DEFAULT 'Bug';"))
-            conn.commit()
-            print("Successfully added url and case_type columns to cases table.")
-    except Exception as e:
-        print("cases url/case_type columns already exist or error:", e)
+
 
 allowed_origins = [
     "https://serphawk-crm-seo.vercel.app",

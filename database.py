@@ -33,10 +33,11 @@ if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
 engine = create_engine(
     DATABASE_URL,
     echo=False,
-    pool_pre_ping=False,          # disable: was causing 1 extra RTT per request
-    pool_size=10,
-    max_overflow=20,
+    pool_pre_ping=True,           # verify connections are alive before use
+    pool_size=3,                  # small pool for serverless Neon (was 10, caused hangss)
+    max_overflow=5,               # allow up to 8 total (was 20)
     pool_recycle=300,             # recycle connections every 5 min to keep them fresh
+    pool_timeout=10,              # fail fast if no connection available in 10s
     connect_args=connect_args
 )
 
@@ -1395,13 +1396,17 @@ def create_db_and_tables():
     ]
     
     with engine.connect() as conn:
+        try:
+            conn.execute(text("SET lock_timeout = '5s';"))
+        except Exception:
+            pass
         for query in migrations:
             try:
                 conn.execute(text(query))
-                conn.commit()
-            except Exception as e:
-                # Column likely already exists
-                conn.rollback()
+            except Exception:
+                # Column/index already exists — safe to ignore
+                pass
+        conn.commit()
         
     # Backfill tenant_id on marketplace_services from client_profiles
     try:
