@@ -27,16 +27,16 @@ pip install -r requirements.txt
 Verify or create a `.env` file at the root of the project with the following configuration:
 ```env
 # Database Configuration (Neon PostgreSQL)
-DATABASE_URL=postgresql://neondb_owner:npg_hBcyuG5E6frZ@ep-soft-violet-adtls8kq-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
 
 # OpenAI API Key for AI features
 OPENAI_API_KEY=sk-proj-...
 
 # Email Configuration (SMTP / serphawk.in)
 OUTLOOK_EMAIL=crm@serphawk.in
-OUTLOOK_PASSWORD=Crm@serphawk2200
+OUTLOOK_PASSWORD=your-email-password
 EMAIL_SENDER=crm@serphawk.in
-EMAIL_PASSWORD=Crm@serphawk2200
+EMAIL_PASSWORD=your-email-password
 
 # SMTP Server Details (serphawk.in Postfix)
 SMTP_SERVER=mail.serphawk.in

@@ -41,7 +41,7 @@ As requested, I have completely refactored the CRM navigation layout, shifting a
 > 1. Go to your Google Account Settings -> Security.
 > 2. Enable 2-Step Verification (if not already on).
 > 3. Search for "App Passwords" and generate a new 16-letter password (e.g., `abcd efgh ijkl mnop`).
-> 4. Open the `.env` file in this project and replace `EMAIL_PASSWORD=Myrock9876!@` with that exact 16-letter App Password.
+> 4. Open the `.env` file in this project and set `EMAIL_PASSWORD` to your email provider's app password.
 > Once you do this, the emails will immediately start landing in the inboxes, and your n8n webhook will trigger!
 
 Everything is live and successfully updated!

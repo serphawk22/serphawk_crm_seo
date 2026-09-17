@@ -15,7 +15,11 @@ old_engine = create_engine(old_url)
 OldSession = sessionmaker(bind=old_engine)
 
 # 2. Connect to new database
-new_url = "postgresql+psycopg2://neondb_owner:npg_hBcyuG5E6frZ@ep-soft-violet-adtls8kq-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require"
+new_url = os.getenv("NEW_DATABASE_URL")
+if not new_url:
+    raise RuntimeError("NEW_DATABASE_URL must be set before migrating databases")
+if new_url.startswith("postgresql://"):
+    new_url = new_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 new_engine = create_engine(new_url)
 
 # 3. Create tables in new database

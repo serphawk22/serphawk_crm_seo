@@ -529,12 +529,7 @@ export default function EmailAgentPage() {
           </>
         ) : (
           <div className="w-full max-w-4xl mx-auto">
-            <GmailAgentLoop
-              onSendManually={handleSendManually}
-              onSendAutomatically={handleSendAutomatically}
-              onSaveFollowUp={handleSaveFollowUp}
-              onRemoveResult={handleRemoveResult}
-            />
+            <GmailAgentLoop />
           </div>
         )}
 
