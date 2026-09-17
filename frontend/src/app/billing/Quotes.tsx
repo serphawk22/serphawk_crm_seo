@@ -408,7 +408,7 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
             <p className="text-sm text-slate-500 dark:text-zinc-400">Create and send quotes to leads or clients</p>
           </div>
         </div>
-        <button onClick={openCreate}
+<button onClick={openCreate}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white text-sm font-semibold hover:opacity-90 shadow-md transition-all active:scale-95">
           <Plus className="w-4 h-4" /> New Quote
         </button>
