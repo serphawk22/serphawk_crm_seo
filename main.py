@@ -12531,6 +12531,12 @@ def get_work_queue(
             if not is_admin and user and user.name:
                 tickets_q = tickets_q.filter(ProjectTicket.current_owner.ilike(user.name))
             tickets = tickets_q.all()
+
+        # Support cases assigned to this user; admins see all cases.
+        cases_q = session.query(Case)
+        if not is_admin:
+            cases_q = cases_q.filter(Case.assigned_to == user_id)
+        cases = cases_q.all()
         
         return {
             "ok": True,
@@ -12541,7 +12547,8 @@ def get_work_queue(
             "leads": leads,
             "contacts": contacts,
             "deals": deals,
-            "tickets": tickets
+            "tickets": tickets,
+            "cases": cases
         }
     except Exception as e:
         print("Work Queue Error:", e)

@@ -15,6 +15,10 @@ interface LeaderboardEntry {
   revenue_closed: number;
   meetings_booked: number;
   calls_made: number;
+  leads_managed?: number;
+  clients_managed?: number;
+  tickets_assigned?: number;
+  tickets_in_production?: number;
 }
 
 export default function LeaderboardPage() {
@@ -132,6 +136,10 @@ export default function LeaderboardPage() {
                 <th className="px-6 py-4 font-medium text-center">{t("leaderboard.deals_won")}</th>
                 <th className="px-6 py-4 font-medium text-center">{t("leaderboard.meetings_booked")}</th>
                 <th className="px-6 py-4 font-medium text-center">{t("leaderboard.calls_made")}</th>
+                <th className="px-6 py-4 font-medium text-center">Leads</th>
+                <th className="px-6 py-4 font-medium text-center">Clients</th>
+                <th className="px-6 py-4 font-medium text-center">Tickets</th>
+                <th className="px-6 py-4 font-medium text-center">In Production</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
@@ -168,6 +176,10 @@ export default function LeaderboardPage() {
                   <td className="px-6 py-4 text-center font-medium text-slate-600 dark:text-zinc-300">
                     {entry.calls_made}
                   </td>
+                  <td className="px-6 py-4 text-center font-bold text-amber-600">{entry.leads_managed || 0}</td>
+                  <td className="px-6 py-4 text-center font-bold text-indigo-600">{entry.clients_managed || 0}</td>
+                  <td className="px-6 py-4 text-center font-bold text-cyan-600">{entry.tickets_assigned || 0}</td>
+                  <td className="px-6 py-4 text-center font-black text-emerald-600">{entry.tickets_in_production || 0}</td>
                 </tr>
               ))}
             </tbody>
