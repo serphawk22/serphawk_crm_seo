@@ -4,6 +4,7 @@ import { useRole } from "@/context/RoleContext";
 import { Moon, Sun, LogOut, Code2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 export function DeveloperHeader() {
   const { activeLang, setLanguage, t } = useLanguage();
@@ -47,6 +48,7 @@ export function DeveloperHeader() {
             <h1 className="text-sm font-black text-slate-900 dark:text-zinc-50 tracking-tight leading-tight">{t("dev_header.workspace")}</h1>
             <p className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">{user?.name || t("dev_header.developer")}</p>
           </div>
+          <Link href="/work-queue" className="ml-4 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 text-xs font-black">My Work Queue</Link>
         </div>
 
         {/* Right Actions */}

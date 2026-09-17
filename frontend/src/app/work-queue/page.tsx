@@ -17,7 +17,7 @@ export default function WorkQueuePage() {
   const [activeTab, setActiveTab] = useState("combined");
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>({
-    tasks: [], meetings: [], calls: [], leads: [], contacts: [], deals: [], tickets: [], cases: []
+    tasks: [], meetings: [], calls: [], leads: [], contacts: [], deals: [], clients: [], tickets: [], ticket_due: [], ticket_ongoing: [], ticket_completed: [], cases: []
   });
 
   useEffect(() => {
@@ -40,6 +40,9 @@ export default function WorkQueuePage() {
         if (json.contacts) json.contacts = json.contacts.map((i:any) => ({...i, _type: 'contact'}));
         if (json.deals) json.deals = json.deals.map((i:any) => ({...i, _type: 'deal'}));
         if (json.tickets) json.tickets = json.tickets.map((i:any) => ({...i, _type: 'ticket'}));
+        if (json.ticket_due) json.ticket_due = json.ticket_due.map((i:any) => ({...i, _type: 'ticket_due'}));
+        if (json.ticket_ongoing) json.ticket_ongoing = json.ticket_ongoing.map((i:any) => ({...i, _type: 'ticket_ongoing'}));
+        if (json.ticket_completed) json.ticket_completed = json.ticket_completed.map((i:any) => ({...i, _type: 'ticket_completed'}));
         if (json.cases) json.cases = json.cases.map((i:any) => ({...i, _type: 'case'}));
         setData(json);
       }
@@ -54,7 +57,11 @@ export default function WorkQueuePage() {
     { id: "combined", label: t("work_queue.tab_combined"), icon: Target, color: "text-indigo-500", bg: "bg-indigo-100" },
     { id: "tasks", label: t("work_queue.tab_tasks"), icon: CheckSquare, color: "text-blue-500", bg: "bg-blue-100" },
     { id: "tickets", label: t("work_queue.tab_tickets") || "Tickets", icon: Play, color: "text-cyan-500", bg: "bg-cyan-100" },
+    { id: "ticket_due", label: "Tickets Due", icon: Clock, color: "text-amber-500", bg: "bg-amber-100" },
+    { id: "ticket_ongoing", label: "In Development", icon: Play, color: "text-violet-500", bg: "bg-violet-100" },
+    { id: "ticket_completed", label: "Completed", icon: CheckCircle, color: "text-emerald-500", bg: "bg-emerald-100" },
     { id: "cases", label: "Support Cases", icon: AlertCircle, color: "text-rose-500", bg: "bg-rose-100" },
+    { id: "clients", label: "My Clients", icon: Briefcase, color: "text-indigo-500", bg: "bg-indigo-100" },
     { id: "meetings", label: t("work_queue.tab_meetings"), icon: Calendar, color: "text-purple-500", bg: "bg-purple-100" },
     { id: "calls", label: t("work_queue.tab_calls"), icon: PhoneCall, color: "text-green-500", bg: "bg-green-100" },
     { id: "leads", label: t("work_queue.tab_leads"), icon: Radar, color: "text-amber-500", bg: "bg-amber-100" },
@@ -133,6 +140,24 @@ export default function WorkQueuePage() {
         Icon = Play;
         badgeColor = "bg-cyan-100 text-cyan-700";
         break;
+      case "ticket_due":
+      case "ticket_ongoing":
+      case "ticket_completed":
+        title = item.task;
+        sub = item.project_id ? `Project #${item.project_id}` : "Development ticket";
+        time = item.requested_date || item.date_release_prod || "";
+        status = item.current_state;
+        Icon = type === "ticket_completed" ? CheckCircle : type === "ticket_ongoing" ? Play : Clock;
+        badgeColor = type === "ticket_completed" ? "bg-emerald-100 text-emerald-700" : type === "ticket_ongoing" ? "bg-violet-100 text-violet-700" : "bg-amber-100 text-amber-700";
+        break;
+      case "client":
+        title = item.companyName || item.projectName || "Client";
+        sub = item.email || item.phone || "Assigned client";
+        time = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "";
+        status = item.status;
+        Icon = Briefcase;
+        badgeColor = "bg-indigo-100 text-indigo-700";
+        break;
       case "case":
         title = item.subject;
         sub = item.description || "Support case";
@@ -188,7 +213,10 @@ export default function WorkQueuePage() {
         ...(data.leads || []).map((i:any) => ({...i, _type: 'lead'})),
         ...(data.contacts || []).map((i:any) => ({...i, _type: 'contact'})),
         ...(data.deals || []).map((i:any) => ({...i, _type: 'deal'})),
-        ...(data.tickets || []).map((i:any) => ({...i, _type: 'ticket'})),
+        ...(data.ticket_due || []).map((i:any) => ({...i, _type: 'ticket_due'})),
+        ...(data.ticket_ongoing || []).map((i:any) => ({...i, _type: 'ticket_ongoing'})),
+        ...(data.ticket_completed || []).map((i:any) => ({...i, _type: 'ticket_completed'})),
+        ...(data.clients || []).map((i:any) => ({...i, _type: 'client'})),
         ...(data.cases || []).map((i:any) => ({...i, _type: 'case'}))
       ].sort((a, b) => {
         const d1 = new Date(a.due_date || a.scheduled_at || a.created_at || 0).getTime();
@@ -196,10 +224,19 @@ export default function WorkQueuePage() {
         return d1 - d2;
       });
     }
-    return (data[activeTab] || []).map((i:any) => ({...i, _type: activeTab.slice(0, -1)}));
+    const typeMap: Record<string, string> = {
+      ticket_due: "ticket_due",
+      ticket_ongoing: "ticket_ongoing",
+      ticket_completed: "ticket_completed",
+      clients: "client",
+      cases: "case",
+    };
+    return (data[activeTab] || []).map((i:any) => ({...i, _type: typeMap[activeTab] || activeTab.slice(0, -1)}));
   };
 
   const filteredItems = getFilteredItems();
+  const combinedCount = ["tasks", "meetings", "calls", "leads", "contacts", "deals", "clients", "ticket_due", "ticket_ongoing", "ticket_completed", "cases"]
+    .reduce((total, key) => total + (data[key]?.length || 0), 0);
   const emptyTabLabel = activeTab === 'combined' ? t("work_queue.empty_items_plural") : TABS.find(tab => tab.id === activeTab)?.label || activeTab;
 
   return (
@@ -253,7 +290,7 @@ export default function WorkQueuePage() {
                 : "bg-slate-100 dark:bg-zinc-800 text-slate-500"
               }`}>
                 {tab.id === 'combined' 
-                  ? Object.values(data).reduce((acc:any, curr:any) => acc + (Array.isArray(curr) ? curr.length : 0), 0)
+                  ? combinedCount
                   : (data[tab.id]?.length || 0)}
               </span>
             </button>

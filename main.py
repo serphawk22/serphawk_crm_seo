@@ -716,6 +716,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"https://([a-z0-9-]+\.)*serphawk\.in",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -12488,13 +12489,15 @@ def get_work_queue(
         start_dt = datetime.combine(target_date, datetime.min.time())
         end_dt = datetime.combine(target_date, datetime.max.time())
         
-        is_admin = role == "Admin"
+        # Work Queue is personal by design. Admins can inspect the same personal
+        # queue by selecting their own account; do not leak the whole workspace.
+        is_admin = False
         
         # 1. Tasks
-        tasks_q = session.query(Task).filter(Task.due_date >= start_dt, Task.due_date <= end_dt)
+        tasks_q = session.query(Task)
         if not is_admin:
             tasks_q = tasks_q.filter(Task.assigned_to == user_id)
-        tasks = tasks_q.all()
+        tasks = [task for task in tasks_q.all() if (task.due_date or "")[:10] == target_date.isoformat()]
         
         # 2. Meetings
         meetings_q = session.query(Meeting).filter(Meeting.scheduled_at >= start_dt, Meeting.scheduled_at <= end_dt)
@@ -12503,10 +12506,12 @@ def get_work_queue(
         meetings = meetings_q.all()
         
         # 3. Scheduled Calls
-        calls_q = session.query(ScheduledCall).filter(ScheduledCall.scheduled_at >= start_dt, ScheduledCall.scheduled_at <= end_dt)
-        if not is_admin:
-            calls_q = calls_q.filter(ScheduledCall.assigned_to == user_id)
-        calls = calls_q.all()
+        calls_q = session.query(ScheduledCall)
+        user_owner_names = {str(user_id).lower()}
+        current_user = session.get(User, user_id)
+        if current_user:
+            user_owner_names.update({(current_user.name or "").strip().lower(), (current_user.email or "").strip().lower()})
+        calls = [call for call in calls_q.all() if call.scheduled_at and start_dt <= call.scheduled_at <= end_dt and (call.assigned_to or "").strip().lower() in user_owner_names]
         
         # 4. Leads (using created_at as proxy for activity if followup doesn't exist, wait Lead has no followup_date)
         # We'll just show leads created on that day
@@ -12527,14 +12532,25 @@ def get_work_queue(
             deals_q = deals_q.filter(Deal.owner_id == user_id)
         deals = deals_q.all()
         
-        # 7. Tickets (Dev Team)
+        # 7. Tickets (developer/intern ownership, split by selected date)
         user = session.get(User, user_id)
         tickets = []
-        if is_admin or (user and user.role in ["ProjectMember", "Intern"]):
-            tickets_q = session.query(ProjectTicket)
-            if not is_admin and user and user.name:
-                tickets_q = tickets_q.filter(ProjectTicket.current_owner.ilike(user.name))
-            tickets = tickets_q.all()
+        ticket_due = []
+        ticket_ongoing = []
+        ticket_completed = []
+        if user and user.role in ["ProjectMember", "Intern", "Developer"]:
+            owner_names = {str(user.id).lower(), (user.name or "").strip().lower(), (user.email or "").strip().lower()}
+            all_project_tickets = session.query(ProjectTicket).all()
+            owned_tickets = [ticket for ticket in all_project_tickets if (ticket.current_owner or "").strip().lower() in owner_names]
+            ticket_due = [ticket for ticket in owned_tickets if ticket.requested_date == target_date.isoformat()]
+            ticket_ongoing = [ticket for ticket in owned_tickets if ticket.current_state == "In Dev"]
+            ticket_completed = [ticket for ticket in owned_tickets if ticket.date_release_prod == target_date.isoformat()]
+            tickets = list({ticket.id: ticket for ticket in ticket_due + ticket_ongoing + ticket_completed}.values())
+
+        # Sales ownership: only clients/leads assigned to the signed-in user.
+        clients = []
+        if user and user.role in ["Admin", "Employee", "SalesManager", "Sales", "Demo"]:
+            clients = session.query(ClientProfile).filter(ClientProfile.assignedEmployeeId == user_id).all()
 
         # Support cases assigned to this user; admins see all cases.
         cases_q = session.query(Case)
@@ -12552,6 +12568,10 @@ def get_work_queue(
             "contacts": contacts,
             "deals": deals,
             "tickets": tickets,
+            "ticket_due": ticket_due,
+            "ticket_ongoing": ticket_ongoing,
+            "ticket_completed": ticket_completed,
+            "clients": clients,
             "cases": cases
         }
     except Exception as e:
