@@ -632,7 +632,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
             <div className="mb-8">
               <div className="flex items-center justify-between mb-4">
                 <h4 className="text-lg font-black text-slate-800 dark:text-zinc-100 dark:text-white">AI Agent Output</h4>
-                <button
+                {false && <button
                   onClick={() => {
                     const printWindow = window.open('', '_blank');
                     if (!printWindow) return;
@@ -708,7 +708,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                 >
                   <FileText size={16} />
                   Download PDF Report
-                </button>
+                </button>}
               </div>
               <ResultCard
                 historyId="research"

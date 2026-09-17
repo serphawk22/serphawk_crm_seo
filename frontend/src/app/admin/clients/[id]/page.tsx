@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity, MessageSquare, StickyNote, CheckSquare, Building2, ChevronDown,
   Target, FolderOpen, HeartPulse, LayoutDashboard, Users,
-  TrendingUp, TrendingDown, Lightbulb, ShieldAlert, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, BrainCircuit, Loader2, Radar
+  TrendingUp, TrendingDown, Lightbulb, ShieldAlert, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, Loader2, Radar
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -38,7 +38,6 @@ const TABS = [
   { key: 'files',          label: 'Files',           icon: FolderOpen      },
   { key: 'health',         label: 'Health',          icon: HeartPulse      },
   { key: 'conversations',  label: 'Conversations',   icon: MessageSquare   },
-  { key: 'api-intelligence', label: 'API Intelligence', icon: BrainCircuit },
 ];
 
 // ─── Loading Skeleton ────────────────────────────────────────────────────────

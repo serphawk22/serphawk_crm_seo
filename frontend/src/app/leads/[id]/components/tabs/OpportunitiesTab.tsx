@@ -300,6 +300,7 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
         {[
           { id: 'presales', label: language === 'es' ? 'Análisis del Agente IA' : 'AI Agent Analysis', icon: Brain },
           ...(hasEmailAgentData ? [{ id: 'emails', label: language === 'es' ? 'Correos Salientes' : 'Outbound Emails', icon: Mail }] : []),
+          { id: 'radar', label: language === 'es' ? 'Análisis Radar' : 'Radar Analysis', icon: Radar },
         ].map(t => (
           <button
             key={t.id}
