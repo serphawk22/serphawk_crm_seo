@@ -5,7 +5,7 @@ import { HeadphonesIcon, Plus, X, Search, Loader2, Trash2, Edit2, AlertCircle, C
 import { API_BASE_URL } from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
 
-interface Case { id: number; case_number?: string; subject: string; description?: string; status: string; priority: string; category?: string; case_type?: string; url?: string; client_name?: string; lead_name?: string; assignee_name?: string; created_at: string; resolved_at?: string; }
+interface Case { id: number; case_number?: string; subject: string; description?: string; status: string; priority: string; category?: string; case_type?: string; url?: string; client_name?: string; lead_name?: string; assignee_name?: string; assigned_to?: number | null; created_at: string; resolved_at?: string; }
 const STATUSES = ["Open", "In Progress", "Resolved", "Closed"];
 const PRIORITIES = ["Low", "Medium", "High", "Urgent"];
 const CASE_TYPES = ["Bug", "Feature Request"];
@@ -24,7 +24,8 @@ export default function CasesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editCase, setEditCase] = useState<Case | null>(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ subject: "", description: "", status: "Open", priority: "Medium", category: "", case_type: "Bug", url: "" });
+  const [form, setForm] = useState({ subject: "", description: "", status: "Open", priority: "Medium", category: "", case_type: "Bug", url: "", assigned_to: "" as number | string });
+  const [users, setUsers] = useState<any[]>([]);
 
   const load = () => {
     setLoading(true);
@@ -32,7 +33,7 @@ export default function CasesPage() {
       setCases(Array.isArray(cd.cases) ? cd.cases : []);
     }).finally(() => setLoading(false));
   };
-  useEffect(load, []);
+  useEffect(() => { load(); fetch(`${API_BASE_URL}/users`).then(r => r.json()).then(d => setUsers(d.users || [])).catch(() => {}); }, []);
 
   const filtered = useMemo(() => cases.filter(c => {
     const s = search.toLowerCase();
@@ -41,15 +42,15 @@ export default function CasesPage() {
       && (priorityFilter === "All" || c.priority === priorityFilter);
   }), [cases, search, statusFilter, priorityFilter]);
 
-  const openCreate = () => { setEditCase(null); setForm({ subject: "", description: "", status: "Open", priority: "Medium", category: "", case_type: "Bug", url: "" }); setShowModal(true); };
-  const openEdit = (c: Case) => { setEditCase(c); setForm({ subject: c.subject, description: c.description || "", status: c.status, priority: c.priority, category: c.category || "", case_type: c.case_type || "Bug", url: c.url || "" }); setShowModal(true); };
+  const openCreate = () => { setEditCase(null); setForm({ subject: "", description: "", status: "Open", priority: "Medium", category: "", case_type: "Bug", url: "", assigned_to: "" }); setShowModal(true); };
+  const openEdit = (c: Case) => { setEditCase(c); setForm({ subject: c.subject, description: c.description || "", status: c.status, priority: c.priority, category: c.category || "", case_type: c.case_type || "Bug", url: c.url || "", assigned_to: c.assigned_to || "" } as any); setShowModal(true); };
 
   const handleSave = async () => {
     if (!form.subject.trim()) return;
     setSaving(true);
     const url = editCase ? `${API_BASE_URL}/cases/${editCase.id}` : `${API_BASE_URL}/cases`;
     const method = editCase ? "PUT" : "POST";
-    await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+    await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, assigned_to: (form as any).assigned_to ? Number((form as any).assigned_to) : null }) });
     setSaving(false); setShowModal(false); load();
   };
   const handleDelete = async (id: number) => { await fetch(`${API_BASE_URL}/cases/${id}`, { method: "DELETE" }); load(); };
@@ -132,6 +133,7 @@ export default function CasesPage() {
                   {c.url && <a href={c.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-blue-500 hover:underline"><Globe className="w-3 h-3" />{c.url}</a>}
                   {c.client_name && <span>{t("support_cases.label_client")} {c.client_name}</span>}
                   {c.assignee_name && <span>{t("support_cases.label_assigned")} {c.assignee_name}</span>}
+                  {!c.assignee_name && <span className="text-amber-600 font-bold">Unassigned</span>}
                   <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(c.created_at).toLocaleDateString()}</span>
                 </div>
               </div>
@@ -207,6 +209,15 @@ export default function CasesPage() {
                       {PRIORITIES.map(p => <option key={p}>{p}</option>)}
                     </select>
                   </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1 block">Assign To</label>
+                  <select value={(form as any).assigned_to || ""} onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value } as any))} className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500">
+                    <option value="">Unassigned</option>
+                    {users.filter(u => ["Admin", "Employee", "SalesManager", "ProjectMember", "Intern", "Developer"].includes(u.role)).map(u => <option key={u.id} value={u.id}>{u.name || u.email} ({u.role})</option>)}
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1">Cases can be assigned to sales, developers, or interns.</p>
                 </div>
               </div>
 

@@ -369,6 +369,11 @@ export default function TeamsPage() {
                             </p>
                             <p className="text-xs font-bold text-gray-400 mt-1">Converted</p>
                           </div>
+                          <div className="bg-rose-50 dark:bg-rose-500/5 rounded-2xl p-5 border border-rose-100 dark:border-rose-500/10">
+                            <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 mb-2"><Ticket className="w-5 h-5" /><span className="text-xs font-black uppercase tracking-wider">Cases Assigned</span></div>
+                            <p className="text-3xl font-black text-gray-900 dark:text-white">{userStats.cases_assigned || 0}</p>
+                            <p className="text-xs font-bold text-gray-400 mt-1">Support ownership</p>
+                          </div>
                         </div>
 
                         <div>
@@ -417,6 +422,10 @@ export default function TeamsPage() {
                               <span className="font-bold text-sm">In Development</span>
                             </div>
                             <span className="font-black text-lg text-gray-900 dark:text-white">{userStats.in_dev}</span>
+                          </div>
+                          <div className="flex items-center justify-between p-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-sm">
+                            <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400"><Ticket className="w-5 h-5" /><span className="font-bold text-sm">Support Cases</span></div>
+                            <span className="font-black text-lg text-gray-900 dark:text-white">{userStats.cases_assigned || 0}</span>
                           </div>
                           
                           <div className="flex items-center justify-between p-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-sm">

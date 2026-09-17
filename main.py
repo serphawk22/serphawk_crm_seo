@@ -2699,11 +2699,13 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
         
         # Current active tasks
         active_tasks = session.exec(select(Task).where(Task.assigned_to == user.id, Task.status.notin_(["approved", "rejected"]))).all()
+        assigned_cases = session.exec(select(Case).where(Case.assigned_to == user.id)).all()
         
         return {
             "type": "sales",
             "clients_handling": clients_count,
             "leads_converted": converted_leads_count,
+            "cases_assigned": len(assigned_cases),
             "active_tasks": [
                 {"id": t.id, "title": t.title, "status": t.status, "priority": t.priority} 
                 for t in active_tasks
@@ -2721,13 +2723,15 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
         in_dev = sum(1 for t in tickets if t.current_state == "In Dev")
         in_qa = sum(1 for t in tickets if t.current_state == "Given to QA")
         in_prod = sum(1 for t in tickets if t.current_state == "Prod Release")
+        assigned_cases = session.exec(select(Case).where(Case.assigned_to == user.id)).all()
         
         return {
             "type": "dev",
             "total_tickets": total_tickets,
             "in_dev": in_dev,
             "in_qa": in_qa,
-            "in_prod": in_prod
+            "in_prod": in_prod,
+            "cases_assigned": len(assigned_cases)
         }
         
     return {"type": "unknown"}
@@ -4871,6 +4875,79 @@ def get_project(project_id: int, session: Session = Depends(get_session)):
             "interns": interns,
             "projectMembers": project_members
         }
+    }
+
+
+@app.get("/projects/{project_id}/dashboard")
+def get_project_dashboard(project_id: int, session: Session = Depends(get_session)):
+    """Return ticket-driven delivery metrics for a project dashboard."""
+    project = session.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    tickets = session.exec(
+        select(ProjectTicket).where(ProjectTicket.project_id == project_id)
+    ).all()
+    team_ids = list(dict.fromkeys((project.employeeIds or []) + (project.projectMemberIds or []) + (project.internIds or [])))
+    team_users = session.exec(select(User).where(User.id.in_(team_ids))).all() if team_ids else []
+
+    states = ["Planning", "In Dev", "Given to QA", "Prod Release"]
+    status_counts = {state: sum(1 for ticket in tickets if ticket.current_state == state) for state in states}
+    production_count = sum(1 for ticket in tickets if ticket.date_release_prod or ticket.current_state == "Prod Release")
+
+    def parse_date(value):
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
+        except (TypeError, ValueError):
+            return None
+
+    created_dates = [ticket.created_at.date() for ticket in tickets if ticket.created_at]
+    released_dates = [parse_date(ticket.date_release_prod) for ticket in tickets]
+    all_dates = [date for date in created_dates + [date for date in released_dates if date] if date]
+    tracker = []
+    if all_dates:
+        start_date, end_date = min(all_dates), max(max(all_dates), datetime.utcnow().date())
+        current = start_date
+        while current <= end_date:
+            created = sum(1 for date in created_dates if date <= current)
+            released = sum(1 for date in released_dates if date and date <= current)
+            tracker.append({"date": current.isoformat(), "created": created, "production": released})
+            current += timedelta(days=1)
+
+    developer_stats = []
+    for member in team_users:
+        names = {str(member.id), (member.name or "").strip().lower(), (member.email or "").strip().lower()}
+        assigned = [ticket for ticket in tickets if (ticket.current_owner or "").strip().lower() in names]
+        developer_stats.append({
+            "id": member.id,
+            "name": member.name or member.email,
+            "email": member.email,
+            "total": len(assigned),
+            "done": sum(1 for ticket in assigned if ticket.date_release_prod or ticket.current_state == "Prod Release"),
+            "not_started": sum(1 for ticket in assigned if ticket.current_state == "Planning"),
+            "in_dev": sum(1 for ticket in assigned if ticket.current_state == "In Dev"),
+            "in_qa": sum(1 for ticket in assigned if ticket.current_state == "Given to QA"),
+        })
+
+    assigned_names = {str(member.id).lower() for member in team_users} | {(member.name or "").strip().lower() for member in team_users} | {(member.email or "").strip().lower() for member in team_users}
+    unassigned = sum(1 for ticket in tickets if not (ticket.current_owner or "").strip() or ticket.current_owner.strip().lower() not in assigned_names)
+    return {
+        "project_id": project_id,
+        "tickets": {
+            "total": len(tickets),
+            "done": production_count,
+            "not_started": status_counts["Planning"],
+            "in_dev": status_counts["In Dev"],
+            "in_qa": status_counts["Given to QA"],
+            "in_production": status_counts["Prod Release"],
+            "unassigned": unassigned,
+            "status_counts": status_counts,
+        },
+        "developers": developer_stats,
+        "developer_count": len(team_users),
+        "tracker": tracker,
     }
 
 
@@ -12458,6 +12535,12 @@ def get_work_queue(
             if not is_admin and user and user.name:
                 tickets_q = tickets_q.filter(ProjectTicket.current_owner.ilike(user.name))
             tickets = tickets_q.all()
+
+        # Support cases assigned to this user; admins see all cases.
+        cases_q = session.query(Case)
+        if not is_admin:
+            cases_q = cases_q.filter(Case.assigned_to == user_id)
+        cases = cases_q.all()
         
         return {
             "ok": True,
@@ -12468,7 +12551,8 @@ def get_work_queue(
             "leads": leads,
             "contacts": contacts,
             "deals": deals,
-            "tickets": tickets
+            "tickets": tickets,
+            "cases": cases
         }
     except Exception as e:
         print("Work Queue Error:", e)

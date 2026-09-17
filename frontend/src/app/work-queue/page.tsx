@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { 
   Calendar, CheckSquare, PhoneCall, Users, Target, Radar, Briefcase,
-  Clock, CheckCircle, Search, Filter, Loader2, Play
+  Clock, CheckCircle, Search, Filter, Loader2, Play, AlertCircle
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
@@ -17,7 +17,7 @@ export default function WorkQueuePage() {
   const [activeTab, setActiveTab] = useState("combined");
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>({
-    tasks: [], meetings: [], calls: [], leads: [], contacts: [], deals: [], tickets: []
+    tasks: [], meetings: [], calls: [], leads: [], contacts: [], deals: [], tickets: [], cases: []
   });
 
   useEffect(() => {
@@ -40,6 +40,7 @@ export default function WorkQueuePage() {
         if (json.contacts) json.contacts = json.contacts.map((i:any) => ({...i, _type: 'contact'}));
         if (json.deals) json.deals = json.deals.map((i:any) => ({...i, _type: 'deal'}));
         if (json.tickets) json.tickets = json.tickets.map((i:any) => ({...i, _type: 'ticket'}));
+        if (json.cases) json.cases = json.cases.map((i:any) => ({...i, _type: 'case'}));
         setData(json);
       }
     } catch (err) {
@@ -53,6 +54,7 @@ export default function WorkQueuePage() {
     { id: "combined", label: t("work_queue.tab_combined"), icon: Target, color: "text-indigo-500", bg: "bg-indigo-100" },
     { id: "tasks", label: t("work_queue.tab_tasks"), icon: CheckSquare, color: "text-blue-500", bg: "bg-blue-100" },
     { id: "tickets", label: t("work_queue.tab_tickets") || "Tickets", icon: Play, color: "text-cyan-500", bg: "bg-cyan-100" },
+    { id: "cases", label: "Support Cases", icon: AlertCircle, color: "text-rose-500", bg: "bg-rose-100" },
     { id: "meetings", label: t("work_queue.tab_meetings"), icon: Calendar, color: "text-purple-500", bg: "bg-purple-100" },
     { id: "calls", label: t("work_queue.tab_calls"), icon: PhoneCall, color: "text-green-500", bg: "bg-green-100" },
     { id: "leads", label: t("work_queue.tab_leads"), icon: Radar, color: "text-amber-500", bg: "bg-amber-100" },
@@ -131,6 +133,14 @@ export default function WorkQueuePage() {
         Icon = Play;
         badgeColor = "bg-cyan-100 text-cyan-700";
         break;
+      case "case":
+        title = item.subject;
+        sub = item.description || "Support case";
+        time = item.created_at ? new Date(item.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
+        status = item.status;
+        Icon = AlertCircle;
+        badgeColor = "bg-rose-100 text-rose-700";
+        break;
     }
 
     return (
@@ -178,7 +188,8 @@ export default function WorkQueuePage() {
         ...(data.leads || []).map((i:any) => ({...i, _type: 'lead'})),
         ...(data.contacts || []).map((i:any) => ({...i, _type: 'contact'})),
         ...(data.deals || []).map((i:any) => ({...i, _type: 'deal'})),
-        ...(data.tickets || []).map((i:any) => ({...i, _type: 'ticket'}))
+        ...(data.tickets || []).map((i:any) => ({...i, _type: 'ticket'})),
+        ...(data.cases || []).map((i:any) => ({...i, _type: 'case'}))
       ].sort((a, b) => {
         const d1 = new Date(a.due_date || a.scheduled_at || a.created_at || 0).getTime();
         const d2 = new Date(b.due_date || b.scheduled_at || b.created_at || 0).getTime();

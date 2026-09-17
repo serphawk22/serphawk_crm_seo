@@ -546,11 +546,11 @@ export default function CallsPage() {
     }
     const phone = getEntityPhone(genType, genEntityId);
     if (!phone) {
-      addToast(t("calls.no_phone_number").replace("{type}", genType).replace("{type}", genType), "error", 7000);
+      addToast(String(t("calls.no_phone_number")).replace("{type}", genType), "error", 7000);
       return;
     }
     setAiCalling(true);
-    addToast(t("calls.ai_call_initiated").replace("{name}", getEntityName(genType, genEntityId)).replace("{phone}", phone), "info", 8000);
+    addToast("AI calling is coming soon", "info", 8000);
     try {
       const res = await fetch(`${API_BASE_URL}/initiate-ai-call`, {
         method: "POST",
@@ -812,6 +812,12 @@ export default function CallsPage() {
           {/* AI Calls Tab */}
           {activeTab === "ai-calls" && (
             <motion.div key="ai-calls" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-4">
+              <div className="rounded-3xl border-2 border-violet-300 bg-violet-50 dark:bg-violet-950/30 dark:border-violet-700 p-12 text-center shadow-lg shadow-violet-500/10">
+                <Bot className="w-14 h-14 mx-auto text-violet-600 mb-5" />
+                <h2 className="text-2xl font-black text-violet-800 dark:text-violet-200">AI Calling is coming soon</h2>
+                <p className="mt-3 text-sm font-medium text-violet-700/80 dark:text-violet-300/80 max-w-md mx-auto">The AI calling agent is being prepared. Logged calls and scheduled calls are available now.</p>
+              </div>
+              {false && <>
               <div className="flex items-start gap-3 p-4 bg-violet-50 dark:bg-violet-950/20 rounded-2xl border border-violet-100 dark:border-violet-900/30">
                 <Bot className="w-5 h-5 text-violet-600 shrink-0 mt-0.5" />
                 <div>
@@ -849,6 +855,7 @@ export default function CallsPage() {
                   onToggleSelect={toggleSelectAiCall} 
                 />
               )}
+              </>}
             </motion.div>
           )}
 
