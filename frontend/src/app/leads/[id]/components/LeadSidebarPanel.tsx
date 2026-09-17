@@ -131,27 +131,28 @@ export default function LeadSidebarPanel({
   const [researchOpen, setResearchOpen] = useState(true);
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({
-    contact_person: client?.contact_person || '',
-    phone: client?.phone || '',
-    address: client?.address || '',
-    website: client?.website || '',
-    linkedin_url: client?.linkedin_url || '',
-    industry: client?.industry || '',
-    employee_count: client?.employee_count || '',
-    revenue_range: client?.revenue_range || '',
-    lead_source: client?.lead_source || '',
-    lead_score: client?.lead_score ?? '',
-    deal_value: client?.deal_value ?? '',
-    last_contact_date: client?.last_contact_date || '',
-    next_followup_date: client?.next_followup_date || '',
+    contact_person: lead?.contact_person || '',
+    phone: lead?.phone || '',
+    address: lead?.address || '',
+    website: lead?.website || '',
+    linkedin_url: lead?.linkedin_url || '',
+    industry: lead?.industry || '',
+    employee_count: lead?.employee_count || '',
+    revenue_range: lead?.revenue_range || '',
+    lead_source: lead?.source || '',
+    lead_score: lead?.lead_score ?? '',
+    deal_value: lead?.deal_value ?? '',
+    last_contact_date: lead?.last_contact_date || '',
+    next_followup_date: lead?.next_followup_date || '',
   });
 
   const handleSaveProfile = async () => {
-    await fetch(`${API_BASE_URL}/clients/${leadId}`, {
+    await fetch(`${API_BASE_URL}/leads/${leadId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...profileForm,
+        source: profileForm.lead_source,
         lead_score: profileForm.lead_score !== '' ? Number(profileForm.lead_score) : null,
         deal_value: profileForm.deal_value !== '' ? Number(profileForm.deal_value) : null,
       }),
@@ -206,10 +207,9 @@ export default function LeadSidebarPanel({
       if (!res.ok) {
         setExtractError(data.detail || 'Failed to extract services');
       } else {
-        setExtractResult({ count: data.services?.length || 0, marketplace: data.marketplace_entries_added || 0 });
-        // Refresh client to show updated services_offered
-        onClientUpdate({ services_offered: JSON.stringify(data.services) });
-        window.dispatchEvent(new CustomEvent('refresh-client-data'));
+        setExtractResult({ count: data.services?.length ?? data.extracted_count ?? 0, marketplace: data.marketplace_entries_added ?? data.marketplace_count ?? 0 });
+        onClientUpdate({ services_offered: JSON.stringify(data.services || []) });
+        window.dispatchEvent(new CustomEvent('refresh-lead-data'));
       }
     } catch (e: any) {
       setExtractError(e.message || 'Network error');
@@ -285,8 +285,8 @@ export default function LeadSidebarPanel({
                   {/* ── Extract Services Button ── */}
                   <button
                     onClick={handleExtractServices}
-                    disabled={isExtracting || !client?.website}
-                    title={!client?.website ? 'Add a website URL first' : 'Extract services from website'}
+                    disabled={isExtracting || !lead?.website}
+                    title={!lead?.website ? 'Add a website URL first' : 'Extract services from website'}
                     className="w-full mb-3 py-2 px-3 flex items-center justify-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-xs rounded-xl transition-colors disabled:opacity-40"
                   >
                     {isExtracting ? <Loader2 size={14} className="animate-spin" /> : <Store size={14} />}

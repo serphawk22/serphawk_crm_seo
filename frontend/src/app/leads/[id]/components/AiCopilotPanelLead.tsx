@@ -66,7 +66,8 @@ export default function AiCopilotPanelLead({ leadId, client }: AiCopilotPanelLea
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE_URL}/clients/${leadId}/ai-insights`, { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/ai-insights`, { method: 'POST' });
+      if (!res.ok) throw new Error('AI insights request failed');
       const data = await res.json();
       setInsights(data.insights);
     } catch {

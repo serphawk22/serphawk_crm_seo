@@ -4640,6 +4640,55 @@ Provide a JSON response with exactly these keys:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Lead AI Sales Copilot
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/leads/{lead_id}/ai-insights")
+def get_lead_ai_insights(lead_id: int, session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    notes = session.exec(select(LeadNote).where(LeadNote.lead_id == lead_id).order_by(LeadNote.created_at.desc()).limit(10)).all()
+    convs = session.exec(select(ConversationLog).where(ConversationLog.lead_id == lead_id).order_by(ConversationLog.created_at.desc()).limit(10)).all()
+    activities = session.exec(select(ActivityLog).where(ActivityLog.lead_id == lead_id).order_by(ActivityLog.timestamp.desc()).limit(10)).all()
+    notes_text = "\n".join(f"- {n.content[:200]}" for n in notes) if notes else "No notes recorded."
+    convs_text = "\n".join(f"- [{c.type.upper()}] {c.title}: {(c.description or '')[:200]}" for c in convs) if convs else "No conversations recorded."
+    activities_text = "\n".join(f"- {a.action}" for a in activities) if activities else "No activities."
+    prompt = f"""You are an AI Sales Copilot analyzing a CRM lead. Return valid JSON only.
+LEAD: {lead.company_name or 'Unknown'}
+STATUS: {lead.status}
+INDUSTRY: {lead.industry or 'Unknown'}
+DEAL VALUE: {getattr(lead, 'deal_value', None) or 'Not set'}
+NOTES:\n{notes_text}
+CONVERSATIONS:\n{convs_text}
+ACTIVITIES:\n{activities_text}
+Return exactly: {{"client_summary":"2-3 sentence overview","deal_health_score":75,"risks":["risk"],"next_best_action":"one action","follow_up_recommendations":["recommendation"],"deal_health_label":"Hot|Warm|Cold|At Risk"}}"""
+    try:
+        from modules.llm_engine import get_openai_client
+        import json as _json
+        response = get_openai_client().chat.completions.create(
+            model="gpt-4o-mini", temperature=0,
+            messages=[
+                {"role": "system", "content": "You are an expert CRM sales analyst. Always respond with valid JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+        insights = _json.loads(response.choices[0].message.content)
+    except Exception:
+        insights = {
+            "client_summary": f"{lead.company_name or 'This lead'} is currently {lead.status}.",
+            "deal_health_score": 50,
+            "risks": ["Review recent engagement and qualification data"],
+            "next_best_action": "Schedule a qualification follow-up",
+            "follow_up_recommendations": ["Confirm decision maker", "Validate business need"],
+            "deal_health_label": "Warm",
+        }
+    return {"insights": insights}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Client Tickets
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -9864,6 +9913,7 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
     else:
         analysis_data = {}
     analysis_data["product_portfolio"] = services
+    analysis_data["services_offered"] = services
     lead.ai_analysis_results = analysis_data
     session.add(lead)
 
@@ -9904,6 +9954,8 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
     method_label = "live website" if scrape_method == "website_scrape" else "AI knowledge (site unreachable)"
     return {
         "ok": True,
+        "services": services,
+        "marketplace_entries_added": added,
         "extracted_count": len(services),
         "marketplace_count": added,
         "scrape_method": scrape_method,
