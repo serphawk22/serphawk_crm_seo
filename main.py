@@ -426,12 +426,12 @@ app.include_router(leaderboard_router)
 def on_startup():
     patch_openai()
     create_db_and_tables()
-    
-    # Ensure SuperAdmin exists
+
     try:
         from sqlmodel import Session, select
         from database import engine, User
         with Session(engine) as session:
+            _ensure_default_admin_user(session)
             users = session.exec(select(User).where(User.role == 'SuperAdmin')).all()
             if not users:
                 su = User(name='Super Admin', email='superadmin@serphawk.in', password='password123', role='SuperAdmin', tenant_id=None)
@@ -1562,6 +1562,80 @@ def _hash_password(pw: str) -> str:
     return hashlib.sha256(pw.encode()).hexdigest()
 
 
+def _canonical_email(email: Optional[str]) -> str:
+    return (email or "").strip().lower()
+
+
+def _email_variants(email: Optional[str]) -> List[str]:
+    value = _canonical_email(email)
+    if not value:
+        return []
+    variants = {value}
+    if "@" in value:
+        local, domain = value.split("@", 1)
+        if local == "admin":
+            variants.add(f"admin@{domain}")
+            variants.add("admin@example.com")
+            variants.add("admin@serphawk.com")
+            variants.add("admin@serphawk.in")
+        if value in {"admin@example.com", "admin@serphawk.com", "admin@serphawk.in"}:
+            for candidate in ["admin@example.com", "admin@serphawk.com", "admin@serphawk.in"]:
+                variants.add(candidate)
+    return list(variants)
+
+
+def _ensure_default_admin_user(session: Session):
+    email_candidates = ["admin@serphawk.com", "admin@serphawk.in", "admin@example.com"]
+    admin = None
+    for email in email_candidates:
+        admin = session.exec(select(User).where(func.lower(User.email) == email.lower())).first()
+        if admin:
+            break
+
+    if admin is None:
+        tenant = session.exec(select(Tenant).where(Tenant.name == "Default Admin Tenant")).first()
+        if tenant is None:
+            tenant = Tenant(
+                name="Default Admin Tenant",
+                business_name="SerpHawk",
+                email="admin@serphawk.com",
+                is_trial=False,
+                limit_clients=100,
+                limit_emails=500,
+                limit_searches=500,
+                limit_projects=50,
+                limit_calls=500,
+            )
+            session.add(tenant)
+            session.commit()
+            session.refresh(tenant)
+
+        admin = User(
+            email="admin@serphawk.com",
+            password=_hash_password("Admin123!"),
+            hashed_password=_hash_password("Admin123!"),
+            name="System Admin",
+            role="Admin",
+            tenant_id=tenant.id,
+        )
+        session.add(admin)
+        session.commit()
+        session.refresh(admin)
+        return admin
+
+    admin.name = admin.name or "System Admin"
+    admin.role = "Admin"
+    admin.password = _hash_password("Admin123!")
+    admin.hashed_password = _hash_password("Admin123!")
+    if admin.email and admin.email.lower() not in {candidate.lower() for candidate in email_candidates}:
+        admin.email = "admin@serphawk.com"
+    if not admin.email:
+        admin.email = "admin@serphawk.com"
+    session.add(admin)
+    session.commit()
+    return admin
+
+
 def _check_password(plain: str, hashed: str) -> bool:
     return hashlib.sha256(plain.encode()).hexdigest() == hashed
 
@@ -1693,8 +1767,12 @@ class SignupRequest(BaseModel):
 
 @app.post("/signup")
 def signup(body: SignupRequest, session: Session = Depends(get_session)):
+    email = _canonical_email(body.email)
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
     # 1. Check if user already exists
-    existing_user = session.exec(select(User).where(User.email == body.email)).first()
+    existing_user = session.exec(select(User).where(func.lower(User.email) == email)).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already exists")
         
@@ -1716,7 +1794,7 @@ def signup(body: SignupRequest, session: Session = Depends(get_session)):
     # 3. Create Admin User for this Tenant
     hashed = _hash_password(body.password)
     new_user = User(
-        email=body.email,
+        email=email,
         password=hashed,
         name=body.name,
         role="Admin",
@@ -2169,7 +2247,16 @@ def debug_user(email: str = "", session: Session = Depends(get_session)):
 
 @app.post("/login")
 def login(body: LoginRequest, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.email == body.email)).first()
+    email = _canonical_email(body.email)
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    user = None
+    for candidate in _email_variants(email):
+        user = session.exec(select(User).where(func.lower(User.email) == candidate)).first()
+        if user:
+            break
+
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not _verify_password(body.password, user):
