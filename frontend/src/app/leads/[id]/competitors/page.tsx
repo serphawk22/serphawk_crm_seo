@@ -95,7 +95,7 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
             target_reviews: searchData.place.reviews,
             target_category: clientData.industry || "Business",
             radius_km: 10, // Default to 10km scan
-            client_id: parseInt(id),
+            lead_id: parseInt(id),
           }),
         });
 
@@ -162,7 +162,7 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
                     target_reviews: searchData.place.reviews,
                     target_category: client.industry || "Business",
                     radius_km: 10,
-                    client_id: parseInt(id),
+                    lead_id: parseInt(id),
                   }),
                 });
                 if (!analyzeRes.ok) {
@@ -190,7 +190,7 @@ export default function CompetitorRadarPage({ params }: { params: Promise<{ id: 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           competitor: c,
-          source_client_id: parseInt(id),
+          source_lead_id: parseInt(id),
           source_client_name: client.company_name || client.name || "Radar Analysis",
           radar_id: radarResult.radar_id,
           websiteUrl: c.website,
