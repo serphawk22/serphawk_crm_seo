@@ -12360,9 +12360,9 @@ def send_single_sales_order_pdf_email(order_id: int, body: ExportPdfRequest, ses
     party = _so_party(o, session)
     pdf = single_sales_order_pdf(o.model_dump(), client_name=party["name"], lead_name=party["name"], party=party)
     filename = f"{o.order_number or f'SO-{o.id}'}.pdf"
-    subject = f"Sales Order {o.order_number or o.id} — {client_name or lead_name or ''}".strip()
+    subject = f"Sales Order {o.order_number or o.id} — {party['name'] or ''}".strip()
     from modules.email_sender import branded_email, _summary_table, _attachment_note
-    recipient_display = default_name or client_name or lead_name or "there"
+    recipient_display = default_name or party["name"] or "there"
     name_line = f"Hi {recipient_display},"
     body_html = branded_email(
         title=f"Sales Order {o.order_number or o.id}",
@@ -12372,7 +12372,7 @@ def send_single_sales_order_pdf_email(order_id: int, body: ExportPdfRequest, ses
             + _summary_table(
                 [
                     ("Order Number", o.order_number or str(o.id)),
-                    ("Client", client_name or lead_name or "—"),
+                    ("Client", party["name"] or "—"),
                     ("Delivery Date", o.delivery_date or "—"),
                     ("Currency", o.currency or "USD"),
                 ],
