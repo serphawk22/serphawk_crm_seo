@@ -4674,7 +4674,7 @@ def get_lead_ai_insights(lead_id: int, session: Session = Depends(get_session)):
 
     notes = session.exec(select(LeadNote).where(LeadNote.lead_id == lead_id).order_by(LeadNote.created_at.desc()).limit(10)).all()
     convs = session.exec(select(ConversationLog).where(ConversationLog.lead_id == lead_id).order_by(ConversationLog.created_at.desc()).limit(10)).all()
-    activities = session.exec(select(ActivityLog).where(ActivityLog.lead_id == lead_id).order_by(ActivityLog.timestamp.desc()).limit(10)).all()
+    activities = session.exec(select(ActivityLog).where(ActivityLog.lead_id == lead_id).order_by(ActivityLog.createdAt.desc()).limit(10)).all()
     notes_text = "\n".join(f"- {n.content[:200]}" for n in notes) if notes else "No notes recorded."
     convs_text = "\n".join(f"- [{c.type.upper()}] {c.title}: {(c.description or '')[:200]}" for c in convs) if convs else "No conversations recorded."
     activities_text = "\n".join(f"- {a.action}" for a in activities) if activities else "No activities."
