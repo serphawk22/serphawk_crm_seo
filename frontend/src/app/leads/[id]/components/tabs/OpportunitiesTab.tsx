@@ -144,7 +144,7 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
     } catch (e) {}
   }
 
-  let eaData: any = leadAgentData;
+  let eaData: any = leadAgentData || null;
   if (research?.email_agent_data) {
     try { eaData = typeof research.email_agent_data === 'string' ? JSON.parse(research.email_agent_data) : research.email_agent_data; } catch (e) {}
   }
@@ -167,15 +167,15 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
   React.useEffect(() => {
     if (research?.email_agent_data || leadAgentData) {
       try {
-        const parsed = leadAgentData || (typeof research.email_agent_data === 'string'
+        const parsedResearch = research?.email_agent_data ? (typeof research.email_agent_data === 'string'
           ? JSON.parse(research.email_agent_data)
-          : research.email_agent_data);
-        setResearchData(parsed);
+          : research.email_agent_data) : null;
+        setResearchData(parsedResearch || leadAgentData);
       } catch (e) {
         console.error('Failed to parse research data', e);
       }
     }
-  }, [research]);
+  }, [research, leadAgentData]);
 
   let parsedPainPoints: any = null;
   if (research?.pain_points) {
@@ -195,7 +195,9 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
   const [isGeneratingDraft, setIsGeneratingDraft] = React.useState(false);
   const [extractResult, setExtractResult] = React.useState<{ count: number; marketplace: number } | null>(null);
   const [extractError, setExtractError] = React.useState<string | null>(null);
-  const hasEmailAgentData = Boolean(leadAgentData?.company_info || leadAgentData?.draft || lead?.source === 'Email Agent');
+  const hasEmailAgentData = Boolean(
+    (lead?.source === 'Email Agent' || eaData?.company_info || eaData?.draft) && eaData
+  );
 
   const [autoResearchMsg, setAutoResearchMsg] = React.useState<string | null>(null);
   const handleAutoResearch = async () => {
