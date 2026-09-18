@@ -264,7 +264,7 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
             <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-500/10 text-emerald-600 rounded-md">{t("admin_dashboard.last_6_months")}</span>
           </div>
           <div className="p-5 flex-1 w-full h-full min-h-0">
-            {adminStats?.revenueData?.length ? (
+            {adminStats?.revenueData?.length && adminStats.revenueData.some((d: any) => d.revenue || d.expenses) ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={adminStats.revenueData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>

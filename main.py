@@ -6165,7 +6165,13 @@ def dashboard_stats(
 
     import calendar
     all_invoices = session.exec(select(Invoice)).all()
+    all_quotes = session.exec(select(CRMQuote)).all()
+    all_sales_orders = session.exec(select(SalesOrder)).all()
+    all_purchase_orders = session.exec(select(PurchaseOrder)).all()
     all_service_reqs = session.exec(select(ServiceRequest)).all()
+
+    def _billing_value(row):
+        return getattr(row, "grand_total", None) or getattr(row, "total", None) or 0
 
     revenue_data = []
     today = datetime.utcnow()
@@ -6184,8 +6190,18 @@ def dashboard_stats(
             next_year += 1
         month_end = datetime(next_year, next_month, 1)
         
-        rev = sum(inv.total for inv in all_invoices if inv.status == "Paid" and inv.created_at and month_start <= inv.created_at < month_end)
-        exp = sum(inv.total for inv in all_invoices if inv.status == "Sent" and inv.created_at and month_start <= inv.created_at < month_end) * 0.3
+        def _in_month(row):
+            v = getattr(row, "created_at", None)
+            return bool(v and month_start <= v < month_end)
+        
+        # Money in: quotes + paid invoices + sales orders created this month.
+        rev = (
+            sum(_billing_value(q) for q in all_quotes if _in_month(q))
+            + sum(_billing_value(inv) for inv in all_invoices if inv.status == "Paid" and _in_month(inv))
+            + sum(_billing_value(o) for o in all_sales_orders if _in_month(o))
+        )
+        # Money out: purchase orders created this month.
+        exp = sum(_billing_value(po) for po in all_purchase_orders if _in_month(po))
         revenue_data.append({"name": calendar.month_abbr[target_month], "revenue": rev, "expenses": exp})
         
     pipeline_data = [
@@ -6204,9 +6220,51 @@ def dashboard_stats(
     total_revenue = sum(inv.total or 0 for inv in all_invoices if inv.status == "Paid")
     total_pipeline_value = sum(p.total_value or 0 for p in all_proposals if p.status not in ("Accepted", "Declined"))
 
+    total_quotes_value = sum(_billing_value(q) for q in all_quotes)
+    accepted_quotes_value = sum(_billing_value(q) for q in all_quotes if q.status == "Accepted")
+    total_quotes_count = len(all_quotes)
+    accepted_quotes_count = sum(1 for q in all_quotes if q.status == "Accepted")
+
+    total_sales_orders_value = sum(_billing_value(o) for o in all_sales_orders)
+    fulfilled_sales_orders_value = sum(_billing_value(o) for o in all_sales_orders if o.status in ("Fulfilled", "Paid", "Completed"))
+    total_sales_orders_count = len(all_sales_orders)
+    fulfilled_sales_orders_count = sum(1 for o in all_sales_orders if o.status in ("Fulfilled", "Paid", "Completed"))
+
+    total_purchase_orders_value = sum(_billing_value(po) for po in all_purchase_orders)
+    received_purchase_orders_value = sum(_billing_value(po) for po in all_purchase_orders if po.status in ("Received", "Completed"))
+    total_purchase_orders_count = len(all_purchase_orders)
+    received_purchase_orders_count = sum(1 for po in all_purchase_orders if po.status in ("Received", "Completed"))
+
+    total_invoices_value = sum(inv.total or 0 for inv in all_invoices)
+    paid_invoices_value = sum(inv.total or 0 for inv in all_invoices if inv.status == "Paid")
+    sent_invoices_value = sum(inv.total or 0 for inv in all_invoices if inv.status == "Sent")
+    overdue_invoices_value = sum(inv.total or 0 for inv in all_invoices if inv.status == "Overdue")
+    partial_invoices_value = sum(inv.total or 0 for inv in all_invoices if inv.status == "Partial")
+    paid_invoices_count = sum(1 for inv in all_invoices if inv.status == "Paid")
+    total_invoices_count = len(all_invoices)
+
     return {
         "revenue": total_revenue,
         "pipelineValue": total_pipeline_value,
+        "totalQuotesValue": total_quotes_value,
+        "acceptedQuotesValue": accepted_quotes_value,
+        "totalQuotesCount": total_quotes_count,
+        "acceptedQuotesCount": accepted_quotes_count,
+        "totalSalesOrdersValue": total_sales_orders_value,
+        "fulfilledSalesOrdersValue": fulfilled_sales_orders_value,
+        "totalSalesOrdersCount": total_sales_orders_count,
+        "fulfilledSalesOrdersCount": fulfilled_sales_orders_count,
+        "totalPurchaseOrdersValue": total_purchase_orders_value,
+        "receivedPurchaseOrdersValue": received_purchase_orders_value,
+        "totalPurchaseOrdersCount": total_purchase_orders_count,
+        "receivedPurchaseOrdersCount": received_purchase_orders_count,
+        "totalInvoicesValue": total_invoices_value,
+        "paidInvoicesValue": paid_invoices_value,
+        "sentInvoicesValue": sent_invoices_value,
+        "overdueInvoicesValue": overdue_invoices_value,
+        "partialInvoicesValue": partial_invoices_value,
+        "paidInvoicesCount": paid_invoices_count,
+        "totalInvoicesCount": total_invoices_count,
         "total": total_clients,
         "active": active_clients,
         "pending": pending_clients,
@@ -11291,6 +11349,26 @@ def list_products(category: Optional[str] = None, active_only: bool = False, ses
     products = session.exec(q).all()
     return {"products": [p.model_dump() for p in products]}
 
+
+
+@app.post("/products/export-pdf")
+def export_products_pdf(body: dict = {}, session: Session = Depends(get_session)):
+    """Export all catalog products as a downloadable PDF."""
+    from modules.pdf_export import catalog_pdf, send_pdf_email
+    from fastapi.responses import Response
+    products = session.exec(select(Product).order_by(Product.name)).all()
+    rows = [p.model_dump() for p in products]
+    pdf_bytes = catalog_pdf(rows)
+    recipient = (body or {}).get("email") if isinstance(body, dict) else None
+    if recipient:
+        try:
+            send_pdf_email(recipient, "Product Catalog – SERPHAWK", "Please find the catalog PDF attached.", pdf_bytes, "catalog.pdf")
+            return {"ok": True, "message": f"PDF sent to {recipient}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=catalog.pdf"})
+
 @app.post("/products")
 def create_product(body: ProductCreateRequest, session: Session = Depends(get_session)):
     p = Product(**body.model_dump())
@@ -11533,43 +11611,65 @@ def _quote_email_content(q: CRMQuote, session: Session, recipient_name=None):
     Used both for actually sending it and for previewing it before sending,
     so the preview always reflects exactly what the recipient will receive."""
     # ── Build items table ──
-    rows = ""
     items = session.exec(select(QuoteItem).where(QuoteItem.quote_id == q.id)).all()
-    for it in items:
-        rows += f"<tr><td style='padding:8px;border-bottom:1px solid #e2e8f0'>{it.description}</td><td style='padding:8px;border-bottom:1px solid #e2e8f0;text-align:center'>{it.quantity}</td><td style='padding:8px;border-bottom:1px solid #e2e8f0;text-align:right'>{q.currency} {it.unit_price:,.2f}</td></tr>"
 
     # ── Notes / Terms section ──
     extra_section = ""
     if q.notes:
-        extra_section += f"<p style='color:#475569;line-height:1.6;margin:12px 0 0'><strong>Notes:</strong> {q.notes}</p>"
+        extra_section += f"<p style='color:#475569;line-height:1.6;margin:14px 0 0'><strong>Notes:</strong> {q.notes}</p>"
     if q.terms:
         extra_section += f"<p style='color:#475569;line-height:1.6;margin:8px 0 0'><strong>Terms:</strong> {q.terms}</p>"
 
-    html = f"""
-    <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
-      <div style="background:#1e293b;color:#fff;padding:22px 28px">
-        <strong style="font-size:18px">SerpHawk CRM</strong>
-      </div>
-      <div style="padding:28px">
-        <h2 style="color:#0f172a;margin:0 0 8px">New Quote ready for you</h2>
-        <p style="color:#475569;line-height:1.6;margin:0 0 4px">Hi{' ' + recipient_name if recipient_name else ''},</p>
-        <p style="color:#475569;line-height:1.6;margin:0 0 16px">A new quote has been created for your business. Here are the details:</p>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
-          <tr><td style="padding:6px 8px;color:#64748b">Quote Number</td><td style="padding:6px 8px;text-align:right;font-weight:600;color:#0f172a">{q.quote_number or q.id}</td></tr>
-          <tr><td style="padding:6px 8px;color:#64748b">Title</td><td style="padding:6px 8px;text-align:right;color:#0f172a">{q.title or ''}</td></tr>
-          <tr><td style="padding:6px 8px;color:#64748b">Total Amount</td><td style="padding:6px 8px;text-align:right;font-weight:800;color:#0f172a">{q.currency} {q.grand_total:,.2f}</td></tr>
-          <tr><td style="padding:6px 8px;color:#64748b">Valid Until</td><td style="padding:6px 8px;text-align:right;color:#0f172a">{q.valid_until or 'N/A'}</td></tr>
-          <tr><td style="padding:6px 8px;color:#64748b">Status</td><td style="padding:6px 8px;text-align:right;color:#0f172a">{q.status}</td></tr>
-        </table>
-        {'' if not items else "<h3 style='color:#0f172a;font-size:15px;margin:0 0 6px'>Items</h3><table style='width:100%;border-collapse:collapse'><tr><th style='padding:8px;text-align:left;color:#475569;border-bottom:2px solid #e2e8f0'>Description</th><th style='padding:8px;text-align:center;color:#475569;border-bottom:2px solid #e2e8f0'>Qty</th><th style='padding:8px;text-align:right;color:#475569;border-bottom:2px solid #e2e8f0'>Amount</th></tr>" + rows + "</table>"}
-        {extra_section}
-        <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0">If you have any questions about this quote, just reply to this email or contact your account manager.</p>
-        <p style="color:#64748b;font-size:13px;line-height:1.6;margin:4px 0 0">This is an automated message from the SerpHawk CRM.</p>
-        <p style="color:#94a3b8;font-size:11px;line-height:1.5;margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">📬 Didn't see this in your inbox? Sometimes automated emails land in spam or junk — please check there and mark us as "Not spam" so future emails reach you.</p>
-      </div>
-    </div>
-    """
-    subject = f"New Quote {q.quote_number or q.id} — {q.title or 'Quote'} ({q.currency} {q.grand_total:,.2f})"
+    from modules.email_sender import branded_email, _summary_table, _escape_html
+
+    items_table = ""
+    if items:
+        rows_html = ""
+        for it in items:
+            total = (it.unit_price or 0) * (it.quantity or 1)
+            rows_html += (
+                f"<tr>"
+                f"<td style='padding:9px 6px;border-bottom:1px solid #eef1f7;color:#0f172a;font-size:13px;'>{_escape_html(it.description or '')}</td>"
+                f"<td style='padding:9px 6px;border-bottom:1px solid #eef1f7;text-align:center;color:#64748b;font-size:13px;'>{it.quantity}</td>"
+                f"<td style='padding:9px 6px;border-bottom:1px solid #eef1f7;text-align:right;color:#64748b;font-size:13px;'>{q.currency or '$'} {it.unit_price:,.2f}</td>"
+                f"<td style='padding:9px 6px;border-bottom:1px solid #eef1f7;text-align:right;color:#0f172a;font-size:13px;font-weight:600;'>{q.currency or '$'} {total:,.2f}</td>"
+                f"</tr>"
+            )
+        items_table = (
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            'style="margin:16px 0 0;border-collapse:collapse;border:1px solid #e6e9f0;border-radius:10px;overflow:hidden;">'
+            '<tr>'
+            '<th style="padding:10px 6px;background:#1e293b;color:#fff;font-size:11px;font-weight:700;text-align:left;letter-spacing:0.5px;">Description</th>'
+            '<th style="padding:10px 6px;background:#1e293b;color:#fff;font-size:11px;font-weight:700;text-align:center;letter-spacing:0.5px;">Qty</th>'
+            '<th style="padding:10px 6px;background:#1e293b;color:#fff;font-size:11px;font-weight:700;text-align:right;letter-spacing:0.5px;">Unit</th>'
+            '<th style="padding:10px 6px;background:#1e293b;color:#fff;font-size:11px;font-weight:700;text-align:right;letter-spacing:0.5px;">Total</th>'
+            "</tr>"
+            + rows_html
+            + "</table>"
+        )
+
+    greeting = f"Hi {recipient_name}," if recipient_name else "Hello,"
+    html = branded_email(
+        title=f"Your Quote {q.quote_number or q.id}",
+        body_html=(
+            f"<p>{greeting}</p>"
+            f"<p>A new quotation has been prepared for you. Use the details below or the attached copy to review it.</p>"
+            + _summary_table(
+                [
+                    ("Quote Number", q.quote_number or str(q.id)),
+                    ("Title", q.title or "—"),
+                    ("Valid Until", q.valid_until or "—"),
+                    ("Status", q.status or "Draft"),
+                ],
+                "Total Amount",
+                f"{q.currency or '$'} {q.grand_total:,.2f}",
+            )
+            + items_table
+            + extra_section
+            + "<p style='margin-top:24px'>If you have any questions about this quote, just reply to this email or contact your account manager.</p>"
+        ),
+    )
+    subject = f"Your Quote {q.quote_number or q.id} — {q.title or 'Quote'} ({q.currency or '$'} {q.grand_total:,.2f})"
     return subject, html, items
 
 
@@ -11813,6 +11913,37 @@ def _so_dict(o: SalesOrder, session: Session) -> dict:
     d["recipient_name"] = recipient_name
     return d
 
+
+
+@app.post("/sales-orders/export-pdf")
+def export_sales_orders_pdf(body: dict = {}, session: Session = Depends(get_session)):
+    """Export all sales orders as a downloadable PDF."""
+    from modules.pdf_export import sales_order_pdf, send_pdf_email
+    from fastapi.responses import Response
+    orders = session.exec(select(SalesOrder).order_by(SalesOrder.created_at.desc())).all()
+    rows = []
+    for o in orders:
+        client_name = None
+        if o.client_id:
+            c = session.get(Client, o.client_id)
+            if c: client_name = c.name
+        rows.append({
+            "order_number": o.order_number, "client_name": client_name or o.lead_name or "—",
+            "grand_total": float(o.grand_total or 0), "currency": o.currency,
+            "status": o.status, "delivery_date": str(o.delivery_date or ""),
+            "created_at": o.created_at.isoformat() if o.created_at else ""
+        })
+    pdf_bytes = sales_order_pdf(rows)
+    recipient = (body or {}).get("email") if isinstance(body, dict) else None
+    if recipient:
+        try:
+            send_pdf_email(recipient, "Sales Orders – SERPHAWK", "Please find the sales orders PDF attached.", pdf_bytes, "sales_orders.pdf")
+            return {"ok": True, "message": f"PDF sent to {recipient}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=sales_orders.pdf"})
+
 @app.post("/sales-orders")
 def create_sales_order(body: SalesOrderCreateRequest, session: Session = Depends(get_session)):
     import random, string
@@ -11868,6 +11999,32 @@ def list_purchase_orders(status: Optional[str] = None, session: Session = Depend
     orders = session.exec(q).all()
     return {"orders": [o.model_dump() for o in orders]}
 
+
+
+@app.post("/purchase-orders/export-pdf")
+def export_purchase_orders_pdf(body: dict = {}, session: Session = Depends(get_session)):
+    """Export all purchase orders as a downloadable PDF."""
+    from modules.pdf_export import purchase_order_pdf, send_pdf_email
+    from fastapi.responses import Response
+    orders = session.exec(select(PurchaseOrder).order_by(PurchaseOrder.created_at.desc())).all()
+    rows = [
+        {"po_number": o.po_number, "vendor_name": o.vendor_name, "vendor_email": o.vendor_email,
+         "grand_total": float(o.grand_total or 0), "currency": o.currency, "status": o.status,
+         "expected_delivery": str(o.expected_delivery or ""),
+         "created_at": o.created_at.isoformat() if o.created_at else ""}
+        for o in orders
+    ]
+    pdf_bytes = purchase_order_pdf(rows)
+    recipient = (body or {}).get("email") if isinstance(body, dict) else None
+    if recipient:
+        try:
+            send_pdf_email(recipient, "Purchase Orders – SERPHAWK", "Please find the purchase orders PDF attached.", pdf_bytes, "purchase_orders.pdf")
+            return {"ok": True, "message": f"PDF sent to {recipient}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=purchase_orders.pdf"})
+
 @app.post("/purchase-orders")
 def create_purchase_order(body: PurchaseOrderCreateRequest, session: Session = Depends(get_session)):
     import random, string
@@ -11905,6 +12062,86 @@ def delete_purchase_order(order_id: int, session: Session = Depends(get_session)
 
 class ExportPdfRequest(BaseModel):
     email: Optional[str] = None
+
+
+# ── Quotes PDF Export ────────────────────────────────────────────────────
+
+def _quote_export_data(qt, session: Session) -> dict:
+    from database import ClientProfile, Lead, User
+    client = session.get(ClientProfile, qt.client_id) if qt.client_id else None
+    lead = session.get(Lead, qt.lead_id) if qt.lead_id else None
+    client_name = client_company = client_email = client_phone = client_address = ""
+    if client:
+        user = session.get(User, client.userId) if client.userId else None
+        client_name = client.companyName or (user.name if user else f"Client #{client.id}")
+        client_company = client.companyName or ""
+        client_email = user.email if user else ""
+        client_phone = client.phone or ""
+        client_address = client.address or ""
+    elif lead:
+        client_name = lead.company_name or lead.email or f"Lead #{lead.id}"
+        client_company = lead.company_name or ""
+        client_email = lead.email or ""
+        client_phone = lead.phone or ""
+        client_address = lead.address or ""
+    items = []
+    for li in session.exec(select(QuoteItem).where(QuoteItem.quote_id == qt.id)).all():
+        amt = float(li.unit_price or 0)
+        qty = li.quantity or 1
+        items.append({"description": li.description or "", "quantity": qty, "unit_price": amt, "total": amt * qty})
+    return {
+        "quote_number": qt.quote_number or str(qt.id),
+        "title": qt.title,
+        "status": qt.status,
+        "client_name": client_name,
+        "client_company": client_company,
+        "client_email": client_email,
+        "client_phone": client_phone,
+        "client_address": client_address,
+        "currency": qt.currency or "$",
+        "items": items,
+        "subtotal": float(qt.subtotal or 0),
+        "tax_rate": float(qt.tax_total or 0),
+        "discount": float(qt.discount_total or 0),
+        "grand_total": float(qt.grand_total or 0),
+        "valid_until": qt.valid_until,
+        "created_at": qt.created_at.isoformat() if qt.created_at else None,
+        "notes": qt.notes,
+        "terms": qt.terms,
+    }
+
+
+@app.post("/quotes/export-pdf")
+def export_quotes_pdf(body: ExportPdfRequest, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from io import BytesIO
+    from pypdf import PdfReader, PdfWriter
+    from modules.pdf_export import quote_pdf, send_pdf_email
+    tenant_id = current_tenant_id.get()
+    q = select(CRMQuote).order_by(CRMQuote.created_at.desc())
+    if tenant_id:
+        q = q.where(CRMQuote.tenant_id == tenant_id)
+    quotes = session.exec(q).all()
+    if not quotes:
+        raise HTTPException(status_code=404, detail="No quotes to export")
+    writer = PdfWriter()
+    for qt in quotes:
+        page = PdfReader(BytesIO(quote_pdf(_quote_export_data(qt, session)))).pages[0]
+        writer.add_page(page)
+    buf = BytesIO()
+    writer.write(buf)
+    pdf = buf.getvalue()
+    if body.email:
+        try:
+            send_pdf_email(body.email, "Quotes PDF", "<p>The requested quotes report is attached.</p>", pdf, "quotes.pdf")
+            return {"sent": True, "recipient": body.email, "count": len(quotes)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=quotes.pdf"}
+    )
 
 
 # ── Sales Order PDF Export ───────────────────────────────────────────────
@@ -11996,12 +12233,27 @@ def send_single_sales_order_pdf_email(order_id: int, body: ExportPdfRequest, ses
     pdf = single_sales_order_pdf(o.model_dump(), client_name=client_name, lead_name=lead_name)
     filename = f"{o.order_number or f'SO-{o.id}'}.pdf"
     subject = f"Sales Order {o.order_number or o.id} — {client_name or lead_name or ''}".strip()
-    name_line = f"Hi {default_name}," if default_name else ""
-    body_html = (
-        f"<p>{name_line}</p>"
-        f"<p>Please find your sales order <strong>{o.order_number or o.id}</strong> attached.</p>"
-        f"<p>Grand Total: <strong>{o.currency or 'USD'} {o.grand_total:,.2f}</strong></p>"
-        "<p>Thank you.</p>"
+    from modules.email_sender import branded_email, _summary_table, _attachment_note
+    recipient_display = default_name or client_name or lead_name or "there"
+    name_line = f"Hi {recipient_display},"
+    body_html = branded_email(
+        title=f"Sales Order {o.order_number or o.id}",
+        body_html=(
+            f"<p>{name_line}</p>"
+            f"<p>Your sales order <strong>{o.order_number or o.id}</strong> has been issued. The details are below and the PDF is attached to this email.</p>"
+            + _summary_table(
+                [
+                    ("Order Number", o.order_number or str(o.id)),
+                    ("Client", client_name or lead_name or "—"),
+                    ("Delivery Date", o.delivery_date or "—"),
+                    ("Currency", o.currency or "USD"),
+                ],
+                "Grand Total",
+                f"{o.currency or 'USD'} {o.grand_total:,.2f}",
+            )
+            + _attachment_note(filename)
+            + "<p style=margin-top:20px>Thank you for your business!</p>"
+        ),
     )
     # Resolve SMTP the same way quote emails do: per-tenant EmailSettings, then env vars.
     sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
@@ -12067,6 +12319,61 @@ def export_single_purchase_order_pdf(order_id: int, session: Session = Depends(g
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@app.post("/purchase-orders/{order_id}/send-pdf")
+def send_single_purchase_order_pdf_email(order_id: int, body: ExportPdfRequest, session: Session = Depends(get_session)):
+    """Email a single purchase order as a PDF attachment. Uses the provided email
+    or falls back to the linked vendor email."""
+    from modules.pdf_export import single_purchase_order_pdf
+    o = session.get(PurchaseOrder, order_id)
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    default_email = (o.vendor_email or "").strip()
+    recipient = (body.email or "").strip() or default_email
+    if not recipient:
+        raise HTTPException(status_code=400, detail="No recipient email. Provide an email or set the vendor email.")
+    pdf = single_purchase_order_pdf(o.model_dump())
+    filename = f"{o.po_number or f'PO-{o.id}'}.pdf"
+    subject = f"Purchase Order {o.po_number or o.id} — {o.vendor_name or ''}".strip()
+    from modules.email_sender import branded_email, _summary_table, _attachment_note
+    body_html = branded_email(
+        title=f"Purchase Order {o.po_number or o.id}",
+        body_html=(
+            f"<p>Hi {o.vendor_name or 'there'},</p>"
+            f"<p>We have issued purchase order <strong>{o.po_number or o.id}</strong> to your company. The details are below and the PDF is attached to this email.</p>"
+            + _summary_table(
+                [
+                    ("PO Number", o.po_number or str(o.id)),
+                    ("Vendor", o.vendor_name or "—"),
+                    ("Expected Delivery", o.expected_delivery or "—"),
+                    ("Currency", o.currency or "USD"),
+                ],
+                "Grand Total",
+                f"{o.currency or 'USD'} {o.grand_total:,.2f}",
+            )
+            + _attachment_note(filename)
+            + "<p style=margin-top:20px>Thank you for your prompt attention to this order.</p>"
+        ),
+    )
+    sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
+    if not sender or not password:
+        raise HTTPException(status_code=500, detail="SMTP not configured. Add email settings in the Mail Settings page.")
+    try:
+        from modules.email_sender import send_email_outlook
+        send_email_outlook(
+            to_email=recipient,
+            subject=subject,
+            body=body_html,
+            sender_email=sender,
+            sender_password=password,
+            smtp_server=smtp_server,
+            smtp_port=int(smtp_port),
+            attachments=[(filename, pdf, "application/pdf")],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email failed: {e}")
+    return {"sent": True, "recipient": recipient, "default_recipient": default_email, "po_number": o.po_number}
 
 
 # ── POS Receipt PDF Export ───────────────────────────────────────────────

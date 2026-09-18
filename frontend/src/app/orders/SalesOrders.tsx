@@ -7,8 +7,8 @@ import { API_BASE_URL } from "@/config";
 
 interface SalesOrder { id: number; order_number?: string; status: string; grand_total: number; currency: string; client_name?: string; delivery_date?: string; created_at: string; recipient_email?: string; recipient_name?: string; }
 interface Lead { id: number; company_name: string; email?: string; }
-const STATUSES = ["Pending", "Processing", "Fulfilled", "Cancelled"];
-const STATUS_COLORS: Record<string, string> = { Pending: "bg-amber-500/10 text-amber-600", Processing: "bg-blue-500/10 text-blue-600", Fulfilled: "bg-emerald-500/10 text-emerald-600", Cancelled: "bg-red-500/10 text-red-500" };
+const STATUSES = ["Draft", "Sent", "Received", "Cancelled"];
+const STATUS_COLORS: Record<string, string> = { Draft: "bg-slate-500/10 text-slate-500", Sent: "bg-blue-500/10 text-blue-600", Received: "bg-emerald-500/10 text-emerald-600", Cancelled: "bg-red-500/10 text-red-500" };
 
 export default function SalesOrdersPage() {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
@@ -18,7 +18,7 @@ export default function SalesOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ linked_to: "lead" as "lead" | "client", lead_id: "" as string | number, client_id: "" as string | number, status: "Pending", grand_total: "", currency: "USD", delivery_date: "", notes: "" });
+  const [form, setForm] = useState({ linked_to: "lead" as "lead" | "client", lead_id: "" as string | number, client_id: "" as string | number, status: "Draft", grand_total: "", currency: "USD", delivery_date: "", notes: "" });
   const [clients, setClients] = useState<any[]>([]);
   const [emailModal, setEmailModal] = useState<{ orderId: number; orderNumber: string } | null>(null);
   const [emailAddr, setEmailAddr] = useState("");
@@ -152,9 +152,9 @@ export default function SalesOrdersPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "Total Orders", value: orders.length, c: "text-blue-500" },
-          { label: "Pending", value: orders.filter(o => o.status === "Pending").length, c: "text-amber-500" },
-          { label: "Fulfilled", value: orders.filter(o => o.status === "Fulfilled").length, c: "text-emerald-500" },
-          { label: "Total Revenue", value: `$${orders.filter(o => o.status === "Fulfilled").reduce((s, o) => s + o.grand_total, 0).toFixed(0)}`, c: "text-indigo-500" },
+          { label: "Draft", value: orders.filter(o => o.status === "Draft").length, c: "text-slate-500" },
+          { label: "Sent", value: orders.filter(o => o.status === "Sent").length, c: "text-blue-500" },
+          { label: "Total Revenue", value: `$${orders.filter(o => o.status === "Received").reduce((s, o) => s + o.grand_total, 0).toFixed(0)}`, c: "text-indigo-500" },
         ].map(s => (
           <div key={s.label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm">
             <p className="text-2xl font-black text-slate-800 dark:text-zinc-100">{loading ? "—" : s.value}</p>
@@ -183,7 +183,8 @@ export default function SalesOrdersPage() {
             <span className="text-sm font-bold text-slate-800 dark:text-zinc-100">{o.client_name || "—"}</span>
             <span className="text-sm font-black text-slate-800 dark:text-zinc-100">{o.currency} {o.grand_total.toFixed(2)}</span>
             <span className="text-xs text-slate-500">{o.delivery_date || "—"}</span>
-            <select value={o.status} onChange={e => handleStatus(o, e.target.value)} className={`text-xs font-bold px-2 py-1 rounded-lg border-0 outline-none cursor-pointer ${STATUS_COLORS[o.status]}`}>
+            <select value={o.status} onChange={e => handleStatus(o, e.target.value)} className={`text-xs font-bold px-2 py-1 rounded-lg border-0 outline-none cursor-pointer ${STATUS_COLORS[o.status] || "bg-slate-500/10 text-slate-500"}`}>
+              {!STATUSES.includes(o.status) && <option value={o.status}>{o.status}</option>}
               {STATUSES.map(s => <option key={s}>{s}</option>)}
             </select>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">

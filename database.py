@@ -1229,7 +1229,7 @@ class SalesOrder(SQLModel, table=True):
     quote_id: Optional[int] = Field(default=None, foreign_key="quotes.id")
     lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
-    status: str = Field(default="Pending", max_length=50)  # Pending, Processing, Fulfilled, Cancelled
+    status: str = Field(default="Draft", max_length=50)  # Draft, Sent, Received, Cancelled
     grand_total: float = Field(default=0.0)
     currency: str = Field(default="USD", max_length=10)
     delivery_date: Optional[str] = Field(default=None, max_length=50)
