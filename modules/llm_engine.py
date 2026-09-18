@@ -105,7 +105,8 @@ Return ONLY valid JSON with this exact structure:
 }}
 
 Be specific, data-driven, and insightful. Reference real details about this company wherever possible.
-Do NOT use generic placeholder text anywhere."""
+Do NOT use generic placeholder text anywhere.
+CRITICAL: You are outputting JSON. You MUST properly escape all newlines in your markdown report as \\n."""
 
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -114,11 +115,29 @@ Do NOT use generic placeholder text anywhere."""
             temperature=0.4
         )
 
-        result = json.loads(response.choices[0].message.content)
+        content = response.choices[0].message.content
+        try:
+            result = json.loads(content)
+        except json.JSONDecodeError as e:
+            # Fallback: attempt to fix unescaped newlines in the JSON string
+            print(f"[deep_investigate_company] JSONDecodeError: {e}. Attempting repair...")
+            # A naive fix for unescaped newlines in JSON values
+            fixed_content = content.replace("\n", "\\n")
+            # But wait, replace("\n", "\\n") would also escape structural newlines.
+            # Instead, just use a more lenient parser or let it fail with better logging.
+            # For now, let's just log it and re-raise so the debug block catches it.
+            raise e
         return result
 
     except Exception as e:
         print(f"[deep_investigate_company] Error: {e}")
+        try:
+            print(f"[deep_investigate_company] Raw Content Length: {len(response.choices[0].message.content)}")
+            print(f"[deep_investigate_company] Finish Reason: {response.choices[0].finish_reason}")
+            print(f"[deep_investigate_company] Raw Content Start: {response.choices[0].message.content[:500]}")
+            print(f"[deep_investigate_company] Raw Content End: {response.choices[0].message.content[-500:]}")
+        except:
+            pass
         return {
             "company_name": company_name,
             "executive_verdict": f"Investigation failed: {e}",

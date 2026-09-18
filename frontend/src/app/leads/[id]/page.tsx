@@ -1285,6 +1285,12 @@ export default function LeadDetailsPage() {
                     <Globe className="w-3.5 h-3.5" /> Visit Site
                   </a>
                 )}
+                <button 
+                  onClick={() => router.push(`/leads/${id}/competitors`)}
+                  className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-1.5 rounded-lg shadow-md hover:shadow-lg transition-all"
+                >
+                  <Navigation className="w-3.5 h-3.5" /> Radar Scan
+                </button>
               </div>
               <p className="text-xs font-black uppercase tracking-wider text-slate-400  mb-2">{language === 'es' ? 'Fechas de Seguimiento' : 'Follow-up Dates'}</p>
               <div className="space-y-2">
