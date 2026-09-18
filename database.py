@@ -29,7 +29,6 @@ if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
         "keepalives_idle": 30,
         "keepalives_interval": 10,
         "keepalives_count": 5,
-        "options": "-c statement_timeout=90000 -c lock_timeout=20000",
     }
 engine = create_engine(
     DATABASE_URL,
