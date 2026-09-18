@@ -101,7 +101,7 @@ Return ONLY valid JSON with this exact structure:
             "twitter": "Twitter/X URL or null"
         }}
     }},
-    "full_markdown_report": "Your 1000-15000 word detailed markdown report covering the entire deep investigation."
+    "full_markdown_report": "Your 500-1500 word detailed markdown report covering the entire deep investigation."
 }}
 
 Be specific, data-driven, and insightful. Reference real details about this company wherever possible.

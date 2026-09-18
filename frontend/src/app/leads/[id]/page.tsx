@@ -832,6 +832,12 @@ function RadarSidebarCard({ leadId, lead }: { leadId: string | string[]; lead: a
               <Radar size={24} className="text-indigo-200 mx-auto mb-2" />
               <p className="text-xs text-slate-400 font-medium">No radar relationships yet.</p>
               <p className="text-[10px] text-slate-300 mt-0.5">Run competitor discovery to populate.</p>
+              <button 
+                onClick={() => router.push(`/leads/${id}/competitors`)}
+                className="mt-4 flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2 rounded-lg shadow-md hover:shadow-lg transition-all mx-auto w-full"
+              >
+                <Navigation className="w-3.5 h-3.5" /> Run Competitor Discovery
+              </button>
             </div>
           )}
         </div>
