@@ -21,6 +21,7 @@ export default function SalesOrdersPage() {
   const [form, setForm] = useState({ linked_to: "lead" as "lead" | "client", lead_id: "" as string | number, client_id: "" as string | number, status: "Pending", grand_total: "", currency: "USD", delivery_date: "", notes: "" });
   const [clients, setClients] = useState<any[]>([]);
   const [emailModal, setEmailModal] = useState<{ orderId: number; orderNumber: string } | null>(null);
+  const [emailPrompt, setEmailPrompt] = useState("");
   const [emailAddr, setEmailAddr] = useState("");
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -69,7 +70,14 @@ export default function SalesOrdersPage() {
         notify("err", err.detail || "Failed to create order");
         return;
       }
+      const d = await res.json().catch(() => ({}));
       setShowModal(false); load();
+      const order = d.order;
+      if (order?.id) {
+        setEmailAddr(order.recipient_email || "");
+        setEmailPrompt("Order created. Send the PDF to the client?");
+        setEmailModal({ orderId: order.id, orderNumber: order.order_number || `SO-${order.id}` });
+      }
     } catch { notify("err", "Network error"); }
     finally { setSaving(false); }
   };
@@ -125,6 +133,7 @@ export default function SalesOrdersPage() {
       notify("ok", `PDF sent to ${emailAddr.trim()}`);
       setEmailAddr("");
       setEmailModal(null);
+      setEmailPrompt("");
     } catch { notify("err", "Network error"); }
     finally { setSending(false); }
   };
@@ -189,7 +198,7 @@ export default function SalesOrdersPage() {
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
               <button onClick={() => handlePreview(o.id, o.order_number || `SO-${o.id}`)} disabled={previewLoading} title="Preview PDF" className="p-1.5 rounded-lg bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 transition-all"><Eye className="w-3.5 h-3.5" /></button>
               <button onClick={() => handleDownloadPdf(o.id, o.order_number || `SO-${o.id}`)} title="Download PDF" className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 transition-all"><Download className="w-3.5 h-3.5" /></button>
-              <button onClick={() => { setEmailModal({ orderId: o.id, orderNumber: o.order_number || `SO-${o.id}` }); setEmailAddr(o.recipient_email || ""); }} title="Email PDF" className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all"><Mail className="w-3.5 h-3.5" /></button>
+              <button onClick={() => { setEmailPrompt(""); setEmailModal({ orderId: o.id, orderNumber: o.order_number || `SO-${o.id}` }); setEmailAddr(o.recipient_email || ""); }} title="Email PDF" className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all"><Mail className="w-3.5 h-3.5" /></button>
             </div>
             <button onClick={() => handleDelete(o.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
           </motion.div>
@@ -286,9 +295,9 @@ export default function SalesOrdersPage() {
             <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-sm p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2"><Mail className="w-4 h-4 text-blue-600" /> Email PDF</h2>
-                <button onClick={() => setEmailModal(null)}><X className="w-4 h-4" /></button>
+                <button onClick={() => { setEmailModal(null); setEmailPrompt(""); }}><X className="w-4 h-4" /></button>
               </div>
-              <p className="text-xs text-slate-500 mb-3">Send <span className="font-bold">{emailModal.orderNumber}</span> as PDF attachment</p>
+              <p className="text-xs text-slate-500 mb-3">{emailPrompt || <>Send <span className="font-bold">{emailModal.orderNumber}</span> as PDF attachment</>}</p>
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Recipient Email</label>
               <input type="email" autoFocus value={emailAddr} onChange={e => setEmailAddr(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleSendEmail()}
@@ -298,7 +307,7 @@ export default function SalesOrdersPage() {
                 <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1.5">Client/Lead email pre-filled: <span className="font-bold">{emailAddr}</span> — edit if needed</p>
               )}
               <div className="flex gap-3 mt-5">
-                <button onClick={() => setEmailModal(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-bold text-sm hover:bg-slate-200 transition-all">Cancel</button>
+                <button onClick={() => { setEmailModal(null); setEmailPrompt(""); }} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-bold text-sm hover:bg-slate-200 transition-all">Cancel</button>
                 <button onClick={handleSendEmail} disabled={!emailAddr.trim() || sending}
                   className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
                   {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} Send
