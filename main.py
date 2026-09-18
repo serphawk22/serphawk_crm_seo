@@ -12295,25 +12295,48 @@ def export_sales_orders_pdf(body: ExportPdfRequest, session: Session = Depends(g
     )
 
 
+def _so_party(o: SalesOrder, session: Session) -> dict:
+    """Resolve buyer info (name, company, email, phone, address) for a sales order."""
+    from database import ClientProfile, Lead, User, Contact
+    party = {"name": None, "company": None, "email": None, "phone": None, "address": None}
+    if o.lead_id:
+        l = session.get(Lead, o.lead_id)
+        if l:
+            party["company"] = l.company_name
+            party["name"] = party["name"] or l.company_name or l.email
+            party["email"] = l.email or party["email"]
+            party["phone"] = l.phone or party["phone"]
+            party["address"] = l.address or party["address"]
+    if o.client_id:
+        c = session.get(ClientProfile, o.client_id)
+        if c:
+            party["company"] = c.companyName or party["company"]
+            party["name"] = party["name"] or c.companyName
+            party["address"] = c.address or party["address"]
+            party["phone"] = c.phone or party["phone"]
+            if c.userId:
+                u = session.get(User, c.userId)
+                if u:
+                    party["email"] = u.email or party["email"]
+                    party["name"] = party["name"] or u.name
+            if not party["email"]:
+                contact = session.exec(
+                    select(Contact).where(Contact.client_id == o.client_id, Contact.email.is_not(None)).first()
+                )
+                if contact:
+                    party["email"] = contact.email
+    return party
+
+
 @app.get("/sales-orders/{order_id}/pdf")
 def export_single_sales_order_pdf(order_id: int, session: Session = Depends(get_session)):
     from fastapi.responses import Response
-    from database import ClientProfile, Lead
     from modules.pdf_export import single_sales_order_pdf
     o = session.get(SalesOrder, order_id)
     if not o:
         raise HTTPException(status_code=404, detail="Sales order not found")
-    client_name = None
-    lead_name = None
-    if o.client_id:
-        c = session.get(ClientProfile, o.client_id)
-        if c:
-            client_name = c.companyName
-    if o.lead_id:
-        l = session.get(Lead, o.lead_id)
-        if l:
-            lead_name = l.company_name
-    pdf = single_sales_order_pdf(o.model_dump(), client_name=client_name, lead_name=lead_name)
+    party = _so_party(o, session)
+    pdf = single_sales_order_pdf(o.model_dump(), client_name=party["name"], lead_name=party["name"], party=party)
     filename = f"sales_order_{o.order_number or o.id}.pdf"
     return Response(
         content=pdf,
@@ -12327,7 +12350,6 @@ def send_single_sales_order_pdf_email(order_id: int, body: ExportPdfRequest, ses
     """Email a single sales order as a PDF attachment. Uses the provided email
     or falls back to the linked lead/client email."""
     from modules.pdf_export import single_sales_order_pdf
-    from database import ClientProfile, Lead
     o = session.get(SalesOrder, order_id)
     if not o:
         raise HTTPException(status_code=404, detail="Sales order not found")
@@ -12335,17 +12357,8 @@ def send_single_sales_order_pdf_email(order_id: int, body: ExportPdfRequest, ses
     recipient = (body.email or "").strip() or default_email
     if not recipient:
         raise HTTPException(status_code=400, detail="No recipient email. Provide an email or link this order to a lead/client that has one.")
-    client_name = None
-    lead_name = None
-    if o.client_id:
-        c = session.get(ClientProfile, o.client_id)
-        if c:
-            client_name = c.companyName
-    if o.lead_id:
-        l = session.get(Lead, o.lead_id)
-        if l:
-            lead_name = l.company_name
-    pdf = single_sales_order_pdf(o.model_dump(), client_name=client_name, lead_name=lead_name)
+    party = _so_party(o, session)
+    pdf = single_sales_order_pdf(o.model_dump(), client_name=party["name"], lead_name=party["name"], party=party)
     filename = f"{o.order_number or f'SO-{o.id}'}.pdf"
     subject = f"Sales Order {o.order_number or o.id} — {client_name or lead_name or ''}".strip()
     from modules.email_sender import branded_email, _summary_table, _attachment_note
