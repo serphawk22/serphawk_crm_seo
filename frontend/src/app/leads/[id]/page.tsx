@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity, MessageSquare, StickyNote, CheckSquare, Building2, ChevronDown,
   Target, FolderOpen, HeartPulse, LayoutDashboard, Users,
-  TrendingUp, TrendingDown, Lightbulb, ShieldAlert, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, BrainCircuit, Loader2, Radar
+  TrendingUp, TrendingDown, Lightbulb, ShieldAlert, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, Brain, Loader2, Radar
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -553,7 +553,7 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
           return (
           <div style={{ paddingTop: 32, paddingBottom: 32, textAlign: 'center', color: 'var(--text-muted)' }}>
             <div style={{ background: 'var(--bg-card)', width: 64, height: 64, borderRadius: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', border: '1px solid var(--border)' }}>
-              <BrainCircuit size={28} color="var(--text-secondary)" />
+              <Brain size={28} color="var(--text-secondary)" />
             </div>
             <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>Agent Analysis is pending</p>
             <p style={{ fontSize: 13, marginTop: 4, maxWidth: 400, margin: '8px auto 24px' }}>Click below to manually trigger a deep, comprehensive AI investigation of this lead. This will analyze their website, discover their core ICPs, find competitors, and write a detailed GTM markdown report.</p>
@@ -1160,12 +1160,6 @@ export default function LeadDetailsPage() {
                     <Globe className="w-3.5 h-3.5" /> Visit Site
                   </a>
                 )}
-                <button 
-                  onClick={() => router.push(`/admin/clients/${lead.id}/competitors`)}
-                  className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-1.5 rounded-lg shadow-md hover:shadow-lg transition-all"
-                >
-                  <Navigation className="w-3.5 h-3.5" /> Radar Scan
-                </button>
               </div>
               <p className="text-xs font-black uppercase tracking-wider text-slate-400  mb-2">{language === 'es' ? 'Fechas de Seguimiento' : 'Follow-up Dates'}</p>
               <div className="space-y-2">
