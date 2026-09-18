@@ -286,5 +286,3 @@ export default function LeaderboardPage() {
   );
 }
 
-
-import { useState, useEffect } from "react";
