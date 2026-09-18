@@ -1053,14 +1053,14 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
                 phone=phone if phone else None,
                 source="Email Agent",
                 status="Generated",
-                ai_analysis_results=json.dumps(data)
+                ai_analysis_results=data
             )
             session.add(new_lead)
             session.commit()
             session.refresh(new_lead)
             lead_id = new_lead.id
         else:
-            existing_lead.ai_analysis_results = json.dumps(data)
+            existing_lead.ai_analysis_results = data
             session.add(existing_lead)
             session.commit()
             lead_id = existing_lead.id
