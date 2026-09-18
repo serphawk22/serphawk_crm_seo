@@ -62,6 +62,7 @@ export default function AiCopilotPanel({ clientId, client }: AiCopilotPanelProps
   const [insights, setInsights] = useState<any>(null);
   const [error, setError] = useState('');
   const [waitBanner, setWaitBanner] = useState(false);
+  const [hasRun, setHasRun] = useState(false);
 
   const analyze = async () => {
     setLoading(true);
@@ -86,8 +87,15 @@ export default function AiCopilotPanel({ clientId, client }: AiCopilotPanelProps
       setWaitBanner(true);
     } finally {
       setLoading(false);
+      setHasRun(true);
     }
   };
+
+  React.useEffect(() => {
+    if (!hasRun) {
+      analyze();
+    }
+  }, [hasRun, clientId]);
 
   return (
     <div className="rounded-2xl border border-violet-200 dark:border-violet-800/50
