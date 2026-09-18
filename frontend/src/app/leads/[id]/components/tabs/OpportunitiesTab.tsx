@@ -316,7 +316,7 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
                 className="flex-1 py-2 px-4 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-colors disabled:opacity-50"
               >
                 {isAutoResearching ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
-                {isAutoResearching ? (language === 'es' ? 'Investigando Empresa...' : 'Researching Company...') : (language === 'es' ? 'Analizar Leade con IA' : 'Analyze Lead with AI')}
+                {isAutoResearching ? (language === 'es' ? 'Investigando Empresa...' : 'Researching Company...') : (language === 'es' ? 'Analizar Cliente con IA' : 'Analyze Client with AI')}
               </button>
               <button
                 onClick={handleExtractServices}
