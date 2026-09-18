@@ -4675,18 +4675,47 @@ def get_lead_ai_insights(lead_id: int, session: Session = Depends(get_session)):
     notes = session.exec(select(LeadNote).where(LeadNote.lead_id == lead_id).order_by(LeadNote.created_at.desc()).limit(10)).all()
     convs = session.exec(select(ConversationLog).where(ConversationLog.lead_id == lead_id).order_by(ConversationLog.created_at.desc()).limit(10)).all()
     activities = session.exec(select(ActivityLog).where(ActivityLog.lead_id == lead_id).order_by(ActivityLog.createdAt.desc()).limit(10)).all()
+    research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+
     notes_text = "\n".join(f"- {n.content[:200]}" for n in notes) if notes else "No notes recorded."
     convs_text = "\n".join(f"- [{c.type.upper()}] {c.title}: {(c.description or '')[:200]}" for c in convs) if convs else "No conversations recorded."
     activities_text = "\n".join(f"- {a.action}" for a in activities) if activities else "No activities."
-    prompt = f"""You are an AI Sales Copilot analyzing a CRM lead. Return valid JSON only.
+    research_text = ""
+    if research:
+        research_text = f"Pain Points: {research.pain_points or 'unknown'}\nBusiness Goals: {research.business_goals or 'unknown'}\nCompetitors: {research.competitors or 'unknown'}"
+
+    last_contact = None
+    if convs:
+        last_contact = convs[0].created_at
+    elif activities:
+        last_contact = activities[0].createdAt
+
+    days_since_contact = None
+    if last_contact:
+        days_since_contact = (datetime.utcnow() - last_contact).days
+
+    prompt = f"""You are an AI Sales Copilot analyzing a CRM lead. Provide actionable insights.
+
 LEAD: {lead.company_name or 'Unknown'}
 STATUS: {lead.status}
 INDUSTRY: {lead.industry or 'Unknown'}
 DEAL VALUE: {getattr(lead, 'deal_value', None) or 'Not set'}
+DAYS SINCE LAST CONTACT: {days_since_contact if days_since_contact is not None else 'Unknown'}
+
+RESEARCH:\n{research_text}
 NOTES:\n{notes_text}
 CONVERSATIONS:\n{convs_text}
 ACTIVITIES:\n{activities_text}
-Return exactly: {{"client_summary":"2-3 sentence overview","deal_health_score":75,"risks":["risk"],"next_best_action":"one action","follow_up_recommendations":["recommendation"],"deal_health_label":"Hot|Warm|Cold|At Risk"}}"""
+
+Provide a JSON response with exactly these keys:
+{{
+  "client_summary": "2-3 sentence overview of lead status",
+  "deal_health_score": <integer 0-100>,
+  "risks": ["risk 1", "risk 2"],
+  "next_best_action": "one action",
+  "follow_up_recommendations": ["recommendation"],
+  "deal_health_label": "Hot|Warm|Cold|At Risk"
+}}"""
     try:
         from modules.llm_engine import get_openai_client
         import json as _json
