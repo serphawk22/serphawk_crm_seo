@@ -225,14 +225,14 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
     return true;
   };
 
-  const handleSave = async () => {
+  const createQuote = async (status: string, openSend: boolean) => {
     setSaving(true);
     setError(null);
     const title = form.title.trim() || `Quote – ${new Date().toLocaleDateString("en-IN")}`;
     const grandTotal = cartTotal;
     const payload: any = {
       title,
-      status: form.status,
+      status,
       currency: form.currency,
       valid_until: form.valid_until || null,
       notes: form.notes || null,
@@ -250,14 +250,25 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
       });
       if (!res.ok) {
         setError("Failed to save. Please try again.");
-      } else {
-        setToast({ ok: true, msg: "Quote created. You can review and send it by email from the Quotes list." });
+        setSaving(false);
+        return;
       }
+      const data = await res.json().catch(() => ({}));
+      const q: Quote | undefined = data.quote;
       setShowModal(false);
+      setSaving(false);
       loadQuotes();
+      if (openSend) {
+        if (q) {
+          setPendingSend(q);
+        } else {
+          setToast({ ok: false, msg: "Quote saved. Open it from the list to send by email." });
+        }
+      } else {
+        setToast({ ok: true, msg: status === "Draft" ? "Quote saved as draft." : "Quote created." });
+      }
     } catch {
       setError("Failed to save. Please try again.");
-    } finally {
       setSaving(false);
     }
   };
@@ -300,7 +311,7 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
       if (data.email_sent) {
         setToast({ ok: true, msg: `Quote #${q.quote_number || q.id} emailed to ${data.recipient_name || "the lead/client"} (${data.recipient_email || "email on file"}).` });
       } else {
-        setToast({ ok: false, msg: data.recipient_email ? "Failed to send email." : "No email on the linked lead/client." });
+        setToast({ ok: false, msg: data.recipient_email ? "Failed to send email." : `No email on ${q.client_name || q.lead_name || "the linked lead/client"}.` });
       }
       await fetch(`${API_BASE_URL}/quotes/${q.id}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
@@ -818,9 +829,13 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
                   className="flex-1 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 font-semibold text-sm hover:bg-slate-100 transition-all">
                   Cancel
                 </button>
-                <button onClick={handleSave} disabled={saving}
-                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold text-sm hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2 shadow-md">
-                  {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : "💾 Create Quote"}
+                <button onClick={() => createQuote("Draft", false)} disabled={saving}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-semibold text-sm hover:bg-slate-200 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5">
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>💾</span>} Save Draft
+                </button>
+                <button onClick={() => createQuote("Sent", true)} disabled={saving}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold text-sm hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5 shadow-md">
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>📤</span>} Send to {recipientLabel() || "Client"}
                 </button>
               </div>
             </motion.div>
@@ -1008,7 +1023,7 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
               </div>
               <div className="p-6 space-y-5">
                 <p className="text-sm text-slate-600 dark:text-zinc-300 leading-relaxed">
-                  Review the email below, then confirm to send it to the linked lead/client.
+                  Review the email below, then confirm to send it to {pendingSend.client_name || pendingSend.lead_name || "the linked lead/client"}.
                 </p>
 
                 {emailPreviewLoading ? (
@@ -1017,8 +1032,8 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
                   </div>
                 ) : !emailPreview?.sendable ? (
                   <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40">
-                    <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">No email address on the linked lead/client.</p>
-                    <p className="text-xs text-amber-600/70 dark:text-amber-500/70 mt-1">Add an email to the lead/client to send the quote by email. You can still mark it as Sent.</p>
+                    <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">No email address {pendingSend.client_name || pendingSend.lead_name ? `for ${pendingSend.client_name || pendingSend.lead_name}` : "on the linked lead/client"}.</p>
+                    <p className="text-xs text-amber-600/70 dark:text-amber-500/70 mt-1">{pendingSend.client_name || pendingSend.lead_name ? `Add an email to ${pendingSend.client_name || pendingSend.lead_name} to send the quote by email.` : "Add an email to the linked lead/client to send the quote by email."} You can still mark it as Sent.</p>
                   </div>
                 ) : (
                   <>
@@ -1036,7 +1051,7 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
                       <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700">
                         <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-1">To</p>
                         <p className="text-sm font-bold text-slate-900 dark:text-zinc-100">
-                          {emailPreview.recipient_name || emailPreview.company_name || "Recipient"}
+                          {emailPreview.recipient_name || emailPreview.company_name || pendingSend.client_name || pendingSend.lead_name || "Recipient"}
                         </p>
                         {emailPreview.recipient_email && (
                           <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{emailPreview.recipient_email}</p>

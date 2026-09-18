@@ -1008,7 +1008,7 @@ export default function ProposalsPage() {
                                 : "border-slate-400 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
                               : "border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300"
                           }`}>
-                          {s === "Draft" ? t("proposals.wizard_save_draft") : t("proposals.wizard_send_client")}
+                          {s === "Draft" ? t("proposals.wizard_save_draft") : `Send to ${recipientName() || "Client"}`}
                         </button>
                       ))}
                     </div>

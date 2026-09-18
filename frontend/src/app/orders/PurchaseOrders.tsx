@@ -17,8 +17,9 @@ export default function PurchaseOrdersPage() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ vendor_name: "", vendor_email: "", status: "Draft", grand_total: "", currency: "USD", expected_delivery: "", notes: "" });
-  const [emailModal, setEmailModal] = useState<{ orderId: number; poNumber: string } | null>(null);
+  const [emailModal, setEmailModal] = useState<{ orderId: number; poNumber: string; vendorEmail?: string; mode: "email" | "sent" } | null>(null);
   const [emailAddr, setEmailAddr] = useState("");
+  const [emailPrefilled, setEmailPrefilled] = useState(false);
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [preview, setPreview] = useState<{ id: number; name: string; url: string } | null>(null);
@@ -51,7 +52,20 @@ export default function PurchaseOrdersPage() {
   };
   const handleDelete = async (id: number) => { if (!confirm("Delete PO?")) return; await fetch(`${API_BASE_URL}/purchase-orders/${id}`, { method: "DELETE" }); load(); };
   const handleStatus = async (o: PO, status: string) => {
+    if (status === "Sent") {
+      setEmailModal({ orderId: o.id, poNumber: o.po_number || `PO-${o.id}`, vendorEmail: o.vendor_email, mode: "sent" });
+      setEmailAddr(o.vendor_email || "");
+      setEmailPrefilled(!!o.vendor_email);
+      return;
+    }
     await fetch(`${API_BASE_URL}/purchase-orders/${o.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...o, status }) });
+    load();
+  };
+
+  const markStatus = async (id: number, status: string) => {
+    const order = orders.find(x => x.id === id);
+    if (!order) return;
+    await fetch(`${API_BASE_URL}/purchase-orders/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...order, status }) });
     load();
   };
 
@@ -91,15 +105,28 @@ export default function PurchaseOrdersPage() {
     if (!emailModal || !emailAddr.trim()) return;
     setSending(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/purchase-orders/export-pdf`, {
+      const { orderId, mode } = emailModal;
+      const res = await fetch(`${API_BASE_URL}/purchase-orders/${orderId}/send-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: emailAddr.trim() }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { notify("err", d.detail || "Send failed"); return; }
-      notify("ok", `PDF sent to ${emailAddr.trim()}`);
+      if (mode === "sent") await markStatus(orderId, "Sent");
+      notify("ok", mode === "sent" ? `PDF sent to ${emailAddr.trim()} · marked as Sent` : `PDF sent to ${emailAddr.trim()}`);
       setEmailAddr("");
+      setEmailModal(null);
+    } catch { notify("err", "Network error"); }
+    finally { setSending(false); }
+  };
+
+  const handleMarkSentOnly = async () => {
+    if (!emailModal) return;
+    setSending(true);
+    try {
+      await markStatus(emailModal.orderId, "Sent");
+      notify("ok", "Marked as Sent");
       setEmailModal(null);
     } catch { notify("err", "Network error"); }
     finally { setSending(false); }
@@ -159,13 +186,14 @@ export default function PurchaseOrdersPage() {
             <div><p className="text-sm font-bold text-slate-800 dark:text-zinc-100">{o.vendor_name}</p>{o.vendor_email && <p className="text-xs text-slate-400">{o.vendor_email}</p>}</div>
             <span className="text-sm font-black text-slate-800 dark:text-zinc-100">{o.currency} {o.grand_total.toFixed(2)}</span>
             <span className="text-xs text-slate-500">{o.expected_delivery || "—"}</span>
-            <select value={o.status} onChange={e => handleStatus(o, e.target.value)} className={`text-xs font-bold px-2 py-1 rounded-lg border-0 outline-none cursor-pointer ${STATUS_COLORS[o.status]}`}>
+            <select value={o.status} onChange={e => handleStatus(o, e.target.value)} className={`text-xs font-bold px-2 py-1 rounded-lg border-0 outline-none cursor-pointer ${STATUS_COLORS[o.status] || "bg-slate-100 text-slate-500"}`}>
+              {!STATUSES.includes(o.status) && <option value={o.status}>{o.status}</option>}
               {STATUSES.map(s => <option key={s}>{s}</option>)}
             </select>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
               <button onClick={() => handlePreview(o.id, o.po_number || `PO-${o.id}`)} disabled={previewLoading} title="Preview PDF" className="p-1.5 rounded-lg bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 transition-all"><Eye className="w-3.5 h-3.5" /></button>
               <button onClick={() => handleDownloadPdf(o.id, o.po_number || `PO-${o.id}`)} title="Download PDF" className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 transition-all"><Download className="w-3.5 h-3.5" /></button>
-              <button onClick={() => setEmailModal({ orderId: o.id, poNumber: o.po_number || `PO-${o.id}` })} title="Email PDF" className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all"><Mail className="w-3.5 h-3.5" /></button>
+              <button onClick={() => { setEmailModal({ orderId: o.id, poNumber: o.po_number || `PO-${o.id}`, vendorEmail: o.vendor_email || "", mode: "email" }); setEmailAddr(o.vendor_email || ""); setEmailPrefilled(!!o.vendor_email); }} title="Email PDF" className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all"><Mail className="w-3.5 h-3.5" /></button>
             </div>
             <button onClick={() => handleDelete(o.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
           </motion.div>
@@ -234,20 +262,29 @@ export default function PurchaseOrdersPage() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-sm p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2"><Mail className="w-4 h-4 text-teal-600" /> Email PDF</h2>
+                <h2 className="text-lg font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2"><Mail className="w-4 h-4 text-teal-600" /> {emailModal.mode === "sent" ? "Send Before Marking Sent" : "Email PDF"}</h2>
                 <button onClick={() => setEmailModal(null)}><X className="w-4 h-4" /></button>
               </div>
-              <p className="text-xs text-slate-500 mb-3">Send <span className="font-bold">{emailModal.poNumber}</span> as PDF attachment</p>
+              <p className="text-xs text-slate-500 mb-3">Send <span className="font-bold">{emailModal.poNumber}</span> as PDF attachment{emailModal.mode === "sent" ? " — the order will be marked as Sent." : ""}</p>
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Recipient Email</label>
               <input type="email" autoFocus value={emailAddr} onChange={e => setEmailAddr(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleSendEmail()}
                 placeholder="recipient@example.com"
                 className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500" />
+              {emailPrefilled && emailAddr && (
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1.5">Vendor email pre-filled: <span className="font-bold">{emailAddr}</span> — edit if needed</p>
+              )}
               <div className="flex gap-3 mt-5">
                 <button onClick={() => setEmailModal(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-bold text-sm hover:bg-slate-200 transition-all">Cancel</button>
+                {emailModal.mode === "sent" && (
+                  <button onClick={handleMarkSentOnly} disabled={sending}
+                    className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm disabled:opacity-50 transition-all">
+                    Mark Sent Only
+                  </button>
+                )}
                 <button onClick={handleSendEmail} disabled={!emailAddr.trim() || sending}
-                  className="flex-1 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
-                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} Send
+                  className={`flex-1 py-2.5 rounded-xl text-white font-bold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2 ${emailModal.mode === "sent" ? "bg-teal-600 hover:bg-teal-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>
+                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} {emailModal.mode === "sent" ? "Send & Mark Sent" : "Send"}
                 </button>
               </div>
             </motion.div>
