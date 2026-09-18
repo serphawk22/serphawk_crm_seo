@@ -61,21 +61,35 @@ export default function AiCopilotPanelLead({ leadId, client }: AiCopilotPanelLea
   const [loading, setLoading] = useState(false);
   const [insights, setInsights] = useState<any>(null);
   const [error, setError] = useState('');
+  const [waitBanner, setWaitBanner] = useState(false);
 
   const analyze = async () => {
     setLoading(true);
     setError('');
+    setWaitBanner(false);
     try {
       const res = await fetch(`${API_BASE_URL}/leads/${leadId}/ai-insights`, { method: 'POST' });
-      if (!res.ok) throw new Error('AI insights request failed');
+      if (res.status === 503 || res.status === 500) {
+        // Backend AI is warming up — show friendly banner, no console error
+        setWaitBanner(true);
+        setLoading(false);
+        return;
+      }
+      if (!res.ok) {
+        setWaitBanner(true);
+        setLoading(false);
+        return;
+      }
       const data = await res.json();
       setInsights(data.insights);
     } catch {
-      setError(language === 'es' ? 'El análisis falló. Revisa tu configuración de IA.' : 'Analysis failed. Check your AI configuration.');
+      // Network error — show wait banner silently
+      setWaitBanner(true);
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="rounded-2xl border border-violet-200 dark:border-violet-800/50
@@ -126,7 +140,27 @@ export default function AiCopilotPanelLead({ leadId, client }: AiCopilotPanelLea
           </div>
         )}
 
-        {error && (
+        {waitBanner && !loading && (
+          <div className="mx-1 p-4 rounded-xl bg-amber-50 border border-amber-200 flex flex-col items-center gap-2 text-center">
+            <span className="text-2xl">⏳</span>
+            <p className="text-xs font-bold text-amber-800">
+              {language === 'es' ? 'El análisis de IA está en proceso.' : 'AI analysis is processing.'}
+            </p>
+            <p className="text-[11px] text-amber-700 leading-relaxed">
+              {language === 'es'
+                ? 'Por favor espera ~2 minutos y vuelve a intentarlo.'
+                : 'Please wait ~2 minutes, then try again.'}
+            </p>
+            <button
+              onClick={analyze}
+              className="mt-1 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-colors"
+            >
+              {language === 'es' ? 'Reintentar' : 'Retry'}
+            </button>
+          </div>
+        )}
+
+        {error && !waitBanner && (
           <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400">
             {error}
           </div>
