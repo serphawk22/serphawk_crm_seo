@@ -446,7 +446,10 @@ app.include_router(leaderboard_router)
 @app.on_event("startup")
 def on_startup():
     patch_openai()
-    create_db_and_tables()
+    try:
+        create_db_and_tables()
+    except Exception as e:
+        print(f"[startup] create_db_and_tables skipped (tables likely exist): {type(e).__name__}: {e}")
     
     # Ensure SuperAdmin exists
     try:
