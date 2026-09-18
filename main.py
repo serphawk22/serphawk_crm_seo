@@ -12112,6 +12112,7 @@ def delete_purchase_order(order_id: int, session: Session = Depends(get_session)
 
 class ExportPdfRequest(BaseModel):
     email: Optional[str] = None
+    format: Optional[str] = None  # pdf | csv | xlsx (pdf default)
 
 
 # ── Quotes PDF Export ────────────────────────────────────────────────────
@@ -12167,6 +12168,8 @@ def export_quotes_pdf(body: ExportPdfRequest, session: Session = Depends(get_ses
     from io import BytesIO
     from pypdf import PdfReader, PdfWriter
     from modules.pdf_export import quote_pdf, send_pdf_email
+    import csv as _csv
+    import io as _io
     tenant_id = current_tenant_id.get()
     q = select(CRMQuote).order_by(CRMQuote.created_at.desc())
     if tenant_id:
@@ -12174,23 +12177,85 @@ def export_quotes_pdf(body: ExportPdfRequest, session: Session = Depends(get_ses
     quotes = session.exec(q).all()
     if not quotes:
         raise HTTPException(status_code=404, detail="No quotes to export")
-    writer = PdfWriter()
-    for qt in quotes:
-        page = PdfReader(BytesIO(quote_pdf(_quote_export_data(qt, session)))).pages[0]
-        writer.add_page(page)
-    buf = BytesIO()
-    writer.write(buf)
-    pdf = buf.getvalue()
+
+    export_format = (body.format or "pdf").strip().lower()
+    if export_format not in ("pdf", "csv", "xlsx"):
+        raise HTTPException(status_code=400, detail="format must be pdf, csv or xlsx")
+
+    def _build_csv() -> bytes:
+        output = _io.StringIO()
+        writer = _csv.writer(output)
+        writer.writerow(["Quote #", "Title", "Status", "Client", "Company", "Email", "Phone", "Currency", "Subtotal", "Grand Total", "Valid Until", "Created", "Notes"])
+        for qt in quotes:
+            d = _quote_export_data(qt, session)
+            writer.writerow([
+                d["quote_number"], d.get("title") or "", d.get("status") or "",
+                d.get("client_name") or "", d.get("client_company") or "", d.get("client_email") or "",
+                d.get("client_phone") or "", d.get("currency") or "$",
+                f'{d.get("subtotal") or 0:.2f}', f'{d.get("grand_total") or 0:.2f}',
+                d.get("valid_until") or "", d.get("created_at") or "", d.get("notes") or "",
+            ])
+        return ("\ufeff" + output.getvalue()).encode("utf-8")
+
+    def _build_xlsx() -> bytes:
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Quotes"
+        headers = ["Quote #", "Title", "Status", "Client", "Company", "Email", "Phone", "Currency", "Subtotal", "Grand Total", "Valid Until", "Created", "Notes"]
+        ws.append(headers)
+        for qt in quotes:
+            d = _quote_export_data(qt, session)
+            ws.append([
+                d["quote_number"], d.get("title") or "", d.get("status") or "",
+                d.get("client_name") or "", d.get("client_company") or "", d.get("client_email") or "",
+                d.get("client_phone") or "", d.get("currency") or "$",
+                float(d.get("subtotal") or 0), float(d.get("grand_total") or 0),
+                d.get("valid_until") or "", d.get("created_at") or "", d.get("notes") or "",
+            ])
+        ws2 = wb.create_sheet("Items")
+        ws2.append(["Quote #", "Description", "Quantity", "Unit Price", "Total"])
+        for qt in quotes:
+            d = _quote_export_data(qt, session)
+            for it in d.get("items") or []:
+                ws2.append([d["quote_number"], it.get("description") or "", it.get("quantity") or 1,
+                            float(it.get("unit_price") or 0), float(it.get("total") or 0)])
+        for sheet in wb.worksheets:
+            for cell in sheet[1]:
+                cell.font = cell.font.copy(bold=True)
+        buf = BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
+    if export_format == "csv":
+        data = _build_csv()
+        media = "text/csv"
+        fname = "quotes.csv"
+    elif export_format == "xlsx":
+        data = _build_xlsx()
+        media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        fname = "quotes.xlsx"
+    else:
+        writer = PdfWriter()
+        for qt in quotes:
+            page = PdfReader(BytesIO(quote_pdf(_quote_export_data(qt, session)))).pages[0]
+            writer.add_page(page)
+        buf = BytesIO()
+        writer.write(buf)
+        data = buf.getvalue()
+        media = "application/pdf"
+        fname = "quotes.pdf"
+
     if body.email:
         try:
-            send_pdf_email(body.email, "Quotes PDF", "<p>The requested quotes report is attached.</p>", pdf, "quotes.pdf")
+            send_pdf_email(body.email, "Quotes PDF", "<p>The requested quotes report is attached.</p>", data, fname)
             return {"sent": True, "recipient": body.email, "count": len(quotes)}
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Email failed: {e}")
     return Response(
-        content=pdf,
-        media_type="application/pdf",
-        headers={"Content-Disposition": "attachment; filename=quotes.pdf"}
+        content=data,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename={fname}"}
     )
 
 

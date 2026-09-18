@@ -77,6 +77,10 @@ export default function SalesOrdersPage() {
   const handleStatus = async (o: SalesOrder, status: string) => {
     await fetch(`${API_BASE_URL}/sales-orders/${o.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...o, status }) });
     load();
+    if (status === "Sent") {
+      setEmailAddr(o.recipient_email || "");
+      setEmailModal({ orderId: o.id, orderNumber: o.order_number || `SO-${o.id}` });
+    }
   };
 
   const handleDownloadPdf = async (id: number, orderNumber: string) => {
