@@ -4611,17 +4611,25 @@ Provide a JSON response with exactly these keys:
     try:
         from modules.llm_engine import get_openai_client
         import json as _json
-        client_ai = get_openai_client()
-        resp = client_ai.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0.0,
-            messages=[
-                {"role": "system", "content": "You are an expert CRM sales analyst. Always respond with valid JSON only."},
-                {"role": "user", "content": prompt}
-            ],
-            response_format={"type": "json_object"}
-        )
-        insights = _json.loads(resp.choices[0].message.content)
+        import concurrent.futures as _cf
+        def _call_openai():
+            client_ai = get_openai_client()
+            resp = client_ai.chat.completions.create(
+                model="gpt-4o-mini",
+                temperature=0.0,
+                messages=[
+                    {"role": "system", "content": "You are an expert CRM sales analyst. Always respond with valid JSON only."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            return _json.loads(resp.choices[0].message.content)
+        with _cf.ThreadPoolExecutor(max_workers=1) as _executor:
+            _future = _executor.submit(_call_openai)
+            try:
+                insights = _future.result(timeout=25)
+            except (_cf.TimeoutError, Exception):
+                raise ValueError("OpenAI timed out or failed")
     except Exception as e:
         # Fallback insights if AI fails
         score = 75 if days_since_contact and days_since_contact < 7 else (50 if days_since_contact and days_since_contact < 14 else 30)
@@ -4672,15 +4680,23 @@ Return exactly: {{"client_summary":"2-3 sentence overview","deal_health_score":7
     try:
         from modules.llm_engine import get_openai_client
         import json as _json
-        response = get_openai_client().chat.completions.create(
-            model="gpt-4o-mini", temperature=0,
-            messages=[
-                {"role": "system", "content": "You are an expert CRM sales analyst. Always respond with valid JSON only."},
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-        )
-        insights = _json.loads(response.choices[0].message.content)
+        import concurrent.futures as _cf
+        def _call_openai_lead():
+            resp = get_openai_client().chat.completions.create(
+                model="gpt-4o-mini", temperature=0,
+                messages=[
+                    {"role": "system", "content": "You are an expert CRM sales analyst. Always respond with valid JSON only."},
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+            )
+            return _json.loads(resp.choices[0].message.content)
+        with _cf.ThreadPoolExecutor(max_workers=1) as _executor:
+            _future = _executor.submit(_call_openai_lead)
+            try:
+                insights = _future.result(timeout=25)
+            except (_cf.TimeoutError, Exception):
+                raise ValueError("OpenAI timed out or failed")
     except Exception:
         insights = {
             "client_summary": f"{lead.company_name or 'This lead'} is currently {lead.status}.",

@@ -206,21 +206,17 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
         method: 'POST'
       });
       if (res.ok) {
-        setAutoResearchMsg('✅ Research started! Results will appear in ~30 seconds. Refresh to see them.');
-        window.dispatchEvent(new CustomEvent('refresh-lead-data'));
-        setTimeout(() => {
-          setIsAutoResearching(false);
-          window.dispatchEvent(new CustomEvent('refresh-lead-data'));
-        }, 30000);
+        setAutoResearchMsg('running');
+        setIsAutoResearching(false);
         return;
       } else {
         const text = await res.text().catch(() => "");
         let err: any = {};
         try { err = JSON.parse(text); } catch (e) {}
-        setAutoResearchMsg(`❌ Error: ${err.detail || text || 'Failed to start research'}`);
+        setAutoResearchMsg(`error:${err.detail || text || 'Failed to start research'}`);
       }
     } catch (e: any) {
-      setAutoResearchMsg(`❌ Network error: ${e.message}`);
+      setAutoResearchMsg(`error:Network error`);
     }
     setIsAutoResearching(false);
   };
@@ -243,7 +239,7 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
         setExtractError(data.detail || text || 'Failed to extract services');
       } else {
         setExtractResult({ count: data.services?.length ?? data.extracted_count ?? 0, marketplace: data.marketplace_entries_added ?? data.marketplace_count ?? 0 });
-        window.dispatchEvent(new CustomEvent('refresh-lead-data'));
+        // No auto-refresh — results shown in-place
       }
     } catch (e: any) {
       setExtractError(e.message || 'Network error');
@@ -345,9 +341,20 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
                 <p className="text-xs font-bold text-red-600">{extractError}</p>
               </div>
             )}
-            {autoResearchMsg && (
-              <div className={`mb-4 flex items-start gap-2 px-4 py-3 rounded-xl ${autoResearchMsg.startsWith('✅') ? 'bg-indigo-50 border border-indigo-200' : 'bg-red-50 border border-red-200'}`}>
-                <p className={`text-xs font-bold ${autoResearchMsg.startsWith('✅') ? 'text-indigo-700' : 'text-red-600'}`}>{autoResearchMsg}</p>
+            {autoResearchMsg === 'running' && (
+              <div className="mb-4 flex items-center justify-between gap-3 px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+                <p className="text-xs font-bold text-indigo-700">⏳ Analysis running in background (~2 min). Click below when ready.</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="shrink-0 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors"
+                >
+                  Check Results
+                </button>
+              </div>
+            )}
+            {autoResearchMsg && autoResearchMsg.startsWith('error:') && (
+              <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-xs font-bold text-red-600">{autoResearchMsg.replace('error:', '')}</p>
               </div>
             )}
             {research ? (

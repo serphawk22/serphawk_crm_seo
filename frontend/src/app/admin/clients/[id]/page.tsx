@@ -859,15 +859,10 @@ export default function AdminClientDetailPage() {
     if (!id) return;
     setIsGeneratingResearch(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/clients/${id}/auto-research`, { method: 'POST' });
-      if (res.ok) {
-        alert('Deep investigation started in the background! It may take 1-3 minutes. Refresh the page later to see the results.');
-      } else {
-        alert('Failed to start research.');
-      }
+      await fetch(`${API_BASE_URL}/clients/${id}/auto-research`, { method: 'POST' });
+      // Research runs in background — no popup, no auto-refresh
     } catch (e) {
-      console.error(e);
-      alert('Error triggering research.');
+      // silent
     } finally {
       setIsGeneratingResearch(false);
     }

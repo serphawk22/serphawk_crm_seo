@@ -555,32 +555,42 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
             <div style={{ background: 'var(--bg-card)', width: 64, height: 64, borderRadius: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', border: '1px solid var(--border)' }}>
               <Brain size={28} color="var(--text-secondary)" />
             </div>
-            <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>Agent Analysis is pending</p>
-            <p style={{ fontSize: 13, marginTop: 4, maxWidth: 400, margin: '8px auto 24px' }}>Click below to manually trigger a deep, comprehensive AI investigation of this lead. This will analyze their website, discover their core ICPs, find competitors, and write a detailed GTM markdown report.</p>
-            <button 
-              onClick={handleGenerateAnalysis}
-              disabled={isGeneratingResearch}
-              style={{
-                padding: '10px 24px',
-                background: isGeneratingResearch ? '#94a3b8' : '#4f46e5',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 8,
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: isGeneratingResearch ? 'not-allowed' : 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                transition: 'all 0.2s'
-              }}
-            >
-              {isGeneratingResearch ? (
-                <>Generating... Please wait</>
-              ) : (
-                <><Target size={16} /> Generate Comprehensive Analysis</>
-              )}
-            </button>
+            {isGeneratingResearch ? (
+              <>
+                <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>⏳ Analysis running in background (~2 min)</p>
+                <p style={{ fontSize: 13, marginTop: 4, maxWidth: 400, margin: '8px auto 24px' }}>Click below to check if the results are ready.</p>
+                <button 
+                  onClick={() => window.location.reload()}
+                  style={{ padding: '10px 24px', background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'all 0.2s' }}
+                >
+                  Check Results
+                </button>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>Agent Analysis is pending</p>
+                <p style={{ fontSize: 13, marginTop: 4, maxWidth: 400, margin: '8px auto 24px' }}>Click below to manually trigger a deep, comprehensive AI investigation of this lead. This will analyze their website, discover their core ICPs, find competitors, and write a detailed GTM markdown report.</p>
+                <button 
+                  onClick={handleGenerateAnalysis}
+                  style={{
+                    padding: '10px 24px',
+                    background: '#4f46e5',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Brain size={16} /> Generate Comprehensive Report
+                </button>
+              </>
+            )}
           </div>
           );
         }})()}
@@ -971,16 +981,13 @@ export default function LeadDetailsPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/leads/${id}/auto-research`, { method: 'POST' });
       if (res.ok) {
-        // Keep spinner visible for 30s while research runs in background
-        setTimeout(() => {
-          setIsGeneratingResearch(false);
-          fetchAll(); // auto-refresh when done
-        }, 30000);
+        // Research runs in background — no auto-refresh, keep UI in generating state
         return;
       }
     } catch (e) {
-      console.error(e);
+      // silent
     }
+    // Only reset on error
     setIsGeneratingResearch(false);
   };
 
