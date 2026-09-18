@@ -222,15 +222,12 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
     try {
       setIsGeneratingDraft(true);
       const res = await fetch(`${API_BASE_URL}/clients/${client?.id}/generate-outbound-draft`, { method: 'POST' });
-      if (res.ok) {
-        window.dispatchEvent(new CustomEvent('refresh-client-data'));
-        // Trigger emails refetch if needed
-      } else {
+      if (!res.ok) {
         const errData = await res.json().catch(() => null);
         throw new Error(toErrorMessage(errData, "Failed to generate draft."));
       }
+      // Draft generated — no auto page refresh
     } catch (e: any) {
-      console.error(e);
       alert(`Error: ${e.message}`);
     } finally {
       setIsGeneratingDraft(false);
@@ -273,33 +270,14 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
       const res = await fetch(`${API_BASE_URL}/clients/${client?.id}/auto-research`, {
         method: 'POST'
       });
-      if (!res.ok) setIsAutoResearching(false);
+      // Research fires in background — no auto-refresh
+      setIsAutoResearching(false);
     } catch (e) {
-      console.error(e);
       setIsAutoResearching(false);
     }
   };
 
-  // Poll for background research completion if it's missing or manually triggered
-  React.useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if ((!research && client?.id) || isAutoResearching) {
-      interval = setInterval(async () => {
-        try {
-          const res = await fetch(`${API_BASE_URL}/clients/${client.id}/research`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data && data.research?.company_overview) {
-               // Research completed in the background!
-               setIsAutoResearching(false);
-               window.dispatchEvent(new CustomEvent('refresh-client-data'));
-            }
-          }
-        } catch (e) {}
-      }, 5000);
-    }
-    return () => clearInterval(interval);
-  }, [research, client?.id, isAutoResearching]);
+  // Removed: polling interval that auto-refreshed the page
 
   const handleExtractServices = async () => {
     setIsExtracting(true);
@@ -317,7 +295,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         setExtractError(toErrorMessage(data, 'Failed to extract services'));
       } else {
         setExtractResult({ count: data.services?.length ?? data.extracted_count ?? 0, marketplace: data.marketplace_entries_added ?? data.marketplace_count ?? 0 });
-        window.dispatchEvent(new CustomEvent('refresh-client-data'));
+        // No auto-refresh — results shown in-place
       }
     } catch (e: any) {
       setExtractError(e.message || 'Network error');

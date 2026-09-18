@@ -555,32 +555,42 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
             <div style={{ background: 'var(--bg-card)', width: 64, height: 64, borderRadius: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', border: '1px solid var(--border)' }}>
               <Brain size={28} color="var(--text-secondary)" />
             </div>
-            <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>Agent Analysis is pending</p>
-            <p style={{ fontSize: 13, marginTop: 4, maxWidth: 400, margin: '8px auto 24px' }}>Click below to manually trigger a deep, comprehensive AI investigation of this lead. This will analyze their website, discover their core ICPs, find competitors, and write a detailed GTM markdown report.</p>
-            <button 
-              onClick={handleGenerateAnalysis}
-              disabled={isGeneratingResearch}
-              style={{
-                padding: '10px 24px',
-                background: isGeneratingResearch ? '#94a3b8' : '#4f46e5',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 8,
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: isGeneratingResearch ? 'not-allowed' : 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                transition: 'all 0.2s'
-              }}
-            >
-              {isGeneratingResearch ? (
-                <>Generating... Please wait</>
-              ) : (
-                <><Target size={16} /> Generate Comprehensive Analysis</>
-              )}
-            </button>
+            {isGeneratingResearch ? (
+              <>
+                <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>⏳ Analysis running in background (~2 min)</p>
+                <p style={{ fontSize: 13, marginTop: 4, maxWidth: 400, margin: '8px auto 24px' }}>Click below to check if the results are ready.</p>
+                <button 
+                  onClick={() => window.location.reload()}
+                  style={{ padding: '10px 24px', background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'all 0.2s' }}
+                >
+                  Check Results
+                </button>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>Agent Analysis is pending</p>
+                <p style={{ fontSize: 13, marginTop: 4, maxWidth: 400, margin: '8px auto 24px' }}>Click below to manually trigger a deep, comprehensive AI investigation of this lead. This will analyze their website, discover their core ICPs, find competitors, and write a detailed GTM markdown report.</p>
+                <button 
+                  onClick={handleGenerateAnalysis}
+                  style={{
+                    padding: '10px 24px',
+                    background: '#4f46e5',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Brain size={16} /> Generate Comprehensive Report
+                </button>
+              </>
+            )}
           </div>
           );
         }})()}
@@ -734,6 +744,103 @@ function LeadSwotTab({ lead, onRefresh }: { lead: any, onRefresh: () => void }) 
 }
 
 
+// ─── RADAR SIDEBAR CARD ──────────────────────────────────────────────────────
+function RadarSidebarCard({ leadId, lead }: { leadId: string | string[]; lead: any }) {
+  const [radarData, setRadarData] = React.useState<any>(null);
+  const [loadingRadar, setLoadingRadar] = React.useState(false);
+  const [open, setOpen] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!leadId) return;
+    setLoadingRadar(true);
+    fetch(`${API_BASE_URL}/radar/relationships/${leadId}`)
+      .then(async res => {
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then(data => setRadarData(data))
+      .catch(() => {/* silent — radar is optional */})
+      .finally(() => setLoadingRadar(false));
+  }, [leadId]);
+
+  const hasData = radarData && (
+    (radarData.discovered_from?.length > 0) ||
+    (radarData.discovered_competitors?.length > 0) ||
+    lead?.discovered_from_name
+  );
+
+  return (
+    <div className="rounded-2xl border border-indigo-100 bg-gradient-to-b from-indigo-50/60 to-white shadow-sm overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 border-b border-indigo-100 bg-indigo-600 text-white"
+      >
+        <div className="flex items-center gap-2">
+          <Radar size={14} />
+          <span className="text-xs font-black tracking-wider uppercase">Radar Analysis</span>
+        </div>
+        <span className="text-xs font-bold opacity-70">{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-3">
+          {loadingRadar ? (
+            <div className="flex justify-center py-4">
+              <Loader2 size={18} className="animate-spin text-indigo-400" />
+            </div>
+          ) : hasData ? (
+            <>
+              {/* Origin */}
+              {(radarData?.discovered_from?.[0] || lead?.discovered_from_name) && (
+                <div className="p-3 bg-white rounded-xl border border-indigo-50">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Discovered Via</p>
+                  <p className="text-xs font-bold text-indigo-700">
+                    {radarData?.discovered_from?.[0]?.discovery_method || lead?.discovered_via || 'Radar Analysis'}
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    From: <span className="font-bold text-indigo-600">{radarData?.discovered_from?.[0]?.source_lead_name || lead?.discovered_from_name || 'Unknown'}</span>
+                  </p>
+                </div>
+              )}
+              {/* Competitors found */}
+              {radarData?.discovered_competitors?.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">
+                    Discovered Competitors ({radarData.discovered_competitors.length})
+                  </p>
+                  <div className="space-y-1.5">
+                    {radarData.discovered_competitors.slice(0, 3).map((comp: any, idx: number) => (
+                      <a
+                        key={idx}
+                        href={`/leads/${comp.discovered_lead_id}`}
+                        target="_blank"
+                        className="flex items-center justify-between px-3 py-2 bg-white border border-slate-100 rounded-xl hover:bg-indigo-50 hover:border-indigo-200 transition-colors"
+                      >
+                        <span className="text-xs font-bold text-indigo-700 truncate">{comp.discovered_lead_name}</span>
+                        <span className="text-[10px] text-slate-400 font-mono ml-2 shrink-0">{comp.competitor_data?.overlap_pct ?? 0}%</span>
+                      </a>
+                    ))}
+                    {radarData.discovered_competitors.length > 3 && (
+                      <p className="text-[10px] text-center text-indigo-400 font-semibold">+{radarData.discovered_competitors.length - 3} more</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-4">
+              <Radar size={24} className="text-indigo-200 mx-auto mb-2" />
+              <p className="text-xs text-slate-400 font-medium">No radar relationships yet.</p>
+              <p className="text-[10px] text-slate-300 mt-0.5">Run competitor discovery to populate.</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 
 // ─── MAIN PAGE ───────────────────────────────────────────────────────────────
 export default function LeadDetailsPage() {
@@ -874,16 +981,13 @@ export default function LeadDetailsPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/leads/${id}/auto-research`, { method: 'POST' });
       if (res.ok) {
-        // Keep spinner visible for 30s while research runs in background
-        setTimeout(() => {
-          setIsGeneratingResearch(false);
-          fetchAll(); // auto-refresh when done
-        }, 30000);
+        // Research runs in background — no auto-refresh, keep UI in generating state
         return;
       }
     } catch (e) {
-      console.error(e);
+      // silent
     }
+    // Only reset on error
     setIsGeneratingResearch(false);
   };
 
@@ -1121,6 +1225,18 @@ export default function LeadDetailsPage() {
             {role === 'Admin' && (
               <div className="rounded-2xl border border-slate-200 dark:border-zinc-700  bg-white dark:bg-zinc-900  p-4 shadow-sm">
                 <p className="text-xs font-black uppercase tracking-wider text-slate-400  mb-3">{language === 'es' ? 'Asignar Vendedor' : 'Assign Salesperson'}</p>
+                {/* Show assigned name badge if already assigned */}
+                {lead?.assignedEmployeeId && employees.find((e: any) => String(e.id) === String(lead.assignedEmployeeId)) && (
+                  <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-indigo-50 rounded-xl border border-indigo-100">
+                    <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-white text-[10px] font-black flex-shrink-0">
+                      {(employees.find((e: any) => String(e.id) === String(lead.assignedEmployeeId))?.name || '?').charAt(0).toUpperCase()}
+                    </div>
+                    <span className="text-xs font-bold text-indigo-700 truncate">
+                      {employees.find((e: any) => String(e.id) === String(lead.assignedEmployeeId))?.name}
+                    </span>
+                    <span className="text-[10px] text-indigo-400 ml-auto font-semibold">Assigned</span>
+                  </div>
+                )}
                 <select
                   value={lead?.assignedEmployeeId || ''}
                   onChange={async (e) => {
@@ -1143,7 +1259,7 @@ export default function LeadDetailsPage() {
                              bg-slate-50 dark:bg-zinc-950  text-slate-800 dark:text-zinc-100 
                              focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value="">{language === 'es' ? 'Seleccionar vendedor' : 'Select salesperson'}</option>
+                  <option value="">{language === 'es' ? 'Cambiar vendedor…' : 'Change salesperson…'}</option>
                   <option value="create_new" className="font-bold text-indigo-600">➕ {language === 'es' ? 'Crear Nuevo Vendedor' : 'Create New Salesperson'}</option>
                   {employees.filter((e: any) => ["Employee", "Admin", "SalesManager"].includes(e.role)).map((e: any) => (
                     <option key={e.id} value={e.id}>{e.name} — {e.role}</option>
@@ -1151,6 +1267,9 @@ export default function LeadDetailsPage() {
                 </select>
               </div>
             )}
+
+            {/* Radar Analysis Sidebar Card */}
+            <RadarSidebarCard leadId={id} lead={lead} />
 
             {/* Next Follow-up */}
             <div className="rounded-2xl border border-slate-200 dark:border-zinc-700  bg-white dark:bg-zinc-900 p-4 shadow-sm">
@@ -1180,6 +1299,7 @@ export default function LeadDetailsPage() {
           </aside>
         </div>
       </div>
+
 
       {/* Activity Detail Modal */}
       <AnimatePresence>

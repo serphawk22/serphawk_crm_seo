@@ -2,14 +2,8 @@
 
 import React, { useState, useRef } from "react";
 import { motion } from "framer-motion";
-import { Upload, Play, CheckCircle, XCircle, Clock, FileText, Trash2, StopCircle } from "lucide-react";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
-import mammoth from "mammoth";
-import * as xlsx from "xlsx";
+import { Play, CheckCircle, XCircle, Clock, FileText, Trash2, StopCircle } from "lucide-react";
 import { API_BASE_URL } from "@/config";
-
-// Initialize PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 interface URLTask {
   id: string;
@@ -24,7 +18,6 @@ export default function GmailAgentLoop() {
   const [isStopped, setIsStopped] = useState(false);
   const isStoppedRef = useRef(false);
   const [processedCount, setProcessedCount] = useState(0);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [bulkText, setBulkText] = useState("");
 
   const handleBulkTextSubmit = () => {
@@ -73,66 +66,6 @@ export default function GmailAgentLoop() {
     }
 
     return results;
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const extension = file.name.split('.').pop()?.toLowerCase();
-    let text = "";
-
-    try {
-      if (extension === "pdf") {
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          text += content.items.map((item: any) => item.str).join(" ") + " ";
-        }
-      } else if (extension === "docx") {
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await mammoth.extractRawText({ arrayBuffer });
-        text = result.value;
-      } else if (extension === "xlsx" || extension === "xls") {
-        const arrayBuffer = await file.arrayBuffer();
-        const workbook = xlsx.read(arrayBuffer, { type: "array" });
-        workbook.SheetNames.forEach(sheetName => {
-          const sheet = workbook.Sheets[sheetName];
-          // Use CSV export to preserve cell-by-cell values (better for URL columns)
-          text += xlsx.utils.sheet_to_csv(sheet) + "\n";
-        });
-      } else if (extension === "txt" || extension === "csv") {
-        text = await file.text();
-      } else {
-        alert("Unsupported file format. Please upload PDF, DOCX, XLSX, TXT, or CSV.");
-        return;
-      }
-
-      const urls = extractUrls(text);
-      if (urls.length === 0) {
-        alert("No URLs found in the file. Make sure the file contains website URLs (e.g. https://example.com or example.com).");
-        return;
-      }
-      const newTasks = urls.map(url => ({
-        id: Math.random().toString(36).substring(7),
-        url,
-        status: "pending" as const
-      }));
-
-      setTasks(newTasks);
-      setProcessedCount(0);
-      setIsStopped(false);
-      isStoppedRef.current = false;
-    } catch (error) {
-      console.error("Error reading file:", error);
-      alert("Error reading file. See console for details.");
-    }
-    
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
   };
 
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -289,27 +222,13 @@ export default function GmailAgentLoop() {
       </div>
 
       {tasks.length === 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="border-2 border-dashed border-slate-200 dark:border-zinc-700 rounded-2xl p-8 flex flex-col items-center justify-center text-center bg-slate-50 dark:bg-zinc-950/50">
-            <div className="p-4 bg-white dark:bg-zinc-900 shadow-sm rounded-full mb-4">
-              <Upload className="w-8 h-8 text-indigo-500" />
-            </div>
-            <h3 className="font-bold text-slate-800 dark:text-zinc-100 mb-1">Upload File</h3>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mb-4 max-w-xs">Supports PDF, DOCX, XLSX, TXT, CSV.</p>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              accept=".pdf,.docx,.xlsx,.xls,.txt,.csv"
-              className="block w-full max-w-xs text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 cursor-pointer mx-auto"
-            />
-          </div>
+        <div className="w-full max-w-2xl mx-auto">
           <div className="border-2 border-slate-200 dark:border-zinc-700 rounded-2xl p-6 flex flex-col bg-white dark:bg-zinc-900 shadow-sm">
             <h3 className="font-bold text-slate-800 dark:text-zinc-100 mb-2 flex items-center gap-2">
               <FileText className="w-5 h-5 text-indigo-500" /> Paste URLs
             </h3>
             <textarea
-              className="flex-1 w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none mb-4 custom-scrollbar text-slate-800 dark:text-zinc-100 placeholder-slate-400 min-h-[120px]"
+              className="flex-1 w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none mb-4 custom-scrollbar text-slate-800 dark:text-zinc-100 placeholder-slate-400 min-h-[180px]"
               placeholder="https://example.com&#10;https://google.com"
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
@@ -317,9 +236,9 @@ export default function GmailAgentLoop() {
             <button
               onClick={handleBulkTextSubmit}
               disabled={!bulkText.trim()}
-              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition-all"
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition-all shadow-md shadow-indigo-500/20"
             >
-              Extract URLs
+              Extract & Queue URLs
             </button>
           </div>
         </div>
