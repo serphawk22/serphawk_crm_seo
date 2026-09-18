@@ -467,6 +467,16 @@ def on_startup():
     try:
         with engine.connect() as conn:
             conn.execute(text('ALTER TABLE projects ADD COLUMN IF NOT EXISTS "projectMemberIds" JSON;'))
+            
+            # Radar & Competitor Relationship Leads Migration
+            try:
+                conn.execute(text('ALTER TABLE radar_analyses ADD COLUMN IF NOT EXISTS lead_id INTEGER REFERENCES leads(id);'))
+                conn.execute(text('ALTER TABLE competitor_relationships ADD COLUMN IF NOT EXISTS source_lead_id INTEGER REFERENCES leads(id);'))
+                conn.execute(text('ALTER TABLE competitor_relationships ADD COLUMN IF NOT EXISTS discovered_lead_id INTEGER REFERENCES leads(id);'))
+                conn.execute(text('ALTER TABLE competitor_relationships ALTER COLUMN source_client_id DROP NOT NULL;'))
+            except Exception as e:
+                print("Radar leads migration error (already applied or unsupported):", e)
+                
             conn.commit()
     except Exception as e:
         print("Migration error for projects:", e)
@@ -9227,10 +9237,12 @@ class RadarAnalyzeRequest(BaseModel):
     target_types: Optional[list] = []
     radius_km: int = 5
     client_id: Optional[int] = None
+    lead_id: Optional[int] = None
 
 class RadarAddClientRequest(BaseModel):
     competitor: dict
-    source_client_id: int
+    source_client_id: Optional[int] = None
+    source_lead_id: Optional[int] = None
     source_client_name: str
     radar_id: Optional[int] = None
 
@@ -9347,6 +9359,7 @@ async def radar_analyze(body: RadarAnalyzeRequest, session: Session = Depends(ge
         radar = RadarAnalysis(
             tenant_id=current_tenant_id.get(),
             client_id=body.client_id,
+            lead_id=body.lead_id,
             target_name=body.target_name,
             target_place_id=body.place_id if hasattr(body, 'place_id') else None,
             target_lat=body.target_lat,
@@ -9478,12 +9491,14 @@ def radar_add_client(body: RadarAddClientRequest, session: Session = Depends(get
             session.refresh(lead)
             is_new = True
 
-        # Log competitor relationship (still tracks which source client triggered the discovery)
+        # Log competitor relationship (still tracks which source client/lead triggered the discovery)
         try:
             rel = CompetitorRelationship(
                 source_client_id=body.source_client_id,
+                source_lead_id=body.source_lead_id,
                 source_client_name=body.source_client_name,
                 discovered_client_id=None,  # no longer creating a ClientProfile
+                discovered_lead_id=lead.id,
                 discovered_client_name=name,
                 source_radar_id=body.radar_id,
                 competitor_data={
@@ -9518,16 +9533,22 @@ def radar_add_client(body: RadarAddClientRequest, session: Session = Depends(get
 
 
 @app.get("/radar/relationships/{client_id}")
-def get_radar_relationships(client_id: int, session: Session = Depends(get_session)):
-    """Get the competitor discovery graph for a client (who they found + who found them)."""
-    # Clients discovered FROM this client
-    discovered = session.exec(
-        select(CompetitorRelationship).where(CompetitorRelationship.source_client_id == client_id)
-    ).all()
-    # Who discovered this client
-    found_from = session.exec(
-        select(CompetitorRelationship).where(CompetitorRelationship.discovered_client_id == client_id)
-    ).all()
+def get_radar_relationships(client_id: int, type: str = "client", session: Session = Depends(get_session)):
+    """Get the competitor discovery graph for a client or lead (who they found + who found them)."""
+    if type == "lead":
+        discovered = session.exec(
+            select(CompetitorRelationship).where(CompetitorRelationship.source_lead_id == client_id)
+        ).all()
+        found_from = session.exec(
+            select(CompetitorRelationship).where(CompetitorRelationship.discovered_lead_id == client_id)
+        ).all()
+    else:
+        discovered = session.exec(
+            select(CompetitorRelationship).where(CompetitorRelationship.source_client_id == client_id)
+        ).all()
+        found_from = session.exec(
+            select(CompetitorRelationship).where(CompetitorRelationship.discovered_client_id == client_id)
+        ).all()
 
     return {
         "discovered_from": [

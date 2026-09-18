@@ -482,6 +482,7 @@ class RadarAnalysis(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", index=True)
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id", index=True)
     run_date: datetime = Field(default_factory=datetime.utcnow)
 
     # Target business info
@@ -513,9 +514,11 @@ class CompetitorRelationship(SQLModel, table=True):
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    source_client_id: int = Field(foreign_key="client_profiles.id", index=True)
+    source_client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", index=True)
+    source_lead_id: Optional[int] = Field(default=None, foreign_key="leads.id", index=True)
     source_client_name: Optional[str] = Field(default=None, max_length=255)
     discovered_client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", index=True)
+    discovered_lead_id: Optional[int] = Field(default=None, foreign_key="leads.id", index=True)
     discovered_client_name: Optional[str] = Field(default=None, max_length=255)
     source_radar_id: Optional[int] = Field(default=None, foreign_key="radar_analyses.id")
     discovery_method: str = Field(default="Radar Analysis", max_length=100)

@@ -744,109 +744,6 @@ function LeadSwotTab({ lead, onRefresh }: { lead: any, onRefresh: () => void }) 
 }
 
 
-// ─── RADAR SIDEBAR CARD ──────────────────────────────────────────────────────
-function RadarSidebarCard({ leadId, lead }: { leadId: string | string[]; lead: any }) {
-  const [radarData, setRadarData] = React.useState<any>(null);
-  const [loadingRadar, setLoadingRadar] = React.useState(false);
-  const [open, setOpen] = React.useState(true);
-
-  React.useEffect(() => {
-    if (!leadId) return;
-    setLoadingRadar(true);
-    fetch(`${API_BASE_URL}/radar/relationships/${leadId}`)
-      .then(async res => {
-        if (!res.ok) return null;
-        return res.json();
-      })
-      .then(data => setRadarData(data))
-      .catch(() => {/* silent — radar is optional */})
-      .finally(() => setLoadingRadar(false));
-  }, [leadId]);
-
-  const hasData = radarData && (
-    (radarData.discovered_from?.length > 0) ||
-    (radarData.discovered_competitors?.length > 0) ||
-    lead?.discovered_from_name
-  );
-
-  return (
-    <div className="rounded-2xl border border-indigo-100 bg-gradient-to-b from-indigo-50/60 to-white shadow-sm overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 border-b border-indigo-100 bg-indigo-600 text-white"
-      >
-        <div className="flex items-center gap-2">
-          <Radar size={14} />
-          <span className="text-xs font-black tracking-wider uppercase">Radar Analysis</span>
-        </div>
-        <span className="text-xs font-bold opacity-70">{open ? '▲' : '▼'}</span>
-      </button>
-
-      {open && (
-        <div className="p-4 space-y-3">
-          {loadingRadar ? (
-            <div className="flex justify-center py-4">
-              <Loader2 size={18} className="animate-spin text-indigo-400" />
-            </div>
-          ) : hasData ? (
-            <>
-              {/* Origin */}
-              {(radarData?.discovered_from?.[0] || lead?.discovered_from_name) && (
-                <div className="p-3 bg-white rounded-xl border border-indigo-50">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Discovered Via</p>
-                  <p className="text-xs font-bold text-indigo-700">
-                    {radarData?.discovered_from?.[0]?.discovery_method || lead?.discovered_via || 'Radar Analysis'}
-                  </p>
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    From: <span className="font-bold text-indigo-600">{radarData?.discovered_from?.[0]?.source_lead_name || lead?.discovered_from_name || 'Unknown'}</span>
-                  </p>
-                </div>
-              )}
-              {/* Competitors found */}
-              {radarData?.discovered_competitors?.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">
-                    Discovered Competitors ({radarData.discovered_competitors.length})
-                  </p>
-                  <div className="space-y-1.5">
-                    {radarData.discovered_competitors.slice(0, 3).map((comp: any, idx: number) => (
-                      <a
-                        key={idx}
-                        href={`/leads/${comp.discovered_lead_id}`}
-                        target="_blank"
-                        className="flex items-center justify-between px-3 py-2 bg-white border border-slate-100 rounded-xl hover:bg-indigo-50 hover:border-indigo-200 transition-colors"
-                      >
-                        <span className="text-xs font-bold text-indigo-700 truncate">{comp.discovered_lead_name}</span>
-                        <span className="text-[10px] text-slate-400 font-mono ml-2 shrink-0">{comp.competitor_data?.overlap_pct ?? 0}%</span>
-                      </a>
-                    ))}
-                    {radarData.discovered_competitors.length > 3 && (
-                      <p className="text-[10px] text-center text-indigo-400 font-semibold">+{radarData.discovered_competitors.length - 3} more</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="text-center py-4">
-              <Radar size={24} className="text-indigo-200 mx-auto mb-2" />
-              <p className="text-xs text-slate-400 font-medium">No radar relationships yet.</p>
-              <p className="text-[10px] text-slate-300 mt-0.5">Run competitor discovery to populate.</p>
-              <button 
-                onClick={() => router.push(`/leads/${id}/competitors`)}
-                className="mt-4 flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2 rounded-lg shadow-md hover:shadow-lg transition-all mx-auto w-full"
-              >
-                <Navigation className="w-3.5 h-3.5" /> Run Competitor Discovery
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-
 
 // ─── MAIN PAGE ───────────────────────────────────────────────────────────────
 export default function LeadDetailsPage() {
@@ -1274,8 +1171,6 @@ export default function LeadDetailsPage() {
               </div>
             )}
 
-            {/* Radar Analysis Sidebar Card */}
-            <RadarSidebarCard leadId={id} lead={lead} />
 
             {/* Next Follow-up */}
             <div className="rounded-2xl border border-slate-200 dark:border-zinc-700  bg-white dark:bg-zinc-900 p-4 shadow-sm">
