@@ -27,6 +27,11 @@ export default function BillingManage() {
             emailUrl={`${API_BASE_URL}/quotes/export-pdf`}
             filename="quotes.pdf"
             label="Quotes"
+            formats={[
+              { format: "pdf", ext: "pdf", label: "PDF" },
+              { format: "xlsx", ext: "xlsx", label: "Excel" },
+              { format: "csv", ext: "csv", label: "CSV" },
+            ]}
           />
           <button onClick={() => quotesRef.current?.openCreate()}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white text-sm font-semibold hover:opacity-90 shadow-md transition-all active:scale-95">
