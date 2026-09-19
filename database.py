@@ -18,6 +18,10 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///database.db")
 
 # Windows compatibility fix for psycopg2 and Neon SSL DLLs
 if DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
+    # Use the direct compute host (no "-pooler."): the Neon pooler rejects
+    # startup options (statement_timeout) and cold-wake connections can hang
+    # indefinitely, whereas the direct endpoint wakes predictably in seconds.
+    DATABASE_URL = DATABASE_URL.replace("-pooler.", ".")
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 # Create engine with SSL mode for Neon PostgreSQL
@@ -35,8 +39,8 @@ engine = create_engine(
     DATABASE_URL,
     echo=False,
     pool_pre_ping=False,          # disable: was causing 1 extra RTT per request
-    pool_size=10,
-    max_overflow=20,
+    pool_size=5,
+    max_overflow=10,
     pool_recycle=300,             # recycle connections every 5 min to keep them fresh
     connect_args=connect_args
 )
