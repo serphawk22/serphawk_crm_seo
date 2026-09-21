@@ -7672,12 +7672,59 @@ def list_proposals(
     return {"proposals": [_proposal_dict_fast(p, clients_map, users_map, leads_map) for p in proposals]}
 
 
+def _proposal_email_recipient(p, session):
+    """Resolve (email, name) of the proposal's *selected* recipient only.
+    A lead proposal only uses the lead email; a client proposal only uses the
+    client's linked CRM user email. Never falls through to the other kind."""
+    rt = getattr(p, "recipient_type", "client") or "client"
+    if rt == "lead" and p.lead_id:
+        lead = session.get(Lead, p.lead_id)
+        if lead and lead.email:
+            return lead.email, lead.company_name or lead.contact_name or "Lead"
+        return None, None
+    if p.client_id:
+        client = session.get(ClientProfile, p.client_id)
+        if client:
+            user = session.get(User, client.userId) if client.userId else None
+            return (user.email if user else None), (client.companyName or (user.name if user else "Client"))
+    return None, None
+
+
+def _send_proposal_email(p, session):
+    """Email the quotation PDF to the selected recipient only (lead or client). Best-effort."""
+    try:
+        from modules.pdf_export import send_pdf_email
+        recipient_email, recipient_name = _proposal_email_recipient(p, session)
+        if not recipient_email:
+            return False
+        pdf_bytes, filename = _build_proposal_pdf(p, session)
+        currency = getattr(p, "currency", "MXN") or "MXN"
+        symbol = "₹" if currency == "INR" else "$"
+        total = p.total_value or 0
+        name = recipient_name or "there"
+        body = (
+            f"<p>Dear {name},</p>"
+            f"<p>Please find attached the quotation <strong>{p.title}</strong>.</p>"
+            f"<p><strong>Total:</strong> {symbol}{total:,.2f} &nbsp;·&nbsp; "
+            f"<strong>Valid until:</strong> {p.valid_until or '—'}</p>"
+            f"<p>We hope this quote meets your requirements. Please reach out if you have any questions.</p>"
+            f"<p>Best regards,<br/>SERP Hawk Team</p>"
+        )
+        send_pdf_email(recipient_email, f"Quotation: {p.title}", body, pdf_bytes, filename)
+        return True
+    except Exception as e:
+        print(f"[Proposal email failed] {e}")
+        return False
+
+
 @app.post("/proposals")
 def create_proposal(body: ProposalCreateRequest, session: Session = Depends(get_session)):
     p = Proposal(**body.model_dump())
     session.add(p)
     session.commit()
     session.refresh(p)
+    if p.status == "Sent":
+        _send_proposal_email(p, session)
     return {"proposal": _proposal_dict(p, session)}
 
 
@@ -7696,6 +7743,7 @@ def update_proposal(
     p = session.get(Proposal, proposal_id)
     if not p:
         raise HTTPException(status_code=404, detail="Proposal not found")
+    was_sent = (p.status == "Sent")
     for field, val in body.model_dump(exclude_unset=True).items():
         setattr(p, field, val)
     if body.status == "Accepted":
@@ -7705,26 +7753,21 @@ def update_proposal(
     session.commit()
     session.refresh(p)
     # Notify client when proposal is sent
-    if body.status == "Sent" and p.client_id:
-        cp = session.get(ClientProfile, p.client_id)
-        if cp and cp.userId:
-            notif = Notification(
-                user_id=cp.userId,
-                title="New Proposal Ready",
-                message=f"A proposal '{p.title}' has been sent for your review.",
-                type="info",
-                link=f"/proposals/{p.id}",
-            )
-            session.add(notif)
-            session.commit()
-            # Email notification
-            user = session.get(User, cp.userId)
-            if user and user.email:
-                _send_notification_email(
-                    user.email,
-                    f"New Proposal: {p.title} — DaPros",
-                    f"<h2>Proposal Ready for Review</h2><p>Hi {cp.companyName or 'there'},</p><p>A new proposal <strong>{p.title}</strong> has been sent for your review.</p><p>Please log in to your dashboard to accept or decline.</p><p>— Team DaPros</p>",
+    if body.status == "Sent" and not was_sent:
+        if p.client_id:
+            cp = session.get(ClientProfile, p.client_id)
+            if cp and cp.userId:
+                notif = Notification(
+                    user_id=cp.userId,
+                    title="New Proposal Ready",
+                    message=f"A proposal '{p.title}' has been sent for your review.",
+                    type="info",
+                    link=f"/proposals/{p.id}",
                 )
+                session.add(notif)
+                session.commit()
+        # Email the quotation PDF to the selected recipient only (client or lead)
+        _send_proposal_email(p, session)
     # Notify admins when client responds to a proposal
     if body.status in ("Accepted", "Rejected", "Demo Requested") and p.client_id:
         cp = session.get(ClientProfile, p.client_id)
@@ -8020,31 +8063,31 @@ def proposal_pdf(proposal_id: int, session: Session = Depends(get_session)):
     """Generate a professional itemized PDF quotation."""
     from fastapi.responses import StreamingResponse
     import io
+    prop = session.get(Proposal, proposal_id)
+    if not prop:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    pdf_bytes, filename = _build_proposal_pdf(prop, session)
+    return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"'
+    })
+
+
+def _build_proposal_pdf(prop, session):
+    """Build the itemized quotation PDF. Returns (pdf_bytes, filename)."""
+    import io
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import mm
 
-    prop = session.get(Proposal, proposal_id)
-    if not prop:
-        raise HTTPException(status_code=404, detail="Proposal not found")
-
-    # Resolve recipient name
-    recipient_name = "—"
-    recipient_email = ""
-    if prop.client_id:
-        client = session.get(ClientProfile, prop.client_id)
-        if client:
-            user = session.get(User, client.userId) if client.userId else None
-            recipient_name = client.companyName or (user.name if user else f"Client #{client.id}")
-            recipient_email = user.email if user else ""
-    lead_id = getattr(prop, 'lead_id', None)
-    if lead_id and recipient_name == "—":
-        lead = session.get(Lead, lead_id)
-        if lead:
-            recipient_name = lead.company_name or lead.contact_name or "—"
-            recipient_email = lead.email or ""
+    # Resolve recipient (selected recipient only)
+    recipient_name, recipient_email = "—", ""
+    _email, _name = _proposal_email_recipient(prop, session)
+    if _name:
+        recipient_name = _name
+    if _email:
+        recipient_email = _email
 
     currency = getattr(prop, 'currency', 'MXN')
     curr_symbol = "₹" if currency == "INR" else "$"
@@ -8169,9 +8212,7 @@ def proposal_pdf(proposal_id: int, session: Session = Depends(get_session)):
 
     doc.build(els)
     buf.seek(0)
-    return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f'attachment; filename="quotation-Q{prop.id:04d}.pdf"'
-    })
+    return buf.getvalue(), f"quotation-Q{prop.id:04d}.pdf"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -11482,6 +11523,7 @@ class QuoteCreateRequest(BaseModel):
 class QuoteEmailSendRequest(BaseModel):
     subject: Optional[str] = None
     body_html: Optional[str] = None
+    send_to: Optional[str] = None
 
 @app.get("/quotes")
 def list_quotes(status: Optional[str] = None, client_id: Optional[int] = None, lead_id: Optional[int] = None, session: Session = Depends(get_session)):
@@ -11529,9 +11571,19 @@ def _quote_dict(qt: CRMQuote, session: Session) -> dict:
     d["items"] = [i.model_dump() for i in items]
     return d
 
+def _require_tenant():
+    """Return the active tenant id or raise 401 when the request is unauthenticated.
+    Unauthenticated requests are pinned to tenant -1 (see APIIntelligenceMiddleware),
+    and writing with -1 crashes on the tenants FK — surface a clear login prompt instead."""
+    tenant_id = current_tenant_id.get()
+    if tenant_id is None or tenant_id == -1:
+        raise HTTPException(status_code=401, detail="Session expired. Please log in again.")
+    return tenant_id
+
 @app.post("/quotes")
 def create_quote(body: QuoteCreateRequest, session: Session = Depends(get_session)):
     import random, string
+    _require_tenant()
     body_data = body.model_dump(exclude={"items"})
     q = CRMQuote(**body_data)
     q.quote_number = "QT-" + "".join(random.choices(string.digits, k=6))
@@ -11574,15 +11626,20 @@ def send_quote_email(quote_id: int, body: Optional[QuoteEmailSendRequest] = None
     """Send the quote details by email to the linked lead/client/contact (best-effort).
     If `body.subject` / `body.body_html` are provided they override the auto-generated content,
     letting the user send an edited version of the email."""
+    _require_tenant()
     q = session.get(CRMQuote, quote_id)
     if not q:
         raise HTTPException(status_code=404, detail="Quote not found")
+    send_to = (body.send_to or "").strip() if body else ""
     recipient_email, recipient_name, _ = _quote_email_recipient(q, session)
+    if send_to:
+        recipient_email = send_to
     try:
         sent = _send_quote_created_email(
             q, session,
             subject_override=body.subject if body else None,
             body_html_override=body.body_html if body else None,
+            send_to=send_to or None,
         )
     except Exception as e:
         sent = False
@@ -11603,7 +11660,7 @@ def quote_email_preview(quote_id: int, session: Session = Depends(get_session)):
     if not q:
         raise HTTPException(status_code=404, detail="Quote not found")
     recipient_email, recipient_name, company_name = _quote_email_recipient(q, session)
-    subject, body_html, items = _quote_email_content(q, session, recipient_name)
+    subject, body_html, body_fragment, items = _quote_email_content(q, session, recipient_name)
     sender_email, _password, _smtp_server, _smtp_port = _quote_smtp_sender(session)
     return {
         "from_email": sender_email,
@@ -11612,6 +11669,7 @@ def quote_email_preview(quote_id: int, session: Session = Depends(get_session)):
         "company_name": company_name,
         "subject": subject,
         "body_html": body_html,
+        "body_fragment": body_fragment,
         "quote": _quote_dict(q, session),
         "items": [i.model_dump() for i in items],
         "sendable": bool(recipient_email) and bool(sender_email),
@@ -11660,7 +11718,8 @@ def _quote_email_recipient(q: CRMQuote, session: Session):
 
 
 def _quote_email_content(q: CRMQuote, session: Session, recipient_name=None):
-    """Build the subject and HTML body of the quote email.
+    """Build the subject, full branded HTML, the editable HTML fragment (no shell),
+    and the line items of the quote email.
     Used both for actually sending it and for previewing it before sending,
     so the preview always reflects exactly what the recipient will receive."""
     # ── Build items table ──
@@ -11702,28 +11761,29 @@ def _quote_email_content(q: CRMQuote, session: Session, recipient_name=None):
         )
 
     greeting = f"Hi {recipient_name}," if recipient_name else "Hello,"
+    fragment = (
+        f"<p>{greeting}</p>"
+        f"<p>A new quotation has been prepared for you. Use the details below or the attached copy to review it.</p>"
+        + _summary_table(
+            [
+                ("Quote Number", q.quote_number or str(q.id)),
+                ("Title", q.title or "—"),
+                ("Valid Until", q.valid_until or "—"),
+                ("Status", q.status or "Draft"),
+            ],
+            "Total Amount",
+            f"{q.currency or '$'} {q.grand_total:,.2f}",
+        )
+        + items_table
+        + extra_section
+        + "<p style='margin-top:24px'>If you have any questions about this quote, just reply to this email or contact your account manager.</p>"
+    )
     html = branded_email(
         title=f"Your Quote {q.quote_number or q.id}",
-        body_html=(
-            f"<p>{greeting}</p>"
-            f"<p>A new quotation has been prepared for you. Use the details below or the attached copy to review it.</p>"
-            + _summary_table(
-                [
-                    ("Quote Number", q.quote_number or str(q.id)),
-                    ("Title", q.title or "—"),
-                    ("Valid Until", q.valid_until or "—"),
-                    ("Status", q.status or "Draft"),
-                ],
-                "Total Amount",
-                f"{q.currency or '$'} {q.grand_total:,.2f}",
-            )
-            + items_table
-            + extra_section
-            + "<p style='margin-top:24px'>If you have any questions about this quote, just reply to this email or contact your account manager.</p>"
-        ),
+        body_html=fragment,
     )
     subject = f"Your Quote {q.quote_number or q.id} — {q.title or 'Quote'} ({q.currency or '$'} {q.grand_total:,.2f})"
-    return subject, html, items
+    return subject, html, fragment, items
 
 
 def _quote_smtp_sender(session: Session):
@@ -11754,9 +11814,35 @@ def _quote_smtp_sender(session: Session):
     return sender, password, smtp_server, smtp_port
 
 
-def _send_quote_created_email(q: CRMQuote, session: Session, subject_override=None, body_html_override=None) -> bool:
+def _normalize_email_fragment(raw: str) -> str:
+    """If an override still contains the branded shell (e.g. a full HTML document
+    re-serialized by an older client), reduce it to the inner editable fragment so
+    it is always wrapped in exactly one shell — one logo, one footer, no repeats."""
+    if not raw:
+        return raw
+    if raw.lstrip().lower().startswith(("<!doctype", "<html")):
+        m = re.search(r"<body[^>]*>(.*?)</body>", raw, re.S | re.I)
+        if m:
+            raw = m.group(1)
+    # Remove the branded header row (logo on the gradient band)
+    raw = re.sub(
+        r"<tr>\s*<td[^>]*background:\s*linear-gradient\(\s*135deg\s*,\s*#16233b[^>]*>.*?</td>\s*</tr>",
+        "", raw, flags=re.S | re.I)
+    # Remove the branded title row (<h2> directly under the header)
+    raw = re.sub(
+        r"<tr>\s*<td[^>]*>\s*<h2[^>]*>\s*.*?\s*</h2>\s*</td>\s*</tr>",
+        "", raw, flags=re.S | re.I)
+    # Remove the branded footer row (light band with the automated-mail note)
+    raw = re.sub(
+        r"<tr>\s*<td[^>]*background:\s*#f8fafc[^>]*>.*?</td>\s*</tr>",
+        "", raw, flags=re.S | re.I)
+    return raw.strip()
+
+
+def _send_quote_created_email(q: CRMQuote, session: Session, subject_override=None, body_html_override=None, send_to=None) -> bool:
     """Email the lead (or client / contact) linked to the quote with the new quote details.
     Optionally use an edited subject / body written by the user.
+    `send_to` overrides the resolved recipient (e.g. a manually typed email in the UI).
     Returns True if the email was sent successfully, False otherwise."""
     # ── Resolve SMTP credentials: per-tenant EmailSettings first, then env vars ──
     sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
@@ -11765,18 +11851,22 @@ def _send_quote_created_email(q: CRMQuote, session: Session, subject_override=No
         print("[Quote email skipped] SMTP not configured")
         return False
 
-    # ── Resolve recipient email: contact → lead → client ──
+    # ── Resolve recipient email: contact → lead → client (or use manual override) ──
     recipient_email, recipient_name, _ = _quote_email_recipient(q, session)
+    if send_to:
+        recipient_email = send_to.strip()
+        recipient_name = recipient_name or "there"
 
     if not recipient_email:
         print(f"[Quote email skipped] no linked lead/client/contact email for quote {q.quote_number}")
         return False
 
-    subject, html, _ = _quote_email_content(q, session, recipient_name)
+    subject, html, _fragment, _items = _quote_email_content(q, session, recipient_name)
     if subject_override:
         subject = subject_override
     if body_html_override:
-        html = body_html_override
+        from modules.email_sender import branded_email
+        html = branded_email(title=subject, body_html=_normalize_email_fragment(body_html_override))
 
     from modules.email_sender import send_email_outlook
     send_email_outlook(

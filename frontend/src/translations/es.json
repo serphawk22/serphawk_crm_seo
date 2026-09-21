@@ -1797,6 +1797,7 @@
     "download_failed": "Error al descargar",
     "send_failed": "Error al enviar",
     "pdf_sent_to": "PDF enviado a",
+    "export": "Exportar",
     "pdf": "PDF",
     "csv": "CSV",
     "xlsx": "Excel",

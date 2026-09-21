@@ -76,6 +76,7 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
     company_name: string | null;
     subject: string;
     body_html?: string;
+    body_fragment?: string;
     items: { description: string; quantity: number; unit_price: number }[];
     sendable: boolean;
   } | null>(null);
@@ -84,6 +85,7 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
   const [editableSubject, setEditableSubject] = useState("");
   const bodyRef = useRef<HTMLDivElement>(null);
   const bodyInitializedIdRef = useRef<number | null>(null);
+  const [manualRecipientEmail, setManualRecipientEmail] = useState("");
   const [downloadingQuote, setDownloadingQuote] = useState<Quote | null>(null);
 
   // Preview state (click a row to preview details, like proposals)
@@ -145,7 +147,8 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
   useEffect(() => {
     if (emailPreview && pendingSend && bodyRef.current) {
       if (bodyInitializedIdRef.current !== pendingSend.id) {
-        bodyRef.current.innerHTML = emailPreview.body_html || "";
+        bodyRef.current.innerHTML = emailPreview.body_fragment || emailPreview.body_html || "";
+        setManualRecipientEmail(emailPreview.recipient_email || "");
         bodyInitializedIdRef.current = pendingSend.id;
       }
     }
@@ -305,7 +308,11 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
       const res = await fetch(`${API_BASE_URL}/quotes/${q.id}/send-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Email-Confirmed": "1" },
-        body: JSON.stringify({ subject: editableSubject, body_html: bodyRef.current?.innerHTML || "" }),
+        body: JSON.stringify({
+          subject: editableSubject,
+          body_html: bodyRef.current?.innerHTML || "",
+          send_to: (manualRecipientEmail.trim() || emailPreview?.recipient_email || "").trim(),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (data.email_sent) {
@@ -1030,13 +1037,15 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
                   <div className="flex items-center gap-2 text-sm text-slate-400 py-4">
                     <Loader2 className="w-4 h-4 animate-spin" /> Loading email details…
                   </div>
-                ) : !emailPreview?.sendable ? (
-                  <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40">
-                    <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">No email address {pendingSend.client_name || pendingSend.lead_name ? `for ${pendingSend.client_name || pendingSend.lead_name}` : "on the linked lead/client"}.</p>
-                    <p className="text-xs text-amber-600/70 dark:text-amber-500/70 mt-1">{pendingSend.client_name || pendingSend.lead_name ? `Add an email to ${pendingSend.client_name || pendingSend.lead_name} to send the quote by email.` : "Add an email to the linked lead/client to send the quote by email."} You can still mark it as Sent.</p>
-                  </div>
-                ) : (
+                ) : emailPreview ? (
                   <>
+                    {!emailPreview?.recipient_email && (
+                      <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40">
+                        <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">No email address {pendingSend.client_name || pendingSend.lead_name ? `for ${pendingSend.client_name || pendingSend.lead_name}` : "on the linked lead/client"}.</p>
+                        <p className="text-xs text-amber-600/70 dark:text-amber-500/70 mt-1">Enter one below to send the quote by email, or just mark it as Sent.</p>
+                      </div>
+                    )}
+
                     {/* From / To */}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700">
@@ -1053,8 +1062,13 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
                         <p className="text-sm font-bold text-slate-900 dark:text-zinc-100">
                           {emailPreview.recipient_name || emailPreview.company_name || pendingSend.client_name || pendingSend.lead_name || "Recipient"}
                         </p>
-                        {emailPreview.recipient_email && (
-                          <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{emailPreview.recipient_email}</p>
+                        <input
+                          value={manualRecipientEmail}
+                          onChange={e => setManualRecipientEmail(e.target.value)}
+                          placeholder="recipient@example.com"
+                          className="mt-1 w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 dark:text-zinc-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                        {!manualRecipientEmail.trim() && !emailPreview.recipient_email && (
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">Type an email to enable sending.</p>
                         )}
                       </div>
                     </div>
@@ -1097,14 +1111,14 @@ const QuotesPage = forwardRef<QuotesHandle, { embedded?: boolean }>(function Quo
                       )}
                     </div>
                   </>
-                )}
+                ) : null}
               </div>
               <div className="flex gap-3 px-6 py-4 border-t border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900/50 rounded-b-2xl">
                 <button onClick={markSentOnly} disabled={sendingEmail}
                   className="flex-1 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 font-semibold text-sm hover:bg-slate-100 transition-all disabled:opacity-40">
                   Mark Sent Only
                 </button>
-                <button onClick={sendEmailAndMarkSent} disabled={sendingEmail || emailPreviewLoading || !emailPreview?.sendable}
+                <button onClick={sendEmailAndMarkSent} disabled={sendingEmail || emailPreviewLoading || !emailPreview?.from_email || (!emailPreview?.recipient_email && !manualRecipientEmail.trim())}
                   className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold text-sm hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2 shadow-md">
                   {sendingEmail && <Loader2 className="w-4 h-4 animate-spin" />}
                   {sendingEmail ? "Sending…" : "Confirm & Send"}
