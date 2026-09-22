@@ -74,9 +74,10 @@ export default function CasesPage() {
           <div className="p-3 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 shadow-lg shadow-rose-500/20"><HeadphonesIcon className="w-6 h-6 text-white" /></div>
           <div><h1 className="text-2xl font-black text-slate-800 dark:text-zinc-100">{t("support_cases.title")}</h1><p className="text-sm text-slate-500 dark:text-zinc-400">{t("support_cases.subtitle")}</p></div>
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-white text-sm font-bold hover:opacity-90 shadow-md transition-all">
+        <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-400 text-sm font-bold cursor-not-allowed">
           <Plus className="w-4 h-4" /> {t("support_cases.new_case")}
-        </button>
+        </div>
+        <p className="text-xs text-slate-400 max-w-[260px]">Cases are created in the SCMHub project and synced here. Oversee them under SCMHub Cases.</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

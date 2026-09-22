@@ -2826,5 +2826,18 @@
     "assign_team": "Asignar Equipo",
     "available_employees": "Empleados Disponibles",
     "available_interns": "Internos Disponibles"
+  },
+  "support_scmhub_cases": {
+    "title": "SCMHub Cases",
+    "subtitle": "Cases raised in the SCMHub project, mirrored into your CRM",
+    "search_placeholder": "Search cases by number, title or description…",
+    "empty": "No SCMHub cases yet. Cases created in the SCMHub project appear here automatically.",
+    "total": "Total",
+    "open": "Open",
+    "resolved": "Resolved",
+    "high_priority": "High Urgency",
+    "label_source": "Source",
+    "label_updated": "Updated",
+    "unknown_entity": "No linked record"
   }
 }

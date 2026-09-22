@@ -8,7 +8,7 @@ import {
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar,
   Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Edit2, GripVertical, Check,
-  Trophy, Star
+  Cloud, Trophy, Star
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRole, Role } from "@/context/RoleContext";
@@ -42,7 +42,7 @@ const iconMap: Record<string, any> = {
   LayoutDashboard, Bell, Users, FolderOpen, CheckSquare, CheckCircle, Radar, Mail,
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar,
-  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Trophy, Star
+  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Cloud, Trophy, Star
 };
 
 interface SidebarProps {
@@ -110,6 +110,7 @@ const defaultSidebarSections = [
     items: [
       { id: "item-cases", name: "Cases", icon: "HeadphonesIcon", href: "/support/cases", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-solutions", name: "Solutions", icon: "BookOpen", href: "/support/solutions", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-scmhub-cases", name: "SCMHub Cases", icon: "Cloud", href: "/support/scmhub-cases", roles: ["Admin", "SalesManager", "Demo"] },
     ],
   },
   {

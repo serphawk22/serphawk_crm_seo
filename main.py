@@ -12682,6 +12682,39 @@ def _case_dict(c: Case, session: Session) -> dict:
     d["updated_at"] = c.updated_at.isoformat()
     return d
 
+_scmhub_cases_engine = None
+
+def _scmhub_cases_conn():
+    """Read-only connection to the SCMHub database's `case` table."""
+    import os
+    global _scmhub_cases_engine
+    if _scmhub_cases_engine is None:
+        url = os.getenv("SCMHUB_DATABASE_URL")
+        if not url:
+            return None
+        from sqlalchemy import create_engine as _sch_create_engine
+        _scmhub_cases_engine = _sch_create_engine(url, pool_pre_ping=True, pool_recycle=300)
+    return _scmhub_cases_engine
+
+@app.get("/scmhub-cases")
+def list_scmhub_cases(status: Optional[str] = None):
+    """List cases authored in the SCMHub project, read directly from SCMHub's
+    `case` table. Read-only and shared across tenants."""
+    from sqlalchemy import text as _text
+    eng = _scmhub_cases_conn()
+    if eng is None:
+        return {"cases": [], "error": "SCMHUB_DATABASE_URL not configured"}
+    from sqlalchemy.orm import Session as _ORM_Session
+    with _ORM_Session(eng) as s:
+        sql = 'SELECT id, case_number, title, description, status, priority, assigned_to, created_by, entity_type, entity_id, created_at, updated_at FROM "case"'
+        params: dict = {}
+        if status:
+            sql += " WHERE status = :status"
+            params["status"] = status
+        sql += " ORDER BY updated_at DESC NULLS LAST, created_at DESC"
+        rows = s.execute(_text(sql), params).mappings().all()
+        return {"cases": [dict(r) for r in rows]}
+
 @app.get("/cases")
 def list_cases(status: Optional[str] = None, priority: Optional[str] = None, client_id: Optional[int] = None, session: Session = Depends(get_session)):
     q = select(Case).order_by(Case.created_at.desc())
@@ -12716,27 +12749,7 @@ def _notify_admins(session, tenant_id, title, message, notif_type="info", link=N
 
 @app.post("/cases")
 def create_case(body: CaseCreateRequest, session: Session = Depends(get_session)):
-    import random, string
-    tenant_id = current_tenant_id.get()
-    c = Case(**body.model_dump())
-    if tenant_id:
-        c.tenant_id = tenant_id
-    c.case_number = "CASE-" + "".join(random.choices(string.digits, k=5))
-    session.add(c)
-    session.commit()
-    session.refresh(c)
-    # Notify admins
-    try:
-        _notify_admins(
-            session, tenant_id,
-            title=f"🎫 New Case Raised: {c.case_number}",
-            message=f"{c.subject} — Priority: {c.priority} | Type: {c.case_type or 'Bug'}",
-            notif_type="warning",
-            link=f"/support/cases"
-        )
-    except Exception:
-        pass
-    return {"case": _case_dict(c, session)}
+    raise HTTPException(status_code=403, detail="Cases are created in the SCMHub project.")
 
 @app.get("/cases/{case_id}")
 def get_case(case_id: int, session: Session = Depends(get_session)):
