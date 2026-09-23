@@ -2946,37 +2946,44 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     session.add(cp)
     session.commit()
     session.refresh(cp)
-    
+
+    # Snapshot values up-front so a swallowed side-effect failure can never
+    # trigger a re-query on an expired/rolled-back session.
+    client_ref = {"id": cp.id, "companyName": cp.companyName or "", "websiteUrl": cp.websiteUrl or ""}
+
     try:
         _notify_admins(
             session, current_tenant_id.get(),
-            title=f"🏢 New Client: {cp.companyName}",
-            message=f"Status: {cp.status} | Website: {cp.websiteUrl or 'N/A'}",
+            title=f"🏢 New Client: {client_ref['companyName']}",
+            message=f"Status: {cp.status} | Website: {client_ref['websiteUrl'] or 'N/A'}",
             notif_type="success",
-            link=f"/admin/clients/{cp.id}"
+            link=f"/admin/clients/{client_ref['id']}"
         )
     except Exception:
-        pass
-    
+        try:
+            session.rollback()
+        except Exception:
+            pass
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message("New Client Onboarded", cp.dict(), f"{base_url}/clients/{cp.id}")
+        send_ai_polished_whatsapp_message("New Client Onboarded", client_ref, f"{base_url}/clients/{client_ref['id']}")
     except Exception as e:
         print("WhatsApp Error:", e)
 
     # ── AUTO-RESEARCH ──
     try:
         _trigger_background_research(
-            entity_id=cp.id,
+            entity_id=client_ref["id"],
             entity_type="client",
-            company_name=cp.companyName or "",
-            website=cp.websiteUrl or ""
+            company_name=client_ref["companyName"],
+            website=client_ref["websiteUrl"]
         )
     except Exception as e:
-        print(f"AutoResearch trigger error for client {cp.id}: {e}")
-        
+        print(f"AutoResearch trigger error for client {client_ref['id']}: {e}")
+
     return {"client": _client_dict(cp, session)}
 
 
@@ -12820,22 +12827,31 @@ def list_cases(status: Optional[str] = None, priority: Optional[str] = None, cli
 def _notify_admins(session, tenant_id, title, message, notif_type="info", link=None):
     from database import User, Notification
     from sqlmodel import select
-    admins = session.exec(select(User).where(User.role.in_(["admin", "Admin"]))).all()
-    for admin in admins:
-        if tenant_id and admin.tenant_id and admin.tenant_id != tenant_id:
-            continue
-        n = Notification(
-            user_id=admin.id,
-            title=title,
-            message=message,
-            type=notif_type,
-            is_read=False,
-            link=link
-        )
-        if tenant_id:
-            n.tenant_id = tenant_id
-        session.add(n)
-    session.commit()
+    # Notifications are best-effort telemetry: a failure here must never break
+    # the request or leave the session in a rolled-back state.
+    try:
+        admins = session.exec(select(User).where(User.role.in_(["admin", "Admin"]))).all()
+        for admin in admins:
+            if tenant_id and admin.tenant_id and admin.tenant_id != tenant_id:
+                continue
+            n = Notification(
+                user_id=admin.id,
+                title=title,
+                message=message,
+                type=notif_type,
+                is_read=False,
+                link=link
+            )
+            if tenant_id:
+                n.tenant_id = tenant_id
+            session.add(n)
+        session.commit()
+    except Exception as e:
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        print(f"_notify_admins failed (swallowed): {e}")
 
 @app.post("/cases")
 def create_case(body: CaseCreateRequest, session: Session = Depends(get_session)):

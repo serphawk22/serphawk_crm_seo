@@ -2,7 +2,7 @@
 Database Models and Engine Setup for Cold Outreach CRM
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship, create_engine, Session, JSON
 from sqlalchemy import Column, String, Index, DateTime, select, func, Text
@@ -872,7 +872,7 @@ class Notification(SQLModel, table=True):
     type: str = Field(default="info")  # info, success, warning, error
     link: Optional[str] = None
     is_read: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class Milestone(SQLModel, table=True):
