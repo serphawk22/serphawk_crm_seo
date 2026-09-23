@@ -273,24 +273,25 @@ def _audit_log_changes(session, flush_context):
             ))
             
     if audit_entries:
-        from sqlalchemy import insert
-        from database import AuditLog
-        
-        # We cannot use session.add() + session.flush() inside after_flush 
-        # because the session is already flushing. Instead, we execute raw inserts.
-        audit_dicts = []
-        for entry in audit_entries:
-            audit_dicts.append({
-                "tenant_id": entry.tenant_id,
-                "user_id": entry.user_id,
-                "table_name": entry.table_name,
-                "record_id": entry.record_id,
-                "action": entry.action,
-                "changes": entry.changes,
-                "timestamp": entry.timestamp
-            })
-            
-        session.execute(insert(AuditLog).values(audit_dicts))
+        try:
+            from sqlalchemy import insert
+            from database import AuditLog
+            audit_dicts = []
+            for entry in audit_entries:
+                audit_dicts.append({
+                    "tenant_id": entry.tenant_id,
+                    "user_id": entry.user_id,
+                    "table_name": entry.table_name,
+                    "record_id": entry.record_id,
+                    "action": entry.action,
+                    "changes": entry.changes,
+                    "timestamp": entry.timestamp
+                })
+            session.execute(insert(AuditLog).values(audit_dicts))
+        except Exception as _audit_err:
+            # Audit logging is best-effort telemetry: a failure here must never
+            # roll back the user's actual write (e.g. JSON bind errors, FKs).
+            print("audit_log_changes failed (swallowed):", _audit_err)
 def check_tenant_limit(session: Session, limit_type: str):
     # This must be called inside the endpoint, it reads current_tenant_id
     t_id = current_tenant_id.get()
@@ -2899,6 +2900,7 @@ def list_clients(
 
 @app.post("/clients")
 def create_client(body: ClientCreateRequest, session: Session = Depends(get_session)):
+    _require_tenant()
     tenant_id = current_tenant_id.get()
     if tenant_id and tenant_id != 1:
         tenant = session.get(Tenant, tenant_id)
