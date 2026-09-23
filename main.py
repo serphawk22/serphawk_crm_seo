@@ -12729,6 +12729,80 @@ def list_scmhub_cases(status: Optional[str] = None):
         rows = s.execute(_text(sql), params).mappings().all()
         return {"cases": [dict(r) for r in rows]}
 
+class ScmhubCaseUpdateRequest(BaseModel):
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+@app.put("/scmhub-cases/{case_id}")
+def update_scmhub_case(case_id: int, body: ScmhubCaseUpdateRequest):
+    """Update a case authored in SCMHub. Writes back to SCMHub's `case` mirror
+    table and its source `cases` table so both projects stay in sync."""
+    _require_tenant()
+    from sqlalchemy import text as _text
+    eng = _scmhub_cases_conn()
+    if eng is None:
+        raise HTTPException(status_code=503, detail="SCMHUB_DATABASE_URL not configured")
+    from sqlalchemy.orm import Session as _ORM_Session
+    with _ORM_Session(eng) as s:
+        row = s.execute(_text('SELECT id, case_number, title, description, status, priority FROM "case" WHERE id = :id'), {"id": case_id}).mappings().first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Case not found")
+
+        updates: dict = {}
+        if body.status:
+            updates["status"] = body.status
+        if body.priority:
+            updates["priority"] = body.priority
+        if body.title is not None:
+            updates["title"] = body.title
+        if body.description is not None:
+            updates["description"] = body.description
+
+        if not updates:
+            return {"ok": True, "case": dict(row)}
+
+        sets = ", ".join(f"{k} = :{k}" for k in updates)
+        s.execute(_text(f'UPDATE "case" SET {sets}, updated_at = now() WHERE id = :id'), {**updates, "id": case_id})
+
+        source_updates: dict = {}
+        if "title" in updates:
+            source_updates["subject"] = updates["title"]
+        if "description" in updates:
+            source_updates["description"] = updates["description"]
+        if "status" in updates:
+            source_updates["status"] = updates["status"]
+            source_updates["resolved_at"] = "now()" if updates["status"] in ("Resolved", "Closed") else None
+        if "priority" in updates:
+            source_updates["priority"] = updates["priority"]
+        if source_updates:
+            src_frags: list[str] = []
+            src_params: dict = {}
+            if "subject" in source_updates:
+                src_frags.append("subject = :subject")
+                src_params["subject"] = source_updates["subject"]
+            if "description" in source_updates:
+                src_frags.append("description = :description")
+                src_params["description"] = source_updates["description"]
+            if "status" in source_updates:
+                src_frags.append("status = :status")
+                src_params["status"] = source_updates["status"]
+            if "priority" in source_updates:
+                src_frags.append("priority = :priority")
+                src_params["priority"] = source_updates["priority"]
+            if source_updates.get("resolved_at") == "now()":
+                src_frags.append("resolved_at = now()")
+            elif "resolved_at" in source_updates:
+                src_frags.append("resolved_at = NULL")
+            if src_frags:
+                s.execute(_text(f'UPDATE cases SET {", ".join(src_frags)}, updated_at = now() WHERE case_number = :case_number'),
+                          {**src_params, "case_number": row["case_number"]})
+
+        s.commit()
+        fresh = s.execute(_text('SELECT id, case_number, title, description, status, priority, assigned_to, created_by, entity_type, entity_id, created_at, updated_at FROM "case" WHERE id = :id'), {"id": case_id}).mappings().first()
+        return {"ok": True, "case": dict(fresh)}
+
 @app.get("/cases")
 def list_cases(status: Optional[str] = None, priority: Optional[str] = None, client_id: Optional[int] = None, session: Session = Depends(get_session)):
     q = select(Case).order_by(Case.created_at.desc())

@@ -2838,6 +2838,13 @@
     "high_priority": "High Urgency",
     "label_source": "Source",
     "label_updated": "Updated",
-    "unknown_entity": "No linked record"
+    "unknown_entity": "No linked record",
+    "edit_title": "Editar caso",
+    "field_title": "Título",
+    "field_description": "Descripción",
+    "field_status": "Estado",
+    "field_priority": "Prioridad",
+    "save": "Guardar",
+    "cancel": "Cancelar"
   }
 }
