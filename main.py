@@ -57,7 +57,7 @@ def register_sent_emails_endpoint(app, get_session):
 
 import hashlib
 import re
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from typing import Any, Dict, List, Optional, Union
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Form, UploadFile, File, Body
@@ -1201,7 +1201,7 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
         recommended_services=body.recommended_services or "",
         draft_json=_draft_json_payload,
         manual=body.manual if body.manual is not None else True,
-        sent_at=datetime.utcnow(),
+        sent_at=datetime.now(timezone.utc),
     )
     session.add(sent_email)
     session.commit()
@@ -2509,7 +2509,7 @@ def forgot_password(body: ForgotPasswordRequest, session: Session = Depends(get_
         session.add(PasswordResetToken(
             user_id=user.id,
             token=token,
-            expires_at=datetime.utcnow() + timedelta(hours=1),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
         ))
         session.commit()
 
@@ -4003,7 +4003,7 @@ def update_client_note(client_id: int, note_id: int, body: ClientNoteUpdateReque
         note.tags = body.tags
     if body.is_pinned is not None:
         note.is_pinned = body.is_pinned
-    note.updated_at = datetime.utcnow()
+    note.updated_at = datetime.now(timezone.utc)
     session.add(note)
     session.commit()
     
@@ -4167,7 +4167,7 @@ def upsert_client_research(client_id: int, body: ClientResearchUpdateRequest, se
         research = ClientResearch(client_id=client_id)
     for field, val in body.model_dump(exclude_unset=True).items():
         setattr(research, field, val)
-    research.updated_at = datetime.utcnow()
+    research.updated_at = datetime.now(timezone.utc)
     session.add(research)
     session.commit()
     return {"ok": True}
@@ -4390,7 +4390,7 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
             spanish_body=data.get("spanish_body", ""),
             draft_json=_json.dumps(data),
             manual=True,
-            sent_at=datetime.utcnow()
+            sent_at=datetime.now(timezone.utc)
         )
         session.add(draft)
         
@@ -5028,7 +5028,7 @@ def update_project(
         raise HTTPException(status_code=404, detail="Project not found")
     for field, val in body.model_dump(exclude_unset=True).items():
         setattr(p, field, val)
-    p.updatedAt = datetime.utcnow()
+    p.updatedAt = datetime.now(timezone.utc)
     session.add(p)
     session.commit()
     session.refresh(p)
@@ -5210,7 +5210,7 @@ def send_quote(body: QuoteRequest, session: Session = Depends(get_session)):
     sr.team_info = body.team_info
     sr.quote_doc_url = body.quote_doc_url
     sr.status = "Quoted"
-    sr.quote_sent_at = datetime.utcnow()
+    sr.quote_sent_at = datetime.now(timezone.utc)
     if body.assigned_employee_id:
         sr.assigned_employee_id = body.assigned_employee_id
     session.add(sr)
@@ -5225,7 +5225,7 @@ def accept_quote(request_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Request not found")
     sr.status = "Accepted"
     sr.client_accepted_quote = True
-    sr.accepted_at = datetime.utcnow()
+    sr.accepted_at = datetime.now(timezone.utc)
     session.add(sr)
     session.commit()
     return {"ok": True}
@@ -6882,7 +6882,7 @@ def update_task(task_id: int, body: TaskUpdateRequest, session: Session = Depend
         updates["status"] = _normalize_task_status(updates["status"])
     for field, val in updates.items():
         setattr(t, field, val)
-    t.updated_at = datetime.utcnow()
+    t.updated_at = datetime.now(timezone.utc)
     session.add(t)
     session.commit()
     session.refresh(t)
@@ -7111,8 +7111,8 @@ def update_invoice(
     if "amount" in updates or "tax" in updates:
         inv.total = round((inv.amount or 0) + (inv.tax or 0), 2)
     if updates.get("status") == "Paid":
-        inv.paid_at = datetime.utcnow()
-    inv.updated_at = datetime.utcnow()
+        inv.paid_at = datetime.now(timezone.utc)
+    inv.updated_at = datetime.now(timezone.utc)
     session.add(inv)
     session.commit()
     session.refresh(inv)
@@ -7522,7 +7522,7 @@ def respond_nps(survey_id: int, body: NPSRespondRequest, session: Session = Depe
         raise HTTPException(status_code=404, detail="Survey not found")
     s.score = body.score
     s.feedback = body.feedback
-    s.responded_at = datetime.utcnow()
+    s.responded_at = datetime.now(timezone.utc)
     session.add(s)
     session.commit()
     return {"ok": True}
@@ -7770,8 +7770,8 @@ def update_proposal(
     for field, val in body.model_dump(exclude_unset=True).items():
         setattr(p, field, val)
     if body.status == "Accepted":
-        p.signed_at = datetime.utcnow()
-    p.updated_at = datetime.utcnow()
+        p.signed_at = datetime.now(timezone.utc)
+    p.updated_at = datetime.now(timezone.utc)
     session.add(p)
     session.commit()
     session.refresh(p)
@@ -7816,7 +7816,7 @@ def sign_proposal(proposal_id: int, request: Request, session: Session = Depends
     if not p:
         raise HTTPException(status_code=404, detail="Proposal not found")
     
-    p.signed_at = datetime.utcnow()
+    p.signed_at = datetime.now(timezone.utc)
     p.status = "Accepted"
     p.signed_by_ip = request.client.host if request.client else "Unknown IP"
     
@@ -8323,7 +8323,7 @@ async def ws_chat(websocket: WebSocket, thread_id: int):
                             m = session.get(ChatMessage, mid)
                             if m and not m.is_read and m.sender_id != data.get("user_id"):
                                 m.is_read = True
-                                m.read_at = datetime.utcnow()
+                                m.read_at = datetime.now(timezone.utc)
                                 session.add(m)
                         session.commit()
                     await ws_manager.broadcast(
@@ -8356,7 +8356,7 @@ def change_password(body: PasswordChangeRequest, session: Session = Depends(get_
     if len(body.new_password) < 6:
         raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
     user.password = _hash_password(body.new_password)
-    user.updatedAt = datetime.utcnow()
+    user.updatedAt = datetime.now(timezone.utc)
     session.add(user)
     session.commit()
     return {"ok": True, "message": "Password updated successfully"}
@@ -8542,7 +8542,7 @@ Return ONLY valid JSON, no markdown."""
         existing.keyword_gap_data = analysis.get("keyword_gap", {})
         existing.backlink_comparison = analysis.get("backlink_estimate", {})
         existing.content_benchmarks = analysis.get("content_analysis", {})
-        existing.last_updated = datetime.utcnow()
+        existing.last_updated = datetime.now(timezone.utc)
         session.add(existing)
     else:
         ca = CompetitorAnalysis(
@@ -8645,7 +8645,7 @@ def update_deal(deal_id: int, body: DealUpdateRequest, session: Session = Depend
     if body.assigned_to is not None: deal.assigned_to = body.assigned_to
     if body.stage is not None: deal.stage = body.stage
     if body.expected_close_date is not None: deal.expected_close_date = body.expected_close_date
-    deal.updated_at = datetime.utcnow()
+    deal.updated_at = datetime.now(timezone.utc)
     session.add(deal)
     session.commit()
     return {"ok": True}
@@ -9215,7 +9215,7 @@ def update_marketplace_service(
         raise HTTPException(status_code=404, detail="Service not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(svc, field, value)
-    svc.updated_at = datetime.utcnow()
+    svc.updated_at = datetime.now(timezone.utc)
     session.add(svc)
     session.commit()
     session.refresh(svc)
@@ -9232,7 +9232,7 @@ def delete_marketplace_service(
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
     svc.is_active = False
-    svc.updated_at = datetime.utcnow()
+    svc.updated_at = datetime.now(timezone.utc)
     session.add(svc)
     session.commit()
     return {"success": True}
@@ -9294,7 +9294,7 @@ Respond with ONLY valid JSON (no markdown):
         if data.get("estimated_cost_usd") is not None:
             svc.estimated_cost = float(data["estimated_cost_usd"])
             svc.cost_is_estimated = data.get("cost_is_estimated", True)
-        svc.updated_at = datetime.utcnow()
+        svc.updated_at = datetime.now(timezone.utc)
         session.add(svc)
         session.commit()
         session.refresh(svc)
@@ -10367,7 +10367,7 @@ def generate_lead_outbound_draft(lead_id: int, session: Session = Depends(get_se
             spanish_body=data.get("spanish_body", ""),
             draft_json=_json.dumps(data),
             manual=True,
-            sent_at=datetime.utcnow()
+            sent_at=datetime.now(timezone.utc)
         )
         session.add(draft)
         
@@ -11018,7 +11018,7 @@ def add_lead_followup(lead_id: int, body: ClientFollowUpRequest, session: Sessio
         lead_id=lead_id,
         action="Added Follow-up Note",
         details=body.content,
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
     )
     session.add(activity)
 
@@ -11084,7 +11084,7 @@ def add_lead_note(lead_id: int, body: LeadNoteRequest, session: Session = Depend
         raise HTTPException(status_code=400, detail="Note cannot be empty")
 
     from datetime import datetime
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     author_id = current_salesperson_id.get()
 
     note = LeadNote(
@@ -11378,7 +11378,7 @@ def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session
             updates["scheduled_at"] = None
     for k, v in updates.items():
         setattr(m, k, v)
-    m.updated_at = datetime.utcnow()
+    m.updated_at = datetime.now(timezone.utc)
     session.add(m)
     session.commit()
     session.refresh(m)
@@ -11508,7 +11508,7 @@ def update_product(product_id: int, body: ProductUpdateRequest, session: Session
         raise HTTPException(status_code=404, detail="Product not found")
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(p, k, v)
-    p.updated_at = datetime.utcnow()
+    p.updated_at = datetime.now(timezone.utc)
     session.add(p)
     session.commit()
     session.refresh(p)
@@ -11988,7 +11988,7 @@ def update_quote(quote_id: int, body: QuoteCreateRequest, session: Session = Dep
         raise HTTPException(status_code=404, detail="Quote not found")
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(q, k, v)
-    q.updated_at = datetime.utcnow()
+    q.updated_at = datetime.now(timezone.utc)
     session.add(q)
     session.commit()
     session.refresh(q)
@@ -12127,7 +12127,7 @@ def update_sales_order(order_id: int, body: SalesOrderCreateRequest, session: Se
         raise HTTPException(status_code=404, detail="Sales order not found")
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(o, k, v)
-    o.updated_at = datetime.utcnow()
+    o.updated_at = datetime.now(timezone.utc)
     session.add(o)
     session.commit()
     session.refresh(o)
@@ -12208,7 +12208,7 @@ def update_purchase_order(order_id: int, body: PurchaseOrderCreateRequest, sessi
         raise HTTPException(status_code=404, detail="Purchase order not found")
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(o, k, v)
-    o.updated_at = datetime.utcnow()
+    o.updated_at = datetime.now(timezone.utc)
     session.add(o)
     session.commit()
     session.refresh(o)
@@ -12873,10 +12873,10 @@ def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depend
     updates = body.model_dump(exclude_unset=True)
     old_status = c.status
     if updates.get("status") in ("Resolved", "Closed") and not c.resolved_at:
-        c.resolved_at = datetime.utcnow()
+        c.resolved_at = datetime.now(timezone.utc)
     for k, v in updates.items():
         setattr(c, k, v)
-    c.updated_at = datetime.utcnow()
+    c.updated_at = datetime.now(timezone.utc)
     session.add(c)
     session.commit()
     session.refresh(c)
@@ -12960,7 +12960,7 @@ def update_solution(solution_id: int, body: SolutionUpdateRequest, session: Sess
         raise HTTPException(status_code=404, detail="Solution not found")
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(s, k, v)
-    s.updated_at = datetime.utcnow()
+    s.updated_at = datetime.now(timezone.utc)
     session.add(s)
     session.commit()
     session.refresh(s)
@@ -13412,7 +13412,7 @@ def sync_email_integration(integration_id: int, session: Session = Depends(get_s
         session.add(new_email)
         extracted.append(new_email)
         
-    integration.last_synced_at = datetime.utcnow()
+    integration.last_synced_at = datetime.now(timezone.utc)
     session.commit()
     
     # Refresh objects so they have DB IDs
@@ -14913,7 +14913,7 @@ def update_inventory_item(item_id: int, data: InventoryItemCreate, session: Sess
         raise HTTPException(status_code=404, detail="Item not found")
     for k, v in data.dict(exclude_unset=True).items():
         setattr(item, k, v)
-    item.updated_at = datetime.utcnow()
+    item.updated_at = datetime.now(timezone.utc)
     session.add(item)
     session.commit()
     session.refresh(item)
@@ -15206,7 +15206,7 @@ def supplier_update_stock(supplier_record_id: int, current_stock: float, session
     item = session.get(InventoryItem, s.item_id)
     if item:
         item.current_stock = current_stock
-        item.updated_at = datetime.utcnow()
+        item.updated_at = datetime.now(timezone.utc)
         session.add(item)
         session.commit()
     return {"ok": True}
@@ -15930,7 +15930,7 @@ def save_email_settings(body: EmailSettingsRequest, otp_verified: bool = False, 
     else:
         for k, v in body.dict().items():
             setattr(settings, k, v)
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = datetime.now(timezone.utc)
         session.add(settings)
     
     session.commit()
@@ -15982,7 +15982,7 @@ def send_email_otp(body: SendEmailOTPRequest, session: Session = Depends(get_ses
         email=body.email,
         otp_code=otp_code,
         purpose=body.purpose,
-        expires_at=datetime.utcnow() + timedelta(minutes=10),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
     ))
     session.commit()
 

@@ -3,6 +3,11 @@ Database Models and Engine Setup for Cold Outreach CRM
 """
 import uuid
 from datetime import datetime, timezone
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
+
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship, create_engine, Session, JSON
 from sqlalchemy import Column, String, Index, DateTime, select, func, Text
@@ -55,7 +60,7 @@ class Tenant(SQLModel, table=True):
     email: Optional[str] = None
     phone: Optional[str] = None
     is_trial: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     
     # Limits and Usage
     limit_clients: int = Field(default=15)
@@ -80,7 +85,7 @@ class EmailSettings(SQLModel, table=True):
     smtp_pass: str
     from_name: str
     from_email: str
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 class ClientStatus(SQLModel, table=True):
     """
@@ -91,7 +96,7 @@ class ClientStatus(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(unique=True, max_length=100)
     color: str = Field(default="bg-gray-500", max_length=50) # Tailwind class
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class User(SQLModel, table=True):
@@ -111,8 +116,8 @@ class User(SQLModel, table=True):
     is_active: bool = Field(default=True)
     status: str = Field(default="Active")
     sidebar_preferences: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
-    createdAt: datetime = Field(default_factory=datetime.utcnow, sa_column=Column("created_at", DateTime))
-    updatedAt: datetime = Field(default_factory=datetime.utcnow, sa_column=Column("updated_at", DateTime))
+    createdAt: datetime = Field(default_factory=_utcnow, sa_column=Column("created_at", DateTime))
+    updatedAt: datetime = Field(default_factory=_utcnow, sa_column=Column("updated_at", DateTime))
     
     # Relationships
     # Relationships
@@ -130,7 +135,7 @@ class PasswordResetToken(SQLModel, table=True):
     token: str = Field(unique=True, index=True, max_length=128)
     expires_at: datetime = Field(index=True)
     used: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
     user: Optional["User"] = Relationship()
 
@@ -146,7 +151,7 @@ class EmailOTP(SQLModel, table=True):
     purpose: str = Field(max_length=50, default="smtp_settings")  # smtp_settings | integration | signup
     expires_at: datetime = Field(index=True)
     verified: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
     user: Optional["User"] = Relationship()
 
@@ -180,8 +185,8 @@ class MarketplaceService(SQLModel, table=True):
     # Meta
     source: str = Field(default="manual", max_length=50)  # "manual" or "scraper"
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
     # Relationship back to client profile
     provider: Optional["ClientProfile"] = Relationship(back_populates="marketplace_services")
@@ -198,7 +203,7 @@ class AutomationRule(SQLModel, table=True):
     trigger: str = Field(max_length=255)  # e.g., "deal_closed", "lead_stale"
     action: str = Field(max_length=255)   # e.g., "send_email", "create_project"
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class ServiceCatalog(SQLModel, table=True):
@@ -217,7 +222,7 @@ class ServiceCatalog(SQLModel, table=True):
     image_url: Optional[str] = None
     past_results: Optional[str] = Field(default=None, sa_column=Column(Text))
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
     # Relationship
     requests: List["ServiceRequest"] = Relationship(back_populates="service")
@@ -234,7 +239,7 @@ class ServiceRequest(SQLModel, table=True):
     assigned_employee_id: Optional[int] = Field(default=None, foreign_key="users.id")
     
     status: str = Field(default="Pending") # Pending, Quoted, Accepted, In Progress, Delivered
-    requested_at: datetime = Field(default_factory=datetime.utcnow)
+    requested_at: datetime = Field(default_factory=_utcnow)
     accepted_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
@@ -263,7 +268,7 @@ class MessageThread(SQLModel, table=True):
     client_id: int = Field(foreign_key="client_profiles.id")
     employee_id: Optional[int] = Field(default=None, foreign_key="users.id")
     status: str = Field(default="Active") # Active, Closed
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     
     # Relationships
     service_request: "ServiceRequest" = Relationship(back_populates="threads")
@@ -279,7 +284,7 @@ class ChatMessage(SQLModel, table=True):
     is_system: bool = Field(default=False)
     is_read: bool = Field(default=False)
     read_at: Optional[datetime] = Field(default=None)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=_utcnow)
     
     # Relationships
     thread: "MessageThread" = Relationship(back_populates="messages")
@@ -310,8 +315,8 @@ class Project(SQLModel, table=True):
     clientId: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
     leadId: Optional[int] = Field(default=None, foreign_key="leads.id")
     
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+    createdAt: datetime = Field(default_factory=_utcnow)
+    updatedAt: datetime = Field(default_factory=_utcnow)
     
     # Relationships
     remarks: List["Remark"] = Relationship(back_populates="project")
@@ -346,8 +351,8 @@ class ProjectTicket(SQLModel, table=True):
     date_qa_complete: Optional[str] = None
     date_release_prod: Optional[str] = None
     
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 class ProjectTicketHistory(SQLModel, table=True):
@@ -362,7 +367,7 @@ class ProjectTicketHistory(SQLModel, table=True):
     user_name: Optional[str] = None
     old_state: str
     new_state: str
-    moved_at: datetime = Field(default_factory=datetime.utcnow)
+    moved_at: datetime = Field(default_factory=_utcnow)
 
 
 class ProjectTicketNote(SQLModel, table=True):
@@ -376,7 +381,7 @@ class ProjectTicketNote(SQLModel, table=True):
     ticket_id: int = Field(foreign_key="project_tickets.id")
     user_name: Optional[str] = None
     note: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class ClientProfile(SQLModel, table=True):
@@ -488,7 +493,7 @@ class RadarAnalysis(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", index=True)
     lead_id: Optional[int] = Field(default=None, foreign_key="leads.id", index=True)
-    run_date: datetime = Field(default_factory=datetime.utcnow)
+    run_date: datetime = Field(default_factory=_utcnow)
 
     # Target business info
     target_name: Optional[str] = Field(default=None, max_length=255)
@@ -527,7 +532,7 @@ class CompetitorRelationship(SQLModel, table=True):
     discovered_client_name: Optional[str] = Field(default=None, max_length=255)
     source_radar_id: Optional[int] = Field(default=None, foreign_key="radar_analyses.id")
     discovery_method: str = Field(default="Radar Analysis", max_length=100)
-    discovered_date: datetime = Field(default_factory=datetime.utcnow)
+    discovered_date: datetime = Field(default_factory=_utcnow)
     competitor_data: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))  # snapshot of competitor info at discovery time
 
 
@@ -544,7 +549,7 @@ class Remark(SQLModel, table=True):
     clientId: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
     projectId: Optional[int] = Field(default=None, foreign_key="projects.id")
     isInternal: bool = Field(default=True)
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    createdAt: datetime = Field(default_factory=_utcnow)
     
     # Relationships
     client: Optional[ClientProfile] = Relationship(back_populates="remarks")
@@ -565,7 +570,7 @@ class Document(SQLModel, table=True):
     status: str = Field(default="Pending")
     uploaderId: Optional[int] = Field(default=None, foreign_key="users.id")
     clientId: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    createdAt: datetime = Field(default_factory=_utcnow)
     
     # Relationships
     client: Optional[ClientProfile] = Relationship(back_populates="documents")
@@ -586,7 +591,7 @@ class ActivityLog(SQLModel, table=True):
     method: Optional[str] = None # Email, Phone, In-person, WhatsApp, Website
     content: Optional[str] = Field(default=None, sa_column=Column(Text))
     details: Optional[str] = Field(default=None, sa_column=Column(Text))
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    createdAt: datetime = Field(default_factory=_utcnow)
     
     # Relationships
     user: Optional[User] = Relationship(back_populates="activities")
@@ -606,7 +611,7 @@ class AuditLog(SQLModel, table=True):
     record_id: Optional[int] = Field(default=None, index=True)
     action: str = Field(max_length=20) # CREATE, UPDATE, DELETE
     changes: Optional[str] = Field(default=None, sa_column=Column(Text))
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=_utcnow)
 
 
 
@@ -630,7 +635,7 @@ class Company(SQLModel, table=True):
     email_sender: str = Field(default="padilla@dapros.com", max_length=255)
     email_sent_status: bool = Field(default=False)
     recommended_services: Optional[str] = Field(default=None, max_length=1000)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     
     # Relationship to EmailLog
     email_logs: List["EmailLog"] = Relationship(back_populates="company")
@@ -653,7 +658,7 @@ class EmailLog(SQLModel, table=True):
     company_id: uuid.UUID = Field(foreign_key="companies.id")
     sender_email: str = Field(max_length=255)
     sent_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=_utcnow,
         nullable=False
     )
     subject: Optional[str] = Field(default=None, max_length=500)
@@ -672,7 +677,7 @@ class CallLog(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     phone_number: str = Field(max_length=50)
-    received_at: datetime = Field(default_factory=datetime.utcnow)
+    received_at: datetime = Field(default_factory=_utcnow)
     duration_seconds: Optional[int] = Field(default=None)
     summary: Optional[str] = Field(default=None, sa_column=Column(Text))
     description: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -681,7 +686,7 @@ class CallLog(SQLModel, table=True):
     followup_needed: bool = Field(default=False)
     followup_date: Optional[str] = Field(default=None, max_length=50)
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    createdAt: datetime = Field(default_factory=_utcnow)
 
 
 class ScheduledCall(SQLModel, table=True):
@@ -702,7 +707,7 @@ class ScheduledCall(SQLModel, table=True):
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
     assigned_to: Optional[str] = Field(default=None, max_length=255)
     status: str = Field(default="Scheduled", max_length=50)  # Scheduled, Completed, Cancelled
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class SentEmail(SQLModel, table=True):
@@ -723,7 +728,7 @@ class SentEmail(SQLModel, table=True):
     manual: Optional[bool] = Field(default=False)
     draft_json: Optional[str] = Field(default=None, sa_column=Column(Text))  # Store the whole draft as JSON
     status: str = Field(default="Sent", max_length=50)  # Sent, Opened, Replied
-    sent_at: datetime = Field(default_factory=datetime.utcnow)
+    sent_at: datetime = Field(default_factory=_utcnow)
 
 
 class SocialProfile(SQLModel, table=True):
@@ -735,7 +740,7 @@ class SocialProfile(SQLModel, table=True):
     profile_url: Optional[str] = None
     access_token: Optional[str] = None
     is_connected: bool = Field(default=False)
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    createdAt: datetime = Field(default_factory=_utcnow)
     
     client: Optional[ClientProfile] = Relationship(back_populates="social_profiles")
 
@@ -750,7 +755,7 @@ class SEOAudit(SQLModel, table=True):
     core_web_vitals_passed: bool = Field(default=False)
     on_page_issues: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
     tech_seo_issues: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
-    last_run: datetime = Field(default_factory=datetime.utcnow)
+    last_run: datetime = Field(default_factory=_utcnow)
     
     client: Optional[ClientProfile] = Relationship(back_populates="seo_audits")
 
@@ -763,7 +768,7 @@ class CompetitorAnalysis(SQLModel, table=True):
     keyword_gap_data: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
     backlink_comparison: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
     content_benchmarks: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
-    last_updated: datetime = Field(default_factory=datetime.utcnow)
+    last_updated: datetime = Field(default_factory=_utcnow)
     
     client: Optional[ClientProfile] = Relationship(back_populates="competitor_analyses")
 
@@ -776,7 +781,7 @@ class RankingTracker(SQLModel, table=True):
     position: int
     url: str
     serp_features: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
-    tracked_date: datetime = Field(default_factory=datetime.utcnow)
+    tracked_date: datetime = Field(default_factory=_utcnow)
     
     client: Optional[ClientProfile] = Relationship(back_populates="ranking_records")
 
@@ -798,7 +803,7 @@ class AnalyticsData(SQLModel, table=True):
     meta_ads_spend: float = Field(default=0.0)    # New field for Meta Ads spend
     google_ads_conversions: int = Field(default=0) # New field for Google Ads conversions
     meta_ads_conversions: int = Field(default=0)   # New field for Meta Ads conversions
-    last_synced: datetime = Field(default_factory=datetime.utcnow)
+    last_synced: datetime = Field(default_factory=_utcnow)
 
     client: Optional[ClientProfile] = Relationship(back_populates="analytics_data")
 
@@ -822,8 +827,8 @@ class Task(SQLModel, table=True):
     project_id: Optional[int] = Field(default=None, foreign_key="projects.id")
     assigned_to: Optional[int] = Field(default=None, foreign_key="users.id")
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
     comments: List["TaskComment"] = Relationship(back_populates="task")
 
 
@@ -835,7 +840,7 @@ class TaskComment(SQLModel, table=True):
     task_id: int = Field(foreign_key="tasks.id")
     author_id: Optional[int] = Field(default=None, foreign_key="users.id")
     content: str = Field(sa_column=Column(Text))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     task: Optional["Task"] = Relationship(back_populates="comments")
 
 
@@ -856,8 +861,8 @@ class Invoice(SQLModel, table=True):
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
     line_items: Optional[List] = Field(default_factory=list, sa_column=Column(JSON))
     paid_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
     client: Optional[ClientProfile] = Relationship(back_populates="invoices")
 
 
@@ -887,7 +892,7 @@ class Milestone(SQLModel, table=True):
     due_date: Optional[str] = None
     status: str = Field(default="Pending")  # Pending, InProgress, Achieved
     order: int = Field(default=0)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     client: Optional[ClientProfile] = Relationship(back_populates="milestones")
 
 
@@ -901,7 +906,7 @@ class NPSSurvey(SQLModel, table=True):
     feedback: Optional[str] = Field(default=None, sa_column=Column(Text))
     triggered_by: Optional[str] = None  # "project_complete", "manual"
     responded_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     client: Optional[ClientProfile] = Relationship(back_populates="nps_surveys")
 
 
@@ -925,8 +930,8 @@ class Proposal(SQLModel, table=True):
     signed_by_ip: Optional[str] = None
     signature_data: Optional[str] = Field(default=None, sa_column=Column(Text))
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
     client: Optional[ClientProfile] = Relationship(back_populates="proposals")
 
 
@@ -942,7 +947,7 @@ class ClientFileUpload(SQLModel, table=True):
     file_size: Optional[int] = None
     mime_type: Optional[str] = None
     description: Optional[str] = Field(default=None, max_length=500)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     client: Optional[ClientProfile] = Relationship(back_populates="file_uploads")
 
 
@@ -957,7 +962,7 @@ class KeywordRankEntry(SQLModel, table=True):
     url: Optional[str] = None
     search_engine: str = Field(default="Google")
     notes: Optional[str] = Field(default=None, max_length=500)
-    recorded_at: datetime = Field(default_factory=datetime.utcnow)
+    recorded_at: datetime = Field(default_factory=_utcnow)
     recorded_by: Optional[int] = Field(default=None, foreign_key="users.id")
     client: Optional[ClientProfile] = Relationship(back_populates="keyword_ranks")
 
@@ -974,8 +979,8 @@ class ClientNote(SQLModel, table=True):
     is_pinned: bool = Field(default=False)
     author_id: Optional[int] = Field(default=None, foreign_key="users.id")
     author_name: Optional[str] = Field(default=None, max_length=255)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 class Deal(SQLModel, table=True):
@@ -989,8 +994,8 @@ class Deal(SQLModel, table=True):
     assigned_to: Optional[int] = Field(default=None, foreign_key="users.id")
     stage: str = Field(default="Lead") # Lead, Discovery, Demo, Negotiation, Closed Won, Closed Lost
     expected_close_date: Optional[str] = Field(default=None, max_length=50)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
     client: Optional[ClientProfile] = Relationship(back_populates="deals")
     assigned_user: Optional["User"] = Relationship(back_populates="deals")
@@ -1009,7 +1014,7 @@ class ConversationLog(SQLModel, table=True):
     author_id: Optional[int] = Field(default=None, foreign_key="users.id")
     author_name: Optional[str] = Field(default=None, max_length=255)
     attachment_urls: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     replies: List["ConversationReply"] = Relationship(back_populates="conversation")
 
 
@@ -1022,7 +1027,7 @@ class ConversationReply(SQLModel, table=True):
     content: str = Field(sa_column=Column(Text))
     author_id: Optional[int] = Field(default=None, foreign_key="users.id")
     author_name: Optional[str] = Field(default=None, max_length=255)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     conversation: Optional[ConversationLog] = Relationship(back_populates="replies")
 
 
@@ -1041,7 +1046,7 @@ class ClientResearch(SQLModel, table=True):
     business_goals: Optional[str] = Field(default=None, sa_column=Column(Text))
     key_decision_makers: Optional[str] = Field(default=None, sa_column=Column(Text))
     email_agent_data: Optional[str] = Field(default=None, sa_column=Column(Text))
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 class ClientTicket(SQLModel, table=True):
@@ -1054,7 +1059,7 @@ class ClientTicket(SQLModel, table=True):
     title: str = Field(max_length=255)
     description: Optional[str] = Field(default=None, sa_column=Column(Text))
     status: str = Field(default="Pending")  # Pending, Done, Not Done
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class Account(SQLModel, table=True):
@@ -1067,7 +1072,7 @@ class Account(SQLModel, table=True):
     phone: Optional[str] = Field(default=None, max_length=100)
     address: Optional[str] = Field(default=None, sa_column=Column(Text))
     owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     last_activity: Optional[str] = Field(default=None, max_length=500)
     
     contacts: List["Contact"] = Relationship(back_populates="account")
@@ -1090,7 +1095,7 @@ class Lead(SQLModel, table=True):
     is_converted: bool = Field(default=False)
     converted_client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
     account_id: Optional[int] = Field(default=None, foreign_key="accounts.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     last_activity: Optional[str] = Field(default=None, max_length=500)
     ai_analysis_results: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     swot_analysis: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -1107,7 +1112,7 @@ class LeadNote(SQLModel, table=True):
     content: str = Field(sa_column=Column(Text))
     author_id: Optional[int] = Field(default=None, foreign_key="users.id")
     author_name: Optional[str] = Field(default=None, max_length=255)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 class Contact(SQLModel, table=True):
     __tablename__ = "contacts"
@@ -1132,7 +1137,7 @@ class Contact(SQLModel, table=True):
     tags: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
     owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
     parent_contact_id: Optional[int] = Field(default=None, foreign_key="contacts.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
     lead: Optional[Lead] = Relationship(back_populates="contacts")
     account: Optional[Account] = Relationship(back_populates="contacts")
@@ -1162,8 +1167,8 @@ class Meeting(SQLModel, table=True):
     attendees: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
     outcome: Optional[str] = Field(default=None, sa_column=Column(Text))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 # ──────────────────────────────────────────────────────
@@ -1185,8 +1190,8 @@ class Product(SQLModel, table=True):
     tax_rate: float = Field(default=0.0)
     stock_quantity: Optional[int] = Field(default=None)
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 class QuoteItem(SQLModel, table=True):
@@ -1224,8 +1229,8 @@ class CRMQuote(SQLModel, table=True):
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
     terms: Optional[str] = Field(default=None, sa_column=Column(Text))
     owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 class SalesOrder(SQLModel, table=True):
@@ -1243,8 +1248,8 @@ class SalesOrder(SQLModel, table=True):
     delivery_date: Optional[str] = Field(default=None, max_length=50)
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
     owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 class PurchaseOrder(SQLModel, table=True):
@@ -1261,8 +1266,8 @@ class PurchaseOrder(SQLModel, table=True):
     expected_delivery: Optional[str] = Field(default=None, max_length=50)
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
     owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 # ──────────────────────────────────────────────────────
@@ -1288,8 +1293,8 @@ class Case(SQLModel, table=True):
     assigned_to: Optional[int] = Field(default=None, foreign_key="users.id")
     resolution: Optional[str] = Field(default=None, sa_column=Column(Text))
     resolved_at: Optional[datetime] = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 class Solution(SQLModel, table=True):
@@ -1305,8 +1310,8 @@ class Solution(SQLModel, table=True):
     view_count: int = Field(default=0)
     helpful_count: int = Field(default=0)
     author_id: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 # ──────────────────────────────────────────────────────
 # EMAIL TRACKER: Integrations & Extracted Emails
 # ──────────────────────────────────────────────────────
@@ -1326,7 +1331,7 @@ class EmailIntegration(SQLModel, table=True):
     token_expiry: Optional[datetime] = Field(default=None)
     
     last_synced_at: Optional[datetime] = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 class ExtractedEmail(SQLModel, table=True):
     __tablename__ = "extracted_emails"
@@ -1340,8 +1345,8 @@ class ExtractedEmail(SQLModel, table=True):
     suggested_type: str = Field(default="Unknown") # Lead, Client, Spam, Inquiry
     ai_analysis: Optional[str] = Field(default=None, sa_column=Column(Text))
     status: str = Field(default="Pending") # Pending, Verified_Lead, Verified_Client, Dismissed
-    received_at: datetime = Field(default_factory=datetime.utcnow)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    received_at: datetime = Field(default_factory=_utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 def create_db_and_tables():
@@ -1488,7 +1493,7 @@ class ApiRequest(SQLModel, table=True):
     success: bool = Field(default=True)
     content_type: Optional[str] = Field(default=None, max_length=100)
     request_meta: Optional[dict] = Field(default=None, sa_column=Column("request_meta", JSON))
-    timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
+    timestamp: datetime = Field(default_factory=_utcnow, index=True)
 
 
 class ApiUsageDaily(SQLModel, table=True):
@@ -1517,7 +1522,7 @@ class PageVisitTelemetry(SQLModel, table=True):
     user_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
     page_path: str = Field(index=True)
     time_spent_seconds: int = Field(default=0)
-    timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
+    timestamp: datetime = Field(default_factory=_utcnow, index=True)
 
 class ApiAlert(SQLModel, table=True):
     """Alert configuration for API cost and usage thresholds."""
@@ -1531,7 +1536,7 @@ class ApiAlert(SQLModel, table=True):
     period: str = Field(default="daily", max_length=20)
     target: Optional[str] = Field(default="global", max_length=100)
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class WhatsAppSession(SQLModel, table=True):
@@ -1540,13 +1545,13 @@ class WhatsAppSession(SQLModel, table=True):
     pending_action: Optional[str] = None
     action_data: Optional[str] = None  # JSON string of parameters
     active_live_chat_session: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 class ChatbotSession(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     session_id: str = Field(index=True, unique=True)
     user_id: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 class ChatbotMessage(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -1554,21 +1559,21 @@ class ChatbotMessage(SQLModel, table=True):
     role: str = Field(default="user") # user, assistant
     content: str = Field(sa_column=Column(Text))
     action_taken: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 class LiveChatSession(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     session_id: str = Field(index=True, unique=True)
     status: str = Field(default="pending") # pending, active, ended
     client_id: Optional[int] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 class LiveChatMessage(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     session_id: str = Field(index=True)
     sender: str = Field(default="user") # user, admin
     message: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=_utcnow)
 
 
 
@@ -1591,8 +1596,8 @@ class InventoryItem(SQLModel, table=True):
     min_stock: Optional[float] = Field(default=0)
     current_stock: Optional[float] = Field(default=0)
     owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
     suppliers: List["InventorySupplier"] = Relationship(back_populates="item")
     rfq_requests: List["RFQRequest"] = Relationship(back_populates="item")
@@ -1616,7 +1621,7 @@ class InventorySupplier(SQLModel, table=True):
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
     login_password: Optional[str] = Field(default=None, max_length=255)  # plaintext unique password for supplier login
     credentials_sent: bool = Field(default=False)  # whether credentials email has been sent
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
     item: Optional[InventoryItem] = Relationship(back_populates="suppliers")
 
@@ -1638,7 +1643,7 @@ class RFQRequest(SQLModel, table=True):
     status: str = Field(default="Pending")   # Pending, Responded, Accepted, Rejected
     token: Optional[str] = Field(default=None, max_length=64)  # unique link token
     sent_by: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
     item: Optional[InventoryItem] = Relationship(back_populates="rfq_requests")
     responses: List["RFQResponse"] = Relationship(back_populates="rfq")
@@ -1654,7 +1659,7 @@ class RFQResponse(SQLModel, table=True):
     lead_time_days: Optional[int] = Field(default=None)
     valid_until: Optional[str] = Field(default=None, max_length=50)
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
-    submitted_at: datetime = Field(default_factory=datetime.utcnow)
+    submitted_at: datetime = Field(default_factory=_utcnow)
 
     rfq: Optional[RFQRequest] = Relationship(back_populates="responses")
 
@@ -1675,7 +1680,7 @@ class APIKey(SQLModel, table=True):
     created_by: Optional[int] = Field(default=None, foreign_key="users.id")
     last_used_at: Optional[datetime] = Field(default=None)
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 
@@ -1688,7 +1693,7 @@ class ContactLeadLink(SQLModel, table=True):
     lead_id: int = Field(foreign_key="leads.id", index=True)
     role_at_company: Optional[str] = Field(default=None, max_length=100)
     is_primary: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class ContactClientLink(SQLModel, table=True):
@@ -1700,7 +1705,7 @@ class ContactClientLink(SQLModel, table=True):
     client_id: int = Field(foreign_key="client_profiles.id", index=True)
     role_at_company: Optional[str] = Field(default=None, max_length=100)
     is_primary: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 def get_session():
@@ -1728,5 +1733,5 @@ class APIUsageLog(SQLModel, table=True):
     response_time_ms: float
     ip_address: Optional[str] = Field(default=None, max_length=50)
     user_agent: Optional[str] = Field(default=None, max_length=255)
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=_utcnow, index=True)
 
