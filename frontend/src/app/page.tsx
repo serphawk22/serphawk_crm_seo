@@ -258,10 +258,12 @@ function Dashboard() {
     if (!role) return;
     const url = `${API_BASE_URL}/dashboard-stats?role=${role}&email=${email}`;
 
-    // Cold-start backends (e.g. Neon pooler wake) can 500 the first heavy call.
-    // Retry with backoff before giving up so the dashboard doesn't strand the
-    // user on the "being prepared" screen after a single transient failure.
-    const MAX_ATTEMPTS = 3;
+    // Cold-start backends (e.g. Neon pooler wake, 500 on the first heavy call for
+    // ~10-30s while the sleeping DB wakes) can reject several attempts in a row.
+    // Back off well past that window before giving up so the dashboard doesn't
+    // strand the user on the "being prepared" screen after transient failures.
+    const MAX_ATTEMPTS = 4;
+    const RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
     let attempt = 0;
     let cancelled = false;
 
@@ -283,7 +285,7 @@ function Dashboard() {
           if (attempt >= MAX_ATTEMPTS) {
             setLoading(false);
           } else {
-            setTimeout(attemptFetch, attempt * 1_500);
+            setTimeout(attemptFetch, RETRY_DELAYS_MS[attempt - 1]);
           }
         });
     };
