@@ -67,6 +67,22 @@ export default function ScmhubCasesPage() {
     setForm({ title: c.title || "", description: c.description || "", status: c.status || "Open", priority: c.priority || "Medium" });
   };
 
+  const changeStatus = async (c: ScmhubCase, status: string) => {
+    if (!status || status === (c.status || "Open")) return;
+    setCases(prev => prev.map(x => x.id === c.id ? { ...x, status } : x));
+    try {
+      const res = await fetch(`${API_BASE_URL}/scmhub-cases/${c.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+    } catch (e) {
+      setError("Could not update status. Please try again.");
+      load();
+    }
+  };
+
   const save = async () => {
     if (!editing) return;
     setSaving(true);
@@ -156,7 +172,15 @@ export default function ScmhubCasesPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <span className="text-xs font-mono text-slate-400">{c.case_number || `#${c.id}`}</span>
-                  <span className={`text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-lg ${STATUS_COLORS[c.status || "Open"] || "bg-slate-100 text-slate-500"}`}>{c.status || "Open"}</span>
+                  <select
+                    value={c.status || "Open"}
+                    onChange={e => changeStatus(c, e.target.value)}
+                    onClick={e => e.stopPropagation()}
+                    className={`appearance-none cursor-pointer text-[10px] font-black uppercase tracking-wide pl-2 pr-4 py-0.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 ${STATUS_COLORS[c.status || "Open"] || "bg-slate-100 text-slate-500"}`}
+                    title="Change status"
+                  >
+                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
                   <span className={`flex items-center gap-1 text-[10px] font-black uppercase ${PRIORITY_COLORS[c.priority || "Medium"] || "text-slate-500"}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[c.priority || "Medium"]}`} />{c.priority || "Medium"}
                   </span>
