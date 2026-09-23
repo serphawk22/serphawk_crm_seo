@@ -5894,6 +5894,20 @@ def generate_llm_draft_task(sent_email_id, body_dict):
 # ─────────────────────────────────────────────────────────────────────────────
 # Dashboard Stats
 # ─────────────────────────────────────────────────────────────────────────────
+def _as_naive_utc(v):
+    """Normalize a datetime to naive UTC for safe comparisons.
+
+    The DB (PostgreSQL timestamptz) returns tz-aware UTC datetimes, while the
+    dashboard math builds naive datetimes from datetime.utcnow(). Comparing the
+    two raises "can't compare offset-naive and offset-aware datetimes" and 500s
+    the endpoint. Treat both as naive UTC so either kind works."""
+    if v is None:
+        return None
+    if getattr(v, "tzinfo", None) is not None:
+        return v.replace(tzinfo=None)
+    return v
+
+
 @app.get("/dashboard-stats")
 def dashboard_stats(
     role: str = Query("Client"),
@@ -6201,9 +6215,9 @@ def dashboard_stats(
         day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start + timedelta(days=1)
         labels.append(day.strftime("%b %d"))
-        activity_chart.append(sum(1 for a in all_activities if a.createdAt and day_start <= a.createdAt < day_end))
-        email_chart.append(sum(1 for e in all_emails if e.sent_at and day_start <= e.sent_at < day_end))
-        call_chart.append(sum(1 for c in all_calls_list if c.createdAt and day_start <= c.createdAt < day_end))
+        activity_chart.append(sum(1 for a in all_activities if a.createdAt and day_start <= _as_naive_utc(a.createdAt) < day_end))
+        email_chart.append(sum(1 for e in all_emails if e.sent_at and day_start <= _as_naive_utc(e.sent_at) < day_end))
+        call_chart.append(sum(1 for c in all_calls_list if c.createdAt and day_start <= _as_naive_utc(c.createdAt) < day_end))
 
     import calendar
     all_invoices = session.exec(select(Invoice)).all()
@@ -6233,7 +6247,7 @@ def dashboard_stats(
         month_end = datetime(next_year, next_month, 1)
         
         def _in_month(row):
-            v = getattr(row, "created_at", None)
+            v = _as_naive_utc(getattr(row, "created_at", None))
             return bool(v and month_start <= v < month_end)
         
         # Money in: quotes + paid invoices + sales orders created this month.
