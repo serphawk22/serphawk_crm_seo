@@ -257,14 +257,41 @@ function Dashboard() {
   useEffect(() => {
     if (!role) return;
     const url = `${API_BASE_URL}/dashboard-stats?role=${role}&email=${email}`;
-    fetchWithCache<StatsData>(
-      url,
-      (data: StatsData, _isFromCache: boolean) => {
-        setStats(data);
-        setLoading(false);
-      },
-      60_000
-    ).catch(() => setLoading(false));
+
+    // Cold-start backends (e.g. Neon pooler wake) can 500 the first heavy call.
+    // Retry with backoff before giving up so the dashboard doesn't strand the
+    // user on the "being prepared" screen after a single transient failure.
+    const MAX_ATTEMPTS = 3;
+    let attempt = 0;
+    let cancelled = false;
+
+    const attemptFetch = () => {
+      if (cancelled) return;
+      attempt += 1;
+      fetchWithCache<StatsData>(
+        url,
+        (data: StatsData, _isFromCache: boolean) => {
+          setStats(data);
+          setLoading(false);
+        },
+        60_000,
+        45_000
+      )
+        .then(() => {})
+        .catch(() => {
+          if (cancelled) return;
+          if (attempt >= MAX_ATTEMPTS) {
+            setLoading(false);
+          } else {
+            setTimeout(attemptFetch, attempt * 1_500);
+          }
+        });
+    };
+
+    attemptFetch();
+    return () => {
+      cancelled = true;
+    };
   }, [role, email]);
 
   if (loading) {

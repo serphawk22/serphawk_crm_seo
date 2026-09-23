@@ -40,7 +40,8 @@ export function cacheSet<T>(url: string, data: T, ttlMs = DEFAULT_TTL_MS): void 
 export async function fetchWithCache<T>(
   url: string,
   onData: (data: T, isFromCache: boolean) => void,
-  ttlMs = DEFAULT_TTL_MS
+  ttlMs = DEFAULT_TTL_MS,
+  timeoutMs?: number
 ): Promise<void> {
   // 1. Serve cache immediately (instant render)
   const cached = cacheGet<T>(url);
@@ -50,7 +51,18 @@ export async function fetchWithCache<T>(
 
   // 2. Fetch fresh data in background
   try {
-    const res = await fetch(url);
+    let res: Response;
+    if (timeoutMs && typeof AbortController !== "undefined") {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        res = await fetch(url, { signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    } else {
+      res = await fetch(url);
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const fresh: T = await res.json();
     cacheSet<T>(url, fresh, ttlMs);
