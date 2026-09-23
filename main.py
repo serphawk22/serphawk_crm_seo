@@ -12729,6 +12729,48 @@ def list_scmhub_cases(status: Optional[str] = None):
         return {"cases": [], "error": "SCMHUB_DATABASE_URL not configured"}
     from sqlalchemy.orm import Session as _ORM_Session
     with _ORM_Session(eng) as s:
+        # Self-heal: cases authored in SCMHub's `cases` table are mirrored into
+        # `case` on creation; if that best-effort sync was skipped or failed,
+        # mirror them lazily here so they are never silently invisible.
+        try:
+            existing = {r[0] for r in s.execute(_text('SELECT case_number FROM "case"')).all()}
+            src = s.execute(_text('''
+                SELECT id, case_number, subject, description, status, priority, assigned_to,
+                       client_id, lead_id, contact_id, created_at, updated_at
+                FROM cases''')).mappings().all()
+            for row in src:
+                if row["case_number"] in existing:
+                    continue
+                entity_type = entity_id = None
+                if row["client_id"]:
+                    entity_type, entity_id = "client", row["client_id"]
+                elif row["lead_id"]:
+                    entity_type, entity_id = "lead", row["lead_id"]
+                elif row["contact_id"]:
+                    entity_type, entity_id = "contact", row["contact_id"]
+                s.execute(_text('DELETE FROM "case" WHERE case_number = :cn'), {"cn": row["case_number"]})
+                s.execute(_text('''
+                    INSERT INTO "case" (case_number, title, description, status, priority,
+                        assigned_to, created_by, entity_type, entity_id, created_at, updated_at)
+                    VALUES (:case_number, :title, :description, :status, :priority,
+                        :assigned_to, :created_by, :entity_type, :entity_id,
+                        :created_at, :updated_at)'''), {
+                        "case_number": row["case_number"],
+                        "title": row["subject"],
+                        "description": row["description"],
+                        "status": row["status"],
+                        "priority": row["priority"],
+                        "assigned_to": row["assigned_to"],
+                        "created_by": None,
+                        "entity_type": entity_type,
+                        "entity_id": entity_id,
+                        "created_at": row["created_at"],
+                        "updated_at": row["updated_at"]})
+                existing.add(row["case_number"])
+            s.commit()
+        except Exception:
+            s.rollback()
+
         sql = 'SELECT id, case_number, title, description, status, priority, assigned_to, created_by, entity_type, entity_id, created_at, updated_at FROM "case"'
         params: dict = {}
         if status:
