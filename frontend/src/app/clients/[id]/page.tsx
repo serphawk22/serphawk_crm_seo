@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -32,13 +32,15 @@ import {
   Eye,
   TrendingDown,
   Lightbulb,
-  ShieldAlert
+  ShieldAlert,
+  Brain
 } from 'lucide-react';
 import { API_BASE_URL } from '@/config';
 import { useRole } from '@/context/RoleContext';
 import LinkedContacts from '@/components/LinkedContacts';
 import { cn } from '@/lib/utils';
 import PageGuide from '@/components/PageGuide';
+import ClientDealsTab from './ClientDealsTab';
 import axios from 'axios';
 import { DollarSign, XCircle, Radar, Navigation } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -117,6 +119,128 @@ function PaymentStatusWidget({ status }: { status: string }) {
   );
 }
 
+// ─── Full AI Analysis Component ──────────────────────────────────────────────
+function FullAIAnalysis({ clientId }: { clientId: string }) {
+  const [status, setStatus] = useState<'idle'|'pending'|'done'|'error'>('idle');
+  const [report, setReport] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // On mount: check if report already exists
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/clients/${clientId}/full-analysis`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.status === 'done' && d?.report) {
+          setReport(d.report);
+          setStatus('done');
+        } else if (d?.status === 'pending') {
+          setStatus('pending');
+          startPolling();
+        }
+      })
+      .catch(() => {});
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [clientId]);
+
+  const startPolling = useCallback(() => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    let attempts = 0;
+    pollRef.current = setInterval(async () => {
+      attempts++;
+      try {
+        const r = await fetch(`${API_BASE_URL}/clients/${clientId}/full-analysis`);
+        if (r.ok) {
+          const d = await r.json();
+          if (d.status === 'done' && d.report) {
+            setReport(d.report);
+            setStatus('done');
+            clearInterval(pollRef.current!);
+            return;
+          }
+          if (d.status === 'error') {
+            setStatus('error');
+            clearInterval(pollRef.current!);
+            return;
+          }
+        }
+      } catch {}
+      if (attempts >= 36) { // 3 min max
+        setStatus('error');
+        clearInterval(pollRef.current!);
+      }
+    }, 5000);
+  }, [clientId]);
+
+  const handleRun = async () => {
+    setStatus('pending');
+    setReport(null);
+    try {
+      const r = await fetch(`${API_BASE_URL}/clients/${clientId}/full-analysis`, { method: 'POST' });
+      if (!r.ok) { setStatus('error'); return; }
+      startPolling();
+    } catch {
+      setStatus('error');
+    }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.85 }} className="mb-16">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="h-1 w-12 bg-gradient-to-r from-violet-400 to-indigo-500 rounded-full"></div>
+          <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 uppercase tracking-wider">AI Deep Analysis</h2>
+        </div>
+        <button
+          onClick={handleRun}
+          disabled={status === 'pending'}
+          className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-violet-500 to-indigo-600 hover:from-violet-600 hover:to-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-violet-500/30 transition-all disabled:opacity-50"
+        >
+          {status === 'pending' ? <Loader2 size={16} className="animate-spin" /> : <Brain className="w-4 h-4" />}
+          {status === 'pending' ? 'Analyzing...' : (report ? 'Re-run Analysis' : 'Run Full AI Analysis')}
+        </button>
+      </div>
+
+      {status === 'pending' && (
+        <div className="flex items-center gap-3 px-5 py-4 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-2xl mb-4">
+          <Loader2 size={18} className="animate-spin text-indigo-600 shrink-0" />
+          <div>
+            <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">AI is researching this company...</p>
+            <p className="text-xs text-indigo-500 mt-0.5">Scraping website, running deep investigation. Takes ~2 min. Results will appear automatically.</p>
+          </div>
+        </div>
+      )}
+
+      {status === 'error' && (
+        <div className="px-5 py-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl mb-4">
+          <p className="text-sm font-bold text-red-700 dark:text-red-300">Analysis failed or timed out. Try again.</p>
+        </div>
+      )}
+
+      {status === 'done' && report && (
+        <div className="p-6 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl shadow-sm">
+          <pre className="text-sm text-slate-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed font-sans">{report}</pre>
+        </div>
+      )}
+
+      {status === 'idle' && !report && (
+        <div className="flex flex-col items-center justify-center py-16 px-6 bg-slate-50 dark:bg-zinc-900/50 border border-dashed border-slate-300 dark:border-zinc-700 rounded-3xl">
+          <div className="w-16 h-16 bg-white dark:bg-zinc-800 rounded-full flex items-center justify-center shadow-sm mb-4">
+            <Brain className="w-7 h-7 text-violet-500" />
+          </div>
+          <h3 className="text-lg font-bold text-slate-700 dark:text-zinc-300 mb-2">No analysis yet</h3>
+          <p className="text-sm text-slate-500 text-center max-w-md mb-6">Run a full AI deep analysis combining website scraping, competitor intelligence, ICP mapping, GTM strategy, and a complete markdown report.</p>
+          <button
+            onClick={handleRun}
+            className="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 dark:bg-white dark:hover:bg-slate-200 dark:text-slate-900 text-white rounded-xl font-bold text-sm shadow-sm transition-all flex items-center gap-2"
+          >
+            <Brain className="w-4 h-4" /> Run Full AI Analysis
+          </button>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
 export default function ClientDetailPage() {
   const { t } = useLanguage();
   const { id } = useParams() as { id: string };
@@ -128,6 +252,7 @@ export default function ClientDetailPage() {
   const [employees, setEmployees] = useState<any[]>([]);
   const [statuses, setStatuses] = useState<any[]>([]);
   const [timeline, setTimeline] = useState<any[]>([]);
+  const [research, setResearch] = useState<any>(null);
   const [timelineFilter, setTimelineFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
@@ -135,7 +260,7 @@ export default function ClientDetailPage() {
   const [isKeywordModalOpen, setIsKeywordModalOpen] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [newKeyword, setNewKeyword] = useState('');
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'deals'>('overview');
   const { role } = useRole();
   const [isMilestoneModalOpen, setIsMilestoneModalOpen] = useState(false);
   const [milestoneData, setMilestoneData] = useState({
@@ -182,6 +307,7 @@ export default function ClientDetailPage() {
         fetchStatuses(),
         fetchServiceRequests(),
         fetchTimeline(),
+        fetchResearch(),
       ]).catch(console.error).finally(() => setPageLoading(false));
     }
   }, [id]);
@@ -297,6 +423,18 @@ export default function ClientDetailPage() {
       if (res.ok) {
         const data = await res.json();
         setTimeline(data.timeline || []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchResearch = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${id}/research`);
+      if (res.ok) {
+        const data = await res.json();
+        setResearch(data.research || null);
       }
     } catch (err) {
       console.error(err);
@@ -460,6 +598,39 @@ const handleSaveMetrics = async () => {
     }
   };
 
+  const handleGenerateResearch = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/clients/${id}/auto-research`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to generate research.');
+      }
+      // Poll every 5s until research data appears (background job)
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        try {
+          const r = await fetch(`${API_BASE_URL}/clients/${id}/research`);
+          if (r.ok) {
+            const d = await r.json();
+            if (d.research?.email_agent_data || d.research?.company_overview) {
+              setResearch(d.research);
+              clearInterval(poll);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch {}
+        if (attempts >= 24) { clearInterval(poll); setLoading(false); }
+      }, 5000);
+    } catch (err) {
+      console.error(err);
+      alert('Error generating AI research.');
+      setLoading(false);
+    }
+  };
+
   const handleUpdateMilestone = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -488,7 +659,21 @@ const handleSaveMetrics = async () => {
   return (
     <>
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 p-8">
-      <div className="max-w-7xl mx-auto">
+      <div className="mx-auto mb-8 flex max-w-7xl gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+        <button
+          onClick={() => setActiveTab('overview')}
+          className={cn("rounded-xl px-5 py-2.5 text-xs font-black uppercase tracking-widest transition-all", activeTab === 'overview' ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800")}
+        >
+          Overview
+        </button>
+        <button
+          onClick={() => setActiveTab('deals')}
+          className={cn("rounded-xl px-5 py-2.5 text-xs font-black uppercase tracking-widest transition-all", activeTab === 'deals' ? "bg-indigo-600 text-white" : "text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800")}
+        >
+          Deals
+        </button>
+      </div>
+      <div className={cn("max-w-7xl mx-auto", activeTab === 'deals' && "hidden")}>
         {/* EPIC WELCOME HERO */}
         <motion.div 
           initial={{ opacity: 0, y: 40 }} 
@@ -1013,6 +1198,9 @@ const handleSaveMetrics = async () => {
           </div>
         </motion.div>
 
+        {/* ─── FULL AI ANALYSIS ─── */}
+        <FullAIAnalysis clientId={id} />
+
         {/* ─── AI SWOT ANALYSIS ─── */}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.85 }} className="mb-16">
           <div className="flex items-center justify-between mb-6">
@@ -1259,6 +1447,11 @@ const handleSaveMetrics = async () => {
         </AnimatePresence>
 
       </div>
+      {activeTab === 'deals' && (
+        <div className="mx-auto max-w-7xl">
+          <ClientDealsTab clientId={String(client.id)} />
+        </div>
+      )}
     </motion.div>
 
     {/* ── Edit Metrics Modal ── */}

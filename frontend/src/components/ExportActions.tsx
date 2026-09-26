@@ -33,7 +33,6 @@ export function ExportActions({ downloadUrl, emailUrl, filename, label = "Export
   const [showEmail, setShowEmail] = useState(false);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState<null | "download" | "email" | "item">(null);
-  const [showFormats, setShowFormats] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -146,36 +145,13 @@ export function ExportActions({ downloadUrl, emailUrl, filename, label = "Export
 
   return (
     <div className="relative flex items-center gap-2">
-      {formats.length === 1 ? (
-        <button key={formats[0].format} onClick={() => handleDownload(formats[0])} disabled={busy === "download" || busy === "email"}
+      {formats.map(fmt => (
+        <button key={fmt.format} onClick={() => handleDownload(fmt)} disabled={busy === "download" || busy === "email"}
           className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold bg-white dark:bg-zinc-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-zinc-200 hover:border-blue-500 disabled:opacity-60 transition-all">
           {busy === "download" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-          {formats[0].label}
+          {fmt.label}
         </button>
-      ) : (
-        <div className="relative">
-          <button onClick={() => setShowFormats(s => !s)} disabled={busy === "download" || busy === "email"}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold bg-white dark:bg-zinc-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-zinc-200 hover:border-blue-500 disabled:opacity-60 transition-all">
-            {busy === "download" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {t("export_actions.export")}
-            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showFormats ? "rotate-180" : ""}`} />
-          </button>
-          {showFormats && (
-            <>
-              <div className="fixed inset-0 z-30" onClick={() => setShowFormats(false)} />
-              <div className="absolute right-0 top-full mt-2 z-40 w-44 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden">
-                {formats.map(fmt => (
-                  <button key={fmt.format} onClick={() => { handleDownload(fmt); setShowFormats(false); }}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
-                    <Download className="w-4 h-4 text-slate-400" />
-                    {fmt.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      ))}
       <button onClick={() => setShowEmail(true)} disabled={busy === "download" || busy === "email"}
         className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold bg-white dark:bg-zinc-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-zinc-200 hover:border-blue-500 disabled:opacity-60 transition-all">
         <Mail className="w-4 h-4" /> {t("export_actions.email")}

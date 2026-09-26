@@ -42,6 +42,7 @@ interface AdminStats {
   chartLabels: string[]; activityChart: number[]; emailChart: number[]; callChart: number[];
   revenueData: { name: string; revenue: number; expenses: number }[];
   pipelineData: { stage: string; count: number }[];
+  projectsData: { id: number; name: string; status: string; progress: number; ticket_total: number; ticket_done: number; ticket_in_progress: number }[];
   revenue: number; pipelineValue: number;
   totalQuotesValue: number; acceptedQuotesValue: number; totalQuotesCount: number; acceptedQuotesCount: number;
   totalSalesOrdersValue: number; fulfilledSalesOrdersValue: number; totalSalesOrdersCount: number; fulfilledSalesOrdersCount: number;
@@ -213,7 +214,7 @@ export default function HomePage() {
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) {
-      window.location.href = "/showcase/index.html";
+      router.replace("/showcase");
       return;
     }
     if (role === "Employee") {
@@ -257,43 +258,14 @@ function Dashboard() {
   useEffect(() => {
     if (!role) return;
     const url = `${API_BASE_URL}/dashboard-stats?role=${role}&email=${email}`;
-
-    // Cold-start backends (e.g. Neon pooler wake, 500 on the first heavy call for
-    // ~10-30s while the sleeping DB wakes) can reject several attempts in a row.
-    // Back off well past that window before giving up so the dashboard doesn't
-    // strand the user on the "being prepared" screen after transient failures.
-    const MAX_ATTEMPTS = 4;
-    const RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
-    let attempt = 0;
-    let cancelled = false;
-
-    const attemptFetch = () => {
-      if (cancelled) return;
-      attempt += 1;
-      fetchWithCache<StatsData>(
-        url,
-        (data: StatsData, _isFromCache: boolean) => {
-          setStats(data);
-          setLoading(false);
-        },
-        60_000,
-        45_000
-      )
-        .then(() => {})
-        .catch(() => {
-          if (cancelled) return;
-          if (attempt >= MAX_ATTEMPTS) {
-            setLoading(false);
-          } else {
-            setTimeout(attemptFetch, RETRY_DELAYS_MS[attempt - 1]);
-          }
-        });
-    };
-
-    attemptFetch();
-    return () => {
-      cancelled = true;
-    };
+    fetchWithCache<StatsData>(
+      url,
+      (data: StatsData, _isFromCache: boolean) => {
+        setStats(data);
+        setLoading(false);
+      },
+      60_000
+    ).catch(() => setLoading(false));
   }, [role, email]);
 
   if (loading) {
@@ -370,10 +342,10 @@ function Dashboard() {
   return (
     <motion.div initial="hidden" animate="show" variants={containerVariants} className={cn(isAdmin || role === 'ProjectMember' || role === 'Demo' ? "space-y-6" : "")}>
       {role === "ProjectMember" && <DeveloperDashboard />}
-      {role === "SalesManager" && <SalesManagerDashboard />}
+      {role === "SalesManager" && stats && <SalesManagerDashboard stats={stats as any} name={user?.name || email} />}
       {isAdmin && adminStats && <AdminDashboard adminStats={adminStats} NAV_CARDS={NAV_CARDS} language={language} />}
       {role === "Demo" && <AdminDashboard adminStats={adminStats} NAV_CARDS={visibleNavCards} language={language} isDemo={true} />}
-      {!isAdmin && role !== "Demo" && role !== "ProjectMember" && role !== "SalesManager" && role !== "Supplier" && (
+      {!isAdmin && role !== "Demo" && role !== "ProjectMember" && role !== "SalesManager" && (
         <ClientDashboard clientStats={clientStats} NAV_CARDS={visibleNavCards} language={language} />
       )}
 

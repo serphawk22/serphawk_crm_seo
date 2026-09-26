@@ -23,20 +23,15 @@ import TimelineTab from './components/tabs/TimelineTab';
 import ConversationsTab from './components/tabs/ConversationsTab';
 import NotesTab from './components/tabs/NotesTab';
 import TasksTab from './components/tabs/TasksTab';
-import OpportunitiesTab from './components/tabs/OpportunitiesTab';
 import FilesTab from './components/tabs/FilesTab';
-import HealthTab from './components/tabs/HealthTab';
-import TicketsTab from './components/tabs/TicketsTab';
+import AiDataTab from '@/app/admin/clients/[id]/components/tabs/AiDataTab';
 
 // ─── Tab definitions ───────────────────────────────────────────────────────────
 const TABS = [
   { key: 'overview',       label: 'Overview',       icon: LayoutDashboard },
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
-  { key: 'opportunities',  label: 'Opportunities',   icon: Lightbulb       },
-  { key: 'tasks',          label: 'Tasks',           icon: CheckSquare     },
-  { key: 'tickets',        label: 'Tickets',         icon: Ticket          },
+  { key: 'ai_data',        label: 'AI DATA',         icon: Brain           },
   { key: 'files',          label: 'Files',           icon: FolderOpen      },
-  { key: 'health',         label: 'Health',          icon: HeartPulse      },
   { key: 'conversations',  label: 'Conversations',   icon: MessageSquare   },
 ];
 
@@ -659,7 +654,8 @@ export default function LeadDetailsPage() {
       const res = await fetch(`${API_BASE_URL}/leads/${id}`);
       if (!res.ok) throw new Error("Failed to load lead");
       const data = await res.json();
-      setLead(data.client || data);
+      const leadData = data.client || data;
+      setLead({ ...leadData, assignedEmployeeId: leadData.assignedEmployeeId || leadData.owner_id || null });
     } catch (e) { console.error(e); }
   }, [id]);
 
@@ -682,7 +678,10 @@ export default function LeadDetailsPage() {
         fetchJson(`${API_BASE_URL}/leads/${id}/research`),
       ]);
 
-      if (leadRes.status === 'fulfilled') setLead(leadRes.value.client || leadRes.value);
+      if (leadRes.status === 'fulfilled') {
+        const leadData = leadRes.value.client || leadRes.value;
+        setLead({ ...leadData, assignedEmployeeId: leadData.assignedEmployeeId || leadData.owner_id || null });
+      }
       if (empRes.status === 'fulfilled') setEmployees(empRes.value.users || []);
       if (actRes.status === 'fulfilled') setActivities(actRes.value.activities || []);
       if (emailRes.status === 'fulfilled') setEmails(emailRes.value.emails || []);
@@ -749,15 +748,27 @@ export default function LeadDetailsPage() {
     setIsGeneratingResearch(true);
     try {
       const res = await fetch(`${API_BASE_URL}/leads/${id}/auto-research`, { method: 'POST' });
-      if (res.ok) {
-        // Research runs in background — no auto-refresh, keep UI in generating state
-        return;
-      }
-    } catch (e) {
-      // silent
+      if (!res.ok) { setIsGeneratingResearch(false); return; }
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        try {
+          const r = await fetch(`${API_BASE_URL}/leads/${id}/research`);
+          if (r.ok) {
+            const d = await r.json();
+            if (d.research?.email_agent_data || d.research?.company_overview) {
+              setResearch(d.research);
+              clearInterval(poll);
+              setIsGeneratingResearch(false);
+              return;
+            }
+          }
+        } catch {}
+        if (attempts >= 24) { clearInterval(poll); setIsGeneratingResearch(false); }
+      }, 5000);
+    } catch {
+      setIsGeneratingResearch(false);
     }
-    // Only reset on error
-    setIsGeneratingResearch(false);
   };
 
   // ─── Loading & Auth Guards ────────────────────────────────────────────────
@@ -797,7 +808,6 @@ export default function LeadDetailsPage() {
   const tabBadges: Record<string, number> = {
     conversations: conversations.length,
     notes:         notes.length,
-    tasks:         tasks.filter(t => t.status !== 'Done').length,
     files:         files.length,
   };
 
@@ -926,13 +936,12 @@ export default function LeadDetailsPage() {
                     onFilterChange={setTimelineFilter}
                   />
                 )}
-                {activeTab === 'opportunities' && (
-                  <OpportunitiesTab
-                    lead={lead}
-                    timeline={timeline}
-                    serviceRequests={serviceRequests}
-                    research={research}
-                    emails={emails}
+                {activeTab === 'ai_data' && (
+                  <AiDataTab
+                    clientId={id}
+                    websiteUrl={lead?.websiteUrl || lead?.website}
+                    resourceType="leads"
+                    onClientRefresh={fetchLead}
                   />
                 )}
                 {activeTab === 'conversations' && (
@@ -951,36 +960,12 @@ export default function LeadDetailsPage() {
                     onRefresh={() => fetch(`${API_BASE_URL}/leads/${id}/notes`).then(r => r.json()).then(d => setNotes(d.notes || []))}
                   />
                 )}
-                {activeTab === 'tasks' && (
-                  <TasksTab
-                    leadId={id}
-                    tasks={tasks}
-                    employees={employees}
-                    onRefresh={() => fetch(`${API_BASE_URL}/tasks?lead_id=${id}`).then(r => r.json()).then(d => {
-                      const all = d.tasks || d || [];
-                      setTasks(all.filter((t: any) => String(t.client_id) === String(id)));
-                    })}
-                  />
-                )}
                 {activeTab === 'files' && (
                   <FilesTab
                     leadId={id}
                     files={files}
                     onRefresh={() => fetch(`${API_BASE_URL}/leads/${id}/files`).then(r => r.json()).then(d => setFiles(d.files || d || []))}
                   />
-                )}
-                {activeTab === 'health' && (
-                  <HealthTab
-                    lead={lead}
-                    activities={activities}
-                    emails={emails}
-                    timeline={timeline}
-                    serviceRequests={serviceRequests}
-                  />
-                )}
-                
-                {activeTab === 'tickets' && (
-                  <TicketsTab leadId={id} />
                 )}
               </motion.div>
             </AnimatePresence>

@@ -16,7 +16,6 @@ import { ClientSidebar } from "@/components/ClientSidebar";
 import { SyncProvider } from "@/context/SyncContext";
 import { GlobalLoader } from "@/components/GlobalLoader";
 import { usePathname } from "next/navigation";
-import { CallNotificationBar } from "@/components/CallNotificationBar";
 import { DeveloperHeader } from "@/components/DeveloperHeader";
 import SpaceAtmosphere from "@/components/SpaceAtmosphere";
 import TelemetryTracker from "@/components/TelemetryTracker";
@@ -26,6 +25,7 @@ import TopRightControls from "@/components/TopRightControls";
 import GoogleProviderWrapper from "@/components/GoogleProviderWrapper";
 import { GlobalLimitModal } from "@/components/GlobalLimitModal";
 import { NotificationProvider } from "@/context/NotificationContext";
+import GlobalFooter from "@/components/GlobalFooter";
 
 function AdminMainContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
@@ -47,7 +47,6 @@ function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="client-shell relative w-full min-h-screen bg-transparent text-white" style={{ color: "var(--text-primary)" }}>
       <ClientSidebar />
-      <CallNotificationBar />
       <main className={`min-h-screen transition-all duration-300 pt-6 px-4 md:px-6 ${collapsed ? "ml-[72px]" : "ml-[220px]"}`}>
         {children}
       </main>
@@ -136,7 +135,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
             </div>
             <span className="font-bold text-slate-800 dark:text-white text-sm">Supplier Portal</span>
           </div>
-          <a href="/login" onClick={() => { localStorage.removeItem("crm_user"); }}
+          <a href="/" onClick={() => { localStorage.removeItem("crm_user"); }}
             className="text-xs font-semibold text-slate-500 hover:text-red-500 transition-colors">
             Sign Out
           </a>
@@ -155,7 +154,6 @@ function AppContent({ children }: { children: React.ReactNode }) {
         <div className="admin-shell min-h-screen" style={{ background: "var(--background)" }}>
           <Sidebar role={role} />
           <AdminMainContent>
-            <CallNotificationBar />
             {children}
           </AdminMainContent>
           {showChatbot && <Chatbot />}
@@ -249,6 +247,7 @@ export default function RootLayout({
                     <TelemetryTracker />
                     <SpaceAtmosphere />
                     <AppContent>{children}</AppContent>
+                    <GlobalFooter />
                     <OmniSearch />
                     <QuickAddFab />
                     <GlobalLimitModal />
