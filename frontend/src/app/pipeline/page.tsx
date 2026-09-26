@@ -5,10 +5,9 @@ import { useRouter } from "next/navigation";
 import { useRole } from "@/context/RoleContext";
 import { API_BASE_URL } from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
-import { AdminTopbar } from "@/components/AdminTopbar";
 import { Sidebar } from "@/components/Sidebar";
 import { 
-  Kanban, Plus, MoreVertical, DollarSign, Calendar, Clock, MapPin, Search
+  Kanban, Plus, MoreVertical, DollarSign, Calendar, Clock, MapPin, Search, Pencil
 } from "lucide-react";
 
 interface Deal {
@@ -18,6 +17,7 @@ interface Deal {
   client_id: number;
   client_name: string;
   assigned_to: number | null;
+  assigned_name?: string;
   stage: string;
   expected_close_date: string | null;
   created_at: string;
@@ -27,17 +27,21 @@ const STAGES = ["Lead", "Discovery", "Demo", "Negotiation", "Closed Won", "Close
 
 export default function PipelinePage() {
   const { t } = useLanguage();
-  const { role, userId } = useRole();
+  const { role, user } = useRole();
   const router = useRouter();
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [salesPerformance, setSalesPerformance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [draggedDeal, setDraggedDeal] = useState<Deal | null>(null);
+  const [sortBy, setSortBy] = useState<"latest" | "oldest" | "highest_value" | "lowest_value" | "stale">("latest");
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newDeal, setNewDeal] = useState({ title: "", value: "", client_id: "", stage: "Lead", expected_close_date: "" });
+  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
+  const [newDeal, setNewDeal] = useState({ title: "", value: "", client_id: "", assigned_to: "", stage: "Lead", expected_close_date: "" });
   const [clients, setClients] = useState<{ id: number; email: string; companyName?: string }[]>([]);
+  const [salesUsers, setSalesUsers] = useState<{ id: number; name: string; email: string }[]>([]);
 
   useEffect(() => {
     if (role === "Client") {
@@ -46,15 +50,17 @@ export default function PipelinePage() {
     }
     fetchDeals();
     fetchClients();
+    fetch(`${API_BASE_URL}/users?role=SalesManager,Employee`).then(r => r.json()).then(data => setSalesUsers(data.users || [])).catch(() => {});
   }, [role, router]);
 
   const fetchDeals = async () => {
     try {
-      const url = role === "SalesManager" ? `${API_BASE_URL}/deals?user_id=${userId}` : `${API_BASE_URL}/deals`;
+      const url = role === "SalesManager" ? `${API_BASE_URL}/deals?user_id=${user?.id || ""}` : `${API_BASE_URL}/deals`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch deals");
       const data = await res.json();
       setDeals(data.deals);
+      setSalesPerformance(data.sales_performance || []);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -112,21 +118,23 @@ export default function PipelinePage() {
   const handleAddDeal = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE_URL}/deals`, {
-        method: "POST",
+      const isEditing = Boolean(editingDeal);
+      const res = await fetch(`${API_BASE_URL}/deals${isEditing ? `/${editingDeal?.id}` : ""}`, {
+        method: isEditing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: newDeal.title,
           value: parseFloat(newDeal.value) || 0.0,
           client_id: parseInt(newDeal.client_id),
-          assigned_to: role === "SalesManager" ? userId : null,
+          assigned_to: role === "SalesManager" ? user?.id || null : (newDeal.assigned_to ? Number(newDeal.assigned_to) : null),
           stage: newDeal.stage,
           expected_close_date: newDeal.expected_close_date || null
         })
       });
       if (res.ok) {
         setShowAddModal(false);
-        setNewDeal({ title: "", value: "", client_id: "", stage: "Lead", expected_close_date: "" });
+        setEditingDeal(null);
+        setNewDeal({ title: "", value: "", client_id: "", assigned_to: "", stage: "Lead", expected_close_date: "" });
         fetchDeals();
       }
     } catch (err) {
@@ -134,8 +142,32 @@ export default function PipelinePage() {
     }
   };
 
+  const openEditDeal = (deal: Deal) => {
+    setEditingDeal(deal);
+    setNewDeal({
+      title: deal.title,
+      value: String(deal.value ?? ""),
+      client_id: String(deal.client_id),
+      assigned_to: String(deal.assigned_to || ""),
+      stage: deal.stage,
+      expected_close_date: deal.expected_close_date || "",
+    });
+    setShowAddModal(true);
+  };
+
+  const sortedDeals = [...deals].sort((a, b) => {
+    if (sortBy === "highest_value") return (b.value || 0) - (a.value || 0);
+    if (sortBy === "lowest_value") return (a.value || 0) - (b.value || 0);
+    if (sortBy === "oldest") return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+    if (sortBy === "stale") {
+      const age = (deal: Deal) => Date.now() - new Date(deal.created_at || 0).getTime();
+      return age(b) - age(a);
+    }
+    return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+  });
+
   const dealsByStage = STAGES.reduce((acc, stage) => {
-    acc[stage] = deals.filter(d => d.stage === stage);
+    acc[stage] = sortedDeals.filter(d => d.stage === stage);
     return acc;
   }, {} as Record<string, Deal[]>);
 
@@ -145,11 +177,9 @@ export default function PipelinePage() {
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-zinc-950">
-      <Sidebar />
+      <Sidebar role={role} />
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        <AdminTopbar />
-        
-        <main className="flex-1 overflow-x-auto overflow-y-hidden p-6 relative">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 relative">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
@@ -160,12 +190,19 @@ export default function PipelinePage() {
             </div>
             
             <div className="flex items-center gap-4">
+              <select value={sortBy} onChange={event => setSortBy(event.target.value as typeof sortBy)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" aria-label="Sort deals">
+                <option value="latest">Latest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="highest_value">Highest value</option>
+                <option value="lowest_value">Lowest value</option>
+                <option value="stale">Stale longest</option>
+              </select>
               <div className="bg-white dark:bg-zinc-900 px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 shadow-sm flex flex-col items-end">
                 <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("pipeline.total_pipeline")}</span>
                 <span className="text-lg font-bold text-slate-800 dark:text-zinc-100">${totalValue.toLocaleString()}</span>
               </div>
               <button 
-                onClick={() => setShowAddModal(true)}
+                onClick={() => { setEditingDeal(null); setNewDeal({ title: "", value: "", client_id: "", assigned_to: "", stage: "Lead", expected_close_date: "" }); setShowAddModal(true); }}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl shadow-sm transition-colors flex items-center gap-2 text-sm font-medium"
               >
                 <Plus className="w-4 h-4" />
@@ -176,12 +213,14 @@ export default function PipelinePage() {
 
           {error && <div className="p-4 mb-4 bg-red-50 text-red-600 rounded-xl">{error}</div>}
 
+          {role === "Admin" && salesPerformance.length > 0 && <div className="mb-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-zinc-700 dark:bg-zinc-900"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:bg-zinc-800"><tr><th className="px-4 py-3">Salesperson</th><th className="px-4 py-3">Deals</th><th className="px-4 py-3">Pipeline</th><th className="px-4 py-3">Won Revenue</th><th className="px-4 py-3">Lead</th><th className="px-4 py-3">Negotiation</th><th className="px-4 py-3">Won</th></tr></thead><tbody>{salesPerformance.map(item => <tr key={item.assigned_to || "unassigned"} className="border-t border-slate-100 dark:border-zinc-800"><td className="px-4 py-3 font-bold dark:text-white">{item.salesperson}</td><td className="px-4 py-3">{item.deals}</td><td className="px-4 py-3">${Number(item.pipeline_value).toLocaleString()}</td><td className="px-4 py-3 font-bold text-emerald-600">${Number(item.won_revenue).toLocaleString()}</td><td className="px-4 py-3">{item.stages.Lead || 0}</td><td className="px-4 py-3">{item.stages.Negotiation || 0}</td><td className="px-4 py-3">{item.stages["Closed Won"] || 0}</td></tr>)}</tbody></table></div>}
+
           {/* Kanban Board */}
-          <div className="flex gap-6 h-[calc(100vh-180px)] pb-4 overflow-x-auto snap-x">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4 pb-6">
             {STAGES.map(stage => (
               <div 
                 key={stage}
-                className="flex-shrink-0 w-80 bg-slate-100 dark:bg-zinc-800/50 rounded-2xl border border-slate-200 dark:border-zinc-700 flex flex-col snap-start"
+                className="min-w-0 min-h-[360px] bg-slate-100 dark:bg-zinc-800/50 rounded-2xl border border-slate-200 dark:border-zinc-700 flex flex-col"
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, stage)}
               >
@@ -197,7 +236,7 @@ export default function PipelinePage() {
                   </span>
                 </div>
                 
-                <div className="p-3 flex-1 overflow-y-auto space-y-3">
+                <div className="p-3 flex-1 overflow-y-auto space-y-3 max-h-[calc(100vh-270px)]">
                   {dealsByStage[stage].map(deal => (
                     <div
                       key={deal.id}
@@ -206,28 +245,34 @@ export default function PipelinePage() {
                       className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 shadow-sm cursor-grab active:cursor-grabbing hover:border-indigo-300 hover:shadow-md transition-all group"
                     >
                       <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-semibold text-slate-800 dark:text-zinc-100 line-clamp-1" title={deal.title}>{deal.title}</h4>
-                        <button className="text-slate-400 hover:text-slate-600 dark:text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <h4 className="min-w-0 flex-1 break-words whitespace-normal pr-2 font-semibold leading-5 text-slate-800 dark:text-zinc-100" title={deal.title}>{deal.title}</h4>
+                        <button type="button" onClick={() => openEditDeal(deal)} title="Edit deal" className="text-slate-400 hover:text-indigo-600 dark:text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button type="button" className="hidden text-slate-400 hover:text-slate-600 dark:text-zinc-300">
                           <MoreVertical className="w-4 h-4" />
                         </button>
                       </div>
                       
-                      <div className="text-sm text-slate-500 dark:text-zinc-400 mb-3 flex items-center gap-1.5 line-clamp-1">
-                        <MapPin className="w-3.5 h-3.5" />
-                        {deal.client_name}
+                      <div className="min-w-0 text-sm text-slate-500 dark:text-zinc-400 mb-3 flex items-start gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span className="min-w-0 break-words whitespace-normal">{deal.client_name}</span>
                       </div>
                       
-                      <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-zinc-800">
+                      <div className="space-y-2 pt-3 border-t border-slate-100 dark:border-zinc-800">
                         <div className="flex items-center gap-1 text-emerald-600 font-semibold text-sm">
                           <DollarSign className="w-4 h-4" />
                           {deal.value.toLocaleString()}
                         </div>
-                        {deal.expected_close_date && (
-                          <div className="flex items-center gap-1 text-xs text-slate-400 font-medium">
-                            <Calendar className="w-3.5 h-3.5" />
-                            {new Date(deal.expected_close_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                          </div>
-                        )}
+                        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                          {deal.assigned_name && <p className="min-w-[72px] flex-1 break-words text-left text-[10px] font-bold text-indigo-500">Owner: {deal.assigned_name}</p>}
+                          {deal.expected_close_date && (
+                            <div className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-slate-400 font-medium">
+                              <Calendar className="w-3.5 h-3.5" />
+                              {new Date(deal.expected_close_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -242,13 +287,20 @@ export default function PipelinePage() {
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
               <div className="p-6 border-b border-slate-100 dark:border-zinc-800">
-                <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">{t("pipeline.create_new_deal")}</h2>
+                <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">{editingDeal ? "Edit Deal" : t("pipeline.create_new_deal")}</h2>
               </div>
               <form onSubmit={handleAddDeal} className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">{t("pipeline.deal_title")}</label>
                   <input required type="text" value={newDeal.title} onChange={e => setNewDeal({...newDeal, title: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" placeholder="e.g. Website Redesign" />
                 </div>
+                {role !== "SalesManager" && <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">Assign Sales Owner</label>
+                  <select required value={newDeal.assigned_to} onChange={e => setNewDeal({...newDeal, assigned_to: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl outline-none">
+                    <option value="">Select salesperson</option>
+                    {salesUsers.map(salesUser => <option key={salesUser.id} value={salesUser.id}>{salesUser.name || salesUser.email} · {salesUser.email}</option>)}
+                  </select>
+                </div>}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">{t("pipeline.client")}</label>
                   <select required value={newDeal.client_id} onChange={e => setNewDeal({...newDeal, client_id: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none">
@@ -277,7 +329,7 @@ export default function PipelinePage() {
                 
                 <div className="flex gap-3 pt-4 border-t border-slate-100 dark:border-zinc-800">
                   <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 font-medium rounded-xl hover:bg-slate-50 dark:bg-zinc-950 transition-colors">{t("pipeline.cancel")}</button>
-                  <button type="submit" className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors shadow-sm">{t("pipeline.create_deal")}</button>
+                  <button type="submit" className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors shadow-sm">{editingDeal ? "Save Changes" : t("pipeline.create_deal")}</button>
                 </div>
               </form>
             </div>

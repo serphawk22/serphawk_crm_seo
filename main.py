@@ -113,6 +113,7 @@ from database import (
     SocialProfile,
     Task,
     TaskComment,
+    TaskSheetEntry,
     Tenant,
     PageVisitTelemetry,
     User,
@@ -1642,6 +1643,20 @@ class TaskUpdateRequest(BaseModel):
 class TaskCommentCreateRequest(BaseModel):
     content: str
     author_id: Optional[int] = None
+
+
+class TaskSheetEntryRequest(BaseModel):
+    user_id: int
+    work_date: str
+    area: str = "General"
+    project_id: Optional[int] = None
+    ticket_id: Optional[int] = None
+    summary: str
+    status: str = "Done"
+    time_spent_minutes: Optional[int] = None
+    blocker: Optional[str] = None
+    follow_up_date: Optional[str] = None
+    completion_date: Optional[str] = None
 
 
 class InvoiceCreateRequest(BaseModel):
@@ -6908,6 +6923,66 @@ def delete_task(task_id: int, session: Session = Depends(get_session)):
     return {"ok": True}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Daily task sheet
+# ─────────────────────────────────────────────────────────────────────────────
+def _task_sheet_dict(entry: TaskSheetEntry, session: Session) -> dict:
+    user = session.get(User, entry.user_id)
+    project = session.get(Project, entry.project_id) if entry.project_id else None
+    ticket = session.get(ProjectTicket, entry.ticket_id) if entry.ticket_id else None
+    return {
+        **entry.model_dump(),
+        "user_name": user.name if user else "Unknown user",
+        "user_email": user.email if user else None,
+        "project_name": project.name if project else None,
+        "ticket_name": ticket.task if ticket else None,
+        "created_at": entry.created_at.isoformat(),
+        "updated_at": entry.updated_at.isoformat(),
+    }
+
+
+@app.get("/task-sheet")
+def list_task_sheet_entries(
+    user_id: Optional[int] = None,
+    work_date: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    q = select(TaskSheetEntry).order_by(TaskSheetEntry.work_date.desc(), TaskSheetEntry.updated_at.desc())
+    if user_id:
+        q = q.where(TaskSheetEntry.user_id == user_id)
+    if work_date:
+        q = q.where(TaskSheetEntry.work_date == work_date)
+    entries = session.exec(q).all()
+    return {"entries": [_task_sheet_dict(entry, session) for entry in entries]}
+
+
+@app.post("/task-sheet")
+def create_task_sheet_entry(body: TaskSheetEntryRequest, session: Session = Depends(get_session)):
+    today = datetime.utcnow().date().isoformat()
+    if body.work_date != today:
+        raise HTTPException(status_code=400, detail="New task-sheet entries can only be added for today")
+    entry = TaskSheetEntry(**body.model_dump(), tenant_id=current_tenant_id.get())
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return {"entry": _task_sheet_dict(entry, session)}
+
+
+@app.put("/task-sheet/{entry_id}")
+def update_task_sheet_entry(entry_id: int, body: TaskSheetEntryRequest, session: Session = Depends(get_session)):
+    entry = session.get(TaskSheetEntry, entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Task-sheet entry not found")
+    for field, value in body.model_dump().items():
+        if field != "work_date":
+            setattr(entry, field, value)
+    entry.updated_at = datetime.utcnow()
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return {"entry": _task_sheet_dict(entry, session)}
+
+
 @app.delete("/notifications/clear-all/{user_id}")
 def clear_all_notifications(user_id: int, session: Session = Depends(get_session)):
     notifs = session.exec(
@@ -8658,6 +8733,148 @@ def delete_deal(deal_id: int, session: Session = Depends(get_session)):
     session.delete(deal)
     session.commit()
     return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reports
+# ─────────────────────────────────────────────────────────────────────────────
+def _report_date(value: Optional[str], fallback: date) -> date:
+    if not value:
+        return fallback
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Dates must use YYYY-MM-DD format")
+
+
+def _in_report_range(value: Optional[datetime], start: date, end: date) -> bool:
+    return bool(value and start <= value.date() <= end)
+
+
+@app.get("/reports/summary")
+def reports_summary(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    _require_roles(session, ["Admin", "SalesManager"])
+    today = datetime.utcnow().date()
+    start = _report_date(start_date, today - timedelta(days=29))
+    end = _report_date(end_date, today)
+    if start > end:
+        raise HTTPException(status_code=400, detail="start_date must be before end_date")
+
+    def scoped(model):
+        query = select(model)
+        tenant_id = current_tenant_id.get()
+        if tenant_id:
+            query = query.where(model.tenant_id == tenant_id)
+        return session.exec(query).all()
+
+    leads = [lead for lead in scoped(Lead) if _in_report_range(lead.created_at, start, end)]
+    all_leads = scoped(Lead)
+    clients = scoped(ClientProfile)
+    deals = [deal for deal in scoped(Deal) if _in_report_range(deal.created_at, start, end)]
+    emails = [email for email in scoped(SentEmail) if _in_report_range(email.sent_at, start, end)]
+    activities = [activity for activity in scoped(ActivityLog) if _in_report_range(activity.createdAt, start, end)]
+    calls = [call for call in scoped(CallLog) if _in_report_range(call.createdAt, start, end)]
+    conversations = [conversation for conversation in scoped(ConversationLog) if _in_report_range(conversation.created_at, start, end)]
+    tickets = [ticket for ticket in scoped(ProjectTicket) if _in_report_range(ticket.created_at, start, end)]
+    cases = [case for case in scoped(Case) if _in_report_range(case.created_at, start, end)]
+    meetings = [meeting for meeting in scoped(Meeting) if meeting.scheduled_at and _in_report_range(meeting.scheduled_at, start, end)]
+    task_entries = [entry for entry in scoped(TaskSheetEntry) if start <= date.fromisoformat(entry.work_date) <= end]
+    users = {user.id: user for user in scoped(User)}
+
+    converted_leads = [lead for lead in all_leads if lead.is_converted]
+    closed_deals = [deal for deal in deals if deal.stage in ("Closed Won", "Closed Lost")]
+    won_deals = [deal for deal in deals if deal.stage == "Closed Won"]
+    conversion_percentage = round((len(converted_leads) / len(all_leads)) * 100, 2) if all_leads else 0
+    win_rate = round((len(won_deals) / len(closed_deals)) * 100, 2) if closed_deals else 0
+
+    source_map: dict[str, dict] = {}
+    for lead in leads:
+        source = (lead.source or "Unknown").strip() or "Unknown"
+        bucket = source_map.setdefault(source, {"source": source, "leads": 0, "converted": 0, "conversion_percentage": 0})
+        bucket["leads"] += 1
+        if lead.is_converted:
+            bucket["converted"] += 1
+    for bucket in source_map.values():
+        bucket["conversion_percentage"] = round((bucket["converted"] / bucket["leads"]) * 100, 2) if bucket["leads"] else 0
+
+    staff: dict[int, dict] = {}
+    def staff_bucket(user_id: Optional[int], name: Optional[str] = None):
+        if not user_id:
+            return None
+        user = users.get(user_id)
+        bucket = staff.setdefault(user_id, {"user_id": user_id, "name": name or (user.name if user else "Unknown"), "role": user.role if user else "Unknown", "activities": 0, "calls": 0, "emails": 0, "tickets": 0, "cases": 0, "meetings": 0, "task_entries": 0, "completed_tasks": 0})
+        return bucket
+
+    for item in activities:
+        if item.userId:
+            staff_bucket(item.userId)["activities"] += 1
+    for item in calls:
+        if item.assigned_to:
+            bucket = staff_bucket(next((u.id for u in users.values() if u.name and u.name == item.assigned_to), None), item.assigned_to)
+            if bucket:
+                bucket["calls"] += 1
+    for item in emails:
+        lead = next((lead for lead in all_leads if lead.email == item.to_email), None)
+        bucket = staff_bucket(lead.owner_id if lead else None)
+        if bucket:
+            bucket["emails"] += 1
+    for item in tickets:
+        owner = next((u for u in users.values() if (u.name or "").lower() == (item.current_owner or "").lower() or str(u.id) == (item.current_owner or "")), None)
+        bucket = staff_bucket(owner.id if owner else None)
+        if bucket:
+            bucket["tickets"] += 1
+    for item in cases:
+        bucket = staff_bucket(item.assigned_to)
+        if bucket:
+            bucket["cases"] += 1
+    for item in meetings:
+        bucket = staff_bucket(item.host_id)
+        if bucket:
+            bucket["meetings"] += 1
+    for item in task_entries:
+        bucket = staff_bucket(item.user_id, "Unknown")
+        if bucket:
+            bucket["task_entries"] += 1
+            if item.status.lower() in ("done", "completed"):
+                bucket["completed_tasks"] += 1
+    for bucket in staff.values():
+        bucket["total_work"] = sum(bucket[key] for key in ("activities", "calls", "emails", "tickets", "cases", "meetings", "task_entries"))
+
+    daily: dict[str, dict] = {}
+    for offset in range((end - start).days + 1):
+        day = (start + timedelta(days=offset)).isoformat()
+        daily[day] = {"date": day, "leads": 0, "clients_onboarded": 0, "deals_won": 0, "emails": 0, "activities": 0, "calls": 0, "meetings": 0, "task_entries": 0, "tickets": 0, "cases_resolved": 0}
+    for lead in leads: daily[lead.created_at.date().isoformat()]["leads"] += 1
+    for client in clients:
+        user = users.get(client.userId) if client.userId else None
+        if user and _in_report_range(user.createdAt, start, end): daily[user.createdAt.date().isoformat()]["clients_onboarded"] += 1
+    for deal in won_deals: daily[deal.created_at.date().isoformat()]["deals_won"] += 1
+    for email in emails: daily[email.sent_at.date().isoformat()]["emails"] += 1
+    for activity in activities: daily[activity.createdAt.date().isoformat()]["activities"] += 1
+    for call in calls: daily[call.createdAt.date().isoformat()]["calls"] += 1
+    for meeting in meetings: daily[meeting.scheduled_at.date().isoformat()]["meetings"] += 1
+    for entry in task_entries: daily[date.fromisoformat(entry.work_date).isoformat()]["task_entries"] += 1
+    for ticket in tickets: daily[ticket.created_at.date().isoformat()]["tickets"] += 1
+    for case in cases:
+        if case.status in ("Resolved", "Closed"): daily[case.created_at.date().isoformat()]["cases_resolved"] += 1
+
+    onboarded = [client for client in clients if client.userId and users.get(client.userId) and _in_report_range(users[client.userId].createdAt, start, end)]
+    return {
+        "range": {"start_date": start.isoformat(), "end_date": end.isoformat()},
+        "summary": {"leads": len(leads), "clients_onboarded": len(onboarded), "total_clients": len(clients), "deals_created": len(deals), "deals_won": len(won_deals), "pipeline_value": round(sum(deal.value or 0 for deal in deals if deal.stage not in ("Closed Lost",)), 2), "won_value": round(sum(deal.value or 0 for deal in won_deals), 2), "emails": len(emails), "activities": len(activities), "calls": len(calls), "meetings": len(meetings), "tickets": len(tickets), "task_entries": len(task_entries), "cases_resolved": sum(1 for case in cases if case.status in ("Resolved", "Closed")), "conversion_percentage": conversion_percentage, "deal_win_rate": win_rate},
+        "sales": {"deals": [{"id": deal.id, "title": deal.title, "value": deal.value, "stage": deal.stage, "assigned_to": users.get(deal.assigned_to).name if deal.assigned_to and users.get(deal.assigned_to) else "Unassigned"} for deal in deals], "won_value": round(sum(deal.value or 0 for deal in won_deals), 2)},
+        "daily": list(daily.values()),
+        "monthly": [{"month": month, "leads": sum(item["leads"] for item in daily.values() if item["date"][:7] == month), "clients_onboarded": sum(item["clients_onboarded"] for item in daily.values() if item["date"][:7] == month), "deals_won": sum(item["deals_won"] for item in daily.values() if item["date"][:7] == month), "emails": sum(item["emails"] for item in daily.values() if item["date"][:7] == month), "calls": sum(item["calls"] for item in daily.values() if item["date"][:7] == month), "meetings": sum(item["meetings"] for item in daily.values() if item["date"][:7] == month)} for month in sorted({item["date"][:7] for item in daily.values()})],
+        "staff_performance": sorted(staff.values(), key=lambda item: item["total_work"], reverse=True),
+        "lead_sources": sorted(source_map.values(), key=lambda item: item["leads"], reverse=True),
+        "calls": [{"id": call.id, "date": call.createdAt.isoformat(), "phone_number": call.phone_number, "assigned_to": call.assigned_to or "Unassigned", "duration_seconds": call.duration_seconds, "summary": call.summary, "followup_needed": call.followup_needed, "followup_date": call.followup_date} for call in calls],
+        "meetings": [{"id": meeting.id, "scheduled_at": meeting.scheduled_at.isoformat(), "title": meeting.title, "meeting_type": meeting.meeting_type, "status": meeting.status, "host": users.get(meeting.host_id).name if meeting.host_id and users.get(meeting.host_id) else "Unassigned", "duration_minutes": meeting.duration_minutes, "location": meeting.location, "outcome": meeting.outcome} for meeting in meetings],
+        "onboarding": {"total_clients": len(clients), "new_in_range": len(onboarded), "active": sum(1 for client in clients if client.status == "Active"), "pending": sum(1 for client in clients if client.status == "Pending"), "hold": sum(1 for client in clients if client.status == "Hold")},
+    }
 
 
 # ────────────────────────────────────────────────────────

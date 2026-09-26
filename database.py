@@ -1735,3 +1735,23 @@ class APIUsageLog(SQLModel, table=True):
     user_agent: Optional[str] = Field(default=None, max_length=255)
     created_at: datetime = Field(default_factory=_utcnow, index=True)
 
+
+
+class TaskSheetEntry(SQLModel, table=True):
+    """Daily work log entries for sales and delivery team members."""
+    __tablename__ = "task_sheet_entries"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    work_date: str = Field(index=True)
+    area: str = Field(default="General", max_length=100)
+    project_id: Optional[int] = Field(default=None, foreign_key="projects.id")
+    ticket_id: Optional[int] = Field(default=None, foreign_key="project_tickets.id")
+    summary: str = Field(sa_column=Column(Text))
+    status: str = Field(default="Done", max_length=50)
+    time_spent_minutes: Optional[int] = Field(default=None)
+    blocker: Optional[str] = Field(default=None, sa_column=Column(Text))
+    follow_up_date: Optional[str] = Field(default=None, index=True)
+    completion_date: Optional[str] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
