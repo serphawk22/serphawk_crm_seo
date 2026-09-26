@@ -9,7 +9,7 @@ import bcrypt
 from sqlalchemy import text
 from sqlmodel import Session, select
 
-from database import User, engine, create_db_and_tables
+from database import User, Tenant, engine, create_db_and_tables
 
 ADMIN_EMAIL = "admin@example.com"
 ADMIN_PASSWORD = "Admin@123"
@@ -31,12 +31,21 @@ def seed_admin():
     now = datetime.now(timezone.utc)
 
     with Session(engine) as session:
+        # Ensure Default Tenant exists
+        tenant = session.get(Tenant, 1)
+        if not tenant:
+            tenant = Tenant(id=1, name="Default Tenant", created_at=now, is_active=True)
+            session.add(tenant)
+            session.commit()
+            print("Default Tenant (id=1) created.")
+
         existing = session.exec(select(User).where(User.email == ADMIN_EMAIL)).first()
         if existing:
             existing.password = sha
             existing.hashed_password = bcrypt_hash
             existing.name = existing.name or ADMIN_NAME
             existing.role = "admin"
+            existing.tenant_id = 1
             session.add(existing)
             session.commit()
             print("Admin password reset successfully.")
@@ -46,10 +55,10 @@ def seed_admin():
                     """
                     INSERT INTO users (
                         name, email, role, is_active, hashed_password, status,
-                        password, created_at, updated_at
+                        password, created_at, updated_at, tenant_id
                     ) VALUES (
                         :name, :email, :role, :is_active, :hashed_password, :status,
-                        :password, :created_at, :updated_at
+                        :password, :created_at, :updated_at, :tenant_id
                     )
                     """
                 ),
@@ -63,6 +72,7 @@ def seed_admin():
                     "password": sha,
                     "created_at": now,
                     "updated_at": now,
+                    "tenant_id": 1,
                 },
             )
             session.commit()
