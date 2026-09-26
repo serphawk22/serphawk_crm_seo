@@ -231,9 +231,13 @@ export default function ClientsPage() {
     }
     setIsAutofilling(true);
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE_URL}/clients/auto-fill`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ website: formData.websiteUrl })
       });
       const result = await res.json();
@@ -369,9 +373,13 @@ export default function ClientsPage() {
     try {
       const payload = { ...pendingFormData };
       if (employeeId) payload.assigned_employee_id = employeeId;
+      const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE_URL}/clients`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify(payload)
       });
       if (res.ok) {
