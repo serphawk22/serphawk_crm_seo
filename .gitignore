@@ -44,3 +44,4 @@ tmp_check_version.py
 test_*.py
 *.pyc
 .myvenv/
+.local/

@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Sparkles, Mail, Clock, User, Globe, ChevronDown, ChevronUp,
   CheckCircle, Building2, Briefcase, Target, AtSign, FileText, Copy, Check,
-  TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign, MessageCircle, Trash2, Youtube
+  TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign, MessageCircle, Trash2, Youtube,
+  X, HelpCircle
 } from "lucide-react";
 
 export interface SentEmail {
@@ -243,6 +244,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
   const [followUpStatus, setFollowUpStatus] = useState<string | null>(null);
   const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [awaitingSystemConfirm, setAwaitingSystemConfirm] = useState(false);
 
   const handleSaveDraft = async () => {
     if (!toEmail.trim()) { setSendError("Please provide a recipient email address in the 'To:' field."); return; }
@@ -368,17 +370,36 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
       setSendError("Please provide a recipient email address in the 'To:' field.");
       return;
     }
-    
-    // Open the default custom mail app instantly (mailto:)
+
+    // Open the default mail app (mailto:). We have NO way to detect whether the
+    // user actually clicked Send in that external app, or closed/discarded it,
+    // so we must NOT log this as "Sent" yet — wait for explicit confirmation
+    // below instead of assuming success.
     const bodyText = activeTab === "english" ? editableEnglishBody : activeTab === "spanish" ? editableSpanishBody : editableWhatsappBody;
     const mailtoLink = `mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(editableSubject)}&body=${encodeURIComponent(bodyText)}`;
     window.location.href = mailtoLink;
-    
-    // Log to backend in the background without freezing the UI
-    onSendManually(getUpdatedResult(), companyName, companyUrl, true, "System").catch(console.error);
-    
-    // Show success immediately
-    setSendSuccess("Mail sent");
+
+    setSendError(null);
+    setAwaitingSystemConfirm(true);
+  };
+
+  const confirmSystemSent = async () => {
+    setSending(true);
+    try {
+      await onSendManually(getUpdatedResult(), companyName, companyUrl, true, "System");
+      setSendSuccess("Mail sent");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to log sent email";
+      setSendError(message);
+    }
+    setAwaitingSystemConfirm(false);
+    setSending(false);
+  };
+
+  const cancelSystemSent = () => {
+    // Nothing was ever logged for this attempt, so there's nothing to undo —
+    // just close the confirmation prompt.
+    setAwaitingSystemConfirm(false);
   };
 
   const handleSendAutomatically = async () => {
@@ -685,32 +706,58 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
               </div>
 
                 <div className="flex flex-col gap-2">
-                  <div className="w-full px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-center gap-2 shadow-sm">
-                    <motion.div
-                      initial={{ scale: 0, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ type: "spring", stiffness: 200, damping: 10, delay: 0.5 }}
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                    </motion.div>
-                    Mail Sent Automatically via AI
-                  </div>
+                  <button
+                    onClick={handleSendAutomatically}
+                    disabled={sending || !!sendSuccess || awaitingSystemConfirm}
+                    title="Sends through our server (SMTP) with the open-tracking pixel embedded — use this when Send via AI can't auto-extract a recipient but you've filled in the To: field yourself."
+                    className="w-full px-4 py-3 rounded-xl bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    Send with Tracking
+                  </button>
                   <button
                     onClick={handleSaveDraft}
-                    disabled={sending || !!sendSuccess}
+                    disabled={sending || !!sendSuccess || awaitingSystemConfirm}
                     className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-100 font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all disabled:opacity-50"
                   >
                     <FileText className="w-3.5 h-3.5" />
                     Save as Draft
                   </button>
-                  <button
-                    onClick={handleSendViaSystem}
-                    disabled={sending || !!sendSuccess}
-                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-50 dark:bg-zinc-950 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    Send via System
-                  </button>
+                  {awaitingSystemConfirm ? (
+                    <div className="w-full rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-3 flex flex-col gap-2">
+                      <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 text-xs font-bold">
+                        <HelpCircle className="w-4 h-4 shrink-0" />
+                        Did you actually click Send in the mail app that opened?
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={confirmSystemSent}
+                          disabled={sending}
+                          className="flex-1 px-3 py-2 rounded-lg bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-emerald-700 transition-all disabled:opacity-50"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          Yes, I sent it
+                        </button>
+                        <button
+                          onClick={cancelSystemSent}
+                          disabled={sending}
+                          className="flex-1 px-3 py-2 rounded-lg bg-slate-200 dark:bg-zinc-700 text-slate-700 dark:text-zinc-100 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-slate-300 dark:hover:bg-zinc-600 transition-all disabled:opacity-50"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          No, cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleSendViaSystem}
+                      disabled={sending || !!sendSuccess}
+                      className="w-full px-4 py-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-50 hover:text-slate-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      Send via System
+                    </button>
+                  )}
                 </div>
               </div>
               {sendError && (

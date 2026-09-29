@@ -727,8 +727,12 @@ class SentEmail(SQLModel, table=True):
     recommended_services: Optional[str] = Field(default=None, sa_column=Column(Text))
     manual: Optional[bool] = Field(default=False)
     draft_json: Optional[str] = Field(default=None, sa_column=Column(Text))  # Store the whole draft as JSON
-    status: str = Field(default="Sent", max_length=50)  # Sent, Opened, Replied
+    status: str = Field(default="Sent", max_length=50)  # Sent, Delivered, Opened, Replied
     sent_at: datetime = Field(default_factory=_utcnow)
+    opened_at: Optional[datetime] = Field(default=None)  # first-ever pixel hit, any timing
+    last_opened_at: Optional[datetime] = Field(default=None)  # most recent pixel hit
+    open_count: int = Field(default=0)
+    replied_at: Optional[datetime] = Field(default=None)
 
 
 class SocialProfile(SQLModel, table=True):
