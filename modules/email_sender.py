@@ -1,14 +1,16 @@
 import smtplib
 import imaplib
+import email as email_lib
 import io
 import os
 import re
+import time
 import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
-from email.utils import formatdate, make_msgid
+from email.utils import formatdate, make_msgid, parseaddr
 
 # ── SerpHawk logo (used in every HTML email) ────────────────────────────────
 _logo_lock = threading.Lock()
@@ -115,6 +117,28 @@ def _archive_sent_copy(msg, sender_email, sender_password, smtp_server, imap_ser
         print(f"[Sent-copy archive failed] {e}")
 
 
+def _tracking_pixel_html(base_url: str, email_id: int) -> str:
+    # Deliberately NOT display:none / visibility:hidden: Gmail and other webmail
+    # clients specifically detect and skip fetching hidden-tracking-pixel-shaped
+    # images. A genuine 1x1 image with no hiding CSS is the standard technique
+    # every cold-email tool (Mailchimp, Mixmax, etc.) actually uses.
+    base = (base_url or "").rstrip("/")
+    return (
+        f'<img src="{base}/webhook/track-email-open?id={email_id}" width="1" height="1" '
+        'alt="" style="width:1px;height:1px;border:0;" />'
+    )
+
+
+def _inject_tracking_pixel(html: str, base_url: str, email_id: int) -> str:
+    """Insert a 1x1 open-tracking pixel just before </body> (or append if no </body> tag)."""
+    if not base_url or not email_id:
+        return html
+    pixel = _tracking_pixel_html(base_url, email_id)
+    if re.search(r"</body>", html, re.I):
+        return re.sub(r"</body>", pixel + "</body>", html, count=1, flags=re.I)
+    return html + pixel
+
+
 def send_email_outlook(
     to_email: str,
     subject: str,
@@ -125,6 +149,8 @@ def send_email_outlook(
     smtp_port: int = 587,
     imap_server: str = None,
     attachments: list = None,
+    tracking_id: int = None,
+    tracking_base_url: str = None,
 ):
     """
     Send an email over SMTP (supports STARTTLS on 587, falls back to implicit TLS on 465).
@@ -134,6 +160,11 @@ def send_email_outlook(
     After sending, a copy is archived into the account's Inbox (falling back to the
     "Sent" folder) over IMAP so the sent mail stays stored in the sender's mailbox. If
     `imap_server` is not provided it is derived from `smtp_server`.
+
+    `tracking_id` + `tracking_base_url`: when both are given, a 1x1 open-tracking pixel
+    pointing at `{tracking_base_url}/webhook/track-email-open?id={tracking_id}` is embedded
+    in the HTML body. `tracking_base_url` MUST be a publicly reachable URL (not localhost)
+    for this to work, since it's the recipient's mail client that requests it.
     """
     msg = MIMEMultipart("mixed")
     msg["From"] = sender_email
@@ -158,6 +189,9 @@ def send_email_outlook(
         is_document = body.lstrip().lower().startswith(("<!doctype", "<html"))
         if not is_document:
             body = branded_email(title=subject, body_html=body.lstrip())
+
+        if tracking_id and tracking_base_url:
+            body = _inject_tracking_pixel(body, tracking_base_url, tracking_id)
 
         logo_bytes = _serphawk_logo_bytes()
         if logo_bytes:
@@ -353,4 +387,142 @@ def send_otp_email(to_email: str, otp_code: str, purpose: str = "email verificat
         return True
     except Exception as e:
         print(f"[OTP email failed] {e}")
+        return False
+
+
+# ── Reply detection (IMAP inbox poller) ──────────────────────────────────────
+# No external cron/n8n dependency: a background thread periodically checks the
+# configured mailbox for new messages and, when the sender matches the
+# `to_email` of a previously sent (and not-yet-replied) SentEmail row, flips
+# that row's status to "Replied". Best-effort throughout: any failure here
+# must never take down the app.
+
+_reply_checker_started = False
+_reply_checker_lock = threading.Lock()
+
+
+def _get_email_settings():
+    sender = os.environ.get("EMAIL_SENDER") or os.environ.get("OUTLOOK_EMAIL") or ""
+    password = os.environ.get("EMAIL_PASSWORD") or os.environ.get("OUTLOOK_PASSWORD") or ""
+    imap_server = os.environ.get("IMAP_SERVER") or ""
+    if not imap_server:
+        smtp_server = os.environ.get("EMAIL_HOST") or os.environ.get("SMTP_SERVER", "")
+        if smtp_server.startswith("smtp."):
+            imap_server = smtp_server.replace("smtp.", "imap.", 1)
+    return sender, password, imap_server
+
+
+def check_email_replies(days_back: int = 5) -> int:
+    """
+    Scan the configured mailbox's INBOX for messages received in the last
+    `days_back` days, and mark any matching SentEmail row as "Replied".
+
+    Matching is by sender address == a previous SentEmail.to_email (the most
+    recent non-Replied one for that address). Messages sent BY our own
+    mailbox (e.g. the sent-copy archived by `_archive_sent_copy`) are skipped.
+
+    Returns the number of SentEmail rows updated. Never raises.
+    """
+    sender_email, sender_password, imap_server = _get_email_settings()
+    if not (sender_email and sender_password and imap_server):
+        return 0
+
+    updated = 0
+    conn = None
+    try:
+        try:
+            conn = imaplib.IMAP4_SSL(imap_server, timeout=30)
+        except Exception:
+            conn = imaplib.IMAP4(imap_server, timeout=30)
+        conn.login(sender_email, sender_password)
+        conn.select("INBOX", readonly=True)
+
+        since_date = (
+            __import__("datetime").datetime.utcnow() - __import__("datetime").timedelta(days=days_back)
+        ).strftime("%d-%b-%Y")
+        typ, data = conn.search(None, f'(SINCE "{since_date}")')
+        if typ != "OK" or not data or not data[0]:
+            return 0
+
+        uids = data[0].split()
+        # Import here (not at module top) to avoid a hard import-time dependency
+        # between modules/email_sender.py and database.py.
+        from database import engine, SentEmail
+        from sqlmodel import Session, select
+        from datetime import datetime as _dt, timezone as _tz
+
+        with Session(engine) as session:
+            for uid in uids:
+                try:
+                    typ, msg_data = conn.fetch(
+                        uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT MESSAGE-ID)])"
+                    )
+                    if typ != "OK" or not msg_data or not isinstance(msg_data[0], tuple):
+                        continue
+                    headers = email_lib.message_from_bytes(msg_data[0][1])
+                    from_name, from_addr = parseaddr(headers.get("From", ""))
+                    from_addr = (from_addr or "").strip().lower()
+                    if not from_addr or from_addr == sender_email.strip().lower():
+                        continue  # our own archived sent-copy, not a real reply
+
+                    # skip_tenant: this function also runs synchronously inside the
+                    # unauthenticated POST /webhook/check-replies-now request, where
+                    # main.py's tenant-filter listener would otherwise force this
+                    # query to see zero rows (see routers/email_tracking.py notes).
+                    stmt = (
+                        select(SentEmail)
+                        .where(SentEmail.to_email.ilike(from_addr))
+                        .where(SentEmail.status != "Replied")
+                        .order_by(SentEmail.sent_at.desc())
+                        .execution_options(skip_tenant=True)
+                    )
+                    match = session.exec(stmt).first()
+                    if match:
+                        match.status = "Replied"
+                        match.replied_at = _dt.now(_tz.utc)
+                        session.add(match)
+                        session.commit()
+                        updated += 1
+                except Exception as inner_e:
+                    print(f"[Reply checker] error processing message: {inner_e}")
+                    continue
+    except Exception as e:
+        print(f"[Reply checker] IMAP check failed: {e}")
+    finally:
+        if conn is not None:
+            try:
+                conn.logout()
+            except Exception:
+                pass
+    return updated
+
+
+def _reply_checker_loop(interval_seconds: int):
+    # Small initial delay so this doesn't compete with app startup for the DB/IMAP connection.
+    time.sleep(15)
+    while True:
+        try:
+            n = check_email_replies()
+            if n:
+                print(f"[Reply checker] marked {n} email(s) as Replied.")
+        except Exception as e:
+            print(f"[Reply checker] loop error: {e}")
+        time.sleep(interval_seconds)
+
+
+def start_reply_checker_thread():
+    """Start the background IMAP reply-polling loop once per process. Safe to call multiple times."""
+    global _reply_checker_started
+    with _reply_checker_lock:
+        if _reply_checker_started:
+            return
+        sender, password, imap_server = _get_email_settings()
+        if not (sender and password and imap_server):
+            print("[Reply checker] not started: EMAIL_SENDER/EMAIL_PASSWORD/IMAP_SERVER not fully configured.")
+            return
+        interval = int(os.environ.get("REPLY_CHECK_INTERVAL_SECONDS", "180"))
+        t = threading.Thread(target=_reply_checker_loop, args=(interval,), daemon=True)
+        t.start()
+        _reply_checker_started = True
+        print(f"[Reply checker] started, polling every {interval}s.")
         return False

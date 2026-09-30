@@ -18,6 +18,7 @@ import { useState, useEffect, useCallback } from "react";
 import { API_BASE_URL } from "@/config";
 import { useTranslation } from "react-i18next";
 import { useLanguage, Language } from "@/context/LanguageContext";
+import { useNotifications } from "@/context/NotificationContext";
 
 // --- DND Kit Imports ---
 import {
@@ -318,7 +319,7 @@ export function Sidebar({ role }: SidebarProps) {
   const [sections, setSections] = useState<any[]>(defaultSidebarSections);
   const [favourites, setFavourites] = useState<string[]>([]);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const { unreadCount } = useNotifications();
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
     // Default: all sections with headings start open
     const initial: Record<string, boolean> = {};
@@ -441,19 +442,11 @@ export function Sidebar({ role }: SidebarProps) {
 
   useEffect(() => {
     fetchSidebarPrefs();
-    
-    if (!user?.id) return;
-    const fetchNotifs = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/notifications/${user.id}?unread_only=true`);
-        const data = await res.json();
-        setUnreadCount(data.unread_count || 0);
-      } catch {}
-    };
-    fetchNotifs();
-    const interval = setInterval(fetchNotifs, 30000);
-    return () => clearInterval(interval);
-  }, [user?.id, fetchSidebarPrefs]);
+    // Unread count now comes from the shared NotificationContext (already
+    // polling every 15s) instead of this component running its own
+    // independent 30s poll of the same endpoint — was doubling notification
+    // request volume with AdminTopbar.tsx polling the identical URL.
+  }, [fetchSidebarPrefs]);
 
   const saveSidebarPrefs = async (newSections: any[], newFavourites?: string[]) => {
     const favsToSave = newFavourites !== undefined ? newFavourites : favourites;

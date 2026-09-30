@@ -72,6 +72,12 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 The backend API will be available at [http://localhost:8000](http://localhost:8000). You can access interactive API documentation at [http://localhost:8000/docs](http://localhost:8000/docs).
 
+### Local email open tracking
+
+Use the [Cloudflare email tracking tunnel setup](docs/email-tracking-tunnel.md)
+to expose port 8000 without ngrok's free-tier browser warning. The launcher
+verifies the public pixel and updates `PUBLIC_BASE_URL` in `.env`.
+
 ---
 
 ## 🎨 Frontend Setup

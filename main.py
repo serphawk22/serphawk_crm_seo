@@ -49,11 +49,43 @@ def register_sent_emails_endpoint(app, get_session):
                     "manual": e.manual,
                     "draft_json": e.draft_json,
                     "status": e.status,
-                    "sent_at": e.sent_at.isoformat() if e.sent_at else None
+                    "sent_at": e.sent_at.isoformat() if e.sent_at else None,
+                    "opened_at": e.opened_at.isoformat() if e.opened_at else None,
+                    "last_opened_at": e.last_opened_at.isoformat() if e.last_opened_at else None,
+                    "open_count": e.open_count,
+                    "replied_at": e.replied_at.isoformat() if e.replied_at else None
                 }
                 for e in emails
             ]
         }
+
+    # The frontend's per-row trash icon and "Select All" bulk-delete have always
+    # called these two routes, but neither existed on the backend — delete was
+    # silently a no-op (optimistic UI removal that reverted on next refresh).
+    @app.delete("/sent-emails/{email_id}")
+    def delete_sent_email(email_id: int, session: Session = Depends(get_session)):
+        email = session.get(SentEmail, email_id)
+        if not email:
+            raise HTTPException(status_code=404, detail="Sent email not found")
+        session.delete(email)
+        session.commit()
+        return {"ok": True}
+
+    class BulkDeleteRequest(BaseModel):
+        ids: list[int]
+
+    @app.post("/sent-emails/bulk-delete")
+    def bulk_delete_sent_emails(body: BulkDeleteRequest, session: Session = Depends(get_session)):
+        if not body.ids:
+            return {"ok": True, "deleted": 0}
+        deleted = 0
+        for email_id in body.ids:
+            email = session.get(SentEmail, email_id)
+            if email:
+                session.delete(email)
+                deleted += 1
+        session.commit()
+        return {"ok": True, "deleted": deleted}
 
 import hashlib
 import re
@@ -515,7 +547,29 @@ def on_startup():
                 conn.commit()
         except Exception as e:
             print(f"Migration proposals: {e}")
-        
+
+    # Auto-migrate sent_emails open/reply tracking columns
+    email_tracking_migrations = [
+        "ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP;",
+        "ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS replied_at TIMESTAMP;",
+        "ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS last_opened_at TIMESTAMP;",
+        "ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS open_count INTEGER DEFAULT 0;",
+    ]
+    for sql in email_tracking_migrations:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(sql))
+                conn.commit()
+        except Exception as e:
+            print(f"Migration sent_emails tracking: {e}")
+
+    # Start the background inbox poller that detects replies to sent emails (IMAP-based).
+    try:
+        from modules.email_sender import start_reply_checker_thread
+        start_reply_checker_thread()
+    except Exception as e:
+        print(f"Reply checker thread failed to start: {e}")
+
     # Tenant ID Migrations (Dynamic reflection to catch all models)
     from sqlmodel import SQLModel
     tables_with_tenant = [
@@ -1234,6 +1288,8 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
                     sender_password=password,
                     smtp_server=smtp_server,
                     smtp_port=int(smtp_port),
+                    tracking_id=sent_email.id,
+                    tracking_base_url=os.getenv("PUBLIC_BASE_URL"),
                 )
                 print(f"Email sent via SMTP to {body.to_email} from {sender}")
             else:
@@ -5775,42 +5831,6 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
         smtp_port = os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
         imap_server = os.getenv("IMAP_SERVER")
 
-        # Only send the email if manual is False and all required fields are present
-        if not body.manual and all([body.to_email, body.subject, body.body, sender, password]):
-            try:
-                send_email_outlook(
-                    to_email=body.to_email,
-                    subject=body.subject,
-                    body=body.body,
-                    sender_email=sender,
-                    sender_password=password,
-                    smtp_server=smtp_server,
-                    smtp_port=smtp_port,
-                    imap_server=imap_server
-                )
-                
-                # --- Trigger n8n Webhook ---
-                try:
-                    import httpx
-                    webhook_url = "http://localhost:5678/webhook-test/serphawk-followup"
-                    payload = {
-                        "event": "email_sent",
-                        "sender": sender,
-                        "to_email": body.to_email,
-                        "subject": body.subject,
-                        "company": company_name,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-                    httpx.post(webhook_url, json=payload, timeout=5.0)
-                    print(f"Webhook successfully triggered to {webhook_url}")
-                except Exception as wh_e:
-                    print(f"Webhook trigger failed: {wh_e}")
-                    
-            except Exception as e:
-                print(f"Email send failed: {e}")
-        # If any required field is missing, skip sending and just generate the draft
-
-        # Only save to database if required fields are present
         # Provide default subject and content if missing, so frontend always gets a visible draft
         # Build the draft object for both outreach and inbound
         draft_obj = {
@@ -5866,6 +5886,45 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
         session.add(sent_email)
         session.commit()
         session.refresh(sent_email)
+
+        # Only send the email if manual is False and all required fields are present.
+        # The SentEmail row above already exists, so its id can be embedded as an
+        # open-tracking pixel in the outgoing HTML.
+        if not body.manual and all([body.to_email, body.subject, body.body, sender, password]):
+            try:
+                send_email_outlook(
+                    to_email=body.to_email,
+                    subject=body.subject,
+                    body=body.body,
+                    sender_email=sender,
+                    sender_password=password,
+                    smtp_server=smtp_server,
+                    smtp_port=smtp_port,
+                    imap_server=imap_server,
+                    tracking_id=sent_email.id,
+                    tracking_base_url=os.getenv("PUBLIC_BASE_URL"),
+                )
+
+                # --- Trigger n8n Webhook ---
+                try:
+                    import httpx
+                    webhook_url = "http://localhost:5678/webhook-test/serphawk-followup"
+                    payload = {
+                        "event": "email_sent",
+                        "sender": sender,
+                        "to_email": body.to_email,
+                        "subject": body.subject,
+                        "company": company_name,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                    httpx.post(webhook_url, json=payload, timeout=5.0)
+                    print(f"Webhook successfully triggered to {webhook_url}")
+                except Exception as wh_e:
+                    print(f"Webhook trigger failed: {wh_e}")
+
+            except Exception as e:
+                print(f"Email send failed: {e}")
+        # If any required field is missing, skip sending and just generate the draft
 
         # --- Log activity for this client ---
         from database import ActivityLog

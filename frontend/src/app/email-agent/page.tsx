@@ -673,6 +673,8 @@ export default function EmailAgentPage() {
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${
                                   email.status === "Opened" ? "bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400" :
                                   email.status === "Replied" ? "bg-green-100 text-green-600 dark:bg-green-500/20 dark:text-green-400" :
+                                  email.status === "Delivered" ? "bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400" :
+                                  email.status === "Draft" ? "bg-slate-200 text-slate-600 dark:bg-zinc-700 dark:text-zinc-300" :
                                   "bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400"
                                 }`}>
                                   {email.status || "Sent"}
