@@ -92,12 +92,26 @@ def check_replies_now():
     updated = check_email_replies()
     return {"status": "ok", "updated": updated}
 
+
+@router.post("/backfill-reply-content")
+def backfill_reply_content_now(days_back: int = 60):
+    """
+    One-time catch-up: fills reply_from/reply_subject/reply_body on
+    SentEmail rows that were already marked "Replied" by the old
+    header-only poller, by re-scanning the inbox over a wider window.
+    """
+    from modules.email_sender import backfill_reply_content
+    filled = backfill_reply_content(days_back=days_back)
+    return {"status": "ok", "filled": filled}
+
 from pydantic import BaseModel
 from typing import Optional
 
 class EmailReplyPayload(BaseModel):
     email: Optional[str] = None
     email_id: Optional[int] = None
+    reply_subject: Optional[str] = None
+    reply_body: Optional[str] = None
 
 @router.post("/track-email-reply")
 def track_email_reply(payload: EmailReplyPayload, session: Session = Depends(get_session)):
@@ -113,6 +127,10 @@ def track_email_reply(payload: EmailReplyPayload, session: Session = Depends(get
         if email_record:
             email_record.status = "Replied"
             email_record.replied_at = datetime.now(timezone.utc)
+            if payload.reply_subject:
+                email_record.reply_subject = payload.reply_subject[:500]
+            if payload.reply_body:
+                email_record.reply_body = payload.reply_body
             session.add(email_record)
             session.commit()
             return {"status": "success", "message": f"Email ID {payload.email_id} marked as replied"}
@@ -129,6 +147,10 @@ def track_email_reply(payload: EmailReplyPayload, session: Session = Depends(get
         if email_record:
             email_record.status = "Replied"
             email_record.replied_at = datetime.now(timezone.utc)
+            if payload.reply_subject:
+                email_record.reply_subject = payload.reply_subject[:500]
+            if payload.reply_body:
+                email_record.reply_body = payload.reply_body
             session.add(email_record)
             session.commit()
             return {"status": "success", "message": f"Most recent email to {payload.email} marked as replied"}
