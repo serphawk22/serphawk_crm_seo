@@ -5806,23 +5806,23 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
         OUTREACH_BODY_EN = (
             "Hi {company_name},\n\n"
             "We'd love to help {company_name} grow online with our services: {services}.\n\n"
-            "Best,\nDapros Team"
+            "Best,\nRelation Manager- SerpHawk\ncrm@serphawk.in"
         )
         OUTREACH_BODY_ES = (
             "Hola {company_name},\n\n"
             "Nos encantaría ayudar a {company_name} a crecer en línea con nuestros servicios: {services}.\n\n"
-            "Saludos,\nEquipo Dapros"
+            "Saludos,\nRelation Manager- SerpHawk\ncrm@serphawk.in"
         )
         INBOUND_SUBJECT = "Thank you for reaching out, {company_name}!"
         INBOUND_BODY_EN = (
             "Hi {company_name},\n\n"
             "Thank you for your interest in our services: {services}. We'll get back to you soon.\n\n"
-            "Best,\nDapros Team"
+            "Best,\nRelation Manager- SerpHawk\ncrm@serphawk.in"
         )
         INBOUND_BODY_ES = (
             "Hola {company_name},\n\n"
             "Gracias por su interés en nuestros servicios: {services}. Nos pondremos en contacto pronto.\n\n"
-            "Saludos,\nEquipo Dapros"
+            "Saludos,\nRelation Manager- SerpHawk\ncrm@serphawk.in"
         )
 
 

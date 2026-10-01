@@ -29,7 +29,7 @@ def generate_serp_hawk_email(company_info, market_analysis, service_matches, con
 
         if draft_type == "inbound":
             prompt = f"""
-You are a professional bilingual email copywriter for SERP Hawk, represented by Team DaPros from Mexico.
+You are a professional bilingual email copywriter for SerpHawk.
 
 Write a professional inquiry email expressing interest in {company_name}'s services in the {industry} sector.
 
@@ -40,11 +40,11 @@ STRUCTURE (English version):
 2. Short paragraph — mention a specific aspect of their work that caught your eye and why it makes them a great potential partner.
 3. Value bridge — briefly explain how SERP Hawk helps similar companies grow (mention 1-2 relevant services from: {service_list}).
 4. Soft CTA — suggest a quick 15-minute discovery call to explore synergies.
-5. Sign-off: "Warm regards,\nTeam DaPros from Mexico | SERP Hawk Digital Agency"
+5. Sign-off: "Warm regards,\nRelation Manager- SerpHawk\ncrm@serphawk.in"
 
 Keep it under 150 words. Be warm, specific, and human — not salesy.
 
-Then provide the FULL Spanish translation with identical structure, signed off as "Equipo DaPros".
+Then provide the FULL Spanish translation with identical structure, signed off as "Relation Manager- SerpHawk\ncrm@serphawk.in".
 
 Return ONLY a JSON object:
 {{
@@ -60,14 +60,14 @@ Return ONLY a JSON object:
             ]) if services else "- Organic SEO: Boost search rankings → more qualified leads\n- Local SEO: Dominate local search → increased foot traffic & calls"
 
             prompt = f"""
-You are a world-class B2B outreach copywriter for SERP Hawk, a results-driven digital marketing agency, represented by Team DaPros from Mexico.
+You are a world-class B2B outreach copywriter for SerpHawk, a results-driven digital marketing agency.
 
 Write a compelling, service-focused cold outreach email to {company_name} in the {industry} industry.
 
 Salutation: {salutation}
 
-ABOUT SERP HAWK:
-We help businesses grow revenue through data-driven digital marketing. Our full service catalog:
+ABOUT SERPHAWK (Bengaluru, India | crm@serphawk.in | +91 9502901416):
+SerpHawk is a results-driven digital marketing agency based in BTM Layout, Bengaluru. We help businesses grow revenue through data-driven digital strategies. Our full service catalog:
 • Organic SEO — rank higher on Google, drive qualified organic traffic
 • Local SEO — dominate Google Maps & local search results
 • Google Ads — targeted PPC campaigns with measurable ROI
@@ -87,7 +87,7 @@ EMAIL STRUCTURE (English version — follow this exactly):
 3. Service Spotlight (3-5 sentences) — For EACH recommended service ({service_list}), write one punchy sentence explaining WHAT it does for them and the RESULT they can expect. Use action verbs and concrete outcomes (e.g., "rank on page 1", "cut cost-per-lead by 40%", "3x your local visibility").
 4. Social proof hint (1 sentence) — Mention that you've helped similar businesses in their space achieve measurable growth.
 5. CTA (1 sentence) — Low-friction ask: a free 15-minute strategy call or audit. Make it easy to say yes.
-6. Sign-off: "Warm regards,\nTeam DaPros from Mexico | SERP Hawk Digital Agency"
+6. Sign-off: "Warm regards,\nRelation Manager- SerpHawk\ncrm@serphawk.in"
 
 STYLE RULES:
 - Keep total length 120-180 words. Short paragraphs (2-3 sentences max each).
@@ -96,7 +96,7 @@ STYLE RULES:
 - Every sentence must earn its place. No filler, no fluff, no generic platitudes.
 - Services must be the STAR of the email — the reader should finish knowing exactly what you can do for them.
 
-Then provide the FULL Spanish translation with identical structure, signed off as "Equipo DaPros de México | SERP Hawk Digital Agency".
+Then provide the FULL Spanish translation with identical structure, signed off as "Relation Manager- SerpHawk\ncrm@serphawk.in".
 
 Return ONLY a JSON object:
 {{

@@ -17,6 +17,7 @@ from email.utils import formatdate, make_msgid, parseaddr
 _logo_lock = threading.Lock()
 _logo_bytes_cache = None
 _LOGO_FILENAME = "Serp Hwak Logo.png"
+_LOGO_STATIC_FILENAME = os.path.join("static", "serphawk_logo.png")
 
 
 def _serphawk_logo_bytes():
@@ -28,7 +29,10 @@ def _serphawk_logo_bytes():
         if _logo_bytes_cache is not None:
             return _logo_bytes_cache
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        path = os.path.join(project_root, _LOGO_FILENAME)
+        # Prefer static copy, fall back to root logo
+        path = os.path.join(project_root, _LOGO_STATIC_FILENAME)
+        if not os.path.exists(path):
+            path = os.path.join(project_root, _LOGO_FILENAME)
         try:
             from PIL import Image, ImageChops
             with Image.open(path) as im:
@@ -280,8 +284,9 @@ def branded_email(title, body_html, hero_accent="#2563eb"):
         <!-- Footer -->
         <tr>
           <td style="background:#f8fafc;padding:18px 32px;border-top:1px solid #e6e9f0;text-align:center;">
-            <p style="margin:0;color:#7b8794;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">SerpHawk CRM</p>
-            <p style="margin:6px 0 0;color:#94a3b8;font-size:11px;line-height:1.6;">This is an automated email from SerpHawk CRM. If you have questions, reply to this message or contact your account manager.</p>
+            <p style="margin:0;color:#7b8794;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">SerpHawk — Digital Marketing Agency</p>
+            <p style="margin:6px 0 0;color:#94a3b8;font-size:11px;line-height:1.6;">📧 crm@serphawk.in &nbsp;|&nbsp; 📞 +91 9502901416 &nbsp;|&nbsp; 📍 Bengaluru, India</p>
+            <p style="margin:4px 0 0;color:#94a3b8;font-size:11px;line-height:1.6;">SEO · Local SEO · Google Ads · Meta Ads · Social Media · Web Development</p>
             <p style="margin:8px 0 0;color:#94a3b8;font-size:10px;line-height:1.5;">If this email looks unusual, you can safely ignore it. Check your spam folder if a message you expected is missing.</p>
           </td>
         </tr>
