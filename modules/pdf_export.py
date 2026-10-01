@@ -13,46 +13,69 @@ from reportlab.platypus import (
 
 
 def _brand_header(doc, brand_title):
-    """Return flowable header block with logo + title (best-effort)."""
+    """Premium SerpHawk branded header block with logo, gradient bar, and contact info."""
     from reportlab.platypus import Table as T
+    from reportlab.lib.units import mm
     logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "serphawk_logo.png")
-    parts = []
+
+    # Logo
     logo_cell = None
     if os.path.exists(logo_path):
         try:
-            logo_cell = Image(logo_path, width=28 * mm, height=28 * mm, hAlign="LEFT")
+            logo_cell = Image(logo_path, width=22 * mm, height=22 * mm, hAlign="LEFT")
         except Exception:
             logo_cell = None
 
-    cell = []
-    title = Paragraph(f"<b>{brand_title}</b>", ParagraphStyle(
-        "brandTitle", fontName="Helvetica-Bold", fontSize=20, leading=24,
-        textColor=colors.HexColor("#1e293b")
-    ))
-    sub = Paragraph("CRM · Export", ParagraphStyle(
-        "brandSub", fontName="Helvetica", fontSize=10, leading=13,
-        textColor=colors.HexColor("#64748b")
-    ))
-    cell.append(title)
-    cell.append(sub)
-
-    data_row = []
-    if logo_cell is not None:
-        data_row.append([logo_cell, cell])
-        widths = [22 * mm, None]
-    else:
-        data_row.append([cell])
-        widths = [None]
-
-    t = T(data_row, colWidths=widths)
-    t.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+    # Brand name + tagline
+    brand_parts = [
+        Paragraph("SerpHawk", ParagraphStyle(
+            "bhBrand", fontName="Helvetica-Bold", fontSize=20, leading=24,
+            textColor=colors.HexColor("#0f172a")
+        )),
+        Paragraph("Digital Marketing Agency", ParagraphStyle(
+            "bhTagline", fontName="Helvetica", fontSize=9, leading=12,
+            textColor=colors.HexColor("#64748b"), spaceBefore=1
+        )),
+    ]
+    brand_cell = T([[p] for p in brand_parts], colWidths=[None])
+    brand_cell.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
-    parts.append(t)
-    parts.append(Spacer(1, 6 * mm))
-    parts.append(_hr())
-    parts.append(Spacer(1, 4 * mm))
+
+    # Contact block (right side)
+    contact_style = ParagraphStyle("bhContact", fontName="Helvetica", fontSize=8, leading=11,
+                                    textColor=colors.HexColor("#475569"), alignment=TA_RIGHT)
+    contact_parts = [
+        Paragraph(f"<b>{brand_title}</b>", ParagraphStyle(
+            "bhTitle", fontName="Helvetica-Bold", fontSize=10, leading=13,
+            textColor=colors.HexColor("#0f172a"), alignment=TA_RIGHT)),
+        Paragraph("crm@serphawk.in  |  +91 9502901416", contact_style),
+        Paragraph("BTM Layout, Bengaluru, India", contact_style),
+    ]
+    contact_cell = T([[p] for p in contact_parts], colWidths=[None])
+    contact_cell.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 1), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+
+    # Assemble header row
+    if logo_cell is not None:
+        row = [[logo_cell, brand_cell, contact_cell]]
+        widths = [26 * mm, 90 * mm, None]
+    else:
+        row = [[brand_cell, contact_cell]]
+        widths = [90 * mm, None]
+
+    header_t = T(row, colWidths=widths)
+    header_t.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+
+    parts = [header_t, Spacer(1, 4 * mm), _hr(), Spacer(1, 4 * mm)]
     return parts
 
 
@@ -522,16 +545,40 @@ def single_sales_order_pdf(order, client_name=None, lead_name=None, party=None):
     story = []
 
     # ── 1) Header ────────────────────────────────────────────────────────
-    left_parts = [
+    # Load SerpHawk logo for sales order
+    _so_logo = None
+    try:
+        _so_logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "serphawk_logo.png")
+        if os.path.exists(_so_logo_path):
+            _so_logo = Image(_so_logo_path, width=20 * mm, height=20 * mm)
+    except Exception:
+        _so_logo = None
+
+    so_brand_parts = [
         Paragraph("SerpHawk", ParagraphStyle(
             "soBrand", fontName="Helvetica-Bold", fontSize=17, leading=20,
             textColor=_RECEIPT_INK, wordWrap="CJK")),
+        Paragraph("Digital Marketing Agency", ParagraphStyle(
+            "soTagline", fontName="Helvetica", fontSize=8, leading=11,
+            textColor=_RECEIPT_SUBTLE, wordWrap="CJK", spaceBefore=1)),
+        Paragraph("crm@serphawk.in  |  +91 9502901416", ParagraphStyle(
+            "soContact", fontName="Helvetica", fontSize=7.5, leading=10,
+            textColor=_RECEIPT_SUBTLE, wordWrap="CJK")),
         Paragraph("Sales Order", ParagraphStyle(
-            "soSub", fontName="Helvetica", fontSize=9.5, leading=12,
-            textColor=_RECEIPT_SUBTLE, wordWrap="CJK", spaceBefore=3)),
+            "soSub", fontName="Helvetica-Bold", fontSize=9.5, leading=12,
+            textColor=_RECEIPT_INK, wordWrap="CJK", spaceBefore=4)),
     ]
-    left_cell = Table([[p] for p in left_parts], colWidths=[None])
-    left_cell.setStyle(zero_pad_style())
+    so_brand_cell = Table([[p] for p in so_brand_parts], colWidths=[None])
+    so_brand_cell.setStyle(zero_pad_style())
+    if _so_logo:
+        left_cell = Table([[_so_logo, so_brand_cell]], colWidths=[24 * mm, None])
+        left_cell.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+    else:
+        left_cell = so_brand_cell
 
     meta = []
     if qn:
@@ -938,31 +985,28 @@ def _english_datetime(dt):
 
 
 def _serphawk_header(title_text, meta_lines=None, subtitle=None):
-    """Shared minimal SerpHawk document header (reference-template).
-
-    Shows the SerpHawk logo at top-left, brand name + subtitle below it,
-    and a small metadata block at the top-right. Then a thin divider.
-
-    ``meta_lines`` is a list of ``(label, value)`` tuples rendered right-aligned
-    with bold labels and normal-weight values, e.g. ("Ticket:", "#2").
-    """
+    """Premium SerpHawk branded document header with logo, contact info, and divider."""
     from reportlab.platypus import HRFlowable as _HR
 
-    # Try to load SerpHawk logo
+    # Load logo
     _logo_img = None
     try:
         _logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "serphawk_logo.png")
         if os.path.exists(_logo_path):
-            _logo_img = Image(_logo_path, width=22 * mm, height=22 * mm)
+            _logo_img = Image(_logo_path, width=20 * mm, height=20 * mm)
     except Exception:
         _logo_img = None
 
+    # Left: logo + brand name
     left_parts = []
     if _logo_img:
         left_parts.append(_logo_img)
-    left_parts.append(Paragraph(title_text, ParagraphStyle(
+    left_parts.append(Paragraph("SerpHawk", ParagraphStyle(
         "shBrand", fontName="Helvetica-Bold", fontSize=16, leading=19,
         textColor=_RECEIPT_INK, wordWrap="CJK")))
+    left_parts.append(Paragraph("Digital Marketing Agency  |  crm@serphawk.in  |  +91 9502901416", ParagraphStyle(
+        "shContact", fontName="Helvetica", fontSize=7.5, leading=10,
+        textColor=_RECEIPT_SUBTLE, wordWrap="CJK")))
     if subtitle:
         left_parts.append(Paragraph(subtitle, ParagraphStyle(
             "shSub", fontName="Helvetica", fontSize=9.5, leading=12,
@@ -1338,21 +1382,46 @@ def quote_pdf(data):
     story = []
 
     # ── 1) Header ────────────────────────────────────────────────────────
-    left_parts = [
+    # Load SerpHawk logo for PDF header
+    _q_logo = None
+    try:
+        _q_logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "serphawk_logo.png")
+        if os.path.exists(_q_logo_path):
+            _q_logo = Image(_q_logo_path, width=20 * mm, height=20 * mm)
+    except Exception:
+        _q_logo = None
+
+    left_brand = [
         Paragraph("SerpHawk", ParagraphStyle(
             "qBrand", fontName="Helvetica-Bold", fontSize=17, leading=20,
             textColor=_RECEIPT_INK, wordWrap="CJK")),
+        Paragraph("Digital Marketing Agency", ParagraphStyle(
+            "qTagline", fontName="Helvetica", fontSize=8, leading=11,
+            textColor=_RECEIPT_SUBTLE, wordWrap="CJK", spaceBefore=1)),
+        Paragraph("crm@serphawk.in  |  +91 9502901416", ParagraphStyle(
+            "qContact", fontName="Helvetica", fontSize=7.5, leading=10,
+            textColor=_RECEIPT_SUBTLE, wordWrap="CJK")),
         Paragraph(subtitle, ParagraphStyle(
-            "qSub", fontName="Helvetica", fontSize=9.5, leading=12,
-            textColor=_RECEIPT_SUBTLE, wordWrap="CJK", spaceBefore=3)),
+            "qSub", fontName="Helvetica-Bold", fontSize=9.5, leading=12,
+            textColor=_RECEIPT_INK, wordWrap="CJK", spaceBefore=4)),
     ]
-    left_cell = Table([[p] for p in left_parts], colWidths=[None])
-    left_cell.setStyle(TableStyle([
+    brand_cell = Table([[p] for p in left_brand], colWidths=[None])
+    brand_cell.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 0),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
+    if _q_logo:
+        left_parts = [_q_logo, brand_cell]
+        left_cell = Table([[left_parts[0], left_parts[1]]], colWidths=[24 * mm, None])
+        left_cell.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+    else:
+        left_cell = brand_cell
 
     meta_paras = []
     if qn:
