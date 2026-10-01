@@ -285,7 +285,7 @@ export default function EmailAgentPage() {
         body: JSON.stringify({
           company_name: name,
           company_url: cleanUrl || null,
-          owner_name: "Noushad C I",
+          owner_name: "Relation Manager- SerpHawk",
         }),
       });
       
@@ -515,18 +515,21 @@ export default function EmailAgentPage() {
 
         <section className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 dark:border-emerald-900/60 dark:bg-emerald-950/20">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <div><p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300">Outreach profile</p><h2 className="text-lg font-black text-slate-900 dark:text-white">SCM BPO</h2></div>
-            <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700 shadow-sm dark:bg-zinc-900 dark:text-emerald-300">Logistics BPO</span>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300">Sender Profile</p>
+              <h2 className="text-lg font-black text-slate-900 dark:text-white">SerpHawk</h2>
+            </div>
+            <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700 shadow-sm dark:bg-zinc-900 dark:text-emerald-300">Digital Marketing Agency</span>
           </div>
           <div className="grid grid-cols-1 gap-x-8 gap-y-3 text-xs text-slate-600 dark:text-zinc-300 sm:grid-cols-2 lg:grid-cols-3">
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Legal company</strong>SCM SHIPPING SERVICES PVT LTD</p>
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Industry</strong>Outsourcing</p>
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Website</strong>www.scmbpo.com</p>
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Primary contact</strong>Noushad C I, Founder</p>
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Contact</strong>+91-9947950099</p>
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Email</strong>contact@scmbpo.com</p>
-            <p className="sm:col-span-2 lg:col-span-3"><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Address</strong>Koyenco Techpark, Kepip, Infopark P.O., Kakkanad, Cochin</p>
-            <p className="sm:col-span-2 lg:col-span-3"><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Services</strong>Logistics back-office support services (BPO)</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Company</strong>SerpHawk Digital Marketing Agency</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Industry</strong>Digital Marketing &amp; SEO</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Website</strong>serphawk.in</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Sender Name</strong>Relation Manager- SerpHawk</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Contact</strong>+91 9502901416</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Email</strong>crm@serphawk.in</p>
+            <p className="sm:col-span-2 lg:col-span-3"><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Location</strong>BTM Layout, Bengaluru, Karnataka, India</p>
+            <p className="sm:col-span-2 lg:col-span-3"><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Services We Offer</strong>Organic SEO · Local SEO · Google Ads · Meta Ads · Social Media · Content Marketing · Web Development · App Development · Automation &amp; Consulting</p>
           </div>
         </section>
 
