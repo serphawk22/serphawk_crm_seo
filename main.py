@@ -11,7 +11,7 @@ from sqlmodel import Session
 from modules.scraper import research_and_map_company
 from pydantic import BaseModel
 
-from database import engine, SentEmail
+from database import engine, SentEmail, EmailReply
 from sqlmodel import select
 
 def register_sent_emails_endpoint(app, get_session):
@@ -27,12 +27,33 @@ def register_sent_emails_endpoint(app, get_session):
             query = query.where(SentEmail.client_id == client_id)
             total_query = total_query.where(SentEmail.client_id == client_id)
             manual_query = manual_query.where(SentEmail.client_id == client_id)
-        
+
         total_count = session.exec(total_query).first() or 0
         manual_count = session.exec(manual_query).first() or 0
         auto_count = total_count - manual_count
-        
+
         emails = session.exec(query.limit(limit)).all()
+
+        # One query for every reply across this page of emails, instead of N+1.
+        email_ids = [e.id for e in emails]
+        replies_by_email: dict[int, list] = {}
+        if email_ids:
+            all_replies = session.exec(
+                select(EmailReply)
+                .where(EmailReply.sent_email_id.in_(email_ids))
+                .order_by(EmailReply.received_at.asc())
+            ).all()
+            for r in all_replies:
+                replies_by_email.setdefault(r.sent_email_id, []).append({
+                    "id": r.id,
+                    "from_address": r.from_address,
+                    "subject": r.subject,
+                    "body_text": r.body_text,
+                    "body_text_full": r.body_text_full,
+                    "body_html": r.body_html,
+                    "received_at": r.received_at.isoformat() if r.received_at else None,
+                })
+
         return {
             "totalSent": total_count,
             "manualCount": manual_count,
@@ -53,7 +74,11 @@ def register_sent_emails_endpoint(app, get_session):
                     "opened_at": e.opened_at.isoformat() if e.opened_at else None,
                     "last_opened_at": e.last_opened_at.isoformat() if e.last_opened_at else None,
                     "open_count": e.open_count,
-                    "replied_at": e.replied_at.isoformat() if e.replied_at else None
+                    "replied_at": e.replied_at.isoformat() if e.replied_at else None,
+                    "reply_from": e.reply_from,
+                    "reply_subject": e.reply_subject,
+                    "reply_body": e.reply_body,
+                    "replies": replies_by_email.get(e.id, []),
                 }
                 for e in emails
             ]
@@ -554,6 +579,9 @@ def on_startup():
         "ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS replied_at TIMESTAMP;",
         "ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS last_opened_at TIMESTAMP;",
         "ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS open_count INTEGER DEFAULT 0;",
+        "ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS reply_from VARCHAR(255);",
+        "ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS reply_subject VARCHAR(500);",
+        "ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS reply_body TEXT;",
     ]
     for sql in email_tracking_migrations:
         try:
@@ -16368,5 +16396,23 @@ def get_lead_sent_emails(lead_id: int, session: Session = Depends(get_session)):
         .where(SentEmail.lead_id == lead_id)
         .order_by(SentEmail.sent_at.desc())
     ).all()
-    return {"emails": [e.dict() for e in emails]}
+    email_ids = [e.id for e in emails]
+    replies_by_email: dict[int, list] = {}
+    if email_ids:
+        all_replies = session.exec(
+            select(EmailReply)
+            .where(EmailReply.sent_email_id.in_(email_ids))
+            .order_by(EmailReply.received_at.asc())
+        ).all()
+        for r in all_replies:
+            replies_by_email.setdefault(r.sent_email_id, []).append({
+                "id": r.id,
+                "from_address": r.from_address,
+                "subject": r.subject,
+                "body_text": r.body_text,
+                "body_text_full": r.body_text_full,
+                "body_html": r.body_html,
+                "received_at": r.received_at.isoformat() if r.received_at else None,
+            })
+    return {"emails": [{**e.dict(), "replies": replies_by_email.get(e.id, [])} for e in emails]}
 

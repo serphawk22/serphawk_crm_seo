@@ -733,6 +733,31 @@ class SentEmail(SQLModel, table=True):
     last_opened_at: Optional[datetime] = Field(default=None)  # most recent pixel hit
     open_count: int = Field(default=0)
     replied_at: Optional[datetime] = Field(default=None)
+    reply_from: Optional[str] = Field(default=None, max_length=255)
+    reply_subject: Optional[str] = Field(default=None, max_length=500)
+    reply_body: Optional[str] = Field(default=None, sa_column=Column(Text))
+
+
+class EmailReply(SQLModel, table=True):
+    """
+    One row per inbound reply message, so a thread with several back-and-forth
+    replies keeps every message instead of a single sent_emails.reply_body
+    snapshot getting overwritten. `message_id` is the *inbound* message's own
+    Message-ID header, used to dedupe across IMAP poll cycles (the poller
+    re-scans the same date window every pass).
+    """
+    __tablename__ = "email_replies"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    sent_email_id: int = Field(foreign_key="sent_emails.id", index=True)
+    message_id: Optional[str] = Field(default=None, max_length=998, index=True)
+    from_address: Optional[str] = Field(default=None, max_length=255)
+    subject: Optional[str] = Field(default=None, max_length=500)
+    body_text: Optional[str] = Field(default=None, sa_column=Column(Text))  # quote-stripped, for the default clean view
+    body_text_full: Optional[str] = Field(default=None, sa_column=Column(Text))  # raw, with quoted history
+    body_html: Optional[str] = Field(default=None, sa_column=Column(Text))  # sanitized, inline images embedded as data: URIs
+    received_at: datetime = Field(default_factory=_utcnow)
 
 
 class SocialProfile(SQLModel, table=True):

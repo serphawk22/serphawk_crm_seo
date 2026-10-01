@@ -25,6 +25,77 @@ interface ResearchResult {
   companyUrl: string;
 }
 
+interface EmailReplyData {
+  id: number;
+  from_address?: string | null;
+  subject?: string | null;
+  body_text?: string | null;
+  body_text_full?: string | null;
+  body_html?: string | null;
+  received_at?: string | null;
+}
+
+// Renders one inbound reply: a "Clean" view (quote history stripped) by
+// default, with a per-reply toggle to see the original formatted HTML
+// (rendered in a sandboxed iframe — sandbox="" blocks script execution and
+// form/top-navigation, since this is untrusted content from a prospect's
+// mailbox) or the raw plain text including the quoted thread history.
+function ReplyThreadItem({ reply, t }: { reply: EmailReplyData; t: (key: string) => string }) {
+  const [view, setView] = useState<"clean" | "full" | "html">("clean");
+  const displayText = view === "full" ? (reply.body_text_full || reply.body_text) : reply.body_text;
+
+  return (
+    <div className="mt-3">
+      <div className="flex flex-wrap justify-between items-center gap-2 mb-1">
+        <p className="text-[9px] font-black text-green-600 dark:text-green-400 uppercase tracking-widest flex items-center gap-1">
+          <MessageCircle className="w-3 h-3" />
+          {t('email_agent.reply_received')}
+          {reply.from_address ? ` — ${reply.from_address}` : ''}
+          {reply.received_at ? ` · ${new Date(reply.received_at).toLocaleString()}` : ''}
+        </p>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setView("clean")}
+            className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${view === "clean" ? "bg-green-600 text-white" : "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"}`}
+          >
+            {t('email_agent.view_clean')}
+          </button>
+          <button
+            onClick={() => setView("full")}
+            className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${view === "full" ? "bg-green-600 text-white" : "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"}`}
+          >
+            {t('email_agent.view_full_thread')}
+          </button>
+          {reply.body_html && (
+            <button
+              onClick={() => setView("html")}
+              className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${view === "html" ? "bg-green-600 text-white" : "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"}`}
+            >
+              {t('email_agent.view_formatted')}
+            </button>
+          )}
+          <CopyButton text={displayText || ""} />
+        </div>
+      </div>
+      {reply.subject && (
+        <p className="text-[11px] font-bold text-slate-500 dark:text-zinc-400 mb-1">{reply.subject}</p>
+      )}
+      {view === "html" && reply.body_html ? (
+        <iframe
+          sandbox=""
+          srcDoc={reply.body_html}
+          className="w-full h-72 bg-white rounded-xl border border-green-100 dark:border-green-500/20"
+          title={`reply-${reply.id}`}
+        />
+      ) : (
+        <div className="bg-green-50 dark:bg-green-500/10 border border-green-100 dark:border-green-500/20 rounded-xl p-4 text-[13px] text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-72 overflow-y-auto custom-scrollbar font-sans leading-relaxed">
+          {displayText}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 
 function BottomUpFillMail() {
@@ -684,6 +755,12 @@ export default function EmailAgentPage() {
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('email_agent.subject')}</p>
                                 <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">{email.subject || t('email_agent.no_subject')}</span>
                               </div>
+                              {email.sent_at && (
+                                <div className="flex flex-col justify-center">
+                                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('email_agent.sent_at')}</p>
+                                  <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">{new Date(email.sent_at).toLocaleString()}</span>
+                                </div>
+                              )}
                             </div>
 
                             {(email.english_body || email.spanish_body) && (
@@ -710,6 +787,31 @@ export default function EmailAgentPage() {
                                     </div>
                                   </div>
                                 )}
+                              </div>
+                            )}
+
+                            {Array.isArray(email.replies) && email.replies.length > 0 ? (
+                              email.replies.map((reply: EmailReplyData) => (
+                                <ReplyThreadItem key={reply.id} reply={reply} t={t} />
+                              ))
+                            ) : email.reply_body && (
+                              // Legacy fallback: replies recorded before the replies[] array existed.
+                              <div className="mt-4">
+                                <div className="flex justify-between items-center mb-1">
+                                  <p className="text-[9px] font-black text-green-600 dark:text-green-400 uppercase tracking-widest flex items-center gap-1">
+                                    <MessageCircle className="w-3 h-3" />
+                                    {t('email_agent.reply_received')}
+                                    {email.reply_from ? ` — ${email.reply_from}` : ''}
+                                    {email.replied_at ? ` · ${new Date(email.replied_at).toLocaleString()}` : ''}
+                                  </p>
+                                  <CopyButton text={email.reply_body} />
+                                </div>
+                                {email.reply_subject && (
+                                  <p className="text-[11px] font-bold text-slate-500 dark:text-zinc-400 mb-1">{email.reply_subject}</p>
+                                )}
+                                <div className="bg-green-50 dark:bg-green-500/10 border border-green-100 dark:border-green-500/20 rounded-xl p-4 text-[13px] text-slate-600 dark:text-zinc-300 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar font-sans leading-relaxed">
+                                  {email.reply_body}
+                                </div>
                               </div>
                             )}
                           </div>
