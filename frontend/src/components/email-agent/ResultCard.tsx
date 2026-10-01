@@ -267,7 +267,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
   const [editableEnglishBody, setEditableEnglishBody] = useState(formatBody(result.draft?.english_body || result.draft?.body));
   const [editableSpanishBody, setEditableSpanishBody] = useState(formatBody(result.draft?.spanish_body));
   const [editableWhatsappBody, setEditableWhatsappBody] = useState(formatBody(result.draft?.whatsapp_draft));
-  const [fromEmail, setFromEmail] = useState("support.crm@serphawk.in");
+  const [fromEmail, setFromEmail] = useState("crm@serphawk.in");
 
   const extractedEmailsArray = (Array.isArray(result.company_info?.extracted_emails) ? result.company_info.extracted_emails : (result.company_info?.extracted_emails?.split(",") || []))
     .filter((e: string) => e.trim().toLowerCase() !== "test@example.com" && e.trim().toLowerCase() !== "support.crm@serphawk.in");
@@ -683,7 +683,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
                   <span className="text-slate-500 w-12">From:</span>
                   <input 
                     type="text" 
-                    value="contact@scmbpo.com"
+                    value="crm@serphawk.in"
                     readOnly
                     disabled
                     className="flex-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 px-3 py-1.5 text-sm text-slate-500 cursor-not-allowed focus:outline-none transition-all"
