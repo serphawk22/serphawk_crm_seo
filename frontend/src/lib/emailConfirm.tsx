@@ -104,6 +104,14 @@ export function emailTriggerInfo(
   } else if (method === "POST" && path === "/email-otp/send") {
     to = nim(body.email);
     note = "Send a one-time passcode to this email.";
+  } else if (method === "POST" && /^\/inbox\/messages\/(in|out)-\d+\/reply$/.test(path)) {
+    to = nim(body.to);
+    subject = nim(body.subject);
+    note = body.to ? "Send this reply from the Inbox." : "Send this reply to the sender from the Inbox.";
+  } else if (method === "POST" && /^\/(leads|clients)\/\d+\/email-composer\/send$/.test(path)) {
+    to = [nim(body.to), nim(body.cc)].filter(Boolean) as string[];
+    subject = nim(body.subject);
+    note = `Send this email to the ${path.startsWith("/leads") ? "lead" : "client"}.`;
   } else {
     return null;
   }

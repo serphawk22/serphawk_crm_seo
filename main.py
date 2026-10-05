@@ -502,6 +502,9 @@ app.include_router(email_tracking_router)
 from routers.leaderboard import router as leaderboard_router
 app.include_router(leaderboard_router)
 
+from routers.inbox import router as inbox_router
+app.include_router(inbox_router)
+
 @app.on_event("startup")
 def on_startup():
     patch_openai()
@@ -597,6 +600,13 @@ def on_startup():
         start_reply_checker_thread()
     except Exception as e:
         print(f"Reply checker thread failed to start: {e}")
+
+    # Mirror every inbound email into inbox_messages for the in-app Inbox (+ AI triage).
+    try:
+        from modules.inbox_sync import start_inbox_sync_thread
+        start_inbox_sync_thread()
+    except Exception as e:
+        print(f"Inbox sync thread failed to start: {e}")
 
     # Tenant ID Migrations (Dynamic reflection to catch all models)
     from sqlmodel import SQLModel
@@ -4489,6 +4499,7 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
             spanish_body=data.get("spanish_body", ""),
             draft_json=_json.dumps(data),
             manual=True,
+            status="Draft",  # generated, never sent — keeps it out of the Inbox's Sent view
             sent_at=datetime.now(timezone.utc)
         )
         session.add(draft)
@@ -4704,7 +4715,10 @@ def get_ai_insights(client_id: int, session: Session = Depends(get_session)):
 
     days_since_contact = None
     if last_contact:
-        days_since_contact = (datetime.utcnow() - last_contact).days
+        # sqlmodel>=0.0.4x returns tz-aware datetimes; utcnow() is naive and the subtraction raised (500)
+        if last_contact.tzinfo is None:
+            last_contact = last_contact.replace(tzinfo=timezone.utc)
+        days_since_contact = (datetime.now(timezone.utc) - last_contact).days
 
     prompt = f"""You are an AI Sales Copilot analyzing a CRM client record. Provide actionable insights.
 
@@ -4803,7 +4817,10 @@ def get_lead_ai_insights(lead_id: int, session: Session = Depends(get_session)):
 
     days_since_contact = None
     if last_contact:
-        days_since_contact = (datetime.utcnow() - last_contact).days
+        # sqlmodel>=0.0.4x returns tz-aware datetimes; utcnow() is naive and the subtraction raised (500)
+        if last_contact.tzinfo is None:
+            last_contact = last_contact.replace(tzinfo=timezone.utc)
+        days_since_contact = (datetime.now(timezone.utc) - last_contact).days
 
     prompt = f"""You are an AI Sales Copilot analyzing a CRM lead. Provide actionable insights.
 
@@ -10671,6 +10688,7 @@ def generate_lead_outbound_draft(lead_id: int, session: Session = Depends(get_se
             spanish_body=data.get("spanish_body", ""),
             draft_json=_json.dumps(data),
             manual=True,
+            status="Draft",  # generated, never sent — keeps it out of the Inbox's Sent view
             sent_at=datetime.now(timezone.utc)
         )
         session.add(draft)

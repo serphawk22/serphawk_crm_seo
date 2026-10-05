@@ -35,6 +35,31 @@ interface EmailReplyData {
   received_at?: string | null;
 }
 
+interface ChatMessage {
+  id: string;
+  role: "ai" | "user";
+  type: "text" | "loading";
+  content?: string;
+}
+
+// One row of GET /sent-emails.
+interface SentEmail {
+  id: number;
+  to_email: string;
+  subject: string;
+  company_name?: string | null;
+  english_body?: string | null;
+  spanish_body?: string | null;
+  status?: string | null;
+  manual?: boolean | null;
+  sent_at?: string | null;
+  replied_at?: string | null;
+  reply_from?: string | null;
+  reply_subject?: string | null;
+  reply_body?: string | null;
+  replies?: EmailReplyData[];
+}
+
 // Renders one inbound reply: a "Clean" view (quote history stripped) by
 // default, with a per-reply toggle to see the original formatted HTML
 // (rendered in a sandboxed iframe — sandbox="" blocks script execution and

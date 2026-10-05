@@ -730,7 +730,7 @@ export default function ClientsPage() {
             </div>
           ) : viewMode === 'map' ? (
             <div className="p-6 h-[700px]">
-              <ClientMapView clients={filteredClients} />
+              <ClientMapView clients={filteredClients} statuses={statuses} />
             </div>
           ) : (
             <table className="w-full text-left border-collapse">
@@ -779,7 +779,7 @@ export default function ClientsPage() {
                         </td>
                         <td className="px-6 py-4">
                           <span className="text-[13px] text-slate-600 dark:text-slate-300">
-                            {client.website || client.websiteUrl ? (client.website || client.websiteUrl).replace(/^https?:\/\//, '') : '—'}
+                            {client.website || client.websiteUrl ? (client.website || client.websiteUrl || '').replace(/^https?:\/\//, '') : '—'}
                           </span>
                         </td>
                         <td className="px-6 py-4">

@@ -71,7 +71,7 @@ export default function LoginPage() {
           window.location.href = "/";
         }
       } else {
-        setError(result.error || "Login failed");
+        setError(result.message || "Login failed");
       }
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred.");

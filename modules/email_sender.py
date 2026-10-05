@@ -156,6 +156,7 @@ def send_email_outlook(
     attachments: list = None,
     tracking_id: int = None,
     tracking_base_url: str = None,
+    extra_headers: dict = None,
 ):
     """
     Send an email over SMTP (supports STARTTLS on 587, falls back to implicit TLS on 465).
@@ -170,6 +171,11 @@ def send_email_outlook(
     pointing at `{tracking_base_url}/webhook/track-email-open?id={tracking_id}` is embedded
     in the HTML body. `tracking_base_url` MUST be a publicly reachable URL (not localhost)
     for this to work, since it's the recipient's mail client that requests it.
+
+    `extra_headers`: optional {name: value} set on the message, replacing any
+    default of the same name — e.g. In-Reply-To/References so a reply threads
+    in the recipient's client, Cc (smtplib also delivers to Cc), or a
+    caller-generated Message-ID the caller wants to remember.
     """
     msg = MIMEMultipart("mixed")
     msg["From"] = sender_email
@@ -177,6 +183,10 @@ def send_email_outlook(
     msg["Subject"] = subject
     msg["Date"] = formatdate(localtime=True)
     msg["Message-ID"] = make_msgid()
+    for name, value in (extra_headers or {}).items():
+        if value:
+            del msg[name]  # no-op when absent; avoids duplicate headers
+            msg[name] = value
 
     is_html = isinstance(body, str) and body.lstrip().startswith("<")
 
