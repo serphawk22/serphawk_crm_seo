@@ -24,11 +24,13 @@ import ConversationsTab from './components/tabs/ConversationsTab';
 import NotesTab from './components/tabs/NotesTab';
 import HealthTab from './components/tabs/HealthTab';
 import AiDataTab from './components/tabs/AiDataTab';
+import RecordEmailTab from '@/components/email/RecordEmailTab';
 
 // ─── Tab definitions ───────────────────────────────────────────────────────────
 const TABS = [
   { key: 'overview',       label: 'Overview',       icon: LayoutDashboard },
   { key: 'ai_data',        label: 'AI DATA',         icon: Brain           },
+  { key: 'email',          label: 'EMAIL',           icon: Mail            },
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
   { key: 'health',         label: 'Health',          icon: HeartPulse      },
   { key: 'conversations',  label: 'Conversations',   icon: MessageSquare   },
@@ -774,6 +776,12 @@ export default function AdminClientDetailPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  // Deep links such as /admin/clients/7?tab=email (used by the Inbox).
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab && TABS.some(t => t.key === tab)) setActiveTab(tab);
+  }, []);
+
   useEffect(() => {
     const handleRefresh = () => fetchAll();
     window.addEventListener('refresh-client-data', handleRefresh);
@@ -901,7 +909,7 @@ export default function AdminClientDetailPage() {
         onAddNote={() => switchTab('notes')}
         onAddConversation={() => switchTab('conversations')}
         onScheduleMeeting={() => router.push('/meetings')}
-        onSendEmail={() => client?.email ? window.location.href = `mailto:${client.email}` : alert(language === 'es' ? 'No hay correo' : 'No email found for this client')}
+        onSendEmail={() => switchTab('email')}
         onCreateOpportunity={() => {}}
         darkMode={darkMode}
         onToggleDarkMode={toggleDarkMode}
@@ -975,6 +983,7 @@ export default function AdminClientDetailPage() {
                     onClientRefresh={fetchClient}
                   />
                 )}
+                {activeTab === 'email' && <RecordEmailTab kind="clients" recordId={id} />}
                 {activeTab === 'timeline' && (
                   <TimelineTab
                     timeline={timeline}

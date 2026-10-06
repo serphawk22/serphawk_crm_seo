@@ -10,7 +10,7 @@ def _utcnow():
 
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship, create_engine, Session, JSON
-from sqlalchemy import Column, String, Index, DateTime, select, func, Text
+from sqlalchemy import Column, String, Index, DateTime, select, func, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 import os
 from dotenv import load_dotenv
@@ -758,6 +758,64 @@ class EmailReply(SQLModel, table=True):
     body_text_full: Optional[str] = Field(default=None, sa_column=Column(Text))  # raw, with quoted history
     body_html: Optional[str] = Field(default=None, sa_column=Column(Text))  # sanitized, inline images embedded as data: URIs
     received_at: datetime = Field(default_factory=_utcnow)
+
+
+class InboxMessage(SQLModel, table=True):
+    """
+    One row per inbound message synced from a CRM mailbox's IMAP INBOX, so the
+    in-app Inbox shows *every* received email — EmailReply only keeps the ones
+    that match a previously sent email. Outbound mail is not duplicated here;
+    the Inbox reads it straight from sent_emails.
+
+    lead_id / client_id / contact_id / sent_email_id are plain integers on
+    purpose (no FK constraint): deleting a lead or client must never be blocked
+    by its mail history, and a dangling id simply renders as "unlinked".
+    """
+    __tablename__ = "inbox_messages"
+    __table_args__ = (
+        UniqueConstraint("mailbox", "message_id", name="uq_inbox_messages_mailbox_message_id"),
+        Index("ix_inbox_messages_tenant_received", "tenant_id", "received_at"),
+    )
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    mailbox: str = Field(max_length=255)  # address of the synced mailbox
+    message_id: str = Field(max_length=998)  # RFC Message-ID header, or a synthesized stable key
+    imap_uid: Optional[int] = Field(default=None)
+    in_reply_to: Optional[str] = Field(default=None, max_length=998)
+    references_header: Optional[str] = Field(default=None, sa_column=Column(Text))
+    from_name: Optional[str] = Field(default=None, max_length=255)
+    from_address: str = Field(max_length=255, index=True)
+    to_addresses: Optional[str] = Field(default=None, sa_column=Column(Text))
+    cc_addresses: Optional[str] = Field(default=None, sa_column=Column(Text))
+    subject: Optional[str] = Field(default=None, max_length=500)
+    snippet: Optional[str] = Field(default=None, max_length=500)
+    body_text: Optional[str] = Field(default=None, sa_column=Column(Text))  # quote-stripped
+    body_text_full: Optional[str] = Field(default=None, sa_column=Column(Text))  # raw, with quoted history
+    body_html: Optional[str] = Field(default=None, sa_column=Column(Text))  # sanitized
+    attachments: Optional[List[dict]] = Field(default_factory=list, sa_column=Column(JSON))  # [{filename, size, content_type}]
+    received_at: datetime = Field(default_factory=_utcnow)
+
+    lead_id: Optional[int] = Field(default=None, index=True)
+    client_id: Optional[int] = Field(default=None, index=True)
+    contact_id: Optional[int] = Field(default=None)
+    sent_email_id: Optional[int] = Field(default=None, index=True)
+
+    # Shared team-inbox state (one flag per message, not per user)
+    is_read: bool = Field(default=False)
+    is_starred: bool = Field(default=False)
+    is_archived: bool = Field(default=False)
+    replied_at: Optional[datetime] = Field(default=None)  # set when answered from the CRM
+
+    # AI triage, filled in asynchronously after sync
+    ai_category: Optional[str] = Field(default=None, max_length=50, index=True)
+    ai_priority: Optional[str] = Field(default=None, max_length=20)
+    ai_sentiment: Optional[str] = Field(default=None, max_length=20)
+    ai_needs_reply: Optional[bool] = Field(default=None)
+    ai_summary: Optional[str] = Field(default=None, sa_column=Column(Text))
+    ai_classified_at: Optional[datetime] = Field(default=None)
+
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class SocialProfile(SQLModel, table=True):

@@ -19,7 +19,7 @@ interface LeadHeaderProps {
   onScheduleMeeting: () => void;
   onSendEmail: () => void;
   onUploadFile: () => void;
-  onCreateOpportunity: () => void;
+  onCreateOpportunity?: () => void;
   darkMode: boolean;
   onToggleDarkMode: () => void;
 }
@@ -64,8 +64,7 @@ export default function LeadHeader({
 
   // Contact info pills for display in header
   const contactChips = [
-    null && { icon: User,     value: lead.contact_person },
-    lead?.email          && { icon: Mail,     value: lead.email,     href: `mailto:${lead.email}` },
+    lead?.email         && { icon: Mail,     value: lead.email,     href: `mailto:${lead.email}` },
     lead?.phone          && { icon: Phone,    value: lead.phone,     href: `tel:${lead.phone}` },
     lead?.website     && { icon: Globe,    value: lead.websiteUrl, href: lead.websiteUrl },
     lead?.linkedin_url   && { icon: Linkedin, value: 'LinkedIn',       href: lead.linkedin_url },
@@ -89,6 +88,12 @@ export default function LeadHeader({
             className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-zinc-400 hover:text-indigo-600 transition-colors font-bold tracking-tight"
           >
             <ArrowLeft size={16} className="text-slate-400" /> {language === 'es' ? 'Volver a Clientes' : 'Back to Leads'}
+          </button>
+          <button
+            onClick={onSendEmail}
+            className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm shadow-indigo-500/20 transition-colors hover:bg-indigo-700"
+          >
+            <Mail size={14} /> {language === 'es' ? 'Enviar correo' : 'Send Email'}
           </button>
         </div>
 

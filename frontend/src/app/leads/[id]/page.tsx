@@ -25,12 +25,14 @@ import NotesTab from './components/tabs/NotesTab';
 import TasksTab from './components/tabs/TasksTab';
 import FilesTab from './components/tabs/FilesTab';
 import AiDataTab from '@/app/admin/clients/[id]/components/tabs/AiDataTab';
+import RecordEmailTab from '@/components/email/RecordEmailTab';
 
 // ─── Tab definitions ───────────────────────────────────────────────────────────
 const TABS = [
   { key: 'overview',       label: 'Overview',       icon: LayoutDashboard },
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
   { key: 'ai_data',        label: 'AI DATA',         icon: Brain           },
+  { key: 'email',          label: 'EMAIL',           icon: Mail            },
   { key: 'files',          label: 'Files',           icon: FolderOpen      },
   { key: 'conversations',  label: 'Conversations',   icon: MessageSquare   },
 ];
@@ -96,7 +98,7 @@ function CollapsibleSection({ title, icon: Icon, count, defaultOpen = false, acc
 }
 
 // ─── Overview Tab — premium light ──────────────────────────────────────────
-function OverviewTab({ lead, employees, serviceRequests, activities, timeline, research, notes, conversations, leadId, onNotesRefresh, onConversationsRefresh, emails, handleGenerateAnalysis, isGeneratingResearch, onRefresh }: any) {
+function OverviewTab({ lead, employees, serviceRequests, activities, timeline, research, notes, conversations, leadId, onNotesRefresh, onConversationsRefresh, emails, handleGenerateAnalysis, isGeneratingResearch, onRefresh, onActivitySelect }: any) {
   const { t, language } = useLanguage();
   const recentActivities = (activities || []).slice(0, 8);
 
@@ -438,7 +440,7 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
             recentActivities.map((a: any) => (
               <div 
                 key={a.id} 
-                onClick={() => setSelectedActivity(a)}
+                onClick={() => onActivitySelect(a)}
                 style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 8px', borderBottom: '1px solid var(--border)', cursor: 'pointer', borderRadius: 8, transition: 'background 0.15s' }}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -704,6 +706,12 @@ export default function LeadDetailsPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  // Deep links such as /leads/12?tab=email (used by the Inbox).
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab && TABS.some(t => t.key === tab)) setActiveTab(tab);
+  }, []);
+
   useEffect(() => {
     const handleRefresh = () => fetchAll();
     window.addEventListener('refresh-lead-data', handleRefresh);
@@ -861,7 +869,7 @@ export default function LeadDetailsPage() {
         onAddConversation={() => switchTab('conversations')}
         onCreateTask={() => switchTab('tasks')}
         onScheduleMeeting={() => router.push('/meetings')}
-        onSendEmail={() => lead?.email ? window.location.href = `mailto:${lead.email}` : alert(language === 'es' ? 'No hay correo' : 'No email found for this client')}
+        onSendEmail={() => switchTab('email')}
         onUploadFile={() => switchTab('files')}
         darkMode={darkMode}
         onToggleDarkMode={toggleDarkMode}
@@ -927,6 +935,7 @@ export default function LeadDetailsPage() {
                     handleGenerateAnalysis={handleGenerateAnalysis}
                     isGeneratingResearch={isGeneratingResearch}
                     onRefresh={fetchAll}
+                    onActivitySelect={setSelectedActivity}
                   />
                 )}
                 {activeTab === 'timeline' && (
@@ -944,6 +953,7 @@ export default function LeadDetailsPage() {
                     onClientRefresh={fetchLead}
                   />
                 )}
+                {activeTab === 'email' && <RecordEmailTab kind="leads" recordId={id} />}
                 {activeTab === 'conversations' && (
                   <ConversationsTab
                     leadId={id}

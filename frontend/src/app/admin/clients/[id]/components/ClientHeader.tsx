@@ -88,6 +88,12 @@ export default function ClientHeader({
           >
             <ArrowLeft size={16} className="text-slate-400" /> {language === 'es' ? 'Volver a Clientes' : 'Back to Clients'}
           </button>
+          <button
+            onClick={onSendEmail}
+            className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm shadow-indigo-500/20 transition-colors hover:bg-indigo-700"
+          >
+            <Mail size={14} /> {language === 'es' ? 'Enviar correo' : 'Send Email'}
+          </button>
         </div>
 
         {/* Row 2: Main header - Company identity + Contact Info + Score */}
