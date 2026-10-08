@@ -31,6 +31,7 @@ Thumbs.db
 
 # Project Specific
 static/generated_images/
+static/audio/
 *.db
 *.sqlite
 logs/

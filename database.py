@@ -1492,6 +1492,11 @@ def create_db_and_tables():
         # Supplier credentials emailing
         "ALTER TABLE inventory_suppliers ADD COLUMN login_password VARCHAR(255)",
         "ALTER TABLE inventory_suppliers ADD COLUMN credentials_sent BOOLEAN DEFAULT FALSE",
+        # AI voice agent: call language
+        "ALTER TABLE voice_pitches ADD COLUMN language VARCHAR(20) DEFAULT 'en'",
+        "ALTER TABLE ai_calls ADD COLUMN language VARCHAR(20) DEFAULT 'en'",
+        # AI voice agent: speaking speed (nullable) so replies use the pitch's speed
+        "ALTER TABLE ai_calls ADD COLUMN speed FLOAT",
     ]
     
     with engine.connect() as conn:
@@ -1842,3 +1847,111 @@ class TaskSheetEntry(SQLModel, table=True):
     completion_date: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ──────────────────────────────────────────────────────
+# AI VOICE AGENT: TTS pitches, outbound AI calls, follow-ups, knowledge base
+# ──────────────────────────────────────────────────────
+
+class VoicePitch(SQLModel, table=True):
+    """A sales pitch converted to speech with a chosen voice/accent."""
+    __tablename__ = "voice_pitches"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str = Field(max_length=500)
+    entity_type: Optional[str] = Field(default=None, max_length=50)  # client, lead, contact
+    entity_id: Optional[int] = Field(default=None)
+    entity_name: Optional[str] = Field(default=None, max_length=255)
+    pitch_text: str = Field(sa_column=Column(Text))
+    language: str = Field(default="en", max_length=20)
+    voice: str = Field(default="nova", max_length=50)
+    accent: str = Field(default="american", max_length=50)
+    style: str = Field(default="friendly", max_length=50)
+    speed: float = Field(default=1.0)
+    audio_url: Optional[str] = Field(default=None, max_length=500)
+    version: int = Field(default=1)
+    created_by: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class AICall(SQLModel, table=True):
+    """An outbound Twilio call driven by the AI voice agent (with optional human takeover)."""
+    __tablename__ = "ai_calls"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    pitch_id: Optional[int] = Field(default=None, foreign_key="voice_pitches.id")
+    entity_type: Optional[str] = Field(default=None, max_length=50)
+    entity_id: Optional[int] = Field(default=None)
+    entity_name: Optional[str] = Field(default=None, max_length=255)
+    to_number: str = Field(max_length=50)
+    from_number: Optional[str] = Field(default=None, max_length=50)
+    twilio_call_sid: Optional[str] = Field(default=None, max_length=100, index=True)
+    # queued, initiated, ringing, in-progress, completed, failed, busy, no-answer, canceled
+    status: str = Field(default="queued", max_length=50)
+    # ai = AI talks; agent_typed = agent types, AI voice speaks; agent_phone = agent bridged by phone
+    mode: str = Field(default="ai", max_length=30)
+    language: str = Field(default="en", max_length=20)
+    voice: str = Field(default="nova", max_length=50)
+    accent: str = Field(default="american", max_length=50)
+    style: str = Field(default="friendly", max_length=50)
+    # speaking speed copied from the pitch so every live line of the call (pitch, replies,
+    # filler) is synthesized with the same voice/accent/style/speed settings
+    speed: Optional[float] = Field(default=None)
+    agent_phone: Optional[str] = Field(default=None, max_length=50)
+    webhook_token: str = Field(default_factory=lambda: uuid.uuid4().hex, max_length=64)
+    transcript: Optional[list] = Field(default_factory=list, sa_column=Column(JSON))
+    # conversation state: stage, doubts, objections, adaptation, silence_count ...
+    context: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
+    current_intent: Optional[str] = Field(default=None, max_length=100)
+    sentiment: Optional[str] = Field(default=None, max_length=50)
+    interest_score: Optional[int] = Field(default=None)
+    pending_agent_message: Optional[str] = Field(default=None, sa_column=Column(Text))
+    summary: Optional[str] = Field(default=None, sa_column=Column(Text))
+    outcome: Optional[str] = Field(default=None, max_length=100)
+    next_steps: Optional[str] = Field(default=None, sa_column=Column(Text))
+    recording_url: Optional[str] = Field(default=None, max_length=1000)
+    duration_seconds: Optional[int] = Field(default=None)
+    error: Optional[str] = Field(default=None, sa_column=Column(Text))
+    call_log_id: Optional[int] = Field(default=None, foreign_key="call_logs.id")
+    started_by: Optional[int] = Field(default=None, foreign_key="users.id")
+    answered_at: Optional[datetime] = Field(default=None)
+    ended_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class CallQuestion(SQLModel, table=True):
+    """Client doubts / objections / questions detected during AI calls; unresolved ones need follow-up."""
+    __tablename__ = "call_questions"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    call_id: Optional[int] = Field(default=None, foreign_key="ai_calls.id", index=True)
+    entity_type: Optional[str] = Field(default=None, max_length=50)
+    entity_id: Optional[int] = Field(default=None)
+    entity_name: Optional[str] = Field(default=None, max_length=255)
+    question: str = Field(sa_column=Column(Text))
+    category: str = Field(default="question", max_length=50)  # question, doubt, objection, info_request
+    ai_answer: Optional[str] = Field(default=None, sa_column=Column(Text))
+    status: str = Field(default="open", max_length=30)  # answered, open, escalated, resolved
+    escalation_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
+    resolution: Optional[str] = Field(default=None, sa_column=Column(Text))
+    assigned_to: Optional[int] = Field(default=None, foreign_key="users.id")
+    follow_up_date: Optional[str] = Field(default=None, max_length=50)
+    created_at: datetime = Field(default_factory=_utcnow)
+    resolved_at: Optional[datetime] = Field(default=None)
+
+
+class CallKnowledge(SQLModel, table=True):
+    """FAQ / objection handling / product info used by the AI voice agent to answer clients."""
+    __tablename__ = "call_knowledge"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = Field(default="faq", max_length=30)  # faq, objection, product
+    title: str = Field(sa_column=Column(Text))  # question / objection / product name
+    answer: str = Field(sa_column=Column(Text))
+    tags: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    is_active: bool = Field(default=True)
+    usage_count: int = Field(default=0)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)

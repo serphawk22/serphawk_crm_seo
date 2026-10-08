@@ -1,5 +1,123 @@
 
 from __future__ import annotations
+import csv
+import io
+from fastapi.responses import PlainTextResponse
+import httpx as _httpx
+from modules.api_tracker import current_client_id, current_salesperson_id, current_endpoint, patch_openai
+import hashlib
+import secrets
+from sqlalchemy import inspect, text
+from google.oauth2.credentials import Credentials
+import google.auth.transport.requests
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import Flow
+from fastapi.responses import RedirectResponse
+from database import Meeting, Product, CRMQuote, QuoteItem, SalesOrder, PurchaseOrder, Case, Solution
+from sqlmodel import text
+import pandas as pd
+import json
+from database import RadarAnalysis, CompetitorRelationship
+from modules.radar_engine import (
+    find_place, find_nearby_competitors, calculate_market_density,
+    sort_nearest, sort_largest_market, sort_largest_team, sort_most_similar,
+    score_market_size, estimate_team_size
+)
+from database import Deal
+import hashlib as _hashlib_hmac
+import hmac as _hmac
+import secrets as _secrets
+import json as _json
+import uuid as _uuid
+from modules.llm_engine import analyze_document
+from fastapi import UploadFile, File
+import io as _io
+import csv as _csv
+from typing import Optional as _Opt
+from pydantic import BaseModel as _BM
+import os
+from fastapi.staticfiles import StaticFiles
+from routers.inbox import router as inbox_router
+from routers.leaderboard import router as leaderboard_router
+from routers.email_tracking import router as email_tracking_router
+from routers.voice_agent import router as voice_agent_router
+from modules.api_intelligence import router as api_intelligence_router
+import traceback
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from starlette.requests import Request
+from starlette.middleware.base import BaseHTTPMiddleware
+from sqlalchemy.sql.selectable import Select
+from sqlalchemy.orm import Session as SASession
+from sqlalchemy import event
+import contextvars
+from database import (
+    Account,
+    ActivityLog,
+    AnalyticsData,
+    CallLog,
+    ScheduledCall,
+    ChatMessage,
+    ChatbotSession,
+    ChatbotMessage,
+    ClientFileUpload,
+    ClientNote,
+    ClientProfile,
+    ClientResearch,
+    ClientStatus,
+    ClientTicket,
+    CompetitorAnalysis,
+    CompetitorRelationship,
+    Contact,
+    ConversationLog,
+    ConversationReply,
+    Deal,
+    Document,
+    EmailIntegration,
+    EmailLog,
+    ExtractedEmail,
+    Invoice,
+    KeywordRankEntry,
+    Lead,
+    LeadNote,
+    MessageThread,
+    Milestone,
+    NPSSurvey,
+    Notification,
+    Project,
+    ProjectTicket,
+    ProjectTicketHistory,
+    Proposal,
+    RadarAnalysis,
+    RankingTracker,
+    Remark,
+    MarketplaceService,
+    SEOAudit,
+    ServiceCatalog,
+    ServiceRequest,
+    SocialProfile,
+    Task,
+    TaskComment,
+    TaskSheetEntry,
+    Tenant,
+    PageVisitTelemetry,
+    User,
+    create_db_and_tables,
+    engine,
+    InventoryItem,
+    InventorySupplier,
+    RFQRequest,
+    RFQResponse,
+    APIKey,
+    EmailSettings,
+)
+from sqlmodel import Session, select
+from sqlalchemy import func, or_
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Depends, FastAPI, HTTPException, Query, Form, UploadFile, File, Body
+from typing import Any, Dict, List, Optional, Union
+from datetime import datetime, timedelta, date, timezone
+import re
 
 """
 CRM V2 – SerpHawk  |  FastAPI Backend
@@ -13,16 +131,20 @@ from pydantic import BaseModel
 
 from database import engine, SentEmail, EmailReply
 from sqlmodel import select
+from modules.tts_service import text_to_speech
+
 
 def register_sent_emails_endpoint(app, get_session):
     from fastapi import Depends
     from sqlmodel import Session
     from sqlalchemy import func
+
     @app.get("/sent-emails")
     def get_sent_emails(client_id: int = None, limit: int = 50, session: Session = Depends(get_session)):
         query = select(SentEmail).order_by(SentEmail.sent_at.desc())
         total_query = select(func.count(SentEmail.id))
-        manual_query = select(func.count(SentEmail.id)).where(SentEmail.manual == True)
+        manual_query = select(func.count(SentEmail.id)).where(
+            SentEmail.manual == True)
         if client_id:
             query = query.where(SentEmail.client_id == client_id)
             total_query = total_query.where(SentEmail.client_id == client_id)
@@ -112,113 +234,36 @@ def register_sent_emails_endpoint(app, get_session):
         session.commit()
         return {"ok": True, "deleted": deleted}
 
-import hashlib
-import re
-from datetime import datetime, timedelta, date, timezone
-from typing import Any, Dict, List, Optional, Union
-
-from fastapi import Depends, FastAPI, HTTPException, Query, Form, UploadFile, File, Body
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from sqlalchemy import func, or_
-from sqlmodel import Session, select
-
-from database import (
-    Account,
-    ActivityLog,
-    AnalyticsData,
-    CallLog,
-    ScheduledCall,
-    ChatMessage,
-    ChatbotSession,
-    ChatbotMessage,
-    ClientFileUpload,
-    ClientNote,
-    ClientProfile,
-    ClientResearch,
-    ClientStatus,
-    ClientTicket,
-    CompetitorAnalysis,
-    CompetitorRelationship,
-    Contact,
-    ConversationLog,
-    ConversationReply,
-    Deal,
-    Document,
-    EmailIntegration,
-    EmailLog,
-    ExtractedEmail,
-    Invoice,
-    KeywordRankEntry,
-    Lead,
-    LeadNote,
-    MessageThread,
-    Milestone,
-    NPSSurvey,
-    Notification,
-    Project,
-    ProjectTicket,
-    ProjectTicketHistory,
-    Proposal,
-    RadarAnalysis,
-    RankingTracker,
-    Remark,
-    MarketplaceService,
-    SEOAudit,
-    ServiceCatalog,
-    ServiceRequest,
-    SocialProfile,
-    Task,
-    TaskComment,
-    TaskSheetEntry,
-    Tenant,
-    PageVisitTelemetry,
-    User,
-    create_db_and_tables,
-    engine,
-    InventoryItem,
-    InventorySupplier,
-    RFQRequest,
-    RFQResponse,
-    APIKey,
-    EmailSettings,
-)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # App + CORS
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-import contextvars
-from sqlalchemy import event
-from sqlalchemy.orm import Session as SASession
-from sqlalchemy.sql.selectable import Select
-
 current_tenant_id = contextvars.ContextVar("current_tenant_id", default=None)
+
 
 @event.listens_for(SASession, "do_orm_execute")
 def _add_tenant_filter(execute_state):
     tenant_id = current_tenant_id.get()
     if tenant_id is None:
         return
-        
+
     if execute_state.execution_options.get("skip_tenant"):
         return
-        
+
     # Global tables that don't have tenant_id, or where we must never add a tenant filter
     global_tables = [
         "tenants", "client_statuses", "service_catalog",
         "audit_logs",      # telemetry must always be cross-tenant for admin view
-        "users",           # users table is queried cross-tenant (e.g. login, notifications)
+        # users table is queried cross-tenant (e.g. login, notifications)
+        "users",
         "notifications",   # user-scoped not tenant-scoped
     ]
-    
+
     if execute_state.is_select or execute_state.is_update or execute_state.is_delete:
         # We need to add a filter to the statement if it hits a table with tenant_id
         stmt = execute_state.statement
-        
-        # A simple check: if it's a Select, we can filter. 
+
+        # A simple check: if it's a Select, we can filter.
         # For simplicity and safety without breaking complex joins, we can traverse the entities
         if execute_state.is_select:
             for entity in execute_state.statement.column_descriptions:
@@ -234,12 +279,12 @@ def _auto_assign_tenant_id(session, flush_context, instances):
     tenant_id = current_tenant_id.get()
     if tenant_id is None:
         return
-        
+
     global_tables = [
         "tenants", "client_statuses", "service_catalog",
         "audit_logs", "users", "notifications",
     ]
-    
+
     for obj in session.new:
         if hasattr(obj, "tenant_id") and getattr(obj, "tenant_id") is None:
             if hasattr(obj, "__tablename__") and obj.__tablename__ not in global_tables:
@@ -253,17 +298,17 @@ def _audit_log_changes(session, flush_context):
     # Prevent recursive audit logging
     if getattr(session, "_is_auditing", False):
         return
-        
+
     user_id = None
     try:
         from modules.api_tracker import current_salesperson_id
         user_id = current_salesperson_id.get()
     except Exception:
         pass
-        
+
     tenant_id = current_tenant_id.get()
     audit_entries = []
-    
+
     # helper to get dirty attributes safely
     def get_changes(obj):
         changes = {}
@@ -278,12 +323,12 @@ def _audit_log_changes(session, flush_context):
             return json.dumps(changes, default=str)
         except:
             return str(changes)
-            
+
     def get_pk(obj):
         mapper = inspect(obj.__class__)
         pk = mapper.primary_key[0].name
         return getattr(obj, pk, None)
-        
+
     # Tables that are root/global objects — never audit them with a tenant_id FK
     _skip_audit_tables = {"audit_logs", "tenants"}
 
@@ -301,7 +346,7 @@ def _audit_log_changes(session, flush_context):
                 action="CREATE",
                 changes=get_changes(obj)
             ))
-            
+
     for obj in session.dirty:
         if hasattr(obj, "__tablename__") and obj.__tablename__ not in _skip_audit_tables:
             if session.is_modified(obj, include_collections=False):
@@ -316,7 +361,7 @@ def _audit_log_changes(session, flush_context):
                     action="UPDATE",
                     changes=get_changes(obj)
                 ))
-                
+
     for obj in session.deleted:
         if hasattr(obj, "__tablename__") and obj.__tablename__ not in _skip_audit_tables:
             obj_tid = getattr(obj, "tenant_id", None) or tenant_id
@@ -329,7 +374,7 @@ def _audit_log_changes(session, flush_context):
                 record_id=get_pk(obj),
                 action="DELETE"
             ))
-            
+
     if audit_entries:
         try:
             from sqlalchemy import insert
@@ -350,45 +395,53 @@ def _audit_log_changes(session, flush_context):
             # Audit logging is best-effort telemetry: a failure here must never
             # roll back the user's actual write (e.g. JSON bind errors, FKs).
             print("audit_log_changes failed (swallowed):", _audit_err)
+
+
 def check_tenant_limit(session: Session, limit_type: str):
     # This must be called inside the endpoint, it reads current_tenant_id
     t_id = current_tenant_id.get()
     u_id = current_salesperson_id.get()
-    
+
     if not t_id or not u_id:
         return
-        
+
     user = session.get(User, u_id)
     if not user or user.role != "Demo":
         return
-        
+
     tenant = session.exec(select(Tenant).where(Tenant.id == t_id)).first()
     if not tenant or not tenant.is_trial:
         return
-        
+
     if limit_type == "clients":
         if tenant.usage_clients >= tenant.limit_clients:
-            raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED", "limit_type": "clients", "message": f"Trial limit reached. You can only add up to {tenant.limit_clients} clients."})
+            raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED", "limit_type": "clients",
+                                "message": f"Trial limit reached. You can only add up to {tenant.limit_clients} clients."})
         tenant.usage_clients += 1
     elif limit_type == "emails":
         if tenant.usage_emails >= tenant.limit_emails:
-            raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED", "limit_type": "emails", "message": f"Trial limit reached. You can only generate {tenant.limit_emails} AI emails."})
+            raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED", "limit_type": "emails",
+                                "message": f"Trial limit reached. You can only generate {tenant.limit_emails} AI emails."})
         tenant.usage_emails += 1
     elif limit_type == "searches":
         if tenant.usage_searches >= tenant.limit_searches:
-            raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED", "limit_type": "searches", "message": f"Trial limit reached. You can only perform {tenant.limit_searches} AI searches."})
+            raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED", "limit_type": "searches",
+                                "message": f"Trial limit reached. You can only perform {tenant.limit_searches} AI searches."})
         tenant.usage_searches += 1
     elif limit_type == "projects":
         if tenant.usage_projects >= tenant.limit_projects:
-            raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED", "limit_type": "projects", "message": f"Trial limit reached. You can only add up to {tenant.limit_projects} websites."})
+            raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED", "limit_type": "projects",
+                                "message": f"Trial limit reached. You can only add up to {tenant.limit_projects} websites."})
         tenant.usage_projects += 1
-        
+
     session.add(tenant)
     session.commit()
+
 
 def get_session():
     with Session(engine) as session:
         yield session
+
 
 def _require_roles(session: Session, allowed_roles):
     """Enforce role access for sensitive endpoints.
@@ -408,9 +461,6 @@ def _require_roles(session: Session, allowed_roles):
         return user
     raise HTTPException(status_code=403, detail="Forbidden")
 
-from modules.api_tracker import current_client_id, current_salesperson_id, current_endpoint, patch_openai
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 
 class APIIntelligenceMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -424,7 +474,8 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         if user_header and user_header.isdigit():
             current_salesperson_id.set(int(user_header))
         elif request.query_params.get("user_id") and request.query_params.get("user_id").isdigit():
-            current_salesperson_id.set(int(request.query_params.get("user_id")))
+            current_salesperson_id.set(
+                int(request.query_params.get("user_id")))
         else:
             auth_header = request.headers.get("Authorization")
             if auth_header and auth_header.startswith("Bearer "):
@@ -432,32 +483,40 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
                 try:
                     import jwt
                     from config import SECRET_KEY, ALGORITHM
-                    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                    payload = jwt.decode(
+                        token, SECRET_KEY, algorithms=[ALGORITHM])
                     user_id = payload.get("sub")
                     if user_id:
                         current_salesperson_id.set(int(user_id))
                 except:
                     pass
-                    
+
         # Now securely resolve tenant_id based on the authenticated user.
         # This prevents malicious spoofing of X-Tenant-ID and fixes legacy missing headers.
         user_id_val = current_salesperson_id.get()
         tenant_header = request.headers.get("X-Tenant-ID")
-        
-        if user_id_val:
-            with Session(engine) as session:
-                user_obj = session.get(User, user_id_val)
-                if user_obj and user_obj.role != "SuperAdmin":
-                    # Force tenant_id to be the user's actual tenant in the DB
-                    current_tenant_id.set(user_obj.tenant_id)
-                elif user_obj and user_obj.role == "SuperAdmin":
-                    # SuperAdmins can optionally impersonate a tenant via header
-                    if tenant_header and tenant_header.isdigit():
-                        current_tenant_id.set(int(tenant_header))
-                    else:
-                        current_tenant_id.set(None)
-                else:
-                    current_tenant_id.set(None)
+        path = request.url.path
+
+        # Twilio voice webhooks and static audio are unauthenticated and latency-critical
+        # (Twilio drops a call after ~15s), so they skip the user lookup entirely.
+        if path.startswith(("/voice-agent/twilio/", "/static/")):
+            current_tenant_id.set(-1)
+        elif user_id_val:
+            def _resolve_tenant(uid: int):
+                with Session(engine) as session:
+                    user_obj = session.get(User, uid)
+                    if user_obj and user_obj.role != "SuperAdmin":
+                        # Force tenant_id to be the user's actual tenant in the DB
+                        return user_obj.tenant_id
+                    if user_obj and user_obj.role == "SuperAdmin":
+                        # SuperAdmins can optionally impersonate a tenant via header
+                        return int(tenant_header) if tenant_header and tenant_header.isdigit() else None
+                    return None
+
+            # Blocking DB call: run it in the threadpool so it doesn't stall the event loop
+            # (which delayed every other request, including Twilio webhooks).
+            from starlette.concurrency import run_in_threadpool
+            current_tenant_id.set(await run_in_threadpool(_resolve_tenant, user_id_val))
         else:
             # Unauthenticated requests CANNOT be given SuperAdmin access (None).
             # Force to an invalid tenant ID so they see nothing instead of everything.
@@ -465,21 +524,19 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
                 current_tenant_id.set(int(tenant_header))
             else:
                 current_tenant_id.set(-1)
-        
+
         # Try to infer client_id from path parameters
         # Example paths: /clients/123/something or /projects/456 where we might need to lookup client
         path_parts = request.url.path.strip("/").split("/")
         if len(path_parts) >= 2 and path_parts[0] == "clients" and path_parts[1].isdigit():
             current_client_id.set(int(path_parts[1]))
-            
+
         response = await call_next(request)
         return response
 
+
 app = FastAPI(title="SerpHawk CRM", version="2.0.0")
 
-from fastapi.responses import JSONResponse
-from fastapi import Request
-import traceback
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -493,17 +550,16 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 app.add_middleware(APIIntelligenceMiddleware)
 
-from modules.api_intelligence import router as api_intelligence_router
 app.include_router(api_intelligence_router)
 
-from routers.email_tracking import router as email_tracking_router
 app.include_router(email_tracking_router)
 
-from routers.leaderboard import router as leaderboard_router
 app.include_router(leaderboard_router)
 
-from routers.inbox import router as inbox_router
 app.include_router(inbox_router)
+
+app.include_router(voice_agent_router)
+
 
 @app.on_event("startup")
 def on_startup():
@@ -511,37 +567,45 @@ def on_startup():
     try:
         create_db_and_tables()
     except Exception as e:
-        print(f"[startup] create_db_and_tables skipped (tables likely exist): {type(e).__name__}: {e}")
-    
+        print(
+            f"[startup] create_db_and_tables skipped (tables likely exist): {type(e).__name__}: {e}")
+
     # Ensure SuperAdmin exists
     try:
         from sqlmodel import Session, select
         from database import engine, User
         with Session(engine) as session:
-            users = session.exec(select(User).where(User.role == 'SuperAdmin')).all()
+            users = session.exec(select(User).where(
+                User.role == 'SuperAdmin')).all()
             if not users:
-                su = User(name='Super Admin', email='superadmin@serphawk.in', password='password123', role='SuperAdmin', tenant_id=None)
+                su = User(name='Super Admin', email='superadmin@serphawk.in',
+                          password='password123', role='SuperAdmin', tenant_id=None)
                 session.add(su)
                 session.commit()
                 print("Provisioned default SuperAdmin user.")
     except Exception as e:
         print("Error provisioning SuperAdmin:", e)
-    
+
     # Auto-migrate: Add missing columns if they don't exist
     from sqlalchemy import text
     try:
         with engine.connect() as conn:
-            conn.execute(text('ALTER TABLE projects ADD COLUMN IF NOT EXISTS "projectMemberIds" JSON;'))
-            
+            conn.execute(
+                text('ALTER TABLE projects ADD COLUMN IF NOT EXISTS "projectMemberIds" JSON;'))
+
             # Radar & Competitor Relationship Leads Migration
             try:
-                conn.execute(text('ALTER TABLE radar_analyses ADD COLUMN IF NOT EXISTS lead_id INTEGER REFERENCES leads(id);'))
-                conn.execute(text('ALTER TABLE competitor_relationships ADD COLUMN IF NOT EXISTS source_lead_id INTEGER REFERENCES leads(id);'))
-                conn.execute(text('ALTER TABLE competitor_relationships ADD COLUMN IF NOT EXISTS discovered_lead_id INTEGER REFERENCES leads(id);'))
-                conn.execute(text('ALTER TABLE competitor_relationships ALTER COLUMN source_client_id DROP NOT NULL;'))
+                conn.execute(text(
+                    'ALTER TABLE radar_analyses ADD COLUMN IF NOT EXISTS lead_id INTEGER REFERENCES leads(id);'))
+                conn.execute(text(
+                    'ALTER TABLE competitor_relationships ADD COLUMN IF NOT EXISTS source_lead_id INTEGER REFERENCES leads(id);'))
+                conn.execute(text(
+                    'ALTER TABLE competitor_relationships ADD COLUMN IF NOT EXISTS discovered_lead_id INTEGER REFERENCES leads(id);'))
+                conn.execute(text(
+                    'ALTER TABLE competitor_relationships ALTER COLUMN source_client_id DROP NOT NULL;'))
             except Exception as e:
                 print("Radar leads migration error (already applied or unsupported):", e)
-                
+
             conn.commit()
     except Exception as e:
         print("Migration error for projects:", e)
@@ -611,51 +675,60 @@ def on_startup():
     # Tenant ID Migrations (Dynamic reflection to catch all models)
     from sqlmodel import SQLModel
     tables_with_tenant = [
-        name for name, table in SQLModel.metadata.tables.items() 
+        name for name, table in SQLModel.metadata.tables.items()
         if "tenant_id" in table.columns
     ]
-    
+
     for table in tables_with_tenant:
         try:
             with engine.connect() as conn:
-                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE;'))
-                conn.execute(text(f'CREATE INDEX IF NOT EXISTS ix_{table}_tenant_id ON {table} (tenant_id);'))
-                
+                conn.execute(text(
+                    f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE;'))
+                conn.execute(
+                    text(f'CREATE INDEX IF NOT EXISTS ix_{table}_tenant_id ON {table} (tenant_id);'))
+
                 # Fix for existing records that have NULL tenant_id after migration
-                conn.execute(text(f'UPDATE {table} SET tenant_id = 1 WHERE tenant_id IS NULL;'))
-                
+                conn.execute(
+                    text(f'UPDATE {table} SET tenant_id = 1 WHERE tenant_id IS NULL;'))
+
                 conn.commit()
         except Exception as e:
             print(f"Migration error for {table}: {e}")
-            
-    print(f"Finished checking and adding tenant_id columns to {len(tables_with_tenant)} tables.")
-        
+
+    print(
+        f"Finished checking and adding tenant_id columns to {len(tables_with_tenant)} tables.")
+
     try:
         # Ensure varshithh@gmail.com is an Admin and reset admin@serphawk.com password
         session = Session(engine)
-        harshith = session.exec(select(User).where(User.email == "varshithh@gmail.com")).first()
+        harshith = session.exec(select(User).where(
+            User.email == "varshithh@gmail.com")).first()
         if harshith:
             harshith.role = "Admin"
             session.add(harshith)
-            
-        admin = session.exec(select(User).where(User.email == "admin@serphawk.com")).first()
+
+        admin = session.exec(select(User).where(
+            User.email == "admin@serphawk.com")).first()
         if admin:
             admin.password = _hash_password("Admin123!")
             session.add(admin)
-            
-        sm = session.exec(select(User).where(User.email == "varsh@gmail.com")).first()
+
+        sm = session.exec(select(User).where(
+            User.email == "varsh@gmail.com")).first()
         if sm:
             sm.password = _hash_password("Admin123!")
             session.add(sm)
-            
-        emp = session.exec(select(User).where(User.email == "varshit@gmail.com")).first()
+
+        emp = session.exec(select(User).where(
+            User.email == "varshit@gmail.com")).first()
         if emp:
             emp.password = _hash_password("Admin123!")
             session.add(emp)
 
         # Dedicated Demo-role account used by the frontend demo login button.
         # Reset its password on startup so the demo always works.
-        demo = session.exec(select(User).where(User.email == "demo@serphawk.com")).first()
+        demo = session.exec(select(User).where(
+            User.email == "demo@serphawk.com")).first()
         if demo:
             demo.password = _hash_password("DemoPass123!")
             session.add(demo)
@@ -667,7 +740,8 @@ def on_startup():
 
     try:
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN sidebar_preferences JSON;"))
+            conn.execute(
+                text("ALTER TABLE users ADD COLUMN sidebar_preferences JSON;"))
             conn.commit()
             print("Successfully added sidebar_preferences to users table.")
     except Exception as e:
@@ -675,66 +749,77 @@ def on_startup():
 
     try:
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);"))
+            conn.execute(
+                text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);"))
             conn.commit()
             print("Successfully added phone to users table.")
     except Exception as e:
         print("phone column already exists or error:", e)
-        
+
     try:
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS call_pitch_done BOOLEAN DEFAULT FALSE;"))
-            conn.execute(text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS call_pitch_text TEXT;"))
+            conn.execute(text(
+                "ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS call_pitch_done BOOLEAN DEFAULT FALSE;"))
+            conn.execute(text(
+                "ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS call_pitch_text TEXT;"))
             conn.commit()
             print("Successfully added call_pitch columns to client_profiles table.")
     except Exception as e:
         print("call_pitch columns already exist or error:", e)
-        
+
     try:
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS limit_calls INTEGER DEFAULT 5;"))
-            conn.execute(text("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS usage_calls INTEGER DEFAULT 0;"))
+            conn.execute(text(
+                "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS limit_calls INTEGER DEFAULT 5;"))
+            conn.execute(text(
+                "ALTER TABLE tenants ADD COLUMN IF NOT EXISTS usage_calls INTEGER DEFAULT 0;"))
             conn.commit()
             print("Successfully added call limit/usage columns to tenants table.")
     except Exception as e:
         print("tenant call limit/usage columns already exist or error:", e)
-        
+
     try:
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE leads ADD COLUMN ai_analysis_results JSON;"))
+            conn.execute(
+                text("ALTER TABLE leads ADD COLUMN ai_analysis_results JSON;"))
             conn.commit()
             print("Successfully added ai_analysis_results to leads table.")
     except Exception as e:
         print("ai_analysis_results column already exists or error:", e)
-        
+
     try:
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
-            conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
+            conn.execute(
+                text("ALTER TABLE client_profiles ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
+            conn.execute(
+                text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS swot_analysis TEXT;"))
             conn.commit()
             print("Successfully added swot_analysis to client_profiles and leads tables.")
     except Exception as e:
         print("swot_analysis column already exists or error:", e)
-        
+
     try:
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE projects ADD COLUMN project_type VARCHAR DEFAULT 'Development';"))
+            conn.execute(text(
+                "ALTER TABLE projects ADD COLUMN project_type VARCHAR DEFAULT 'Development';"))
             conn.commit()
             print("Successfully added project_type to projects table.")
     except Exception as e:
         print("project_type column already exists or error:", e)
-        
+
     try:
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE projects ADD COLUMN \"clientId\" INTEGER;"))
+            conn.execute(
+                text("ALTER TABLE projects ADD COLUMN \"clientId\" INTEGER;"))
             conn.commit()
             print("Successfully added clientId to projects table.")
     except Exception as e:
         print("clientId column already exists or error:", e)
-        
+
     try:
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE projects ADD COLUMN \"leadId\" INTEGER;"))
+            conn.execute(
+                text("ALTER TABLE projects ADD COLUMN \"leadId\" INTEGER;"))
             conn.commit()
             print("Successfully added leadId to projects table.")
     except Exception as e:
@@ -742,7 +827,8 @@ def on_startup():
 
     try:
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(50);"))
+            conn.execute(
+                text("ALTER TABLE users ADD COLUMN phone VARCHAR(50);"))
             conn.commit()
             print("Successfully added phone to users table.")
     except Exception as e:
@@ -750,8 +836,10 @@ def on_startup():
 
     try:
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE tenants ADD COLUMN limit_calls INTEGER DEFAULT 5;"))
-            conn.execute(text("ALTER TABLE tenants ADD COLUMN usage_calls INTEGER DEFAULT 0;"))
+            conn.execute(
+                text("ALTER TABLE tenants ADD COLUMN limit_calls INTEGER DEFAULT 5;"))
+            conn.execute(
+                text("ALTER TABLE tenants ADD COLUMN usage_calls INTEGER DEFAULT 0;"))
             conn.commit()
             print("Successfully added call limits to tenants table.")
     except Exception as e:
@@ -774,19 +862,23 @@ def on_startup():
                 except Exception as _e:
                     print("Keepalive ping failed:", _e)
 
-        _threading.Thread(target=_db_keepalive_loop, daemon=True, name="db-keepalive").start()
+        _threading.Thread(target=_db_keepalive_loop,
+                          daemon=True, name="db-keepalive").start()
         print("DB keepalive started (pings every 60s).")
     except Exception as e:
         print("Could not start DB keepalive:", e)
 
     try:
         with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS url VARCHAR(1000);"))
-            conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS case_type VARCHAR(100) DEFAULT 'Bug';"))
+            conn.execute(
+                text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS url VARCHAR(1000);"))
+            conn.execute(text(
+                "ALTER TABLE cases ADD COLUMN IF NOT EXISTS case_type VARCHAR(100) DEFAULT 'Bug';"))
             conn.commit()
             print("Successfully added url and case_type columns to cases table.")
     except Exception as e:
         print("cases url/case_type columns already exist or error:", e)
+
 
 allowed_origins = [
     "https://serphawk-crm-seo.vercel.app",
@@ -805,10 +897,6 @@ allowed_origins = [
     "http://dapros.serphawk.in"
 ]
 
-
-from fastapi.responses import JSONResponse
-from fastapi import Request
-import traceback
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -830,8 +918,6 @@ app.add_middleware(
 )
 
 # Serve uploaded files
-from fastapi.staticfiles import StaticFiles
-import os
 os.makedirs("static/uploads", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -845,21 +931,22 @@ def _send_notification_email(to_email: str, subject: str, body_html: str):
         try:
             from modules.email_sender import send_email_outlook
             import os
-            sender = os.environ.get("EMAIL_SENDER") or os.environ.get("OUTLOOK_EMAIL") or ""
-            password = os.environ.get("EMAIL_PASSWORD") or os.environ.get("OUTLOOK_PASSWORD") or ""
-            smtp_server = os.environ.get("EMAIL_HOST") or os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-            smtp_port = int(os.environ.get("EMAIL_PORT") or os.environ.get("SMTP_PORT", 587))
+            sender = os.environ.get("EMAIL_SENDER") or os.environ.get(
+                "OUTLOOK_EMAIL") or ""
+            password = os.environ.get("EMAIL_PASSWORD") or os.environ.get(
+                "OUTLOOK_PASSWORD") or ""
+            smtp_server = os.environ.get("EMAIL_HOST") or os.environ.get(
+                "SMTP_SERVER", "smtp.gmail.com")
+            smtp_port = int(os.environ.get("EMAIL_PORT")
+                            or os.environ.get("SMTP_PORT", 587))
             if sender and password:
                 send_email_outlook(to_email, subject, body_html, sender, password,
                                    smtp_server=smtp_server, smtp_port=smtp_port)
         except Exception as e:
             print(f"[Notification email failed] {e}")
-            
+
     import threading
     threading.Thread(target=_send).start()
-
-
-
 
 
 # Register /sent-emails endpoint after app and get_session are defined
@@ -869,8 +956,11 @@ register_sent_emails_endpoint(app, get_session)
 company_analysis_cache = {}
 
 # --- Research and Service Mapping Endpoint ---
+
+
 class ResearchMapRequest(BaseModel):
     company_url: str
+
 
 @app.post("/research-map-company")
 async def research_map_company_endpoint(body: ResearchMapRequest, background_tasks: BackgroundTasks = None):
@@ -885,7 +975,8 @@ async def research_map_company_endpoint(body: ResearchMapRequest, background_tas
 class SmartResearchRequest(BaseModel):
     company_name: str
     company_url: Optional[str] = None
-    client_id: Optional[int] = None  # If set, link extracted services to this CRM client
+    # If set, link extracted services to this CRM client
+    client_id: Optional[int] = None
     owner_name: Optional[str] = "Varshith"
 
 
@@ -903,11 +994,13 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
         try:
             from modules.llm_engine import deep_investigate_company
             from modules.scraper import research_and_map_company
-            import json, re, asyncio as _asyncio
+            import json
+            import re
+            import asyncio as _asyncio
 
             url = website or ""
             if not url and company_name:
-                slug = company_name.lower().replace(" ", "").replace(",","").replace(".","")
+                slug = company_name.lower().replace(" ", "").replace(",", "").replace(".", "")
                 url = f"https://www.{slug}.com"
             if not url:
                 return
@@ -916,14 +1009,17 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
             raw_text = ""
             try:
                 loop = _asyncio.new_event_loop()
-                scrape_result = loop.run_until_complete(research_and_map_company(url))
+                scrape_result = loop.run_until_complete(
+                    research_and_map_company(url))
                 loop.close()
                 raw_text = scrape_result.get("raw_text", "") or ""
             except Exception as scrape_err:
-                print(f"[AutoResearch] Scrape failed (using GPT knowledge only): {scrape_err}")
+                print(
+                    f"[AutoResearch] Scrape failed (using GPT knowledge only): {scrape_err}")
 
             # Step 2: Run the deep investigation with GPT-4o
-            print(f"[AutoResearch] Running deep investigation for {company_name} ({url})")
+            print(
+                f"[AutoResearch] Running deep investigation for {company_name} ({url})")
             data = deep_investigate_company(
                 company_name=company_name,
                 website=url,
@@ -938,46 +1034,58 @@ def _trigger_background_research(entity_id: int, entity_type: str, company_name:
             company_info = data.get("company_info", {}) or {}
             if not email_addr:
                 extracted = company_info.get("extracted_emails", "") or ""
-                email_addr = extracted.split(",")[0].strip() if extracted else ""
+                email_addr = extracted.split(
+                    ",")[0].strip() if extracted else ""
             if not phone_num:
-                extracted_ph = company_info.get("extracted_phone_numbers", "") or ""
-                phone_num = extracted_ph.split(",")[0].strip() if extracted_ph else ""
+                extracted_ph = company_info.get(
+                    "extracted_phone_numbers", "") or ""
+                phone_num = extracted_ph.split(
+                    ",")[0].strip() if extracted_ph else ""
 
             from sqlmodel import Session as _Session, select as _select
             from database import ClientResearch, Lead, ClientProfile, engine as _engine
             with _Session(_engine) as sess:
                 if entity_type == "lead":
-                    cr = sess.exec(_select(ClientResearch).where(ClientResearch.lead_id == entity_id)).first()
+                    cr = sess.exec(_select(ClientResearch).where(
+                        ClientResearch.lead_id == entity_id)).first()
                     if not cr:
                         cr = ClientResearch(lead_id=entity_id)
                     # Also update lead email/phone if discovered
                     lead_obj = sess.get(Lead, entity_id)
                     if lead_obj:
-                        if not lead_obj.email and email_addr: lead_obj.email = email_addr
-                        if not lead_obj.phone and phone_num: lead_obj.phone = phone_num
+                        if not lead_obj.email and email_addr:
+                            lead_obj.email = email_addr
+                        if not lead_obj.phone and phone_num:
+                            lead_obj.phone = phone_num
                         sess.add(lead_obj)
                 else:
-                    cr = sess.exec(_select(ClientResearch).where(ClientResearch.client_id == entity_id)).first()
+                    cr = sess.exec(_select(ClientResearch).where(
+                        ClientResearch.client_id == entity_id)).first()
                     if not cr:
                         cr = ClientResearch(client_id=entity_id)
                 cr.email_agent_data = json.dumps(data)
-                cr.company_overview = data.get("company_overview", "") or data.get("executive_verdict", "")
+                cr.company_overview = data.get(
+                    "company_overview", "") or data.get("executive_verdict", "")
                 cr.key_decision_makers = json.dumps(contacts)
                 # Store additional rich fields
                 icps = data.get("ideal_customer_profiles", [])
                 cr.pain_points = json.dumps(icps) if icps else None
-                cr.business_goals = json.dumps(data.get("gtm_recommendations", {})) if data.get("gtm_recommendations") else None
-                cr.competitors = json.dumps(data.get("competitive_landscape", {})) if data.get("competitive_landscape") else None
+                cr.business_goals = json.dumps(data.get("gtm_recommendations", {})) if data.get(
+                    "gtm_recommendations") else None
+                cr.competitors = json.dumps(data.get("competitive_landscape", {})) if data.get(
+                    "competitive_landscape") else None
                 sess.add(cr)
                 sess.commit()
             print(f"[AutoResearch] Done for {entity_type} id={entity_id}")
         except Exception as ex:
             import traceback
-            print(f"[AutoResearch] Error for {entity_type} id={entity_id}: {ex}")
+            print(
+                f"[AutoResearch] Error for {entity_type} id={entity_id}: {ex}")
             traceback.print_exc()
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
+
 
 @app.post("/smart-research")
 async def smart_research(body: SmartResearchRequest, session: Session = Depends(get_session)):
@@ -989,20 +1097,21 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
     from modules.scraper import research_and_map_company
     from modules.llm_engine import generate_email
     import json
-    
+
     # Determine the URL
     url = body.company_url
     if not url:
         # Simple fallback if no URL provided
-        formatted_name = body.company_name.replace(" ", "").replace(",", "").replace(".", "").lower()
+        formatted_name = body.company_name.replace(
+            " ", "").replace(",", "").replace(".", "").lower()
         url = f"https://www.{formatted_name}.com"
-        
+
     try:
         # Run local research (which uses Firecrawl and OpenAI)
         result = await research_and_map_company(url)
         analysis = result.get("company_analysis", {})
         mapping = result.get("service_mapping", [])
-        
+
         # Extract Contact Info
         contacts = analysis.get("contacts", [])
         contact = contacts[0] if contacts else {}
@@ -1015,32 +1124,40 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
         name = contact.get("name", "")
         if name is None:
             name = ""
-            
+
         # Contact social
         personal_social = contact.get("personal_social_media", {})
         if personal_social is None:
             personal_social = {}
-        contact_linkedin = personal_social.get("linkedin", "") if isinstance(personal_social, dict) else ""
-        contact_twitter = personal_social.get("twitter", "") if isinstance(personal_social, dict) else ""
-        
+        contact_linkedin = personal_social.get(
+            "linkedin", "") if isinstance(personal_social, dict) else ""
+        contact_twitter = personal_social.get(
+            "twitter", "") if isinstance(personal_social, dict) else ""
+
         # Company Socials
         socials = analysis.get("company_social_media", {})
         if socials is None:
             socials = {}
-        comp_linkedin = socials.get("linkedin", "") if isinstance(socials, dict) else ""
-        comp_twitter = socials.get("twitter", "") if isinstance(socials, dict) else ""
-        comp_instagram = socials.get("instagram", "") if isinstance(socials, dict) else ""
-        comp_facebook = socials.get("facebook", "") if isinstance(socials, dict) else ""
-        
+        comp_linkedin = socials.get(
+            "linkedin", "") if isinstance(socials, dict) else ""
+        comp_twitter = socials.get(
+            "twitter", "") if isinstance(socials, dict) else ""
+        comp_instagram = socials.get(
+            "instagram", "") if isinstance(socials, dict) else ""
+        comp_facebook = socials.get(
+            "facebook", "") if isinstance(socials, dict) else ""
+
         # Get recommended services from the mapping
-        recommended_services = [m.get("dapros_service") for m in mapping if m.get("dapros_service") and m.get("dapros_service") != "None"]
+        recommended_services = [m.get("dapros_service") for m in mapping if m.get(
+            "dapros_service") and m.get("dapros_service") != "None"]
         # Fallback to key value props if empty
         if not recommended_services:
             recommended_services = analysis.get("key_value_props", [])
-            
+
         # Generate the email draft
-        draft_result = generate_email(analysis, contact, recommended_services, body.owner_name)
-        
+        draft_result = generate_email(
+            analysis, contact, recommended_services, body.owner_name)
+
         # Extract Emails, Phones, and Socials from scraper raw text
         raw_text = result.get("raw_text", "")
         import re
@@ -1048,41 +1165,48 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
         scraped_phones = []
         scraped_linkedin = ""
         scraped_twitter = ""
-        
+
         email_match = re.search(r"Extracted Emails:\s*(.+)", raw_text)
         if email_match:
-            scraped_emails = [e.strip() for e in email_match.group(1).split(",") if e.strip()]
-            
+            scraped_emails = [e.strip()
+                              for e in email_match.group(1).split(",") if e.strip()]
+
         phone_match = re.search(r"Extracted Phone Numbers:\s*(.+)", raw_text)
         if phone_match:
-            scraped_phones = [p.strip() for p in phone_match.group(1).split(",") if p.strip()]
-            
+            scraped_phones = [p.strip()
+                              for p in phone_match.group(1).split(",") if p.strip()]
+
         li_match = re.search(r"Extracted LinkedIn Profiles:\s*(.+)", raw_text)
         if li_match:
-            scraped_linkedin = li_match.group(1).split(",")[0].strip() if li_match.group(1).strip() else ""
-            
+            scraped_linkedin = li_match.group(1).split(
+                ",")[0].strip() if li_match.group(1).strip() else ""
+
         tw_match = re.search(r"Extracted Twitter Profiles:\s*(.+)", raw_text)
         if tw_match:
-            scraped_twitter = tw_match.group(1).split(",")[0].strip() if tw_match.group(1).strip() else ""
-            
+            scraped_twitter = tw_match.group(1).split(
+                ",")[0].strip() if tw_match.group(1).strip() else ""
+
         ig_match = re.search(r"Extracted Instagram Profiles:\s*(.+)", raw_text)
-        scraped_ig = ig_match.group(1).split(",")[0].strip() if (ig_match and ig_match.group(1).strip()) else ""
-        
+        scraped_ig = ig_match.group(1).split(",")[0].strip() if (
+            ig_match and ig_match.group(1).strip()) else ""
+
         fb_match = re.search(r"Extracted Facebook Profiles:\s*(.+)", raw_text)
-        scraped_fb = fb_match.group(1).split(",")[0].strip() if (fb_match and fb_match.group(1).strip()) else ""
-        
+        scraped_fb = fb_match.group(1).split(",")[0].strip() if (
+            fb_match and fb_match.group(1).strip()) else ""
+
         yt_match = re.search(r"Extracted Youtube Profiles:\s*(.+)", raw_text)
-        scraped_yt = yt_match.group(1).split(",")[0].strip() if (yt_match and yt_match.group(1).strip()) else ""
+        scraped_yt = yt_match.group(1).split(",")[0].strip() if (
+            yt_match and yt_match.group(1).strip()) else ""
 
         # Merge with LLM findings
         if email and email not in scraped_emails:
             scraped_emails.append(email)
         if phone and phone not in scraped_phones:
             scraped_phones.append(phone)
-            
+
         extracted_emails = ", ".join(scraped_emails) if scraped_emails else ""
         extracted_phones = ", ".join(scraped_phones) if scraped_phones else ""
-        
+
         if scraped_linkedin and not comp_linkedin:
             comp_linkedin = scraped_linkedin
         if scraped_twitter and not comp_twitter:
@@ -1092,7 +1216,6 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
         if scraped_fb and not comp_facebook:
             comp_facebook = scraped_fb
 
-        
         data = {
             "company_info": {
                 "company_name": analysis.get("company_name", body.company_name),
@@ -1123,28 +1246,31 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
             "recommended_services": recommended_services,
             "extracted_services": [{"name": m.get("company_service"), "category": "Service", "approx_cost": 0, "cost_is_estimated": False} for m in mapping if m.get("company_service")]
         }
-        
 
         # --- AUTO-CREATE LEAD AND SAVE RESEARCH ---
         import json
         from database import Lead, ClientResearch
         from sqlmodel import select
-        
+
         # See if a lead already exists for this domain
         existing_lead = None
         if url:
-            domain = url.replace("https://", "").replace("http://", "").replace("www.", "").split('/')[0]
+            domain = url.replace(
+                "https://", "").replace("http://", "").replace("www.", "").split('/')[0]
             if domain:
-                existing_lead = session.exec(select(Lead).where(Lead.website.like(f"%{domain}%"))).first()
-                
+                existing_lead = session.exec(select(Lead).where(
+                    Lead.website.like(f"%{domain}%"))).first()
+
         if not existing_lead and email:
-            existing_lead = session.exec(select(Lead).where(Lead.email == email)).first()
+            existing_lead = session.exec(
+                select(Lead).where(Lead.email == email)).first()
 
         lead_id = None
         if not existing_lead:
             # Create a new lead
             new_lead = Lead(
-                company_name=data["company_info"].get("company_name", body.company_name) or "Unknown Company",
+                company_name=data["company_info"].get(
+                    "company_name", body.company_name) or "Unknown Company",
                 website=url,
                 email=email if email else None,
                 phone=phone if phone else None,
@@ -1161,13 +1287,13 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
             session.add(existing_lead)
             session.commit()
             lead_id = existing_lead.id
-            
+
         # We no longer save Email Agent JSON to ClientResearch.email_agent_data
         # because that field is reserved for the massive Deep Research Markdown report.
         # ------------------------------------------
 
         return data
-        
+
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -1181,6 +1307,8 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
         }
 
 # --- Send Manual: create client + record email + activity ---
+
+
 class SendManualRequest(BaseModel):
     to_email: str
     company_name: str
@@ -1197,6 +1325,7 @@ class SendManualRequest(BaseModel):
     email_agent_data: Optional[str] = None
     skip_send: Optional[bool] = False
     action_type: Optional[str] = "System"
+
 
 @app.post("/send-manual")
 def send_manual(body: SendManualRequest, session: Session = Depends(get_session)):
@@ -1219,12 +1348,13 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     # Step 1: Find or create Lead by email
     to_email = (body.to_email or "").strip()
     if not to_email:
-        raise HTTPException(status_code=400, detail="Recipient email is required")
+        raise HTTPException(
+            status_code=400, detail="Recipient email is required")
 
     lead = session.exec(
         select(Lead).where(Lead.email == to_email)
     ).first()
-    
+
     if not lead:
         lead = Lead(
             company_name=body.company_name or "Unknown Company",
@@ -1249,7 +1379,8 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
 
     # Add Contact if there's contact info
     if body.contact_name:
-        contact = session.exec(select(Contact).where(Contact.email == to_email)).first()
+        contact = session.exec(select(Contact).where(
+            Contact.email == to_email)).first()
         if not contact:
             contact = Contact(
                 first_name=body.contact_name,
@@ -1265,7 +1396,8 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     if body.email_agent_data:
         try:
             import json as _j
-            parsed = _j.loads(body.email_agent_data) if isinstance(body.email_agent_data, str) else body.email_agent_data
+            parsed = _j.loads(body.email_agent_data) if isinstance(
+                body.email_agent_data, str) else body.email_agent_data
             lead.ai_analysis_results = parsed
         except:
             lead.ai_analysis_results = body.email_agent_data
@@ -1306,13 +1438,17 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     if not body.skip_send:
         import os
         import httpx
-        sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
-        password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
-        smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "mail.serphawk.in")
+        sender = os.getenv("EMAIL_SENDER") or os.getenv(
+            "OUTLOOK_EMAIL", "crm@serphawk.in")
+        password = os.getenv("EMAIL_PASSWORD") or os.getenv(
+            "OUTLOOK_PASSWORD", "")
+        smtp_server = os.getenv("EMAIL_HOST") or os.getenv(
+            "SMTP_SERVER", "mail.serphawk.in")
         smtp_port = os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
 
         try:
-            bodies = [b for b in [body.english_body, body.spanish_body] if b and b.strip()]
+            bodies = [b for b in [body.english_body,
+                                  body.spanish_body] if b and b.strip()]
             full_body = "\n\n---\n\n".join(bodies) if bodies else ""
 
             # Send directly over SMTP from crm@serphawk.in so mail goes out even if n8n is down.
@@ -1331,10 +1467,12 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
                 )
                 print(f"Email sent via SMTP to {body.to_email} from {sender}")
             else:
-                print("SMTP not configured (missing EMAIL_SENDER/EMAIL_PASSWORD) - skipping direct send")
+                print(
+                    "SMTP not configured (missing EMAIL_SENDER/EMAIL_PASSWORD) - skipping direct send")
 
             # Fire the N8N webhook best-effort for follow-up automation (never blocks the reply).
-            webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "https://primary-production-d40bc.up.railway.app/webhook/trigger-cold-email")
+            webhook_url = os.getenv(
+                "N8N_EMAIL_WEBHOOK_URL", "https://primary-production-d40bc.up.railway.app/webhook/trigger-cold-email")
             payload = {
                 "event": "email_sent",
                 "email_id": sent_email.id,
@@ -1351,14 +1489,15 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
             try:
                 response = httpx.post(webhook_url, json=payload, timeout=30.0)
                 if response.status_code != 200:
-                    print(f"Webhook Error during send-manual: {response.status_code} - {response.text}")
+                    print(
+                        f"Webhook Error during send-manual: {response.status_code} - {response.text}")
                 else:
-                    print(f"Webhook successfully triggered and responded from manual send to {webhook_url}")
+                    print(
+                        f"Webhook successfully triggered and responded from manual send to {webhook_url}")
             except Exception as e:
                 print(f"Manual Email send failed via webhook: {e}")
         except Exception as e:
             print(f"Manual Email send failed: {e}")
-
 
     # Step 4: Log activity
     try:
@@ -1397,37 +1536,55 @@ def delete_client(client_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Client not found")
 
     from sqlmodel import delete
-    
+
     # We execute all deletes in a single transaction block.
     # No mid-loop rollbacks! We use the exact model attributes defined in database.py
     try:
-        session.execute(delete(ServiceRequest).where(ServiceRequest.client_id == client_id))
-        session.execute(delete(MessageThread).where(MessageThread.client_id == client_id))
+        session.execute(delete(ServiceRequest).where(
+            ServiceRequest.client_id == client_id))
+        session.execute(delete(MessageThread).where(
+            MessageThread.client_id == client_id))
         session.execute(delete(Remark).where(Remark.clientId == client_id))
         session.execute(delete(Document).where(Document.clientId == client_id))
-        session.execute(delete(ActivityLog).where(ActivityLog.clientId == client_id))
+        session.execute(delete(ActivityLog).where(
+            ActivityLog.clientId == client_id))
         session.execute(delete(CallLog).where(CallLog.client_id == client_id))
-        session.execute(delete(SentEmail).where(SentEmail.client_id == client_id))
-        session.execute(delete(SocialProfile).where(SocialProfile.clientId == client_id))
+        session.execute(delete(SentEmail).where(
+            SentEmail.client_id == client_id))
+        session.execute(delete(SocialProfile).where(
+            SocialProfile.clientId == client_id))
         session.execute(delete(SEOAudit).where(SEOAudit.clientId == client_id))
-        session.execute(delete(CompetitorAnalysis).where(CompetitorAnalysis.clientId == client_id))
-        session.execute(delete(RankingTracker).where(RankingTracker.clientId == client_id))
-        session.execute(delete(AnalyticsData).where(AnalyticsData.clientId == client_id))
+        session.execute(delete(CompetitorAnalysis).where(
+            CompetitorAnalysis.clientId == client_id))
+        session.execute(delete(RankingTracker).where(
+            RankingTracker.clientId == client_id))
+        session.execute(delete(AnalyticsData).where(
+            AnalyticsData.clientId == client_id))
         session.execute(delete(Task).where(Task.client_id == client_id))
         session.execute(delete(Invoice).where(Invoice.client_id == client_id))
-        session.execute(delete(Milestone).where(Milestone.client_id == client_id))
-        session.execute(delete(NPSSurvey).where(NPSSurvey.client_id == client_id))
-        session.execute(delete(Proposal).where(Proposal.client_id == client_id))
-        session.execute(delete(ClientFileUpload).where(ClientFileUpload.client_id == client_id))
-        session.execute(delete(KeywordRankEntry).where(KeywordRankEntry.client_id == client_id))
-        session.execute(delete(ClientNote).where(ClientNote.client_id == client_id))
+        session.execute(delete(Milestone).where(
+            Milestone.client_id == client_id))
+        session.execute(delete(NPSSurvey).where(
+            NPSSurvey.client_id == client_id))
+        session.execute(delete(Proposal).where(
+            Proposal.client_id == client_id))
+        session.execute(delete(ClientFileUpload).where(
+            ClientFileUpload.client_id == client_id))
+        session.execute(delete(KeywordRankEntry).where(
+            KeywordRankEntry.client_id == client_id))
+        session.execute(delete(ClientNote).where(
+            ClientNote.client_id == client_id))
         session.execute(delete(Deal).where(Deal.client_id == client_id))
-        session.execute(delete(ConversationLog).where(ConversationLog.client_id == client_id))
-        session.execute(delete(ClientResearch).where(ClientResearch.client_id == client_id))
-        session.execute(delete(ClientTicket).where(ClientTicket.client_id == client_id))
-        
+        session.execute(delete(ConversationLog).where(
+            ConversationLog.client_id == client_id))
+        session.execute(delete(ClientResearch).where(
+            ClientResearch.client_id == client_id))
+        session.execute(delete(ClientTicket).where(
+            ClientTicket.client_id == client_id))
+
         # Marketplace service provider links
-        session.execute(delete(MarketplaceService).where(MarketplaceService.provider_client_id == client_id))
+        session.execute(delete(MarketplaceService).where(
+            MarketplaceService.provider_client_id == client_id))
 
         # Delete the user account linked to this client (only if it's a Client-role user)
         if cp.userId:
@@ -1441,8 +1598,8 @@ def delete_client(client_id: int, session: Session = Depends(get_session)):
     except Exception as e:
         session.rollback()
         print(f"[DeleteClient] Error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete client: {str(e)}")
-
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete client: {str(e)}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1452,13 +1609,15 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+
 class ChatbotRequest(BaseModel):
     message: str
     client_id: Optional[int] = None
     current_route: Optional[str] = None
     chat_history: Optional[str] = None
     session_id: Optional[str] = None
-    user_role: Optional[str] = None  # Admin, SalesManager, Employee, ProjectMember, Supplier, Demo
+    # Admin, SalesManager, Employee, ProjectMember, Supplier, Demo
+    user_role: Optional[str] = None
 
 
 class CreateUserRequest(BaseModel):
@@ -1565,6 +1724,7 @@ class ClientFollowUpRequest(BaseModel):
 class ProjectTeamRequest(BaseModel):
     emails: list[str]
     roles: list[str]
+
 
 class ProjectTicketRequest(BaseModel):
     competitor: str | None = None
@@ -1706,6 +1866,7 @@ _TASK_STATUS_MAP: dict = {
     "DONE": "done",
 }
 
+
 def _normalize_task_status(s: Optional[str]) -> Optional[str]:
     if not s:
         return s
@@ -1723,6 +1884,7 @@ class TaskCreateRequest(BaseModel):
     project_id: Optional[int] = None
     assigned_to: Optional[int] = None
     created_by: Optional[int] = None
+
 
 class TaskUpdateRequest(BaseModel):
     title: Optional[str] = None
@@ -1897,11 +2059,13 @@ class ClientResearchUpdateRequest(BaseModel):
     business_goals: Optional[str] = None
     key_decision_makers: Optional[str] = None
 
+
 class ClientTicketCreateRequest(BaseModel):
     title: str
     description: Optional[str] = None
     author_id: Optional[int] = None
     status: str = "Pending"
+
 
 class ClientTicketUpdateRequest(BaseModel):
     title: Optional[str] = None
@@ -1979,7 +2143,8 @@ def _user_dict(u: User) -> dict:
 
 def _client_dict(cp: ClientProfile, session: Session) -> dict:
     user = session.get(User, cp.userId) if cp.userId else None
-    employee = session.get(User, cp.assignedEmployeeId) if cp.assignedEmployeeId else None
+    employee = session.get(
+        User, cp.assignedEmployeeId) if cp.assignedEmployeeId else None
     cf = cp.customFields or {}
     sd = cf.get("sheet_data", {})
 
@@ -1993,26 +2158,32 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
                     return str(sv).strip()
         return None
 
-    website         = _get(cp.websiteUrl, "Website URL", "Website", "url", "Company Website", "Company Web Site", "website_url", "Domain")
-    company_name    = _get(cp.companyName, "Client Name", "Company", "Company Name", "Name")
-    
+    website = _get(cp.websiteUrl, "Website URL", "Website", "url",
+                   "Company Website", "Company Web Site", "website_url", "Domain")
+    company_name = _get(cp.companyName, "Client Name",
+                        "Company", "Company Name", "Name")
+
     # If company name is STILL blank (e.g. legacy import with no company column), derive from website
     if not company_name and website:
         import urllib.parse
         try:
-            parsed = urllib.parse.urlparse(website if "://" in website else "http://" + website)
+            parsed = urllib.parse.urlparse(
+                website if "://" in website else "http://" + website)
             domain = parsed.netloc.replace("www.", "").split(".")[0]
             if domain:
                 company_name = domain.capitalize()
         except Exception:
             pass
 
-    services        = _get(cp.services_offered, "Services", "Services providing", "Services Offered")
-    description     = _get(cp.tagline, "Description", "description", "Notes")
-    phone           = _get(cp.phone, "Contact", "Phone", "Phone Number", "phone_number", "phone")
-    country         = _get(cp.address, "Country", "country", "Region")
+    services = _get(cp.services_offered, "Services",
+                    "Services providing", "Services Offered")
+    description = _get(cp.tagline, "Description", "description", "Notes")
+    phone = _get(cp.phone, "Contact", "Phone",
+                 "Phone Number", "phone_number", "phone")
+    country = _get(cp.address, "Country", "country", "Region")
 
-    last_act_log = session.exec(select(ActivityLog).where(ActivityLog.clientId == cp.id).order_by(ActivityLog.createdAt.desc())).first()
+    last_act_log = session.exec(select(ActivityLog).where(
+        ActivityLog.clientId == cp.id).order_by(ActivityLog.createdAt.desc())).first()
 
     return {
         "id": cp.id,
@@ -2061,7 +2232,7 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 # Auth
 # ─────────────────────────────────────────────────────────────────────────────
-from pydantic import BaseModel
+
 
 class SignupRequest(BaseModel):
     name: str
@@ -2070,13 +2241,15 @@ class SignupRequest(BaseModel):
     phone: str
     password: str
 
+
 @app.post("/signup")
 def signup(body: SignupRequest, session: Session = Depends(get_session)):
     # 1. Check if user already exists
-    existing_user = session.exec(select(User).where(User.email == body.email)).first()
+    existing_user = session.exec(
+        select(User).where(User.email == body.email)).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already exists")
-        
+
     # 2. Create new Tenant (Trial)
     tenant = Tenant(
         name=f"{body.business_name} - {body.name}",
@@ -2091,7 +2264,7 @@ def signup(body: SignupRequest, session: Session = Depends(get_session)):
     session.add(tenant)
     session.commit()
     session.refresh(tenant)
-    
+
     # 3. Create Admin User for this Tenant
     hashed = _hash_password(body.password)
     new_user = User(
@@ -2102,9 +2275,10 @@ def signup(body: SignupRequest, session: Session = Depends(get_session)):
         tenant_id=tenant.id
     )
     session.add(new_user)
-    
+
     # 4. Create Lead in Master Admin CRM
-    master = session.exec(select(Tenant).where(Tenant.name == "Master Admin")).first()
+    master = session.exec(select(Tenant).where(
+        Tenant.name == "Master Admin")).first()
     if master:
         lead = Lead(
             name=body.name,
@@ -2116,10 +2290,11 @@ def signup(body: SignupRequest, session: Session = Depends(get_session)):
             tenant_id=master.id
         )
         session.add(lead)
-        
+
     session.commit()
-    
+
     return {"message": "Trial account created successfully", "tenant_id": tenant.id}
+
 
 @app.get("/omnisearch")
 def omnisearch(q: str, session: Session = Depends(get_session)):
@@ -2136,10 +2311,12 @@ def omnisearch(q: str, session: Session = Depends(get_session)):
     # Search Clients
     clients = session.exec(select(ClientProfile).where(
         ClientProfile.tenant_id == tenant_id,
-        or_(ClientProfile.companyName.ilike(search_term), ClientProfile.contactPerson.ilike(search_term), ClientProfile.email.ilike(search_term))
+        or_(ClientProfile.companyName.ilike(search_term), ClientProfile.contactPerson.ilike(
+            search_term), ClientProfile.email.ilike(search_term))
     ).limit(5)).all()
     for c in clients:
-        results.append({"type": "Client", "title": c.companyName, "subtitle": c.contactPerson, "route": f"/admin/clients/{c.id}"})
+        results.append({"type": "Client", "title": c.companyName,
+                       "subtitle": c.contactPerson, "route": f"/admin/clients/{c.id}"})
 
     # Search Leads
     leads = session.exec(select(Lead).where(
@@ -2147,7 +2324,8 @@ def omnisearch(q: str, session: Session = Depends(get_session)):
         or_(Lead.company_name.ilike(search_term), Lead.email.ilike(search_term))
     ).limit(5)).all()
     for l in leads:
-        results.append({"type": "Lead", "title": l.company_name, "subtitle": l.email or "", "route": f"/leads"})
+        results.append({"type": "Lead", "title": l.company_name,
+                       "subtitle": l.email or "", "route": f"/leads"})
 
     # Search Tasks
     tasks = session.exec(select(Task).where(
@@ -2155,7 +2333,8 @@ def omnisearch(q: str, session: Session = Depends(get_session)):
         or_(Task.title.ilike(search_term), Task.description.ilike(search_term))
     ).limit(5)).all()
     for t in tasks:
-        results.append({"type": "Task", "title": t.title, "subtitle": t.status, "route": f"/tasks"})
+        results.append({"type": "Task", "title": t.title,
+                       "subtitle": t.status, "route": f"/tasks"})
 
     # Search Deals
     deals = session.exec(select(Deal).where(
@@ -2163,21 +2342,25 @@ def omnisearch(q: str, session: Session = Depends(get_session)):
         Deal.title.ilike(search_term)
     ).limit(5)).all()
     for d in deals:
-        results.append({"type": "Deal", "title": d.title, "subtitle": f"${d.value}", "route": f"/pipeline"})
+        results.append({"type": "Deal", "title": d.title,
+                       "subtitle": f"${d.value}", "route": f"/pipeline"})
 
     return {"results": results}
+
 
 @app.get("/activities/global")
 def global_activities(session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
     if not tenant_id:
         return {"activities": []}
-    
+
     from database import ActivityLog
     from sqlalchemy import select
-    
-    activities = session.exec(select(ActivityLog).where(ActivityLog.tenant_id == tenant_id).order_by(ActivityLog.createdAt.desc()).limit(30)).all()
+
+    activities = session.exec(select(ActivityLog).where(
+        ActivityLog.tenant_id == tenant_id).order_by(ActivityLog.createdAt.desc()).limit(30)).all()
     return {"activities": activities}
+
 
 @app.get("/superadmin/tenants")
 def get_all_tenants(session: Session = Depends(get_session)):
@@ -2187,30 +2370,35 @@ def get_all_tenants(session: Session = Depends(get_session)):
     import contextvars
     from database import Tenant, User, ClientProfile
     from sqlalchemy import select, func
-    
-    # We don't have to clear contextvars because the do_orm_execute filter 
+
+    # We don't have to clear contextvars because the do_orm_execute filter
     # only filters if current_tenant_id is set. Wait, it IS set by the middleware!
-    # So we must query directly using SQLAlchemy core or raw SQL to bypass the ORM event, 
+    # So we must query directly using SQLAlchemy core or raw SQL to bypass the ORM event,
     # OR we can just reset current_tenant_id for the duration of this function.
-    
+
     old_tenant = current_tenant_id.get()
     current_tenant_id.set(None)
-    
+
     try:
         tenants = session.exec(select(Tenant)).all()
         result = []
         for t_row in tenants:
-            t = t_row[0] if isinstance(t_row, tuple) or type(t_row).__name__ in ("Row", "BaseRow") else t_row
-            
+            t = t_row[0] if isinstance(t_row, tuple) or type(
+                t_row).__name__ in ("Row", "BaseRow") else t_row
+
             # Count users
-            user_count = session.exec(select(func.count(User.id)).where(User.tenant_id == t.id)).first()
+            user_count = session.exec(
+                select(func.count(User.id)).where(User.tenant_id == t.id)).first()
             # Count clients
-            client_count = session.exec(select(func.count(ClientProfile.id)).where(ClientProfile.tenant_id == t.id)).first()
-            
+            client_count = session.exec(select(func.count(ClientProfile.id)).where(
+                ClientProfile.tenant_id == t.id)).first()
+
             # Since func.count might return a tuple/row in older SQLModel versions, unwrap it too
-            user_count = user_count[0] if isinstance(user_count, tuple) or type(user_count).__name__ in ("Row", "BaseRow") else user_count
-            client_count = client_count[0] if isinstance(client_count, tuple) or type(client_count).__name__ in ("Row", "BaseRow") else client_count
-            
+            user_count = user_count[0] if isinstance(user_count, tuple) or type(
+                user_count).__name__ in ("Row", "BaseRow") else user_count
+            client_count = client_count[0] if isinstance(client_count, tuple) or type(
+                client_count).__name__ in ("Row", "BaseRow") else client_count
+
             result.append({
                 "id": t.id,
                 "name": t.name,
@@ -2232,8 +2420,10 @@ def get_all_tenants(session: Session = Depends(get_session)):
     finally:
         current_tenant_id.set(old_tenant)
 
+
 class RequestUpgradeRequest(BaseModel):
     limit_type: str
+
 
 @app.post("/tenant/request-upgrade")
 def request_upgrade(body: RequestUpgradeRequest, session: Session = Depends(get_session)):
@@ -2242,9 +2432,9 @@ def request_upgrade(body: RequestUpgradeRequest, session: Session = Depends(get_
     user_id = current_salesperson_id.get()
     if not tenant_id or not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
-        
+
     from database import ActivityLog, Notification, User
-    
+
     # 1. Telemetry / ActivityLog
     log = ActivityLog(
         tenant_id=tenant_id,
@@ -2254,10 +2444,11 @@ def request_upgrade(body: RequestUpgradeRequest, session: Session = Depends(get_
         details=f"User requested account upgrade after hitting trial limit for: {body.limit_type}"
     )
     session.add(log)
-    
+
     # 2. Notification to Admin(s) of this tenant
     # Find admins for this tenant
-    admins = session.exec(select(User).where(User.tenant_id == tenant_id, User.role == "Admin")).all()
+    admins = session.exec(select(User).where(
+        User.tenant_id == tenant_id, User.role == "Admin")).all()
     for admin in admins:
         notif = Notification(
             tenant_id=tenant_id,
@@ -2267,9 +2458,10 @@ def request_upgrade(body: RequestUpgradeRequest, session: Session = Depends(get_
             type="warning"
         )
         session.add(notif)
-        
+
     session.commit()
     return {"success": True}
+
 
 class TenantLimitUpdateRequest(BaseModel):
     limit_clients: Optional[int] = None
@@ -2279,6 +2471,7 @@ class TenantLimitUpdateRequest(BaseModel):
     reset_usage: Optional[bool] = False
     is_trial: Optional[bool] = None
 
+
 @app.patch("/superadmin/tenants/{tenant_id}/limits")
 def update_tenant_limits(tenant_id: int, body: TenantLimitUpdateRequest, session: Session = Depends(get_session)):
     """Superadmin: update limits and optionally reset usage for a tenant."""
@@ -2286,7 +2479,8 @@ def update_tenant_limits(tenant_id: int, body: TenantLimitUpdateRequest, session
     old_tenant = current_tenant_id.get()
     current_tenant_id.set(None)
     try:
-        tenant = session.exec(select(Tenant).where(Tenant.id == tenant_id)).first()
+        tenant = session.exec(select(Tenant).where(
+            Tenant.id == tenant_id)).first()
         if not tenant:
             raise HTTPException(status_code=404, detail="Tenant not found")
         if body.limit_clients is not None:
@@ -2316,13 +2510,14 @@ class PageVisitRequest(BaseModel):
     page_path: str
     time_spent_seconds: int
 
+
 @app.post("/telemetry/page-visit")
 def log_page_visit(body: PageVisitRequest, session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
     user_id = current_salesperson_id.get()
     if not tenant_id or not user_id:
         return {"status": "skipped", "reason": "unauthenticated"}
-    
+
     from database import PageVisitTelemetry
     visit = PageVisitTelemetry(
         tenant_id=tenant_id,
@@ -2342,54 +2537,63 @@ def get_global_telemetry(session: Session = Depends(get_session)):
     import contextvars
     from database import Tenant, User, ClientProfile, PageVisitTelemetry
     from sqlalchemy import select, func
-    
+
     old_tenant = current_tenant_id.get()
     current_tenant_id.set(None)
-    
+
     try:
         # Aggregated Tenant Stats
         tenants = session.exec(select(Tenant)).all()
-        
+
         def is_tenant_trial(t):
-            obj = t[0] if isinstance(t, tuple) or type(t).__name__ in ("Row", "BaseRow") else t
+            obj = t[0] if isinstance(t, tuple) or type(
+                t).__name__ in ("Row", "BaseRow") else t
             return getattr(obj, "is_trial", False)
-            
+
         demo_accounts = sum(1 for t in tenants if is_tenant_trial(t))
         active_accounts = sum(1 for t in tenants if not is_tenant_trial(t))
-        
+
         # Aggregated Usage Stats
         total_users_result = session.exec(select(func.count(User.id))).first()
-        total_users = total_users_result[0] if isinstance(total_users_result, tuple) or type(total_users_result).__name__ in ("Row", "BaseRow") else (total_users_result or 0)
+        total_users = total_users_result[0] if isinstance(total_users_result, tuple) or type(
+            total_users_result).__name__ in ("Row", "BaseRow") else (total_users_result or 0)
 
         def get_tenant_attr(t, attr, default=0):
-            obj = t[0] if isinstance(t, tuple) or type(t).__name__ in ("Row", "BaseRow") else t
+            obj = t[0] if isinstance(t, tuple) or type(
+                t).__name__ in ("Row", "BaseRow") else t
             return getattr(obj, attr, default)
 
-        total_clients = sum(get_tenant_attr(t, "usage_clients") for t in tenants)
+        total_clients = sum(get_tenant_attr(t, "usage_clients")
+                            for t in tenants)
         total_emails = sum(get_tenant_attr(t, "usage_emails") for t in tenants)
-        total_searches = sum(get_tenant_attr(t, "usage_searches") for t in tenants)
-        
+        total_searches = sum(get_tenant_attr(t, "usage_searches")
+                             for t in tenants)
+
         # Global Page Utilization
         visits = session.exec(
             select(
                 PageVisitTelemetry.page_path,
-                func.sum(PageVisitTelemetry.time_spent_seconds).label("total_time"),
+                func.sum(PageVisitTelemetry.time_spent_seconds).label(
+                    "total_time"),
                 func.count(PageVisitTelemetry.id).label("visit_count")
             ).group_by(PageVisitTelemetry.page_path).order_by(func.sum(PageVisitTelemetry.time_spent_seconds).desc()).limit(10)
         ).all()
-        
+
         top_pages = []
         for v in visits:
-            path = v[0] if isinstance(v, tuple) or type(v).__name__ in ("Row", "BaseRow") else getattr(v, "page_path", "")
-            time_spent = v[1] if isinstance(v, tuple) or type(v).__name__ in ("Row", "BaseRow") else getattr(v, "total_time", 0)
-            visit_count = v[2] if isinstance(v, tuple) or type(v).__name__ in ("Row", "BaseRow") else getattr(v, "visit_count", 0)
-            
+            path = v[0] if isinstance(v, tuple) or type(v).__name__ in (
+                "Row", "BaseRow") else getattr(v, "page_path", "")
+            time_spent = v[1] if isinstance(v, tuple) or type(v).__name__ in (
+                "Row", "BaseRow") else getattr(v, "total_time", 0)
+            visit_count = v[2] if isinstance(v, tuple) or type(v).__name__ in (
+                "Row", "BaseRow") else getattr(v, "visit_count", 0)
+
             top_pages.append({
                 "path": path,
                 "time_spent": int(time_spent or 0),
                 "visits": int(visit_count or 0)
             })
-            
+
         return {
             "demo_accounts": demo_accounts,
             "active_accounts": active_accounts,
@@ -2407,71 +2611,113 @@ def get_global_telemetry(session: Session = Depends(get_session)):
 def get_dashboard_call_pitch(session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
     q = select(ClientProfile).where(ClientProfile.call_pitch_done == False)
+
     if tenant_id:
         q = q.where(ClientProfile.tenant_id == tenant_id)
+
     client = session.exec(q.order_by(ClientProfile.id.desc())).first()
-    
+
     if not client:
         return {"client": None, "pitch_text": None}
-        
+
     if not client.call_pitch_text:
-        # Check limit for Demo users
         if tenant_id:
             tenant = session.get(Tenant, tenant_id)
+
             if tenant:
-                user = session.exec(select(User).where(User.tenant_id == tenant_id)).first()
+                user = session.exec(
+                    select(User).where(User.tenant_id == tenant_id)
+                ).first()
+
                 if user and user.role == "Demo":
                     if tenant.usage_calls >= tenant.limit_calls:
-                        return {"client": _client_dict(client, session), "pitch_text": "Demo limit reached. You can only generate up to 5 pitches."}
+                        return {
+                            "client": _client_dict(client, session),
+                            "pitch_text": "Demo limit reached. You can only generate up to 5 pitches."
+                        }
+
                     tenant.usage_calls += 1
                     session.add(tenant)
                     session.commit()
 
-        # Generate pitch using OpenAI
         try:
             import openai
             import os
+
             api_key = os.getenv("OPENAI_API_KEY", "dummy")
             client_ai = openai.OpenAI(api_key=api_key)
+
             prompt = f"Write a short, punchy 3-sentence sales call pitch for {client.companyName or 'a new client'} in the {client.industry or 'general'} industry. Target keywords: {client.targetKeywords}. Services offered: {client.services_offered}."
+
             response = client_ai.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": "You are a top-tier B2B sales expert."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are a top-tier B2B sales expert."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
                 ],
                 max_tokens=150
             )
+
             pitch = response.choices[0].message.content.strip()
+
             client.call_pitch_text = pitch
             session.add(client)
             session.commit()
             session.refresh(client)
+
         except Exception as e:
             print(f"Error generating call pitch: {e}")
-            client.call_pitch_text = "Hi! I noticed your company might need some help with SEO and growth. I'd love to chat about how we can help you scale."
+
+            client.call_pitch_text = (
+                "Hi! I noticed your company might need some help with SEO "
+                "and growth. I'd love to chat about how we can help you scale."
+            )
+
             session.add(client)
             session.commit()
-            
-    research_entry = session.exec(select(ClientResearch).where(ClientResearch.client_id == client.id)).first()
+
+
+    audio_path = None
+
+    try:
+        audio_path = text_to_speech(client.call_pitch_text)
+    except Exception as e:
+        print(f"TTS generation failed: {e}")
+
+    research_entry = session.exec(
+        select(ClientResearch).where(
+            ClientResearch.client_id == client.id
+        )
+    ).first()
+
     return {
-        "client": _client_dict(client, session), 
+        "client": _client_dict(client, session),
         "pitch_text": client.call_pitch_text,
+        "audio_path": audio_path,
         "agent_data": research_entry.email_agent_data if research_entry else None,
         "deep_research": research_entry.company_overview if research_entry else None
     }
 
+
 class CallPitchDoneRequest(BaseModel):
     feedback: str = ""
 
+
 @app.post("/dashboard-call-pitch/{client_id}/done")
 def mark_call_pitch_done(client_id: int, body: Optional[CallPitchDoneRequest] = None, session: Session = Depends(get_session)):
-    client = session.exec(select(ClientProfile).where(ClientProfile.id == client_id)).first()
+    client = session.exec(select(ClientProfile).where(
+        ClientProfile.id == client_id)).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     client.call_pitch_done = True
     session.add(client)
-    
+
     if body and body.feedback:
         act = ActivityLog(
             clientId=client.id,
@@ -2480,7 +2726,7 @@ def mark_call_pitch_done(client_id: int, body: Optional[CallPitchDoneRequest] = 
             content=f"AI Call Pitch Outcome: {body.feedback}"
         )
         session.add(act)
-        
+
     session.commit()
     return {"status": "ok"}
 
@@ -2491,50 +2737,55 @@ def analyze_tenant_usage(tenant_id: int, session: Session = Depends(get_session)
     _require_roles(session, ["SuperAdmin"])
     old_tenant = current_tenant_id.get()
     current_tenant_id.set(None)
-    
+
     try:
         from database import PageVisitTelemetry
         from sqlalchemy import func
-        tenant = session.exec(select(Tenant).where(Tenant.id == tenant_id)).first()
+        tenant = session.exec(select(Tenant).where(
+            Tenant.id == tenant_id)).first()
         if not tenant:
             raise HTTPException(status_code=404, detail="Tenant not found")
-        
+
         # Aggregate page visits
         visits = session.exec(
             select(
                 PageVisitTelemetry.page_path,
-                func.sum(PageVisitTelemetry.time_spent_seconds).label("total_time"),
+                func.sum(PageVisitTelemetry.time_spent_seconds).label(
+                    "total_time"),
                 func.count(PageVisitTelemetry.id).label("visit_count")
             ).where(PageVisitTelemetry.tenant_id == tenant.id).group_by(PageVisitTelemetry.page_path)
         ).all()
-        
+
         page_stats = []
         for v in visits:
             # v could be a Row tuple (path, total_time, count)
             # Support both Row tuple and getattr approaches depending on SQLAlchemy version
-            path = v[0] if isinstance(v, tuple) or type(v).__name__ in ("Row", "BaseRow") else getattr(v, "page_path", "")
-            time_spent = v[1] if isinstance(v, tuple) or type(v).__name__ in ("Row", "BaseRow") else getattr(v, "total_time", 0)
-            visit_count = v[2] if isinstance(v, tuple) or type(v).__name__ in ("Row", "BaseRow") else getattr(v, "visit_count", 0)
-            
+            path = v[0] if isinstance(v, tuple) or type(v).__name__ in (
+                "Row", "BaseRow") else getattr(v, "page_path", "")
+            time_spent = v[1] if isinstance(v, tuple) or type(v).__name__ in (
+                "Row", "BaseRow") else getattr(v, "total_time", 0)
+            visit_count = v[2] if isinstance(v, tuple) or type(v).__name__ in (
+                "Row", "BaseRow") else getattr(v, "visit_count", 0)
+
             page_stats.append({
                 "path": path,
                 "time_spent": int(time_spent or 0),
                 "visits": int(visit_count or 0)
             })
-            
+
         page_stats.sort(key=lambda x: x["time_spent"], reverse=True)
-        
+
         # OpenAI integration
         from modules.llm_engine import get_openai_client
         client = get_openai_client()
-        
+
         prompt = f"Analyze this SaaS trial account usage telemetry. They are an agency CRM user.\n"
         prompt += f"Limits: {tenant.usage_clients}/{tenant.limit_clients} clients, {tenant.usage_emails}/{tenant.limit_emails} AI emails.\n"
         prompt += "Page Utilization (seconds spent):\n"
         for p in page_stats:
             prompt += f"- {p['path']}: {p['time_spent']} seconds across {p['visits']} visits\n"
         prompt += "\nProvide a concise 3-sentence strategy for the sales team on how to convert this lead. What features are they stuck on? What features do they love? Give a conversion score (0-100) on the last line like 'SCORE: 85'."
-        
+
         try:
             response = client.chat.completions.create(
                 model="gpt-4o",
@@ -2550,7 +2801,7 @@ def analyze_tenant_usage(tenant_id: int, session: Session = Depends(get_session)
         except Exception as e:
             insight = "Insufficient data or AI error."
             score = 0
-            
+
         return {
             "insight": insight,
             "conversion_score": score,
@@ -2570,6 +2821,7 @@ def debug_user(email: str = "", session: Session = Depends(get_session)):
         "suppliers": [{"name": s.supplier_name, "email": s.supplier_email, "uid": s.supplier_user_id} for s in suppliers]
     }
 
+
 @app.post("/login")
 def login(body: LoginRequest, session: Session = Depends(get_session)):
     user = session.exec(select(User).where(User.email == body.email)).first()
@@ -2579,19 +2831,24 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     result = _user_dict(user)
     if user.role == "Client":
-        cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
+        cp = session.exec(select(ClientProfile).where(
+            ClientProfile.userId == user.id)).first()
         if cp:
             result["client_id"] = cp.id
     return {"user": result}
 
+
 class ForgotPasswordRequest(BaseModel):
     email: str
-    redirect_url: Optional[str] = None  # e.g. https://crm.serphawk.in/reset-password
+    # e.g. https://crm.serphawk.in/reset-password
+    redirect_url: Optional[str] = None
+
 
 class ResetPasswordRequest(BaseModel):
     email: str
     token: str
     new_password: str
+
 
 @app.post("/auth/forgot-password")
 def forgot_password(body: ForgotPasswordRequest, session: Session = Depends(get_session)):
@@ -2612,7 +2869,8 @@ def forgot_password(body: ForgotPasswordRequest, session: Session = Depends(get_
 
     if user:
         # Invalidate previous outstanding tokens for this user (single-use)
-        old = session.exec(select(PasswordResetToken).where(PasswordResetToken.user_id == user.id)).all()
+        old = session.exec(select(PasswordResetToken).where(
+            PasswordResetToken.user_id == user.id)).all()
         for o in old:
             o.used = True
         session.add(PasswordResetToken(
@@ -2626,7 +2884,8 @@ def forgot_password(body: ForgotPasswordRequest, session: Session = Depends(get_
     from modules.email_sender import send_password_reset_email
     sent = send_password_reset_email(body.email, reset_url)
 
-    result = {"message": "If that email is registered, a password reset link has been sent.", "delivered": sent if user else False}
+    result = {"message": "If that email is registered, a password reset link has been sent.",
+              "delivered": sent if user else False}
     if user:
         print(f"[Password reset] link for {user.email}: {reset_url}")
         # Demo/test accounts have fake inboxes: always surface the link so QA and
@@ -2640,6 +2899,7 @@ def forgot_password(body: ForgotPasswordRequest, session: Session = Depends(get_
             result["debug_reset_link"] = reset_url
     return result
 
+
 @app.post("/auth/reset-password")
 def reset_password(body: ResetPasswordRequest, session: Session = Depends(get_session)):
     """Validate the one-time token and set a new password."""
@@ -2648,7 +2908,8 @@ def reset_password(body: ResetPasswordRequest, session: Session = Depends(get_se
 
     user = session.exec(select(User).where(User.email == body.email)).first()
     if not user:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        raise HTTPException(
+            status_code=400, detail="Invalid or expired reset token")
 
     rec = session.exec(
         select(PasswordResetToken).where(
@@ -2657,10 +2918,12 @@ def reset_password(body: ResetPasswordRequest, session: Session = Depends(get_se
         )
     ).first()
     if not rec or rec.used or rec.expires_at < _dt.utcnow():
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        raise HTTPException(
+            status_code=400, detail="Invalid or expired reset token")
 
     if not body.new_password or len(body.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+        raise HTTPException(
+            status_code=400, detail="Password must be at least 6 characters.")
 
     user.password = _hash_password(body.new_password)
     user.hashed_password = ""
@@ -2672,26 +2935,30 @@ def reset_password(body: ResetPasswordRequest, session: Session = Depends(get_se
 
     return {"message": "Password updated successfully. You can now sign in."}
 
+
 class GoogleAuthRequest(BaseModel):
     access_token: str
+
 
 @app.post("/auth/google")
 def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)):
     import requests
-    resp = requests.get("https://www.googleapis.com/oauth2/v3/userinfo", headers={"Authorization": f"Bearer {body.access_token}"})
+    resp = requests.get("https://www.googleapis.com/oauth2/v3/userinfo",
+                        headers={"Authorization": f"Bearer {body.access_token}"})
     if resp.status_code != 200:
         raise HTTPException(status_code=400, detail="Invalid Google token")
-    
+
     user_info = resp.json()
     email = user_info.get("email")
     name = user_info.get("name")
-    
+
     if not email:
-        raise HTTPException(status_code=400, detail="No email found from Google")
-        
+        raise HTTPException(
+            status_code=400, detail="No email found from Google")
+
     user = session.exec(select(User).where(User.email == email)).first()
     is_new_user = False
-    
+
     if not user:
         is_new_user = True
         tenant = Tenant(
@@ -2720,7 +2987,8 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
 
     result = _user_dict(user)
     if user.role == "Client":
-        cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
+        cp = session.exec(select(ClientProfile).where(
+            ClientProfile.userId == user.id)).first()
         if cp:
             result["client_id"] = cp.id
 
@@ -2736,7 +3004,8 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
 # ─────────────────────────────────────────────────────────────────────────────
 @app.post("/users")
 def create_user(body: CreateUserRequest, session: Session = Depends(get_session)):
-    existing = session.exec(select(User).where(User.email == body.email)).first()
+    existing = session.exec(select(User).where(
+        User.email == body.email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already exists")
     caller_tenant_id = current_tenant_id.get()
@@ -2757,6 +3026,7 @@ def create_user(body: CreateUserRequest, session: Session = Depends(get_session)
         session.commit()
     return {"user": _user_dict(user)}
 
+
 @app.get("/users/me")
 def get_current_user_profile(session: Session = Depends(get_session)):
     user_id = current_salesperson_id.get()
@@ -2767,25 +3037,27 @@ def get_current_user_profile(session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="User not found")
     return {"user": _user_dict(user)}
 
+
 class UserUpdateMe(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
+
 
 @app.put("/users/me")
 def update_current_user(body: UserUpdateMe, session: Session = Depends(get_session)):
     user_id = current_salesperson_id.get()
     if not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
-        
+
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
+
     if body.name is not None:
         user.name = body.name
     if body.phone is not None:
         user.phone = body.phone
-        
+
     session.commit()
     session.refresh(user)
     return {"user": _user_dict(user)}
@@ -2797,7 +3069,7 @@ def list_users(role: Optional[str] = None, session: Session = Depends(get_sessio
     tenant_id = current_tenant_id.get()
     if tenant_id:
         query = query.where(User.tenant_id == tenant_id)
-        
+
     if role:
         roles = [r.strip() for r in role.split(",") if r.strip()]
         if roles:
@@ -2806,49 +3078,55 @@ def list_users(role: Optional[str] = None, session: Session = Depends(get_sessio
     return {"users": [_user_dict(u) for u in users]}
 
 
-
 @app.get("/users/{user_id}/stats")
 def get_user_stats(user_id: int, session: Session = Depends(get_session)):
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
+
     # Sales team stats
     if user.role in ["Admin", "SalesManager", "Employee"]:
         # Clients handling
-        clients_count = len(session.exec(select(ClientProfile).where(ClientProfile.assignedEmployeeId == user.id)).all())
-        
+        clients_count = len(session.exec(select(ClientProfile).where(
+            ClientProfile.assignedEmployeeId == user.id)).all())
+
         # Leads converted
-        converted_leads_count = len(session.exec(select(Lead).where(Lead.owner_id == user.id, Lead.is_converted == True)).all())
-        
+        converted_leads_count = len(session.exec(select(Lead).where(
+            Lead.owner_id == user.id, Lead.is_converted == True)).all())
+
         # Current active tasks
-        active_tasks = session.exec(select(Task).where(Task.assigned_to == user.id, Task.status.notin_(["approved", "rejected"]))).all()
-        assigned_cases = session.exec(select(Case).where(Case.assigned_to == user.id)).all()
-        
+        active_tasks = session.exec(select(Task).where(
+            Task.assigned_to == user.id, Task.status.notin_(["approved", "rejected"]))).all()
+        assigned_cases = session.exec(
+            select(Case).where(Case.assigned_to == user.id)).all()
+
         return {
             "type": "sales",
             "clients_handling": clients_count,
             "leads_converted": converted_leads_count,
             "cases_assigned": len(assigned_cases),
             "active_tasks": [
-                {"id": t.id, "title": t.title, "status": t.status, "priority": t.priority} 
+                {"id": t.id, "title": t.title,
+                    "status": t.status, "priority": t.priority}
                 for t in active_tasks
             ]
         }
-        
+
     # Dev team stats
     elif user.role in ["ProjectMember", "Intern"]:
         if not user.name:
             tickets = []
         else:
-            tickets = session.exec(select(ProjectTicket).where(ProjectTicket.current_owner.ilike(user.name))).all()
-            
+            tickets = session.exec(select(ProjectTicket).where(
+                ProjectTicket.current_owner.ilike(user.name))).all()
+
         total_tickets = len(tickets)
         in_dev = sum(1 for t in tickets if t.current_state == "In Dev")
         in_qa = sum(1 for t in tickets if t.current_state == "Given to QA")
         in_prod = sum(1 for t in tickets if t.current_state == "Prod Release")
-        assigned_cases = session.exec(select(Case).where(Case.assigned_to == user.id)).all()
-        
+        assigned_cases = session.exec(
+            select(Case).where(Case.assigned_to == user.id)).all()
+
         return {
             "type": "dev",
             "total_tickets": total_tickets,
@@ -2857,7 +3135,7 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
             "in_prod": in_prod,
             "cases_assigned": len(assigned_cases)
         }
-        
+
     return {"type": "unknown"}
 
 
@@ -2876,7 +3154,8 @@ def delete_user(user_id: int, session: Session = Depends(get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 @app.get("/employees")
 def list_employees(session: Session = Depends(get_session)):
-    query = select(User).where(User.role.in_(["Employee", "Admin", "SalesManager"]))
+    query = select(User).where(User.role.in_(
+        ["Employee", "Admin", "SalesManager"]))
     tenant_id = current_tenant_id.get()
     if tenant_id:
         query = query.where(User.tenant_id == tenant_id)
@@ -2887,7 +3166,8 @@ def list_employees(session: Session = Depends(get_session)):
 @app.get("/employees/workload")
 def get_employees_workload(session: Session = Depends(get_session)):
     """Return each sales team member with their active client and active lead counts."""
-    query = select(User).where(User.role.in_(["Employee", "Admin", "SalesManager"]))
+    query = select(User).where(User.role.in_(
+        ["Employee", "Admin", "SalesManager"]))
     tenant_id = current_tenant_id.get()
     if tenant_id:
         query = query.where(User.tenant_id == tenant_id)
@@ -2982,7 +3262,7 @@ def list_clients(
     if tenant_id and tenant_id != 1:
         q = q.where(ClientProfile.tenant_id == tenant_id)
         count_q = count_q.where(ClientProfile.tenant_id == tenant_id)
-        
+
     if status and status != "All":
         count_q = count_q.where(ClientProfile.status == status)
     if query:
@@ -2995,10 +3275,12 @@ def list_clients(
         )
         count_q = count_q.where(cond)
     if assigned_employee_id is not None:
-        count_q = count_q.where(ClientProfile.assignedEmployeeId == assigned_employee_id)
+        count_q = count_q.where(
+            ClientProfile.assignedEmployeeId == assigned_employee_id)
 
     total = session.exec(count_q).one()
-    clients = session.exec(q.order_by(ClientProfile.id.desc()).offset((page - 1) * per_page).limit(per_page)).all()
+    clients = session.exec(q.order_by(ClientProfile.id.desc()).offset(
+        (page - 1) * per_page).limit(per_page)).all()
     return {
         "clients": [_client_dict(c, session) for c in clients],
         "total": total,
@@ -3014,13 +3296,16 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     if tenant_id and tenant_id != 1:
         tenant = session.get(Tenant, tenant_id)
         if tenant:
-            current_count = session.exec(select(func.count(ClientProfile.id)).where(ClientProfile.tenant_id == tenant_id)).one()
+            current_count = session.exec(select(func.count(ClientProfile.id)).where(
+                ClientProfile.tenant_id == tenant_id)).one()
             if current_count >= tenant.limit_clients:
-                raise HTTPException(status_code=403, detail=f"Client limit reached. Maximum allowed: {tenant.limit_clients}")
+                raise HTTPException(
+                    status_code=403, detail=f"Client limit reached. Maximum allowed: {tenant.limit_clients}")
     check_tenant_limit(session, "clients")
     user = None
     if body.email:
-        user = session.exec(select(User).where(User.email == body.email)).first()
+        user = session.exec(select(User).where(
+            User.email == body.email)).first()
         if not user:
             try:
                 user = User(
@@ -3035,7 +3320,8 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
             except Exception:
                 # Email already exists (race condition) — roll back and fetch existing user
                 session.rollback()
-                user = session.exec(select(User).where(User.email == body.email)).first()
+                user = session.exec(select(User).where(
+                    User.email == body.email)).first()
 
     cp = ClientProfile(
         tenant_id=current_tenant_id.get(),
@@ -3058,7 +3344,8 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
 
     # Snapshot values up-front so a swallowed side-effect failure can never
     # trigger a re-query on an expired/rolled-back session.
-    client_ref = {"id": cp.id, "companyName": cp.companyName or "", "websiteUrl": cp.websiteUrl or ""}
+    client_ref = {"id": cp.id, "companyName": cp.companyName or "",
+                  "websiteUrl": cp.websiteUrl or ""}
 
     try:
         _notify_admins(
@@ -3078,7 +3365,8 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message("New Client Onboarded", client_ref, f"{base_url}/clients/{client_ref['id']}")
+        send_ai_polished_whatsapp_message(
+            "New Client Onboarded", client_ref, f"{base_url}/clients/{client_ref['id']}")
     except Exception as e:
         print("WhatsApp Error:", e)
 
@@ -3096,50 +3384,51 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     return {"client": _client_dict(cp, session)}
 
 
-
 # ─── CSV/Sheet Import ────────────────────────────────────────────────────────
-from pydantic import BaseModel as _BM
-from typing import Optional as _Opt
-import csv as _csv
-import io as _io
+
 
 class SheetImportRequest(_BM):
     csv_url: _Opt[str] = None
     csv_text: _Opt[str] = None
     assigned_employee_id: _Opt[int] = None
 
+
 @app.get("/dev/reset-clients")
 def dev_reset_clients(session: Session = Depends(get_session)):
     _require_roles(session, ["SuperAdmin"])
     from sqlalchemy import text
     from sqlmodel import delete
-    
+
     # 1. Delete Client Research
     session.exec(delete(ClientResearch))
-    
+
     # 2. Reset Client Profiles
     is_postgres = engine.url.drivername.startswith("postgres")
     if is_postgres:
-        session.exec(text("TRUNCATE TABLE client_profiles RESTART IDENTITY CASCADE"))
+        session.exec(
+            text("TRUNCATE TABLE client_profiles RESTART IDENTITY CASCADE"))
     else:
         session.exec(delete(ClientProfile))
         try:
-            session.exec(text("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'client_profiles'"))
+            session.exec(
+                text("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'client_profiles'"))
         except Exception:
             pass
-            
+
     # 3. Clear Users with role 'Client'
     session.exec(delete(User).where(User.role == 'Client'))
-    
+
     session.commit()
     return {"message": "Client database has been completely reset to 0."}
+
+
 @app.get("/dev/seed-catalog")
 def dev_seed_catalog(session: Session = Depends(get_session)):
     _require_roles(session, ["SuperAdmin"])
     from sqlmodel import delete
     # Delete existing products
     session.exec(delete(Product))
-    
+
     services = [
         {"name": "Local and Organic SEO", "provider": "DaPros"},
         {"name": "PPC & Google Ads Management", "provider": "DaPros"},
@@ -3152,7 +3441,7 @@ def dev_seed_catalog(session: Session = Depends(get_session)):
         {"name": "Ecommerce", "provider": "DaPros"},
         {"name": "Secure Hosting", "provider": "DaPros"}
     ]
-    
+
     for s in services:
         prod = Product(
             name=s["name"],
@@ -3164,20 +3453,23 @@ def dev_seed_catalog(session: Session = Depends(get_session)):
             is_active=True
         )
         session.add(prod)
-        
+
     session.commit()
     return {"message": "Catalog successfully seeded with 10 unified services at 100 MXN."}
+
 
 @app.get("/dev/patch-invoices")
 def dev_patch_invoices(session: Session = Depends(get_session)):
     _require_roles(session, ["SuperAdmin"])
     from sqlalchemy import text
     try:
-        session.exec(text("ALTER TABLE invoices ADD COLUMN currency VARCHAR(10) DEFAULT 'MXN';"))
+        session.exec(
+            text("ALTER TABLE invoices ADD COLUMN currency VARCHAR(10) DEFAULT 'MXN';"))
         session.commit()
         return {"success": True, "message": "Invoices table successfully patched with currency column."}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
 
 @app.post("/clients/import-sheet")
 async def import_sheet(body: SheetImportRequest, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
@@ -3185,9 +3477,11 @@ async def import_sheet(body: SheetImportRequest, background_tasks: BackgroundTas
     if tenant_id and tenant_id != 1:
         tenant = session.get(Tenant, tenant_id)
         if tenant:
-            current_count = session.exec(select(func.count(ClientProfile.id)).where(ClientProfile.tenant_id == tenant_id)).one()
+            current_count = session.exec(select(func.count(ClientProfile.id)).where(
+                ClientProfile.tenant_id == tenant_id)).one()
             if current_count >= tenant.limit_clients:
-                raise HTTPException(status_code=403, detail=f"Client limit reached. Maximum allowed: {tenant.limit_clients}")
+                raise HTTPException(
+                    status_code=403, detail=f"Client limit reached. Maximum allowed: {tenant.limit_clients}")
     import httpx
 
     raw_csv = body.csv_text
@@ -3197,7 +3491,8 @@ async def import_sheet(body: SheetImportRequest, background_tasks: BackgroundTas
                 r = await http_client.get(body.csv_url)
                 raw_csv = r.text
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Could not fetch CSV: {e}")
+            raise HTTPException(
+                status_code=400, detail=f"Could not fetch CSV: {e}")
 
     if not raw_csv:
         raise HTTPException(status_code=400, detail="No CSV data provided")
@@ -3216,24 +3511,28 @@ async def import_sheet(body: SheetImportRequest, background_tasks: BackgroundTas
             return None
 
         # Strictly map only the 4 fields
-        company = get_field(["Client Name","Company","Company Name","companyName","Name"])
-        email   = get_field(["Email","email","Email Address"])
-        phone   = get_field(["Contact","Phone","phone","Contact Number"])
-        desc    = get_field(["Description","description","Notes","Brief"])
+        company = get_field(
+            ["Client Name", "Company", "Company Name", "companyName", "Name"])
+        email = get_field(["Email", "email", "Email Address"])
+        phone = get_field(["Contact", "Phone", "phone", "Contact Number"])
+        desc = get_field(["Description", "description", "Notes", "Brief"])
 
         if not company:
             skipped.append({"reason": "empty name"})
             continue
 
-        dup = session.exec(select(ClientProfile).where(ClientProfile.companyName == company)).first()
+        dup = session.exec(select(ClientProfile).where(
+            ClientProfile.companyName == company)).first()
         if dup:
             if not dup.assignedEmployeeId and body.assigned_employee_id:
                 dup.assignedEmployeeId = body.assigned_employee_id
                 session.add(dup)
                 session.commit()
-                added.append({"id": dup.id, "company": company, "assigned": True})
+                added.append(
+                    {"id": dup.id, "company": company, "assigned": True})
             else:
-                skipped.append({"reason": "duplicate", "company": company, "existing_id": dup.id})
+                skipped.append(
+                    {"reason": "duplicate", "company": company, "existing_id": dup.id})
             continue
 
         # Store the entire row data for sheet_data
@@ -3241,7 +3540,8 @@ async def import_sheet(body: SheetImportRequest, background_tasks: BackgroundTas
 
         if tenant_id and tenant_id != 1 and tenant:
             if current_count >= tenant.limit_clients:
-                skipped.append({"reason": f"limit reached (max {tenant.limit_clients})", "company": company})
+                skipped.append(
+                    {"reason": f"limit reached (max {tenant.limit_clients})", "company": company})
                 continue
             current_count += 1
             tenant.usage_clients += 1
@@ -3256,7 +3556,8 @@ async def import_sheet(body: SheetImportRequest, background_tasks: BackgroundTas
         )
 
         if email:
-            existing_user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
+            existing_user = session.exec(select(User).where(
+                User.email == email).execution_options(skip_tenant=True)).first()
             if not existing_user:
                 new_user = User(
                     email=email,
@@ -3301,7 +3602,8 @@ async def _auto_research_client_bg(client_id: int, website: str):
                 cp.industry = data["industry"]
             if data.get("services"):
                 svc = data["services"]
-                cp.services_offered = ", ".join(svc) if isinstance(svc, list) else str(svc)
+                cp.services_offered = ", ".join(
+                    svc) if isinstance(svc, list) else str(svc)
             existing_cf = cp.customFields or {}
             if data.get("description"):
                 existing_cf["ai_description"] = data["description"]
@@ -3310,15 +3612,16 @@ async def _auto_research_client_bg(client_id: int, website: str):
             sess.commit()
             # Also create/update ClientResearch so the AI Agent tab works
             from database import ClientResearch
-            research = sess.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+            research = sess.exec(select(ClientResearch).where(
+                ClientResearch.client_id == client_id)).first()
             if not research:
                 research = ClientResearch(client_id=client_id)
                 sess.add(research)
-            
+
             # Format the output into AI Agent fields
             research.company_overview = data.get("description", cp.tagline)
             research.tech_stack = "Web presence detected"
-            
+
             # Pack everything into email_agent_data JSON string so the UI can use it
             import json
             ai_data = {
@@ -3330,13 +3633,13 @@ async def _auto_research_client_bg(client_id: int, website: str):
                 "people": data.get("people", [])
             }
             research.email_agent_data = json.dumps(ai_data)
-            
+
             # Also store the people array natively into key_decision_makers for legacy/direct display
             if data.get("people"):
                 research.key_decision_makers = json.dumps(data.get("people"))
-            
+
             sess.commit()
-            
+
             deal = Deal(
                 title=f"Opportunity – {cp.companyName or website}",
                 client_id=client_id,
@@ -3363,7 +3666,8 @@ def export_clients_csv(session: Session = Depends(get_session)):
     clients_list = session.exec(q.order_by(ClientProfile.id.asc())).all()
 
     # Build employee lookup
-    all_emp_ids = list({c.assignedEmployeeId for c in clients_list if c.assignedEmployeeId})
+    all_emp_ids = list(
+        {c.assignedEmployeeId for c in clients_list if c.assignedEmployeeId})
     emp_by_id = {}
     if all_emp_ids:
         emps = session.exec(select(User).where(User.id.in_(all_emp_ids))).all()
@@ -3381,6 +3685,7 @@ def export_clients_csv(session: Session = Depends(get_session)):
                     val = _json.loads(val)
                 else:
                     return val
+
             def extract(obj):
                 if isinstance(obj, dict):
                     return [x for v in obj.values() for x in extract(v)]
@@ -3406,7 +3711,8 @@ def export_clients_csv(session: Session = Depends(get_session)):
 
     for c in clients_list:
         user = session.get(User, c.userId) if c.userId else None
-        client_email = c.email if hasattr(c, 'email') and c.email else (user.email if user else "")
+        client_email = c.email if hasattr(
+            c, 'email') and c.email else (user.email if user else "")
         emp = emp_by_id.get(c.assignedEmployeeId)
         emp_name = emp.name if emp else ""
 
@@ -3467,41 +3773,46 @@ def export_clients_pdf(session: Session = Depends(get_session)):
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
 
-    clients_list = session.exec(select(ClientProfile).order_by(ClientProfile.id.asc())).all()
-    
+    clients_list = session.exec(
+        select(ClientProfile).order_by(ClientProfile.id.asc())).all()
+
     output = io.BytesIO()
-    doc = SimpleDocTemplate(output, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(output, pagesize=landscape(
+        A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
-    
+
     styles = getSampleStyleSheet()
     title = Paragraph("<b>Clients & Leads List</b>", styles['Title'])
     elements.append(title)
     elements.append(Spacer(1, 12))
-    
+
     data = [["S.No", "Client Name", "Email", "Phone"]]
-    
+
     style_normal = styles["Normal"]
     style_normal.wordWrap = 'CJK'
-    
+
     def truncate(text, max_len=40):
-        if not text: return ""
+        if not text:
+            return ""
         text = str(text).strip()
         return text if len(text) <= max_len else text[:max_len-3] + "..."
 
     for i, c in enumerate(clients_list, 1):
         user = session.get(User, c.userId) if c.userId else None
-        emp = session.get(User, c.assignedEmployeeId) if c.assignedEmployeeId else None
-        
+        emp = session.get(
+            User, c.assignedEmployeeId) if c.assignedEmployeeId else None
+
         name = Paragraph(truncate(c.companyName, 50), style_normal)
-        client_email = c.email if hasattr(c, 'email') and c.email else (user.email if user else "")
+        client_email = c.email if hasattr(
+            c, 'email') and c.email else (user.email if user else "")
         email = Paragraph(truncate(client_email, 40), style_normal)
         phone = Paragraph(truncate(c.phone, 30), style_normal)
-        
+
         data.append([str(i), name, email, phone])
-        
+
     # Col widths (total A4 landscape width is ~842, minus margins (60) = 782)
     col_widths = [40, 300, 242, 200]
-    
+
     table = Table(data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
@@ -3519,16 +3830,17 @@ def export_clients_pdf(session: Session = Depends(get_session)):
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
-    
+
     elements.append(table)
     doc.build(elements)
-    
+
     output.seek(0)
     return StreamingResponse(
         output,
         media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename=serphawk_clients.pdf"}
     )
+
 
 @app.get("/clients/export-custom-pdf")
 def export_custom_clients_pdf(cols: str = "name,email,phone,description", session: Session = Depends(get_session)):
@@ -3542,7 +3854,7 @@ def export_custom_clients_pdf(cols: str = "name,email,phone,description", sessio
     selected_cols = [c.strip().lower() for c in cols.split(",") if c.strip()]
     if not selected_cols:
         selected_cols = ["name", "email", "phone", "description"]
-        
+
     col_definitions = {
         "sno": {"header": "S.No", "weight": 0.5},
         "name": {"header": "Client Name", "weight": 2.0},
@@ -3553,65 +3865,75 @@ def export_custom_clients_pdf(cols: str = "name,email,phone,description", sessio
         "assigned": {"header": "Assigned To", "weight": 1.5},
         "description": {"header": "Brief / Description", "weight": 4.0},
     }
-    
+
     if "sno" not in selected_cols:
         selected_cols.insert(0, "sno")
-        
+
     valid_cols = [c for c in selected_cols if c in col_definitions]
-    
-    clients_list = session.exec(select(ClientProfile).order_by(ClientProfile.id.asc())).all()
-    
+
+    clients_list = session.exec(
+        select(ClientProfile).order_by(ClientProfile.id.asc())).all()
+
     output = io.BytesIO()
-    doc = SimpleDocTemplate(output, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(output, pagesize=landscape(
+        A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
-    
+
     styles = getSampleStyleSheet()
     title = Paragraph("<b>Custom Clients & Leads List</b>", styles['Title'])
     elements.append(title)
     elements.append(Spacer(1, 12))
-    
+
     headers = [col_definitions[c]["header"] for c in valid_cols]
     data = [headers]
-    
+
     style_normal = styles["Normal"]
     style_normal.wordWrap = 'CJK'
-    
+
     def truncate(text, max_len=200):
-        if not text: return ""
+        if not text:
+            return ""
         text = str(text).strip()
         return text if len(text) <= max_len else text[:max_len-3] + "..."
 
     for i, c in enumerate(clients_list, 1):
         user = session.get(User, c.userId) if c.userId else None
-        emp = session.get(User, c.assignedEmployeeId) if c.assignedEmployeeId else None
-        
+        emp = session.get(
+            User, c.assignedEmployeeId) if c.assignedEmployeeId else None
+
         row = []
         for col in valid_cols:
             if col == "sno":
                 row.append(str(i))
             elif col == "name":
-                row.append(Paragraph(truncate(c.companyName, 100), style_normal))
+                row.append(
+                    Paragraph(truncate(c.companyName, 100), style_normal))
             elif col == "website":
-                row.append(Paragraph(truncate(c.websiteUrl, 100), style_normal))
+                row.append(
+                    Paragraph(truncate(c.websiteUrl, 100), style_normal))
             elif col == "email":
-                row.append(Paragraph(truncate(user.email if user else "", 100), style_normal))
+                row.append(
+                    Paragraph(truncate(user.email if user else "", 100), style_normal))
             elif col == "phone":
                 row.append(Paragraph(truncate(c.phone, 50), style_normal))
             elif col == "status":
-                row.append(Paragraph(truncate(c.status or "Active", 50), style_normal))
+                row.append(
+                    Paragraph(truncate(c.status or "Active", 50), style_normal))
             elif col == "assigned":
-                row.append(Paragraph(truncate(emp.name if emp else "Unassigned", 50), style_normal))
+                row.append(
+                    Paragraph(truncate(emp.name if emp else "Unassigned", 50), style_normal))
             elif col == "description":
                 cf = c.customFields or {}
                 cf_dict = cf if isinstance(cf, dict) else {}
                 desc = cf_dict.get("description", "")
                 row.append(Paragraph(truncate(desc, 300), style_normal))
         data.append(row)
-        
+
     total_weight = sum([col_definitions[c]["weight"] for c in valid_cols])
     printable_width = 782
-    col_widths = [(col_definitions[c]["weight"] / total_weight) * printable_width for c in valid_cols]
-    
+    col_widths = [(col_definitions[c]["weight"] / total_weight)
+                  * printable_width for c in valid_cols]
+
     table = Table(data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
@@ -3629,15 +3951,16 @@ def export_custom_clients_pdf(cols: str = "name,email,phone,description", sessio
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
-    
+
     elements.append(table)
     doc.build(elements)
-    
+
     output.seek(0)
     return StreamingResponse(
         output,
         media_type="application/pdf",
-        headers={"Content-Disposition": "attachment; filename=serphawk_custom_clients.pdf"}
+        headers={
+            "Content-Disposition": "attachment; filename=serphawk_custom_clients.pdf"}
     )
 
 
@@ -3648,20 +3971,43 @@ def get_client(client_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Client not found")
     return {"client": _client_dict(cp, session)}
 
+
 class SimulateCallRequest(BaseModel):
     context: Optional[str] = None
+
+
+class TTSRequest(BaseModel):
+    text: str
+
+
+@app.post("/tts/generate")
+def generate_tts_audio(req: TTSRequest):
+    if not req.text or not req.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+    try:
+        audio_path = text_to_speech(req.text)
+        audio_url = "/" + audio_path.replace("\\", "/")
+        return {"ok": True, "audio_url": audio_url}
+    except Exception as e:
+        print(f"TTS generation failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate speech audio")
+
 
 @app.post("/clients/{client_id}/simulate-call")
 def simulate_client_call(client_id: int, req: Optional[SimulateCallRequest] = None, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
-    if not cp: raise HTTPException(status_code=404, detail="Client not found")
-    
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+
     # Fetch related remarks as notes
-    remarks_query = session.exec(select(Remark).where(Remark.clientId == client_id)).all()
-    notes = "\n".join([r.content for r in remarks_query]) if remarks_query else ""
-    activities = session.exec(select(ActivityLog).where(ActivityLog.clientId == client_id)).all()
+    remarks_query = session.exec(select(Remark).where(
+        Remark.clientId == client_id)).all()
+    notes = "\n".join([r.content for r in remarks_query]
+                      ) if remarks_query else ""
+    activities = session.exec(select(ActivityLog).where(
+        ActivityLog.clientId == client_id)).all()
     act_str = "\n".join([f"- {a.action}: {a.content}" for a in activities])
-    
+
     email = cp.user.email if cp.user else ""
     keywords = ", ".join(cp.targetKeywords) if cp.targetKeywords else ""
 
@@ -3701,7 +4047,7 @@ Instructions:
             max_tokens=800
         )
         pitch = response.choices[0].message.content or ""
-        
+
         call = CallLog(
             phone_number=cp.phone or "Unknown",
             duration_seconds=180,
@@ -3712,7 +4058,7 @@ Instructions:
         session.add(call)
         session.commit()
         session.refresh(call)
-        
+
         # Add Activity
         act = ActivityLog(
             action="Call Simulated",
@@ -3724,28 +4070,31 @@ Instructions:
         )
         session.add(act)
         session.commit()
-        
-        return {"ok": True, "call_id": call.id, "pitch": pitch}
+
+        return {"ok": True, "call_id": call.id, "pitch": pitch, "audio_url": None}
     except Exception as e:
         print("Error in simulation:", e)
-        raise HTTPException(status_code=500, detail=f"Failed to simulate call: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to simulate call: {str(e)}")
+
 
 @app.get("/clients/{client_id}/competitors/scan")
 def scan_competitors_openai(client_id: int, session: Session = Depends(get_session)):
     import openai
     import os
     import json
-    
+
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
-        
+
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured in backend.")
-        
+        raise HTTPException(
+            status_code=500, detail="OPENAI_API_KEY not configured in backend.")
+
     client = openai.OpenAI(api_key=api_key)
-    
+
     prompt = f"""
     You are an OSINT Business Intelligence Agent. Your job is to extract exact pinpoint geographic coordinates and find 3 real nearby local competitors for a given company.
     
@@ -3779,7 +4128,7 @@ def scan_competitors_openai(client_id: int, session: Session = Depends(get_sessi
       ]
     }}
     """
-    
+
     try:
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -3790,7 +4139,6 @@ def scan_competitors_openai(client_id: int, session: Session = Depends(get_sessi
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 @app.put("/clients/{client_id}")
@@ -3818,18 +4166,18 @@ async def generate_client_swot(client_id: int, session: Session = Depends(get_se
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
     if not cp.websiteUrl:
-        raise HTTPException(status_code=400, detail="Client has no website URL configured")
-        
+        raise HTTPException(
+            status_code=400, detail="Client has no website URL configured")
+
     from modules.llm_engine import generate_swot_analysis
     import json
-    
+
     swot_data = await generate_swot_analysis(cp.websiteUrl, cp.companyName or "Client")
     cp.swot_analysis = json.dumps(swot_data)
     session.add(cp)
     session.commit()
     session.refresh(cp)
     return {"ok": True, "swot_analysis": swot_data}
-
 
 
 @app.post("/leads/{lead_id}/assign-employee")
@@ -3890,7 +4238,8 @@ def remove_keyword(
 @app.get("/clients/{client_id}/remarks")
 def get_client_remarks(client_id: int, session: Session = Depends(get_session)):
     remarks = session.exec(
-        select(Remark).where(Remark.clientId == client_id).order_by(Remark.createdAt.desc())
+        select(Remark).where(Remark.clientId ==
+                             client_id).order_by(Remark.createdAt.desc())
     ).all()
     return {
         "remarks": [
@@ -4045,10 +4394,12 @@ def get_client_emails(client_id: int, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
-    emails = session.exec(select(SentEmail).where(SentEmail.client_id == client_id).order_by(SentEmail.sent_at.desc())).all()
+    emails = session.exec(select(SentEmail).where(
+        SentEmail.client_id == client_id).order_by(SentEmail.sent_at.desc())).all()
     return {"emails": emails}
 
 # ─── Client Notes ──────────────────────────────────────────────────────────────
+
 
 @app.get("/clients/{client_id}/notes")
 def get_client_notes(client_id: int, session: Session = Depends(get_session)):
@@ -4073,7 +4424,7 @@ def create_client_note(client_id: int, body: ClientNoteCreateRequest, session: S
         is_pinned=body.is_pinned, author_id=body.author_id, author_name=body.author_name,
     )
     session.add(note)
-    
+
     cp = session.get(ClientProfile, client_id)
     client_name = cp.companyName if cp and cp.companyName else f"Client #{client_id}"
     author = body.author_name or "Someone"
@@ -4086,20 +4437,22 @@ def create_client_note(client_id: int, body: ClientNoteCreateRequest, session: S
         details=body.content[:200]
     )
     session.add(log)
-    
+
     session.commit()
     session.refresh(note)
-    
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message("New Note Added", {"client": client_name, "content": note.content, "author": author}, f"{base_url}/clients/{client_id}")
+        send_ai_polished_whatsapp_message("New Note Added", {
+                                          "client": client_name, "content": note.content, "author": author}, f"{base_url}/clients/{client_id}")
     except Exception as e:
         print("WhatsApp Error:", e)
-        
+
     return {"id": note.id, "content": note.content, "tags": note.tags, "is_pinned": note.is_pinned,
             "author_name": note.author_name, "created_at": note.created_at.isoformat()}
+
 
 @app.put("/clients/{client_id}/notes/{note_id}")
 def update_client_note(client_id: int, note_id: int, body: ClientNoteUpdateRequest, session: Session = Depends(get_session)):
@@ -4115,15 +4468,16 @@ def update_client_note(client_id: int, note_id: int, body: ClientNoteUpdateReque
     note.updated_at = datetime.now(timezone.utc)
     session.add(note)
     session.commit()
-    
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message("Note Updated", {"content": note.content, "tags": note.tags, "is_pinned": note.is_pinned}, f"{base_url}/clients/{client_id}")
+        send_ai_polished_whatsapp_message("Note Updated", {
+                                          "content": note.content, "tags": note.tags, "is_pinned": note.is_pinned}, f"{base_url}/clients/{client_id}")
     except Exception as e:
         print("WhatsApp Error:", e)
-        
+
     return {"ok": True}
 
 
@@ -4142,22 +4496,23 @@ def extract_tasks_from_client_note(client_id: int, note_id: int, session: Sessio
     note = session.get(ClientNote, note_id)
     if not note or note.client_id != client_id:
         raise HTTPException(status_code=404, detail="Note not found")
-        
+
     from modules.llm_engine import extract_tasks_from_note
     tasks_extracted = extract_tasks_from_note(note.content)
-    
+
     created_tasks = []
     for t in tasks_extracted:
         new_task = Task(
             title=t.get("title", "Extracted Task"),
-            description=t.get("description", "") + f"\n\n(Extracted from Note #{note_id})",
+            description=t.get("description", "") +
+            f"\n\n(Extracted from Note #{note_id})",
             client_id=client_id,
             status="Todo",
             priority="Medium"
         )
         session.add(new_task)
         created_tasks.append(new_task)
-        
+
     session.commit()
     return {"ok": True, "extracted_count": len(created_tasks)}
 
@@ -4173,7 +4528,8 @@ def get_client_conversations(client_id: int, session: Session = Depends(get_sess
     result = []
     for c in convs:
         replies = session.exec(
-            select(ConversationReply).where(ConversationReply.conversation_id == c.id)
+            select(ConversationReply).where(
+                ConversationReply.conversation_id == c.id)
             .order_by(ConversationReply.created_at.asc())
         ).all()
         result.append({
@@ -4211,16 +4567,18 @@ def create_client_conversation(client_id: int, body: ConversationLogCreateReques
 
     session.commit()
     session.refresh(conv)
-    
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        event_data = {"client_name": client_name, "type": body.type, "description": body.description}
-        send_ai_polished_whatsapp_message("New Client Chat Message", event_data, f"{base_url}/clients/{client_id}")
+        event_data = {"client_name": client_name,
+                      "type": body.type, "description": body.description}
+        send_ai_polished_whatsapp_message(
+            "New Client Chat Message", event_data, f"{base_url}/clients/{client_id}")
     except Exception as e:
         print("WhatsApp Error:", e)
-        
+
     return {"id": conv.id, "title": conv.title, "type": conv.type, "created_at": conv.created_at.isoformat()}
 
 
@@ -4236,18 +4594,20 @@ def add_conversation_reply(client_id: int, conv_id: int, body: ConversationReply
     session.add(reply)
     session.commit()
     session.refresh(reply)
-    
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
         cp = session.get(ClientProfile, client_id)
         client_name = cp.companyName if cp and cp.companyName else f"Client #{client_id}"
-        event_data = {"author": body.author_name or client_name, "content": body.content}
-        send_ai_polished_whatsapp_message("New Conversation Reply", event_data, f"{base_url}/clients/{client_id}")
+        event_data = {"author": body.author_name or client_name,
+                      "content": body.content}
+        send_ai_polished_whatsapp_message(
+            "New Conversation Reply", event_data, f"{base_url}/clients/{client_id}")
     except Exception as e:
         print("WhatsApp Error:", e)
-        
+
     return {"id": reply.id, "content": reply.content, "author_name": reply.author_name,
             "created_at": reply.created_at.isoformat()}
 
@@ -4256,7 +4616,8 @@ def add_conversation_reply(client_id: int, conv_id: int, body: ConversationReply
 
 @app.get("/clients/{client_id}/research")
 def get_client_research(client_id: int, session: Session = Depends(get_session)):
-    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+    research = session.exec(select(ClientResearch).where(
+        ClientResearch.client_id == client_id)).first()
     if not research:
         return {"research": None}
     return {"research": {
@@ -4271,7 +4632,8 @@ def get_client_research(client_id: int, session: Session = Depends(get_session))
 
 @app.put("/clients/{client_id}/research")
 def upsert_client_research(client_id: int, body: ClientResearchUpdateRequest, session: Session = Depends(get_session)):
-    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+    research = session.exec(select(ClientResearch).where(
+        ClientResearch.client_id == client_id)).first()
     if not research:
         research = ClientResearch(client_id=client_id)
     for field, val in body.model_dump(exclude_unset=True).items():
@@ -4288,7 +4650,7 @@ def auto_research_client(client_id: int, session: Session = Depends(get_session)
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
-        
+
     try:
         # Trigger the same deep background research we use on creation
         _trigger_background_research(
@@ -4299,7 +4661,8 @@ def auto_research_client(client_id: int, session: Session = Depends(get_session)
         )
         return {"ok": True, "message": "Research started in background"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to auto-research: {str(e)}")
 
 
 @app.post("/clients/{client_id}/extract-services")
@@ -4307,15 +4670,15 @@ def extract_services(client_id: int, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
-        
-    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
-    
-    context = f"Company Name: {cp.companyName}\n"
 
+    research = session.exec(select(ClientResearch).where(
+        ClientResearch.client_id == client_id)).first()
+
+    context = f"Company Name: {cp.companyName}\n"
 
     if research and research.company_overview:
         context += f"Overview: {research.company_overview}\n"
-        
+
     try:
         prompt = f"""Analyze the following company data and extract a list of services they offer.
 For each service, provide a name, a brief description, and an estimated approximate cost (in dollars, e.g. 1500).
@@ -4324,7 +4687,7 @@ Data:
 {context}"""
         import json
         from modules.llm_engine import get_openai_client
-        
+
         client_openai = get_openai_client()
         response = client_openai.chat.completions.create(
             model="gpt-4o-mini",
@@ -4335,7 +4698,7 @@ Data:
             temperature=0.2
         )
         raw_res = response.choices[0].message.content
-        
+
         try:
             services_data = json.loads(raw_res)
         except:
@@ -4344,23 +4707,25 @@ Data:
                 services_data = json.loads(raw_res)
             else:
                 services_data = []
-                
+
         if not isinstance(services_data, list):
             services_data = []
-            
+
         added_count = 0
         from database import MarketplaceService
         for srv in services_data:
-            if not srv.get("name"): continue
-            
+            if not srv.get("name"):
+                continue
+
             # Try parsing approx_cost as float
             cost = 0.0
-            raw_cost = str(srv.get("approx_cost", 0)).replace('$', '').replace(',', '').strip()
+            raw_cost = str(srv.get("approx_cost", 0)).replace(
+                '$', '').replace(',', '').strip()
             try:
                 cost = float(raw_cost)
             except:
                 cost = 0.0
-                
+
             ms = MarketplaceService(
                 tenant_id=cp.tenant_id,
                 service_name=srv["name"],
@@ -4373,11 +4738,11 @@ Data:
             )
             session.add(ms)
             added_count += 1
-            
+
         cp.services_offered = json.dumps(services_data)
         session.add(cp)
         session.commit()
-        
+
         return {"ok": True, "services": services_data, "marketplace_entries_added": added_count}
     except Exception as e:
         session.rollback()
@@ -4390,25 +4755,27 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
-        
+
     try:
         from modules.llm_engine import get_openai_client
         import json as _json
         client_ai = get_openai_client()
-        
+
         # ── Safe upsert: always fetch (or create) research in ONE place ──────
-        research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
-        
+        research = session.exec(select(ClientResearch).where(
+            ClientResearch.client_id == client_id)).first()
+
         # If no OSINT data yet, run deep investigation synchronously
         if not research or not research.email_agent_data:
             from modules.llm_engine import deep_investigate_company
             url = cp.websiteUrl or cp.website or ""
             if not url and cp.companyName:
-                slug = cp.companyName.lower().replace(" ", "").replace(",","").replace(".","")
+                slug = cp.companyName.lower().replace(" ", "").replace(",", "").replace(".", "")
                 url = f"https://www.{slug}.com"
-            
+
             if url:
-                print(f"[DraftGen] No existing research for client {client_id}. Running deep investigation first...")
+                print(
+                    f"[DraftGen] No existing research for client {client_id}. Running deep investigation first...")
                 try:
                     osint_data = deep_investigate_company(
                         company_name=cp.companyName or "Unknown",
@@ -4416,18 +4783,23 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
                         scraped_text=""
                     )
                     if not research:
-                        research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
+                        research = ClientResearch(
+                            client_id=client_id, tenant_id=current_tenant_id.get())
                         session.add(research)
                         session.flush()  # get the id without committing
-                    research.company_overview = osint_data.get("company_overview", "")
+                    research.company_overview = osint_data.get(
+                        "company_overview", "")
                     research.email_agent_data = _json.dumps(osint_data)
                     session.commit()
-                    print(f"[DraftGen] Deep investigation complete for client {client_id}")
+                    print(
+                        f"[DraftGen] Deep investigation complete for client {client_id}")
                 except Exception as osint_err:
                     session.rollback()
-                    print(f"[DraftGen] OSINT failed (continuing with draft anyway): {osint_err}")
+                    print(
+                        f"[DraftGen] OSINT failed (continuing with draft anyway): {osint_err}")
                     # Re-fetch research after rollback
-                    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+                    research = session.exec(select(ClientResearch).where(
+                        ClientResearch.client_id == client_id)).first()
 
         research_context = ""
         if research:
@@ -4444,14 +4816,19 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
                     pass
 
         # Get Notes and Conversations
-        notes = session.exec(select(ClientNote).where(ClientNote.client_id == client_id).order_by(ClientNote.created_at.desc()).limit(10)).all()
-        conversations = session.exec(select(ConversationLog).where(ConversationLog.client_id == client_id).order_by(ConversationLog.created_at.desc()).limit(5)).all()
-        
+        notes = session.exec(select(ClientNote).where(ClientNote.client_id == client_id).order_by(
+            ClientNote.created_at.desc()).limit(10)).all()
+        conversations = session.exec(select(ConversationLog).where(
+            ConversationLog.client_id == client_id).order_by(ConversationLog.created_at.desc()).limit(5)).all()
+
         interaction_context = ""
         if notes:
-            interaction_context += "Recent Notes:\n" + "\n".join([f"- {n.content}" for n in notes]) + "\n"
+            interaction_context += "Recent Notes:\n" + \
+                "\n".join([f"- {n.content}" for n in notes]) + "\n"
         if conversations:
-            interaction_context += "Recent Conversations:\n" + "\n".join([f"- {c.type} on {c.created_at}: {c.description or c.title}" for c in conversations]) + "\n"
+            interaction_context += "Recent Conversations:\n" + \
+                "\n".join(
+                    [f"- {c.type} on {c.created_at}: {c.description or c.title}" for c in conversations]) + "\n"
 
         prompt = f"""
         You are an expert SDR (Sales Development Representative) at an agency. 
@@ -4472,7 +4849,7 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
             "whatsapp_draft": "Short, punchy WhatsApp message (plain text, emojis allowed)"
         }}
         """
-        
+
         resp = client_ai.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
@@ -4482,14 +4859,14 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
         content = resp.choices[0].message.content.strip()
         if content.startswith("```"):
             content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-            
+
         data = _json.loads(content)
-        
+
         # Save as a draft in SentEmail
         from database import SentEmail, User
         user = session.get(User, cp.userId) if cp.userId else None
         to_email = user.email if user else "unknown@example.com"
-        
+
         draft = SentEmail(
             tenant_id=current_tenant_id.get(),
             client_id=client_id,
@@ -4503,34 +4880,36 @@ def generate_outbound_draft(client_id: int, session: Session = Depends(get_sessi
             sent_at=datetime.now(timezone.utc)
         )
         session.add(draft)
-        
+
         # ── Safe upsert research (use existing row, never re-insert) ─────────
         if not research:
-            research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+            research = session.exec(select(ClientResearch).where(
+                ClientResearch.client_id == client_id)).first()
         if not research:
-            research = ClientResearch(client_id=client_id, tenant_id=current_tenant_id.get())
+            research = ClientResearch(
+                client_id=client_id, tenant_id=current_tenant_id.get())
             session.add(research)
-        
+
         ea_payload = {}
         if research.email_agent_data:
             try:
                 ea_payload = _json.loads(research.email_agent_data)
             except:
                 pass
-                
+
         ea_payload["draft"] = data
-        ea_payload["email_hook"] = data.get("whatsapp_draft", "Custom outreach generated from latest interactions.")
-        
+        ea_payload["email_hook"] = data.get(
+            "whatsapp_draft", "Custom outreach generated from latest interactions.")
+
         research.email_agent_data = _json.dumps(ea_payload)
-        
+
         session.commit()
         return {"ok": True, "draft": data, "email_id": draft.id}
-        
+
     except Exception as e:
         session.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to generate draft: {str(e)}")
-
-
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate draft: {str(e)}")
 
 
 # ─── Extract Client Services from Website ─────────────────────────────────────
@@ -4562,11 +4941,13 @@ async def extract_client_services_endpoint(client_id: int, session: Session = De
         from modules.scraper import scrape_website
         website_text = await scrape_website(website_url)
         if website_text.startswith("ERROR"):
-            print(f"[extract-services] Scrape failed for {website_url}: {website_text[:100]}. Falling back to LLM.")
+            print(
+                f"[extract-services] Scrape failed for {website_url}: {website_text[:100]}. Falling back to LLM.")
             website_text = ""
             scrape_method = "llm_fallback"
     except Exception as scrape_err:
-        print(f"[extract-services] Scraper exception ({website_url}): {scrape_err}. Falling back to LLM.")
+        print(
+            f"[extract-services] Scraper exception ({website_url}): {scrape_err}. Falling back to LLM.")
         scrape_method = "llm_fallback"
 
     # ── Step 2: Extract services (from scraped text, or via LLM knowledge) ─────
@@ -4611,7 +4992,8 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
                 response_format={"type": "json_object"},
                 temperature=0.3,
             )
-            services = _json.loads(resp.choices[0].message.content).get("services", [])
+            services = _json.loads(
+                resp.choices[0].message.content).get("services", [])
         except Exception as llm_err:
             print(f"[extract-services] LLM fallback also failed: {llm_err}")
 
@@ -4648,7 +5030,8 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
             ms = existing_by_name[key]
             ms.description = svc.get("brief") or ms.description
             ms.category = svc.get("category") or ms.category
-            ms.estimated_cost = float(svc.get("approx_cost", 0)) or ms.estimated_cost
+            ms.estimated_cost = float(
+                svc.get("approx_cost", 0)) or ms.estimated_cost
             ms.source = scrape_method
             session.add(ms)
             updated += 1
@@ -4658,7 +5041,8 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
                 normalized_name=svc_name,
                 category=svc.get("category"),
                 description=svc.get("brief"),
-                estimated_cost=float(str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip() if str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip().replace(".","").isdigit() else 0),
+                estimated_cost=float(str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip() if str(
+                    svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip().replace(".", "").isdigit() else 0),
                 cost_is_estimated=svc.get("cost_is_estimated", True),
                 provider_name=company_name,
                 provider_client_id=client_id,
@@ -4684,7 +5068,6 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
     }
 
 
-
 # ─── AI Copilot Insights ──────────────────────────────────────────────────────
 
 
@@ -4695,14 +5078,21 @@ def get_ai_insights(client_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Client not found")
 
     # Gather context
-    notes = session.exec(select(ClientNote).where(ClientNote.client_id == client_id).order_by(ClientNote.created_at.desc()).limit(10)).all()
-    convs = session.exec(select(ConversationLog).where(ConversationLog.client_id == client_id).order_by(ConversationLog.created_at.desc()).limit(10)).all()
-    activities = session.exec(select(ActivityLog).where(ActivityLog.clientId == client_id).order_by(ActivityLog.createdAt.desc()).limit(10)).all()
-    research = session.exec(select(ClientResearch).where(ClientResearch.client_id == client_id)).first()
+    notes = session.exec(select(ClientNote).where(ClientNote.client_id == client_id).order_by(
+        ClientNote.created_at.desc()).limit(10)).all()
+    convs = session.exec(select(ConversationLog).where(ConversationLog.client_id == client_id).order_by(
+        ConversationLog.created_at.desc()).limit(10)).all()
+    activities = session.exec(select(ActivityLog).where(
+        ActivityLog.clientId == client_id).order_by(ActivityLog.createdAt.desc()).limit(10)).all()
+    research = session.exec(select(ClientResearch).where(
+        ClientResearch.client_id == client_id)).first()
 
-    notes_text = "\n".join([f"- {n.content[:200]}" for n in notes]) if notes else "No notes recorded."
-    convs_text = "\n".join([f"- [{c.type.upper()}] {c.title}: {(c.description or '')[:200]}" for c in convs]) if convs else "No conversations recorded."
-    activities_text = "\n".join([f"- {a.action}" for a in activities]) if activities else "No activities."
+    notes_text = "\n".join(
+        [f"- {n.content[:200]}" for n in notes]) if notes else "No notes recorded."
+    convs_text = "\n".join(
+        [f"- [{c.type.upper()}] {c.title}: {(c.description or '')[:200]}" for c in convs]) if convs else "No conversations recorded."
+    activities_text = "\n".join(
+        [f"- {a.action}" for a in activities]) if activities else "No activities."
     research_text = ""
     if research:
         research_text = f"Pain Points: {research.pain_points or 'unknown'}\nBusiness Goals: {research.business_goals or 'unknown'}\nCompetitors: {research.competitors or 'unknown'}"
@@ -4747,6 +5137,7 @@ Provide a JSON response with exactly these keys:
         from modules.llm_engine import get_openai_client
         import json as _json
         import concurrent.futures as _cf
+
         def _call_openai():
             client_ai = get_openai_client()
             resp = client_ai.chat.completions.create(
@@ -4767,7 +5158,8 @@ Provide a JSON response with exactly these keys:
                 raise ValueError("OpenAI timed out or failed")
     except Exception as e:
         # Fallback insights if AI fails
-        score = 75 if days_since_contact and days_since_contact < 7 else (50 if days_since_contact and days_since_contact < 14 else 30)
+        score = 75 if days_since_contact and days_since_contact < 7 else (
+            50 if days_since_contact and days_since_contact < 14 else 30)
         insights = {
             "client_summary": f"{cp.companyName or 'This client'} is currently {cp.status}. Review recent activity to determine next steps.",
             "deal_health_score": score,
@@ -4797,14 +5189,21 @@ def get_lead_ai_insights(lead_id: int, session: Session = Depends(get_session)):
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    notes = session.exec(select(LeadNote).where(LeadNote.lead_id == lead_id).order_by(LeadNote.created_at.desc()).limit(10)).all()
-    convs = session.exec(select(ConversationLog).where(ConversationLog.lead_id == lead_id).order_by(ConversationLog.created_at.desc()).limit(10)).all()
-    activities = session.exec(select(ActivityLog).where(ActivityLog.lead_id == lead_id).order_by(ActivityLog.createdAt.desc()).limit(10)).all()
-    research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+    notes = session.exec(select(LeadNote).where(LeadNote.lead_id == lead_id).order_by(
+        LeadNote.created_at.desc()).limit(10)).all()
+    convs = session.exec(select(ConversationLog).where(ConversationLog.lead_id == lead_id).order_by(
+        ConversationLog.created_at.desc()).limit(10)).all()
+    activities = session.exec(select(ActivityLog).where(
+        ActivityLog.lead_id == lead_id).order_by(ActivityLog.createdAt.desc()).limit(10)).all()
+    research = session.exec(select(ClientResearch).where(
+        ClientResearch.lead_id == lead_id)).first()
 
-    notes_text = "\n".join(f"- {n.content[:200]}" for n in notes) if notes else "No notes recorded."
-    convs_text = "\n".join(f"- [{c.type.upper()}] {c.title}: {(c.description or '')[:200]}" for c in convs) if convs else "No conversations recorded."
-    activities_text = "\n".join(f"- {a.action}" for a in activities) if activities else "No activities."
+    notes_text = "\n".join(
+        f"- {n.content[:200]}" for n in notes) if notes else "No notes recorded."
+    convs_text = "\n".join(
+        f"- [{c.type.upper()}] {c.title}: {(c.description or '')[:200]}" for c in convs) if convs else "No conversations recorded."
+    activities_text = "\n".join(
+        f"- {a.action}" for a in activities) if activities else "No activities."
     research_text = ""
     if research:
         research_text = f"Pain Points: {research.pain_points or 'unknown'}\nBusiness Goals: {research.business_goals or 'unknown'}\nCompetitors: {research.competitors or 'unknown'}"
@@ -4848,6 +5247,7 @@ Provide a JSON response with exactly these keys:
         from modules.llm_engine import get_openai_client
         import json as _json
         import concurrent.futures as _cf
+
         def _call_openai_lead():
             resp = get_openai_client().chat.completions.create(
                 model="gpt-4o-mini", temperature=0,
@@ -4898,6 +5298,7 @@ def get_client_tickets(client_id: int, session: Session = Depends(get_session)):
         } for t in tickets
     ]}
 
+
 @app.post("/clients/{client_id}/tickets")
 def create_client_ticket(client_id: int, body: ClientTicketCreateRequest, session: Session = Depends(get_session)):
     ticket = ClientTicket(
@@ -4919,19 +5320,20 @@ def create_client_ticket(client_id: int, body: ClientTicketCreateRequest, sessio
         "created_at": ticket.created_at.isoformat()
     }}
 
+
 @app.put("/clients/{client_id}/tickets/{ticket_id}")
 def update_client_ticket(client_id: int, ticket_id: int, body: ClientTicketUpdateRequest, session: Session = Depends(get_session)):
     ticket = session.get(ClientTicket, ticket_id)
     if not ticket or ticket.client_id != client_id:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    
+
     if body.title is not None:
         ticket.title = body.title
     if body.description is not None:
         ticket.description = body.description
     if body.status is not None:
         ticket.status = body.status
-        
+
     session.add(ticket)
     session.commit()
     return {"ok": True}
@@ -4939,12 +5341,15 @@ def update_client_ticket(client_id: int, ticket_id: int, body: ClientTicketUpdat
 # ─────────────────────────────────────────────────────────────────────────────
 # Admin – Client X-Ray
 # ─────────────────────────────────────────────────────────────────────────────
+
+
 @app.get("/admin/client-xray/{client_id}")
 def admin_client_xray(client_id: int, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
-    remarks = session.exec(select(Remark).where(Remark.clientId == client_id)).all()
+    remarks = session.exec(select(Remark).where(
+        Remark.clientId == client_id)).all()
     activities = session.exec(
         select(ActivityLog).where(ActivityLog.clientId == client_id)
     ).all()
@@ -4977,7 +5382,7 @@ def list_projects(member_id: Optional[int] = None, session: Session = Depends(ge
     tenant_id = current_tenant_id.get()
     if tenant_id:
         q = q.where(Project.tenant_id == tenant_id)
-        
+
     projects = session.exec(q).all()
     if member_id is not None:
         filtered = []
@@ -5006,7 +5411,7 @@ def create_project(body: ProjectCreateRequest, session: Session = Depends(get_se
     session.add(p)
     session.commit()
     session.refresh(p)
-    
+
     try:
         _notify_admins(
             session, current_tenant_id.get(),
@@ -5017,15 +5422,16 @@ def create_project(body: ProjectCreateRequest, session: Session = Depends(get_se
         )
     except Exception:
         pass
-    
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message("New Project Created", _project_dict(p), f"{base_url}/projects")
+        send_ai_polished_whatsapp_message(
+            "New Project Created", _project_dict(p), f"{base_url}/projects")
     except Exception as e:
         print("WhatsApp Error:", e)
-        
+
     return {"project": _project_dict(p)}
 
 
@@ -5034,20 +5440,24 @@ def get_project(project_id: int, session: Session = Depends(get_session)):
     p = session.get(Project, project_id)
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
-    remarks = session.exec(select(Remark).where(Remark.projectId == project_id)).all()
-    
+    remarks = session.exec(select(Remark).where(
+        Remark.projectId == project_id)).all()
+
     employees = []
     if p.employeeIds:
-        employees = [{"id": e.id, "name": e.name, "email": e.email} for e in session.exec(select(User).where(User.id.in_(p.employeeIds))).all()]
-        
+        employees = [{"id": e.id, "name": e.name, "email": e.email} for e in session.exec(
+            select(User).where(User.id.in_(p.employeeIds))).all()]
+
     interns = []
     if p.internIds:
-        interns = [{"id": i.id, "name": i.name, "email": i.email} for i in session.exec(select(User).where(User.id.in_(p.internIds))).all()]
-        
+        interns = [{"id": i.id, "name": i.name, "email": i.email} for i in session.exec(
+            select(User).where(User.id.in_(p.internIds))).all()]
+
     project_members = []
     if p.projectMemberIds:
-        project_members = [{"id": pm.id, "name": pm.name, "email": pm.email} for pm in session.exec(select(User).where(User.id.in_(p.projectMemberIds))).all()]
-        
+        project_members = [{"id": pm.id, "name": pm.name, "email": pm.email} for pm in session.exec(
+            select(User).where(User.id.in_(p.projectMemberIds))).all()]
+
     return {
         "project": _project_dict(p),
         "remarks": [
@@ -5072,12 +5482,16 @@ def get_project_dashboard(project_id: int, session: Session = Depends(get_sessio
     tickets = session.exec(
         select(ProjectTicket).where(ProjectTicket.project_id == project_id)
     ).all()
-    team_ids = list(dict.fromkeys((project.employeeIds or []) + (project.projectMemberIds or []) + (project.internIds or [])))
-    team_users = session.exec(select(User).where(User.id.in_(team_ids))).all() if team_ids else []
+    team_ids = list(dict.fromkeys((project.employeeIds or []) +
+                    (project.projectMemberIds or []) + (project.internIds or [])))
+    team_users = session.exec(select(User).where(
+        User.id.in_(team_ids))).all() if team_ids else []
 
     states = ["Planning", "In Dev", "Given to QA", "Prod Release"]
-    status_counts = {state: sum(1 for ticket in tickets if ticket.current_state == state) for state in states}
-    production_count = sum(1 for ticket in tickets if ticket.date_release_prod or ticket.current_state == "Prod Release")
+    status_counts = {state: sum(
+        1 for ticket in tickets if ticket.current_state == state) for state in states}
+    production_count = sum(
+        1 for ticket in tickets if ticket.date_release_prod or ticket.current_state == "Prod Release")
 
     def parse_date(value):
         if not value:
@@ -5087,23 +5501,31 @@ def get_project_dashboard(project_id: int, session: Session = Depends(get_sessio
         except (TypeError, ValueError):
             return None
 
-    created_dates = [ticket.created_at.date() for ticket in tickets if ticket.created_at]
-    released_dates = [parse_date(ticket.date_release_prod) for ticket in tickets]
-    all_dates = [date for date in created_dates + [date for date in released_dates if date] if date]
+    created_dates = [ticket.created_at.date()
+                     for ticket in tickets if ticket.created_at]
+    released_dates = [parse_date(ticket.date_release_prod)
+                      for ticket in tickets]
+    all_dates = [date for date in created_dates +
+                 [date for date in released_dates if date] if date]
     tracker = []
     if all_dates:
-        start_date, end_date = min(all_dates), max(max(all_dates), datetime.utcnow().date())
+        start_date, end_date = min(all_dates), max(
+            max(all_dates), datetime.utcnow().date())
         current = start_date
         while current <= end_date:
             created = sum(1 for date in created_dates if date <= current)
-            released = sum(1 for date in released_dates if date and date <= current)
-            tracker.append({"date": current.isoformat(), "created": created, "production": released})
+            released = sum(
+                1 for date in released_dates if date and date <= current)
+            tracker.append({"date": current.isoformat(),
+                           "created": created, "production": released})
             current += timedelta(days=1)
 
     developer_stats = []
     for member in team_users:
-        names = {str(member.id), (member.name or "").strip().lower(), (member.email or "").strip().lower()}
-        assigned = [ticket for ticket in tickets if (ticket.current_owner or "").strip().lower() in names]
+        names = {str(member.id), (member.name or "").strip(
+        ).lower(), (member.email or "").strip().lower()}
+        assigned = [ticket for ticket in tickets if (
+            ticket.current_owner or "").strip().lower() in names]
         developer_stats.append({
             "id": member.id,
             "name": member.name or member.email,
@@ -5115,8 +5537,10 @@ def get_project_dashboard(project_id: int, session: Session = Depends(get_sessio
             "in_qa": sum(1 for ticket in assigned if ticket.current_state == "Given to QA"),
         })
 
-    assigned_names = {str(member.id).lower() for member in team_users} | {(member.name or "").strip().lower() for member in team_users} | {(member.email or "").strip().lower() for member in team_users}
-    unassigned = sum(1 for ticket in tickets if not (ticket.current_owner or "").strip() or ticket.current_owner.strip().lower() not in assigned_names)
+    assigned_names = {str(member.id).lower() for member in team_users} | {(member.name or "").strip(
+    ).lower() for member in team_users} | {(member.email or "").strip().lower() for member in team_users}
+    unassigned = sum(1 for ticket in tickets if not (ticket.current_owner or "").strip(
+    ) or ticket.current_owner.strip().lower() not in assigned_names)
     return {
         "project_id": project_id,
         "tickets": {
@@ -5148,15 +5572,16 @@ def update_project(
     session.add(p)
     session.commit()
     session.refresh(p)
-    
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message("Project Updated", _project_dict(p), f"{base_url}/projects")
+        send_ai_polished_whatsapp_message(
+            "Project Updated", _project_dict(p), f"{base_url}/projects")
     except Exception as e:
         print("WhatsApp Error:", e)
-        
+
     return {"project": _project_dict(p)}
 
 
@@ -5206,7 +5631,8 @@ def _project_dict(p: Project) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 @app.get("/services")
 def list_services(session: Session = Depends(get_session)):
-    svcs = session.exec(select(ServiceCatalog).where(ServiceCatalog.is_active == True)).all()
+    svcs = session.exec(select(ServiceCatalog).where(
+        ServiceCatalog.is_active == True)).all()
     return {
         "services": [
             {
@@ -5235,10 +5661,12 @@ def create_service(body: ServiceCreateRequest, session: Session = Depends(get_se
 
 @app.post("/services/request")
 def request_service(body: ServiceRequestCreate, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.email == body.client_email)).first()
+    user = session.exec(select(User).where(
+        User.email == body.client_email)).first()
     if not user:
         raise HTTPException(status_code=404, detail="Client user not found")
-    cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
+    cp = session.exec(select(ClientProfile).where(
+        ClientProfile.userId == user.id)).first()
     if not cp:
         raise HTTPException(status_code=404, detail="Client profile not found")
 
@@ -5263,10 +5691,12 @@ def my_requests(client_email: str = Query(...), session: Session = Depends(get_s
     user = session.exec(select(User).where(User.email == client_email)).first()
     if not user:
         return {"requests": []}
-    cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
+    cp = session.exec(select(ClientProfile).where(
+        ClientProfile.userId == user.id)).first()
     if not cp:
         return {"requests": []}
-    reqs = session.exec(select(ServiceRequest).where(ServiceRequest.client_id == cp.id)).all()
+    reqs = session.exec(select(ServiceRequest).where(
+        ServiceRequest.client_id == cp.id)).all()
     return {
         "requests": [
             {
@@ -5293,7 +5723,8 @@ def all_service_requests(session: Session = Depends(get_session)):
         cp = session.get(ClientProfile, r.client_id)
         user = session.get(User, cp.userId) if cp and cp.userId else None
         svc = session.get(ServiceCatalog, r.service_id)
-        emp = session.get(User, r.assigned_employee_id) if r.assigned_employee_id else None
+        emp = session.get(
+            User, r.assigned_employee_id) if r.assigned_employee_id else None
         result.append(
             {
                 "id": r.id,
@@ -5378,7 +5809,8 @@ def get_message_threads(user_id: int, session: Session = Depends(get_session)):
     if user.role in ("Admin", "Employee"):
         threads = session.exec(select(MessageThread)).all()
     else:
-        cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user_id)).first()
+        cp = session.exec(select(ClientProfile).where(
+            ClientProfile.userId == user_id)).first()
         if not cp:
             return {"threads": []}
         threads = session.exec(
@@ -5391,7 +5823,8 @@ def get_message_threads(user_id: int, session: Session = Depends(get_session)):
     thread_ids = [t.id for t in threads]
 
     # Batch-fetch service requests
-    sr_ids = list({t.service_request_id for t in threads if t.service_request_id})
+    sr_ids = list(
+        {t.service_request_id for t in threads if t.service_request_id})
     service_requests: dict = {}
     if sr_ids:
         service_requests = {
@@ -5400,7 +5833,8 @@ def get_message_threads(user_id: int, session: Session = Depends(get_session)):
         }
 
     # Batch-fetch service catalog entries
-    svc_ids = list({sr.service_id for sr in service_requests.values() if sr.service_id})
+    svc_ids = list(
+        {sr.service_id for sr in service_requests.values() if sr.service_id})
     services: dict = {}
     if svc_ids:
         services = {
@@ -5437,7 +5871,8 @@ def get_message_threads(user_id: int, session: Session = Depends(get_session)):
         emp = users_map.get(t.employee_id) if t.employee_id else None
         msgs = msgs_by_thread.get(t.id, [])
         last_message = msgs[-1] if msgs else None
-        last_sender_user = users_map.get(last_message.sender_id) if last_message else None
+        last_sender_user = users_map.get(
+            last_message.sender_id) if last_message else None
         unread_count = sum(
             1 for m in msgs if m.sender_id != user_id and not m.is_read
         )
@@ -5515,7 +5950,7 @@ def list_calls(unsummarized: Optional[bool] = None, session: Session = Depends(g
     tenant_id = current_tenant_id.get()
     if tenant_id:
         q = q.where(CallLog.tenant_id == tenant_id)
-        
+
     calls = session.exec(q).all()
     result = []
     for c in calls:
@@ -5529,18 +5964,20 @@ def list_calls(unsummarized: Optional[bool] = None, session: Session = Depends(g
 @app.post("/calls")
 def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
-    
+
     # Check limit for Demo users
     if tenant_id:
         tenant = session.get(Tenant, tenant_id)
         if tenant:
-            user = session.exec(select(User).where(User.tenant_id == tenant_id)).first()
+            user = session.exec(select(User).where(
+                User.tenant_id == tenant_id)).first()
             if user and user.role == "Demo":
                 if tenant.usage_calls >= tenant.limit_calls:
-                    raise HTTPException(status_code=403, detail=f"Demo limit reached. You can only log up to {tenant.limit_calls} calls/pitches.")
+                    raise HTTPException(
+                        status_code=403, detail=f"Demo limit reached. You can only log up to {tenant.limit_calls} calls/pitches.")
                 tenant.usage_calls += 1
                 session.add(tenant)
-                
+
     c = CallLog(
         phone_number=body.phone_number,
         duration_seconds=body.duration_seconds,
@@ -5555,16 +5992,17 @@ def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
     session.add(c)
     session.commit()
     session.refresh(c)
-    
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
         call_link = f"{base_url}/calls" if not c.client_id else f"{base_url}/clients/{c.client_id}"
-        send_ai_polished_whatsapp_message("Call Logged", _call_dict(c), call_link)
+        send_ai_polished_whatsapp_message(
+            "Call Logged", _call_dict(c), call_link)
     except Exception as e:
         print("WhatsApp Error:", e)
-        
+
     return {"call": _call_dict(c)}
 
 
@@ -5582,16 +6020,17 @@ def update_call(
     session.add(c)
     session.commit()
     session.refresh(c)
-    
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
         call_link = f"{base_url}/calls" if not c.client_id else f"{base_url}/clients/{c.client_id}"
-        send_ai_polished_whatsapp_message("Call Updated", _call_dict(c), call_link)
+        send_ai_polished_whatsapp_message(
+            "Call Updated", _call_dict(c), call_link)
     except Exception as e:
         print("WhatsApp Error:", e)
-        
+
     return {"call": _call_dict(c)}
 
 
@@ -5623,19 +6062,20 @@ def _call_dict(c: CallLog, session: Session = None) -> dict:
         "followup_date": getattr(c, "followup_date", None),
         "client_id": getattr(c, "client_id", None),
     }
-    
+
     if session and c.client_id:
         from database import ClientProfile
         cp = session.get(ClientProfile, c.client_id)
         if cp:
             d["entity_name"] = cp.companyName or cp.projectName
-            
+
     if not d.get("entity_name") and c.summary:
         if c.summary.startswith("AI Pitch Simulation for "):
-            d["entity_name"] = c.summary.replace("AI Pitch Simulation for ", "")
+            d["entity_name"] = c.summary.replace(
+                "AI Pitch Simulation for ", "")
         elif c.summary.startswith("Pitch Generation for "):
             d["entity_name"] = c.summary.replace("Pitch Generation for ", "")
-            
+
     return d
 
 
@@ -5654,6 +6094,7 @@ class ScheduledCallCreateRequest(BaseModel):
     notes: Optional[str] = None
     assigned_to: Optional[str] = None
 
+
 def _sched_dict(s: ScheduledCall) -> dict:
     return {
         "id": s.id,
@@ -5670,10 +6111,13 @@ def _sched_dict(s: ScheduledCall) -> dict:
         "created_at": s.created_at.isoformat(),
     }
 
+
 @app.get("/scheduled-calls")
 def list_scheduled_calls(session: Session = Depends(get_session)):
-    items = session.exec(select(ScheduledCall).order_by(ScheduledCall.scheduled_at.asc())).all()
+    items = session.exec(select(ScheduledCall).order_by(
+        ScheduledCall.scheduled_at.asc())).all()
     return {"scheduled_calls": [_sched_dict(s) for s in items]}
+
 
 @app.post("/scheduled-calls")
 def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = Depends(get_session)):
@@ -5722,11 +6166,13 @@ def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = D
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message("Scheduled Call Created", _sched_dict(sc), f"{base_url}/calls")
+        send_ai_polished_whatsapp_message(
+            "Scheduled Call Created", _sched_dict(sc), f"{base_url}/calls")
     except Exception as e:
         print("WhatsApp Error:", e)
-        
+
     return {"scheduled_call": _sched_dict(sc)}
+
 
 @app.put("/scheduled-calls/{sc_id}")
 def update_scheduled_call(sc_id: int, body: Dict[str, Any], session: Session = Depends(get_session)):
@@ -5739,16 +6185,18 @@ def update_scheduled_call(sc_id: int, body: Dict[str, Any], session: Session = D
     session.add(sc)
     session.commit()
     session.refresh(sc)
-    
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message("Scheduled Call Updated", _sched_dict(sc), f"{base_url}/calls")
+        send_ai_polished_whatsapp_message(
+            "Scheduled Call Updated", _sched_dict(sc), f"{base_url}/calls")
     except Exception as e:
         print("WhatsApp Error:", e)
-        
+
     return {"scheduled_call": _sched_dict(sc)}
+
 
 @app.delete("/scheduled-calls/{sc_id}")
 def delete_scheduled_call(sc_id: int, session: Session = Depends(get_session)):
@@ -5763,8 +6211,7 @@ def delete_scheduled_call(sc_id: int, session: Session = Depends(get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 # Documents / OCR
 # ─────────────────────────────────────────────────────────────────────────────
-from fastapi import UploadFile, File
-from modules.llm_engine import analyze_document
+
 
 @app.post("/documents/ocr")
 async def ocr_document(file: UploadFile = File(...)):
@@ -5842,7 +6289,6 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
             "Saludos,\nRelation Manager- SerpHawk\ncrm@serphawk.in"
         )
 
-
         # Always use LLM to analyze and generate email, even if only company name or email is provided
         if body.company_url:
             text = scrape_website(body.company_url)
@@ -5851,8 +6297,10 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
             # Use LLM for company research, service mapping, and draft generation based on company name and website (no scraping)
             llm_input = f"Company Name: {body.company_name or ''}\nWebsite: {body.company_url or ''}"
             analysis = analyze_content(llm_input)
-            company_name = analysis.get("company_name") or body.company_name or "Your Company"
-            services = ", ".join(analysis.get("key_value_props") or ["SEO", "PPC", "Web Development"])
+            company_name = analysis.get(
+                "company_name") or body.company_name or "Your Company"
+            services = ", ".join(analysis.get("key_value_props") or [
+                                 "SEO", "PPC", "Web Development"])
             # Try to extract company email from analysis.contacts
             company_email = None
             contacts = analysis.get("contacts") or []
@@ -5863,16 +6311,25 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
             # Use LLM to generate outreach and inbound drafts
             outreach_llm = _gen(analysis)
             inbound_llm = _gen(analysis)
-            outreach_subject = outreach_llm.get("subject") or OUTREACH_SUBJECT.format(company_name=company_name)
-            outreach_body_en = outreach_llm.get("english_body") or OUTREACH_BODY_EN.format(company_name=company_name, services=services)
-            outreach_body_es = outreach_llm.get("spanish_body") or OUTREACH_BODY_ES.format(company_name=company_name, services=services)
-            inbound_subject = inbound_llm.get("subject") or INBOUND_SUBJECT.format(company_name=company_name)
-            inbound_body_en = inbound_llm.get("english_body") or INBOUND_BODY_EN.format(company_name=company_name, services=services)
-            inbound_body_es = inbound_llm.get("spanish_body") or INBOUND_BODY_ES.format(company_name=company_name, services=services)
+            outreach_subject = outreach_llm.get(
+                "subject") or OUTREACH_SUBJECT.format(company_name=company_name)
+            outreach_body_en = outreach_llm.get("english_body") or OUTREACH_BODY_EN.format(
+                company_name=company_name, services=services)
+            outreach_body_es = outreach_llm.get("spanish_body") or OUTREACH_BODY_ES.format(
+                company_name=company_name, services=services)
+            inbound_subject = inbound_llm.get(
+                "subject") or INBOUND_SUBJECT.format(company_name=company_name)
+            inbound_body_en = inbound_llm.get("english_body") or INBOUND_BODY_EN.format(
+                company_name=company_name, services=services)
+            inbound_body_es = inbound_llm.get("spanish_body") or INBOUND_BODY_ES.format(
+                company_name=company_name, services=services)
 
-        sender = body.sender_email or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
-        password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
-        smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "smtp.gmail.com")
+        sender = body.sender_email or os.getenv(
+            "EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
+        password = os.getenv("EMAIL_PASSWORD") or os.getenv(
+            "OUTLOOK_PASSWORD", "")
+        smtp_server = os.getenv("EMAIL_HOST") or os.getenv(
+            "SMTP_SERVER", "smtp.gmail.com")
         smtp_port = os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
         imap_server = os.getenv("IMAP_SERVER")
 
@@ -5891,7 +6348,7 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
             },
             "company_name": company_name,
             "services": services,
-                "to_email": company_email or body.to_email,
+            "to_email": company_email or body.to_email,
             "manual": body.manual,
             "sent_at": datetime.utcnow().isoformat(),
             "client_id": body.client_id
@@ -5901,7 +6358,8 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
         if not client_id:
             from database import ClientProfile
             # Try to find existing client by email
-            existing_client = session.exec(select(ClientProfile).where(ClientProfile.email == body.to_email)).first() if hasattr(ClientProfile, 'email') else None
+            existing_client = session.exec(select(ClientProfile).where(
+                ClientProfile.email == body.to_email)).first() if hasattr(ClientProfile, 'email') else None
             if existing_client:
                 client_id = existing_client.id
             else:
@@ -5985,13 +6443,16 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
 
         # Schedule LLM draft generation in the background if needed
         if background_tasks is not None:
-            background_tasks.add_task(generate_llm_draft_task, sent_email.id, body.dict())
+            background_tasks.add_task(
+                generate_llm_draft_task, sent_email.id, body.dict())
 
         return {"ok": True, "email_id": sent_email.id, "draft": draft_obj, "client_id": client_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # Background task to update SentEmail with LLM-generated draft
+
+
 def generate_llm_draft_task(sent_email_id, body_dict):
     import time
     import json
@@ -6001,15 +6462,18 @@ def generate_llm_draft_task(sent_email_id, body_dict):
     session = Session(engine)
     try:
         # Scrape and analyze
-        text = scrape_website(body_dict.get("company_url", "")) if body_dict.get("company_url") else ""
+        text = scrape_website(body_dict.get(
+            "company_url", "")) if body_dict.get("company_url") else ""
         analysis = analyze_content(text) if text else {}
         llm_result = llm_generate_email(analysis, None)
         # Update SentEmail record
         sent_email = session.get(SentEmail, sent_email_id)
         if sent_email:
             sent_email.subject = llm_result.get("subject", sent_email.subject)
-            sent_email.english_body = llm_result.get("english_body", sent_email.english_body)
-            sent_email.spanish_body = llm_result.get("spanish_body", sent_email.spanish_body)
+            sent_email.english_body = llm_result.get(
+                "english_body", sent_email.english_body)
+            sent_email.spanish_body = llm_result.get(
+                "spanish_body", sent_email.spanish_body)
             sent_email.draft_json = json.dumps(llm_result)
             session.add(sent_email)
             session.commit()
@@ -6046,29 +6510,32 @@ def dashboard_stats(
         user = session.exec(select(User).where(User.email == email)).first()
         if not user:
             return {"error": "User not found"}
-        
+
         assigned_leads_count = session.exec(
             select(func.count(Lead.id)).where(Lead.owner_id == user.id)
         ).first() or 0
-        
+
         assigned_contacts_count = session.exec(
             select(func.count(Contact.id)).where(Contact.owner_id == user.id)
         ).first() or 0
-        
+
         assigned_clients_count = session.exec(
-            select(func.count(ClientProfile.id)).where(ClientProfile.assignedEmployeeId == user.id)
+            select(func.count(ClientProfile.id)).where(
+                ClientProfile.assignedEmployeeId == user.id)
         ).first() or 0
-        
+
         recent_meetings = session.exec(
-            select(Meeting).where(Meeting.host_id == user.id).order_by(Meeting.scheduled_at.desc()).limit(5)
+            select(Meeting).where(Meeting.host_id == user.id).order_by(
+                Meeting.scheduled_at.desc()).limit(5)
         ).all()
-        
+
         recent_calls = session.exec(
             select(CallLog).where(
-                or_(CallLog.assigned_to == user.name, CallLog.assigned_to == str(user.id))
+                or_(CallLog.assigned_to == user.name,
+                    CallLog.assigned_to == str(user.id))
             ).order_by(CallLog.createdAt.desc()).limit(5)
         ).all()
-        
+
         activities = []
         for m in recent_meetings:
             activities.append({
@@ -6084,9 +6551,9 @@ def dashboard_stats(
                 "date": c.createdAt.isoformat() if c.createdAt else None,
                 "status": "Completed"
             })
-            
+
         activities.sort(key=lambda x: x["date"] or "", reverse=True)
-        
+
         return {
             "isSalesManager": True,
             "metrics": {
@@ -6097,15 +6564,15 @@ def dashboard_stats(
             "recent_activity": activities[:5]
         }
 
-
     if role == "Demo":
         user = session.exec(select(User).where(User.email == email)).first()
         if not user:
             return {"error": "User not found"}
-        
+
         # Read usage from tenant record (the authoritative source)
-        tenant = session.get(Tenant, user.tenant_id) if user.tenant_id else None
-        
+        tenant = session.get(
+            Tenant, user.tenant_id) if user.tenant_id else None
+
         if tenant:
             return {
                 "isDemo": True,
@@ -6120,7 +6587,7 @@ def dashboard_stats(
                     "radar": tenant.limit_searches
                 }
             }
-        
+
         # Fallback if no tenant
         return {
             "isDemo": True,
@@ -6132,7 +6599,8 @@ def dashboard_stats(
         user = session.exec(select(User).where(User.email == email)).first()
         if not user:
             return {"isClient": True}
-        cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
+        cp = session.exec(select(ClientProfile).where(
+            ClientProfile.userId == user.id)).first()
         if not cp:
             return {"isClient": True, "error": "No ClientProfile found"}
 
@@ -6198,15 +6666,19 @@ def dashboard_stats(
         # Projects for this user/client (clientIds or projectMemberIds is a JSON list)
         all_projects = session.exec(select(Project)).all()
         if cp:
-            projects = [p for p in all_projects if cp.id in (p.clientIds or [])]
+            projects = [p for p in all_projects if cp.id in (
+                p.clientIds or [])]
         else:
-            projects = [p for p in all_projects if user.id in (p.projectMemberIds or []) or user.id in (p.employeeIds or []) or user.id in (p.internIds or [])]
+            projects = [p for p in all_projects if user.id in (p.projectMemberIds or []) or user.id in (
+                p.employeeIds or []) or user.id in (p.internIds or [])]
 
         # Invoice summary stats
         total_billed = sum(inv.total for inv in invoices)
         total_paid = sum(inv.total for inv in invoices if inv.status == "Paid")
-        total_pending_inv = sum(inv.total for inv in invoices if inv.status in ("Sent", "Draft"))
-        total_overdue = sum(inv.total for inv in invoices if inv.status == "Overdue")
+        total_pending_inv = sum(
+            inv.total for inv in invoices if inv.status in ("Sent", "Draft"))
+        total_overdue = sum(
+            inv.total for inv in invoices if inv.status == "Overdue")
 
         return {
             "isClient": True,
@@ -6220,7 +6692,8 @@ def dashboard_stats(
             "nextMilestone": cp.nextMilestone if cp else "",
             "nextMilestoneDate": cp.nextMilestoneDate if cp else "",
             "active_services_list": [
-                {"id": r.id, "service_id": r.service_id, "status": r.status, "service_name": _resolve_service_name(r.service_id)}
+                {"id": r.id, "service_id": r.service_id, "status": r.status,
+                    "service_name": _resolve_service_name(r.service_id)}
                 for r in active_services
             ] if cp else [],
             "pending_quotes_list": [
@@ -6305,20 +6778,25 @@ def dashboard_stats(
     # Admin / Employee stats
     total_clients = len(session.exec(select(ClientProfile)).all())
     active_clients = len(
-        session.exec(select(ClientProfile).where(ClientProfile.status == "Active")).all()
+        session.exec(select(ClientProfile).where(
+            ClientProfile.status == "Active")).all()
     )
     pending_clients = len(
-        session.exec(select(ClientProfile).where(ClientProfile.status == "Pending")).all()
+        session.exec(select(ClientProfile).where(
+            ClientProfile.status == "Pending")).all()
     )
     hold_clients = len(
-        session.exec(select(ClientProfile).where(ClientProfile.status == "Hold")).all()
+        session.exec(select(ClientProfile).where(
+            ClientProfile.status == "Hold")).all()
     )
     total_projects = len(session.exec(select(Project)).all())
     total_employees = len(
-        session.exec(select(User).where(User.role == "Employee").where(User.tenant_id == current_tenant_id.get())).all()
+        session.exec(select(User).where(User.role == "Employee").where(
+            User.tenant_id == current_tenant_id.get())).all()
     )
     total_interns = len(
-        session.exec(select(User).where(User.role == "Intern").where(User.tenant_id == current_tenant_id.get())).all()
+        session.exec(select(User).where(User.role == "Intern").where(
+            User.tenant_id == current_tenant_id.get())).all()
     )
     total_activities = len(session.exec(select(ActivityLog)).all())
     total_calls = len(session.exec(select(CallLog)).all())
@@ -6343,9 +6821,12 @@ def dashboard_stats(
         day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start + timedelta(days=1)
         labels.append(day.strftime("%b %d"))
-        activity_chart.append(sum(1 for a in all_activities if a.createdAt and day_start <= _as_naive_utc(a.createdAt) < day_end))
-        email_chart.append(sum(1 for e in all_emails if e.sent_at and day_start <= _as_naive_utc(e.sent_at) < day_end))
-        call_chart.append(sum(1 for c in all_calls_list if c.createdAt and day_start <= _as_naive_utc(c.createdAt) < day_end))
+        activity_chart.append(sum(
+            1 for a in all_activities if a.createdAt and day_start <= _as_naive_utc(a.createdAt) < day_end))
+        email_chart.append(sum(
+            1 for e in all_emails if e.sent_at and day_start <= _as_naive_utc(e.sent_at) < day_end))
+        call_chart.append(sum(
+            1 for c in all_calls_list if c.createdAt and day_start <= _as_naive_utc(c.createdAt) < day_end))
 
     import calendar
     all_invoices = session.exec(select(Invoice)).all()
@@ -6365,7 +6846,7 @@ def dashboard_stats(
         while target_month <= 0:
             target_month += 12
             target_year -= 1
-            
+
         month_start = datetime(target_year, target_month, 1)
         next_month = target_month + 1
         next_year = target_year
@@ -6373,27 +6854,34 @@ def dashboard_stats(
             next_month = 1
             next_year += 1
         month_end = datetime(next_year, next_month, 1)
-        
+
         def _in_month(row):
             v = _as_naive_utc(getattr(row, "created_at", None))
             return bool(v and month_start <= v < month_end)
-        
+
         # Money in: quotes + paid invoices + sales orders created this month.
         rev = (
             sum(_billing_value(q) for q in all_quotes if _in_month(q))
-            + sum(_billing_value(inv) for inv in all_invoices if inv.status == "Paid" and _in_month(inv))
+            + sum(_billing_value(inv)
+                  for inv in all_invoices if inv.status == "Paid" and _in_month(inv))
             + sum(_billing_value(o) for o in all_sales_orders if _in_month(o))
         )
         # Money out: purchase orders created this month.
-        exp = sum(_billing_value(po) for po in all_purchase_orders if _in_month(po))
-        revenue_data.append({"name": calendar.month_abbr[target_month], "revenue": rev, "expenses": exp})
-        
+        exp = sum(_billing_value(po)
+                  for po in all_purchase_orders if _in_month(po))
+        revenue_data.append(
+            {"name": calendar.month_abbr[target_month], "revenue": rev, "expenses": exp})
+
     pipeline_data = [
         {"stage": "Prospecting", "count": pending_clients},
-        {"stage": "Qualification", "count": len([r for r in all_service_reqs if r.status == "Pending"])},
-        {"stage": "Proposal", "count": len([r for r in all_service_reqs if r.status == "Quoted"])},
-        {"stage": "Negotiation", "count": len([r for r in all_service_reqs if r.status == "In Progress"])},
-        {"stage": "Closed Won", "count": len([r for r in all_service_reqs if r.status == "Accepted"])},
+        {"stage": "Qualification", "count": len(
+            [r for r in all_service_reqs if r.status == "Pending"])},
+        {"stage": "Proposal", "count": len(
+            [r for r in all_service_reqs if r.status == "Quoted"])},
+        {"stage": "Negotiation", "count": len(
+            [r for r in all_service_reqs if r.status == "In Progress"])},
+        {"stage": "Closed Won", "count": len(
+            [r for r in all_service_reqs if r.status == "Accepted"])},
     ]
 
     recent_activities = session.exec(
@@ -6401,30 +6889,44 @@ def dashboard_stats(
     ).all()
 
     all_proposals = session.exec(select(Proposal)).all()
-    total_revenue = sum(inv.total or 0 for inv in all_invoices if inv.status == "Paid")
-    total_pipeline_value = sum(p.total_value or 0 for p in all_proposals if p.status not in ("Accepted", "Declined"))
+    total_revenue = sum(
+        inv.total or 0 for inv in all_invoices if inv.status == "Paid")
+    total_pipeline_value = sum(
+        p.total_value or 0 for p in all_proposals if p.status not in ("Accepted", "Declined"))
 
     total_quotes_value = sum(_billing_value(q) for q in all_quotes)
-    accepted_quotes_value = sum(_billing_value(q) for q in all_quotes if q.status == "Accepted")
+    accepted_quotes_value = sum(_billing_value(q)
+                                for q in all_quotes if q.status == "Accepted")
     total_quotes_count = len(all_quotes)
-    accepted_quotes_count = sum(1 for q in all_quotes if q.status == "Accepted")
+    accepted_quotes_count = sum(
+        1 for q in all_quotes if q.status == "Accepted")
 
     total_sales_orders_value = sum(_billing_value(o) for o in all_sales_orders)
-    fulfilled_sales_orders_value = sum(_billing_value(o) for o in all_sales_orders if o.status in ("Fulfilled", "Paid", "Completed"))
+    fulfilled_sales_orders_value = sum(_billing_value(
+        o) for o in all_sales_orders if o.status in ("Fulfilled", "Paid", "Completed"))
     total_sales_orders_count = len(all_sales_orders)
-    fulfilled_sales_orders_count = sum(1 for o in all_sales_orders if o.status in ("Fulfilled", "Paid", "Completed"))
+    fulfilled_sales_orders_count = sum(
+        1 for o in all_sales_orders if o.status in ("Fulfilled", "Paid", "Completed"))
 
-    total_purchase_orders_value = sum(_billing_value(po) for po in all_purchase_orders)
-    received_purchase_orders_value = sum(_billing_value(po) for po in all_purchase_orders if po.status in ("Received", "Completed"))
+    total_purchase_orders_value = sum(
+        _billing_value(po) for po in all_purchase_orders)
+    received_purchase_orders_value = sum(_billing_value(
+        po) for po in all_purchase_orders if po.status in ("Received", "Completed"))
     total_purchase_orders_count = len(all_purchase_orders)
-    received_purchase_orders_count = sum(1 for po in all_purchase_orders if po.status in ("Received", "Completed"))
+    received_purchase_orders_count = sum(
+        1 for po in all_purchase_orders if po.status in ("Received", "Completed"))
 
     total_invoices_value = sum(inv.total or 0 for inv in all_invoices)
-    paid_invoices_value = sum(inv.total or 0 for inv in all_invoices if inv.status == "Paid")
-    sent_invoices_value = sum(inv.total or 0 for inv in all_invoices if inv.status == "Sent")
-    overdue_invoices_value = sum(inv.total or 0 for inv in all_invoices if inv.status == "Overdue")
-    partial_invoices_value = sum(inv.total or 0 for inv in all_invoices if inv.status == "Partial")
-    paid_invoices_count = sum(1 for inv in all_invoices if inv.status == "Paid")
+    paid_invoices_value = sum(
+        inv.total or 0 for inv in all_invoices if inv.status == "Paid")
+    sent_invoices_value = sum(
+        inv.total or 0 for inv in all_invoices if inv.status == "Sent")
+    overdue_invoices_value = sum(
+        inv.total or 0 for inv in all_invoices if inv.status == "Overdue")
+    partial_invoices_value = sum(
+        inv.total or 0 for inv in all_invoices if inv.status == "Partial")
+    paid_invoices_count = sum(
+        1 for inv in all_invoices if inv.status == "Paid")
     total_invoices_count = len(all_invoices)
 
     return {
@@ -6561,22 +7063,27 @@ def global_search(q: str = Query("", min_length=1), session: Session = Depends(g
     # Clients
     for c in session.exec(
         select(ClientProfile).where(
-            (ClientProfile.companyName.ilike(term)) | (ClientProfile.projectName.ilike(term))
+            (ClientProfile.companyName.ilike(term)) | (
+                ClientProfile.projectName.ilike(term))
         ).limit(5)
     ).all():
-        results.append({"type": "client", "id": c.id, "title": c.companyName or "Client", "sub": c.projectName or "", "link": f"/clients/{c.id}"})
+        results.append({"type": "client", "id": c.id, "title": c.companyName or "Client",
+                       "sub": c.projectName or "", "link": f"/clients/{c.id}"})
 
     # Projects
     for p in session.exec(select(Project).where(Project.name.ilike(term)).limit(5)).all():
-        results.append({"type": "project", "id": p.id, "title": p.name, "sub": p.status or "", "link": f"/projects/{p.id}"})
+        results.append({"type": "project", "id": p.id, "title": p.name,
+                       "sub": p.status or "", "link": f"/projects/{p.id}"})
 
     # Tasks
     for t in session.exec(select(Task).where(Task.title.ilike(term)).limit(5)).all():
-        results.append({"type": "task", "id": t.id, "title": t.title, "sub": t.status or "", "link": "/tasks"})
+        results.append({"type": "task", "id": t.id, "title": t.title,
+                       "sub": t.status or "", "link": "/tasks"})
 
     # Invoices
     for inv in session.exec(select(Invoice).where(Invoice.invoice_number.ilike(term)).limit(5)).all():
-        results.append({"type": "invoice", "id": inv.id, "title": f"Invoice #{inv.invoice_number}", "sub": f"${inv.total} — {inv.status}", "link": "/invoices"})
+        results.append({"type": "invoice", "id": inv.id, "title": f"Invoice #{inv.invoice_number}",
+                       "sub": f"${inv.total} — {inv.status}", "link": "/invoices"})
 
     return {"results": results, "query": q}
 
@@ -6590,11 +7097,13 @@ def monitor_stats(session: Session = Depends(get_session)):
     # Total rankings tracked
     all_rankings = session.exec(select(KeywordRankEntry)).all()
     total_keywords = len(set(r.keyword for r in all_rankings))
-    avg_position = round(sum(r.position for r in all_rankings if r.position) / max(len(all_rankings), 1), 1) if all_rankings else 0
+    avg_position = round(sum(r.position for r in all_rankings if r.position) /
+                         max(len(all_rankings), 1), 1) if all_rankings else 0
 
     # Recent rankings for the table
     recent = session.exec(
-        select(KeywordRankEntry).order_by(KeywordRankEntry.recorded_at.desc()).limit(20)
+        select(KeywordRankEntry).order_by(
+            KeywordRankEntry.recorded_at.desc()).limit(20)
     ).all()
     # De-duplicate by keyword (keep latest)
     seen = set()
@@ -6614,13 +7123,15 @@ def monitor_stats(session: Session = Depends(get_session)):
     projects = session.exec(select(Project)).all()
     completed_projects = len([p for p in projects if p.status == "Completed"])
     total_projects = len(projects)
-    avg_progress = round(sum(p.progress or 0 for p in projects) / max(total_projects, 1))
+    avg_progress = round(
+        sum(p.progress or 0 for p in projects) / max(total_projects, 1))
 
     # Invoice revenue stats
     invoices = session.exec(select(Invoice)).all()
     total_revenue = sum(inv.total for inv in invoices)
     paid_revenue = sum(inv.total for inv in invoices if inv.status == "Paid")
-    pending_revenue = sum(inv.total for inv in invoices if inv.status in ("Sent", "Draft"))
+    pending_revenue = sum(
+        inv.total for inv in invoices if inv.status in ("Sent", "Draft"))
 
     # Weekly activity counts (last 10 weeks)
     weekly_activity = []
@@ -6628,7 +7139,8 @@ def monitor_stats(session: Session = Depends(get_session)):
         start = datetime.utcnow() - timedelta(weeks=i + 1)
         end = datetime.utcnow() - timedelta(weeks=i)
         count = len(session.exec(
-            select(ActivityLog).where(ActivityLog.createdAt >= start, ActivityLog.createdAt < end)
+            select(ActivityLog).where(ActivityLog.createdAt >=
+                                      start, ActivityLog.createdAt < end)
         ).all())
         weekly_activity.append({"week": f"W{10 - i}", "count": count})
 
@@ -6667,7 +7179,8 @@ def trigger_audit(body: dict = {}, session: Session = Depends(get_session)):
     if "@" in domain:
         user = session.exec(select(User).where(User.email == domain)).first()
         if user:
-            cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
+            cp = session.exec(select(ClientProfile).where(
+                ClientProfile.userId == user.id)).first()
             if cp and cp.websiteUrl:
                 domain = cp.websiteUrl
     if not domain:
@@ -6683,7 +7196,8 @@ def trigger_audit(body: dict = {}, session: Session = Depends(get_session)):
 
     try:
         start = time.time()
-        r = httpx.get(url, follow_redirects=True, timeout=15, headers={"User-Agent": "SerpHawk-Audit/1.0"})
+        r = httpx.get(url, follow_redirects=True, timeout=15,
+                      headers={"User-Agent": "SerpHawk-Audit/1.0"})
         load_time = round(time.time() - start, 2)
         page_speed = max(10, min(100, int(100 - load_time * 15)))
         html = r.text
@@ -6701,11 +7215,13 @@ def trigger_audit(body: dict = {}, session: Session = Depends(get_session)):
             health -= 5
             issues_count += 1
         else:
-            issues["title_tag"] = f"Pass — '{title_text[:50]}..." if len(title_text) > 50 else f"Pass — '{title_text}'"
+            issues["title_tag"] = f"Pass — '{title_text[:50]}..." if len(
+                title_text) > 50 else f"Pass — '{title_text}'"
 
         # Meta description
         meta_desc = soup.find("meta", attrs={"name": "description"})
-        desc_content = meta_desc["content"] if meta_desc and meta_desc.get("content") else ""
+        desc_content = meta_desc["content"] if meta_desc and meta_desc.get(
+            "content") else ""
         if not desc_content:
             issues["meta_description"] = "Missing — add a 150-160 char meta description"
             health -= 10
@@ -6777,7 +7293,8 @@ def trigger_audit(body: dict = {}, session: Session = Depends(get_session)):
 
         # Internal links count
         links = soup.find_all("a", href=True)
-        internal = [l for l in links if l["href"].startswith("/") or domain.replace("https://", "").replace("http://", "") in l["href"]]
+        internal = [l for l in links if l["href"].startswith(
+            "/") or domain.replace("https://", "").replace("http://", "") in l["href"]]
         issues["internal_links"] = f"{len(internal)} internal links found" if internal else "No internal links — poor for SEO"
         if not internal:
             health -= 5
@@ -6785,6 +7302,30 @@ def trigger_audit(body: dict = {}, session: Session = Depends(get_session)):
 
         health = max(0, min(100, health))
 
+    except httpx.ConnectError as e:
+        return {"success": True, "audit": {
+            "health_score": 0, "page_speed_desktop": 0, "issues_count": 1,
+            "tech_seo_issues": {"connection": f"Could not connect to {url}: {str(e)}"},
+            "domain": url, "load_time": 0,
+        }}
+    except httpx.TimeoutException as e:
+        return {"success": True, "audit": {
+            "health_score": 0, "page_speed_desktop": 0, "issues_count": 1,
+            "tech_seo_issues": {"connection": f"Request timed out for {url}"},
+            "domain": url, "load_time": 0,
+        }}
+    except httpx.URLKeyError as e:
+        return {"success": True, "audit": {
+            "health_score": 0, "page_speed_desktop": 0, "issues_count": 1,
+            "tech_seo_issues": {"connection": f"Invalid URL: {url}"},
+            "domain": url, "load_time": 0,
+        }}
+    except httpx.HTTPError as e:
+        return {"success": True, "audit": {
+            "health_score": 0, "page_speed_desktop": 0, "issues_count": 1,
+            "tech_seo_issues": {"connection": f"HTTP error for {url}: {str(e)}"},
+            "domain": url, "load_time": 0,
+        }}
     except Exception as e:
         return {"success": True, "audit": {
             "health_score": 0, "page_speed_desktop": 0, "issues_count": 1,
@@ -6822,15 +7363,19 @@ def export_audit_pdf(email: str = Query(""), domain: str = Query(""), session: S
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=50, bottomMargin=40)
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("AuditTitle", parent=styles["Title"], fontSize=22, textColor=colors.HexColor("#1e293b"))
-    heading = ParagraphStyle("AuditH2", parent=styles["Heading2"], fontSize=14, textColor=colors.HexColor("#334155"), spaceBefore=20)
+    title_style = ParagraphStyle(
+        "AuditTitle", parent=styles["Title"], fontSize=22, textColor=colors.HexColor("#1e293b"))
+    heading = ParagraphStyle(
+        "AuditH2", parent=styles["Heading2"], fontSize=14, textColor=colors.HexColor("#334155"), spaceBefore=20)
     normal = styles["Normal"]
 
     elements = []
     elements.append(Paragraph("SERP Hawk — SEO Audit Report", title_style))
     elements.append(Spacer(1, 8))
-    elements.append(Paragraph(f"Domain: {audit.get('domain', domain or 'N/A')}", normal))
-    elements.append(Paragraph(f"Generated: {datetime.utcnow().strftime('%B %d, %Y')}", normal))
+    elements.append(
+        Paragraph(f"Domain: {audit.get('domain', domain or 'N/A')}", normal))
+    elements.append(
+        Paragraph(f"Generated: {datetime.utcnow().strftime('%B %d, %Y')}", normal))
     elements.append(Spacer(1, 20))
 
     # Summary table
@@ -6857,16 +7402,18 @@ def export_audit_pdf(email: str = Query(""), domain: str = Query(""), session: S
         label = key.replace("_", " ").title()
         status = "PASS" if "Pass" in str(val) else "ISSUE"
         color = "#059669" if status == "PASS" else "#dc2626"
-        elements.append(Paragraph(f'<font color="{color}"><b>[{status}]</b></font> {label}: {val}', normal))
+        elements.append(Paragraph(
+            f'<font color="{color}"><b>[{status}]</b></font> {label}: {val}', normal))
         elements.append(Spacer(1, 4))
 
     elements.append(Spacer(1, 30))
-    elements.append(Paragraph("— Generated by SERP Hawk | Team DaPros", ParagraphStyle("Footer", parent=normal, fontSize=9, textColor=colors.grey)))
+    elements.append(Paragraph("— Generated by SERP Hawk | Team DaPros", ParagraphStyle(
+        "Footer", parent=normal, fontSize=9, textColor=colors.grey)))
 
     doc.build(elements)
     buf.seek(0)
     return StreamingResponse(buf, media_type="application/pdf", headers={
-        "Content-Disposition": f'attachment; filename="serphawk-audit-{(domain or "report").replace("https://","").replace("/","_")}.pdf"'
+        "Content-Disposition": f'attachment; filename="serphawk-audit-{(domain or "report").replace("https://", "").replace("/", "_")}.pdf"'
     })
 
 
@@ -6876,6 +7423,7 @@ def export_audit_pdf(email: str = Query(""), domain: str = Query(""), session: S
 @app.get("/")
 def root():
     return {"status": "ok", "app": "SerpHawk CRM API", "docs": "/docs"}
+
 
 @app.get("/health")
 def health():
@@ -6889,7 +7437,8 @@ def _task_dict(t: Task, session: Session) -> dict:
     assignee = session.get(User, t.assigned_to) if t.assigned_to else None
     creator = session.get(User, t.created_by) if t.created_by else None
     client = session.get(ClientProfile, t.client_id) if t.client_id else None
-    client_user = session.get(User, client.userId) if client and client.userId else None
+    client_user = session.get(
+        User, client.userId) if client and client.userId else None
     return {
         "id": t.id,
         "title": t.title,
@@ -6957,15 +7506,16 @@ def create_task(body: TaskCreateRequest, session: Session = Depends(get_session)
         )
         session.add(notif)
         session.commit()
-        
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message("New Task Created", _task_dict(t, session), f"{base_url}/tasks")
+        send_ai_polished_whatsapp_message(
+            "New Task Created", _task_dict(t, session), f"{base_url}/tasks")
     except Exception as e:
         print("WhatsApp Error:", e)
-        
+
     return {"task": _task_dict(t, session)}
 
 
@@ -6975,7 +7525,8 @@ def get_task(task_id: int, session: Session = Depends(get_session)):
     if not t:
         raise HTTPException(status_code=404, detail="Task not found")
     comments = session.exec(
-        select(TaskComment).where(TaskComment.task_id == task_id).order_by(TaskComment.created_at)
+        select(TaskComment).where(TaskComment.task_id ==
+                                  task_id).order_by(TaskComment.created_at)
     ).all()
     result = _task_dict(t, session)
     result["comments"] = [
@@ -7005,15 +7556,16 @@ def update_task(task_id: int, body: TaskUpdateRequest, session: Session = Depend
     session.add(t)
     session.commit()
     session.refresh(t)
-    
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message("Task Updated", _task_dict(t, session), f"{base_url}/tasks")
+        send_ai_polished_whatsapp_message(
+            "Task Updated", _task_dict(t, session), f"{base_url}/tasks")
     except Exception as e:
         print("WhatsApp Error:", e)
-        
+
     return {"task": _task_dict(t, session)}
 
 
@@ -7032,8 +7584,10 @@ def delete_task(task_id: int, session: Session = Depends(get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 def _task_sheet_dict(entry: TaskSheetEntry, session: Session) -> dict:
     user = session.get(User, entry.user_id)
-    project = session.get(Project, entry.project_id) if entry.project_id else None
-    ticket = session.get(ProjectTicket, entry.ticket_id) if entry.ticket_id else None
+    project = session.get(
+        Project, entry.project_id) if entry.project_id else None
+    ticket = session.get(
+        ProjectTicket, entry.ticket_id) if entry.ticket_id else None
     return {
         **entry.model_dump(),
         "user_name": user.name if user else "Unknown user",
@@ -7051,7 +7605,8 @@ def list_task_sheet_entries(
     work_date: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
-    q = select(TaskSheetEntry).order_by(TaskSheetEntry.work_date.desc(), TaskSheetEntry.updated_at.desc())
+    q = select(TaskSheetEntry).order_by(
+        TaskSheetEntry.work_date.desc(), TaskSheetEntry.updated_at.desc())
     if user_id:
         q = q.where(TaskSheetEntry.user_id == user_id)
     if work_date:
@@ -7064,8 +7619,10 @@ def list_task_sheet_entries(
 def create_task_sheet_entry(body: TaskSheetEntryRequest, session: Session = Depends(get_session)):
     today = datetime.utcnow().date().isoformat()
     if body.work_date != today:
-        raise HTTPException(status_code=400, detail="New task-sheet entries can only be added for today")
-    entry = TaskSheetEntry(**body.model_dump(), tenant_id=current_tenant_id.get())
+        raise HTTPException(
+            status_code=400, detail="New task-sheet entries can only be added for today")
+    entry = TaskSheetEntry(**body.model_dump(),
+                           tenant_id=current_tenant_id.get())
     session.add(entry)
     session.commit()
     session.refresh(entry)
@@ -7076,7 +7633,8 @@ def create_task_sheet_entry(body: TaskSheetEntryRequest, session: Session = Depe
 def update_task_sheet_entry(entry_id: int, body: TaskSheetEntryRequest, session: Session = Depends(get_session)):
     entry = session.get(TaskSheetEntry, entry_id)
     if not entry:
-        raise HTTPException(status_code=404, detail="Task-sheet entry not found")
+        raise HTTPException(
+            status_code=404, detail="Task-sheet entry not found")
     for field, value in body.model_dump().items():
         if field != "work_date":
             setattr(entry, field, value)
@@ -7115,7 +7673,8 @@ def add_task_comment(
     t = session.get(Task, task_id)
     if not t:
         raise HTTPException(status_code=404, detail="Task not found")
-    c = TaskComment(task_id=task_id, author_id=body.author_id, content=body.content)
+    c = TaskComment(task_id=task_id, author_id=body.author_id,
+                    content=body.content)
     session.add(c)
     session.commit()
     session.refresh(c)
@@ -7197,7 +7756,8 @@ def create_invoice(body: InvoiceCreateRequest, session: Session = Depends(get_se
     # --- Add invoice to client my-files ---
     from database import ClientFileUpload
     invoice_filename = f"Invoice_{inv.invoice_number}.json"
-    invoice_file_url = f"/api/invoices/{inv.id}/download"  # You may want to implement this endpoint to serve PDF/JSON
+    # You may want to implement this endpoint to serve PDF/JSON
+    invoice_file_url = f"/api/invoices/{inv.id}/download"
     file_entry = ClientFileUpload(
         client_id=inv.client_id,
         uploaded_by=None,  # Admin
@@ -7238,9 +7798,11 @@ def create_invoice(body: InvoiceCreateRequest, session: Session = Depends(get_se
 def invoice_from_quote(request_id: int, session: Session = Depends(get_session)):
     sr = session.get(ServiceRequest, request_id)
     if not sr:
-        raise HTTPException(status_code=404, detail="Service request not found")
+        raise HTTPException(
+            status_code=404, detail="Service request not found")
     if not sr.quoted_amount:
-        raise HTTPException(status_code=400, detail="No quoted amount on this request")
+        raise HTTPException(
+            status_code=400, detail="No quoted amount on this request")
     svc = session.get(ServiceCatalog, sr.service_id)
     inv = Invoice(
         invoice_number=_generate_invoice_number(session),
@@ -7249,7 +7811,8 @@ def invoice_from_quote(request_id: int, session: Session = Depends(get_session))
         amount=sr.quoted_amount,
         tax=0.0,
         total=sr.quoted_amount,
-        line_items=[{"description": svc.name if svc else "Service", "amount": sr.quoted_amount}],
+        line_items=[
+            {"description": svc.name if svc else "Service", "amount": sr.quoted_amount}],
     )
     session.add(inv)
     session.commit()
@@ -7335,14 +7898,14 @@ def get_notifications(
     )
     if unread_only:
         q = q.where(Notification.is_read == False)
-    
+
     try:
         notifs = session.exec(q).all()
     except Exception as e:
         print(f"Warning: Failed to fetch notifications: {e}")
         notifs = []
         session.rollback()
-    
+
     return {
         "notifications": [
             {
@@ -7383,7 +7946,8 @@ def mark_notification_read(notification_id: int, session: Session = Depends(get_
 @app.put("/notifications/mark-all-read/{user_id}")
 def mark_all_read(user_id: int, session: Session = Depends(get_session)):
     notifs = session.exec(
-        select(Notification).where(Notification.user_id == user_id, Notification.is_read == False)
+        select(Notification).where(Notification.user_id ==
+                                   user_id, Notification.is_read == False)
     ).all()
     for n in notifs:
         n.is_read = True
@@ -7408,6 +7972,7 @@ def _milestone_dict(m: Milestone) -> dict:
         "created_at": m.created_at.isoformat(),
     }
 
+
 @app.get("/developer/tickets")
 def get_all_assigned_tickets(member_id: int, session: Session = Depends(get_session)):
     projects = session.exec(select(Project)).all()
@@ -7425,22 +7990,26 @@ def get_all_assigned_tickets(member_id: int, session: Session = Depends(get_sess
         return {"tickets": []}
 
     tickets = session.exec(
-        select(ProjectTicket).where(ProjectTicket.project_id.in_(assigned_project_ids))
+        select(ProjectTicket).where(
+            ProjectTicket.project_id.in_(assigned_project_ids))
     ).all()
-    
+
     ticket_list = []
     for t in tickets:
         t_dict = t.model_dump()
-        t_dict["project_name"] = project_names.get(t.project_id, "Unknown Project")
+        t_dict["project_name"] = project_names.get(
+            t.project_id, "Unknown Project")
         ticket_list.append(t_dict)
-        
+
     return {"tickets": ticket_list}
 
 
 @app.get("/projects/{project_id}/tickets")
 def get_project_tickets(project_id: int, session: Session = Depends(get_session)):
-    tickets = session.exec(select(ProjectTicket).where(ProjectTicket.project_id == project_id)).all()
+    tickets = session.exec(select(ProjectTicket).where(
+        ProjectTicket.project_id == project_id)).all()
     return {"tickets": tickets}
+
 
 @app.post("/projects/{project_id}/tickets")
 def create_project_ticket(project_id: int, body: ProjectTicketRequest, session: Session = Depends(get_session)):
@@ -7452,18 +8021,20 @@ def create_project_ticket(project_id: int, body: ProjectTicketRequest, session: 
     session.refresh(t)
     return t
 
+
 @app.put("/projects/tickets/{ticket_id}")
 def update_project_ticket(ticket_id: int, body: ProjectTicketRequest, session: Session = Depends(get_session)):
     t = session.get(ProjectTicket, ticket_id)
-    if not t: raise HTTPException(404, "Ticket not found")
-    
+    if not t:
+        raise HTTPException(404, "Ticket not found")
+
     old_state = t.current_state
     new_state = body.current_state
-    
+
     for k, v in body.model_dump(exclude_unset=True).items():
         if k != "user_name":
             setattr(t, k, v)
-            
+
     if old_state != new_state:
         now_str = datetime.utcnow().date().isoformat()
         if new_state == "In Dev":
@@ -7476,7 +8047,7 @@ def update_project_ticket(ticket_id: int, body: ProjectTicketRequest, session: S
             if not t.date_qa_complete:
                 t.date_qa_complete = now_str
             t.date_release_prod = now_str
-            
+
         history = ProjectTicketHistory(
             ticket_id=ticket_id,
             old_state=old_state,
@@ -7484,7 +8055,7 @@ def update_project_ticket(ticket_id: int, body: ProjectTicketRequest, session: S
             user_name=body.user_name
         )
         session.add(history)
-        
+
         # Log to activity feed if QA reverted back to Dev
         if old_state == "Given to QA" and new_state == "In Dev":
             activity = ActivityLog(
@@ -7499,55 +8070,68 @@ def update_project_ticket(ticket_id: int, body: ProjectTicketRequest, session: S
     session.refresh(t)
     return t
 
+
 @app.get("/projects/tickets/{ticket_id}/history")
 def get_project_ticket_history(ticket_id: int, session: Session = Depends(get_session)):
-    history = session.exec(select(ProjectTicketHistory).where(ProjectTicketHistory.ticket_id == ticket_id).order_by(ProjectTicketHistory.moved_at.desc())).all()
+    history = session.exec(select(ProjectTicketHistory).where(
+        ProjectTicketHistory.ticket_id == ticket_id).order_by(ProjectTicketHistory.moved_at.desc())).all()
     return {"history": history}
+
 
 class NoteRequest(BaseModel):
     user_name: str
     note: str
 
+
 @app.get("/projects/tickets/{ticket_id}/notes")
 def get_project_ticket_notes(ticket_id: int, session: Session = Depends(get_session)):
-    notes = session.exec(select(ProjectTicketNote).where(ProjectTicketNote.ticket_id == ticket_id).order_by(ProjectTicketNote.created_at.desc())).all()
+    notes = session.exec(select(ProjectTicketNote).where(
+        ProjectTicketNote.ticket_id == ticket_id).order_by(ProjectTicketNote.created_at.desc())).all()
     return {"notes": notes}
+
 
 @app.post("/projects/tickets/{ticket_id}/notes")
 def create_project_ticket_note(ticket_id: int, body: NoteRequest, session: Session = Depends(get_session)):
-    n = ProjectTicketNote(ticket_id=ticket_id, user_name=body.user_name, note=body.note)
+    n = ProjectTicketNote(ticket_id=ticket_id,
+                          user_name=body.user_name, note=body.note)
     session.add(n)
     session.commit()
     session.refresh(n)
     return n
 
+
 @app.delete("/projects/tickets/{ticket_id}")
 def delete_project_ticket(ticket_id: int, session: Session = Depends(get_session)):
     t = session.get(ProjectTicket, ticket_id)
-    if not t: raise HTTPException(404, "Ticket not found")
-    
+    if not t:
+        raise HTTPException(404, "Ticket not found")
+
     # Manually delete related history and notes to avoid foreign key constraints
-    history_records = session.exec(select(ProjectTicketHistory).where(ProjectTicketHistory.ticket_id == ticket_id)).all()
+    history_records = session.exec(select(ProjectTicketHistory).where(
+        ProjectTicketHistory.ticket_id == ticket_id)).all()
     for h in history_records:
         session.delete(h)
-        
-    notes_records = session.exec(select(ProjectTicketNote).where(ProjectTicketNote.ticket_id == ticket_id)).all()
+
+    notes_records = session.exec(select(ProjectTicketNote).where(
+        ProjectTicketNote.ticket_id == ticket_id)).all()
     for n in notes_records:
         session.delete(n)
-        
+
     session.delete(t)
     session.commit()
     return {"ok": True}
 
+
 @app.post("/projects/{project_id}/team")
 def add_project_team(project_id: int, body: ProjectTeamRequest, session: Session = Depends(get_session)):
     p = session.get(Project, project_id)
-    if not p: raise HTTPException(404, "Project not found")
-    
+    if not p:
+        raise HTTPException(404, "Project not found")
+
     added_users = []
     # Initialize list if None
     current_members = p.projectMemberIds or []
-    
+
     for email, role in zip(body.emails, body.roles):
         user = session.exec(select(User).where(User.email == email)).first()
         if not user:
@@ -7561,15 +8145,16 @@ def add_project_team(project_id: int, body: ProjectTeamRequest, session: Session
             session.add(user)
             session.commit()
             session.refresh(user)
-        
+
         if user.id not in current_members:
             current_members.append(user.id)
             added_users.append(user.id)
-            
+
     p.projectMemberIds = current_members
     session.add(p)
     session.commit()
     return {"message": "Team updated", "added_count": len(added_users)}
+
 
 @app.get("/milestones")
 def list_milestones(
@@ -7716,11 +8301,13 @@ def invoice_pdf(invoice_id: int, provider: Optional[str] = None, session: Sessio
     inv = session.get(Invoice, invoice_id)
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    client = session.get(ClientProfile, inv.client_id) if inv.client_id else None
+    client = session.get(
+        ClientProfile, inv.client_id) if inv.client_id else None
     client_name = ""
     if client:
         user = session.get(User, client.userId) if client.userId else None
-        client_name = client.companyName or (user.name if user else f"Client #{client.id}")
+        client_name = client.companyName or (
+            user.name if user else f"Client #{client.id}")
 
     from modules.pdf_export import invoice_pdf as _invoice_pdf
     pdf = _invoice_pdf({
@@ -7818,14 +8405,17 @@ def _proposal_dict(p: Proposal, session: Session) -> dict:
 @app.get("/proposals/catalog")
 def get_proposals_catalog(session: Session = Depends(get_session)):
     """Lightweight catalog of inventory items for quotation builder."""
-    items = session.exec(select(InventoryItem).order_by(InventoryItem.name)).all()
+    items = session.exec(
+        select(InventoryItem).order_by(InventoryItem.name)).all()
     result = []
     for item in items:
         # Get cheapest supplier price
         suppliers = session.exec(
-            select(InventorySupplier).where(InventorySupplier.item_id == item.id)
+            select(InventorySupplier).where(
+                InventorySupplier.item_id == item.id)
         ).all()
-        unit_price = min((s.unit_cost for s in suppliers if s.unit_cost), default=0.0) or 0.0
+        unit_price = min(
+            (s.unit_cost for s in suppliers if s.unit_cost), default=0.0) or 0.0
         result.append({
             "id": item.id,
             "name": item.name,
@@ -7857,20 +8447,24 @@ def list_proposals(
 
     # Batch-load all related records (fix N+1 query)
     client_ids = list({p.client_id for p in proposals if p.client_id})
-    lead_ids = list({getattr(p, 'lead_id', None) for p in proposals if getattr(p, 'lead_id', None)})
-    
-    clients_list = session.exec(select(ClientProfile).where(ClientProfile.id.in_(client_ids))).all() if client_ids else []
-    leads_list = session.exec(select(Lead).where(Lead.id.in_(lead_ids))).all() if lead_ids else []
-    
+    lead_ids = list({getattr(p, 'lead_id', None)
+                    for p in proposals if getattr(p, 'lead_id', None)})
+
+    clients_list = session.exec(select(ClientProfile).where(
+        ClientProfile.id.in_(client_ids))).all() if client_ids else []
+    leads_list = session.exec(select(Lead).where(
+        Lead.id.in_(lead_ids))).all() if lead_ids else []
+
     user_ids = list({cp.userId for cp in clients_list if cp.userId})
     creator_ids = list({p.created_by for p in proposals if p.created_by})
     all_user_ids = list(set(user_ids + creator_ids))
-    users_list = session.exec(select(User).where(User.id.in_(all_user_ids))).all() if all_user_ids else []
-    
+    users_list = session.exec(select(User).where(
+        User.id.in_(all_user_ids))).all() if all_user_ids else []
+
     clients_map = {cp.id: cp for cp in clients_list}
     users_map = {u.id: u for u in users_list}
     leads_map = {l.id: l for l in leads_list}
-    
+
     return {"proposals": [_proposal_dict_fast(p, clients_map, users_map, leads_map) for p in proposals]}
 
 
@@ -7912,7 +8506,8 @@ def _send_proposal_email(p, session):
             f"<p>We hope this quote meets your requirements. Please reach out if you have any questions.</p>"
             f"<p>Best regards,<br/>SERP Hawk Team</p>"
         )
-        send_pdf_email(recipient_email, f"Quotation: {p.title}", body, pdf_bytes, filename)
+        send_pdf_email(recipient_email,
+                       f"Quotation: {p.title}", body, pdf_bytes, filename)
         return True
     except Exception as e:
         print(f"[Proposal email failed] {e}")
@@ -7981,7 +8576,8 @@ def update_proposal(
                 user_id=admin.id,
                 title=f"Proposal {body.status}",
                 message=f"{client_name} has {status_label} the proposal '{p.title}'.",
-                type="success" if body.status == "Accepted" else ("warning" if body.status == "Demo Requested" else "info"),
+                type="success" if body.status == "Accepted" else (
+                    "warning" if body.status == "Demo Requested" else "info"),
                 link="/proposals",
             )
             session.add(notif)
@@ -7994,11 +8590,11 @@ def sign_proposal(proposal_id: int, request: Request, session: Session = Depends
     p = session.get(Proposal, proposal_id)
     if not p:
         raise HTTPException(status_code=404, detail="Proposal not found")
-    
+
     p.signed_at = datetime.now(timezone.utc)
     p.status = "Accepted"
     p.signed_by_ip = request.client.host if request.client else "Unknown IP"
-    
+
     session.add(p)
     session.commit()
     session.refresh(p)
@@ -8042,8 +8638,6 @@ def list_client_files(client_id: int, session: Session = Depends(get_session)):
     }
 
 
-import uuid as _uuid
-
 @app.post("/upload-file")
 async def upload_file_to_server(
     file: UploadFile = File(...),
@@ -8065,7 +8659,8 @@ async def upload_file_to_server(
 
     # Stream chunks to disk in a worker thread (never block the event loop,
     # never buffer the whole file in RAM), enforcing a 10 MB cap mid-stream.
-    import asyncio, shutil
+    import asyncio
+    import shutil
     _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
     def _write():
@@ -8078,7 +8673,8 @@ async def upload_file_to_server(
                     break
                 total += len(chunk)
                 if total > _MAX_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail="Image must be under 10 MB")
+                    raise HTTPException(
+                        status_code=413, detail="Image must be under 10 MB")
                 fh.write(chunk)
         return total
 
@@ -8113,7 +8709,8 @@ async def upload_file_to_server(
 async def upload_image(file: UploadFile = File(...)):
     """Upload an image (e.g. inventory photo) to static/uploads/ and return its public URL."""
     if file.content_type and not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Only image files are allowed")
+        raise HTTPException(
+            status_code=400, detail="Only image files are allowed")
 
     safe_name = re.sub(r'[^\w.\-]', '_', file.filename or "image")
     unique_name = f"{_uuid.uuid4().hex[:8]}_{safe_name}"
@@ -8136,13 +8733,16 @@ async def upload_image(file: UploadFile = File(...)):
                     break
                 total += len(chunk)
                 if total > _MAX_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail="Image must be under 10 MB")
+                    raise HTTPException(
+                        status_code=413, detail="Image must be under 10 MB")
                 fh.write(chunk)
         return total
 
     await asyncio.to_thread(_write_sync)
 
     return {"file_url": f"/static/uploads/{unique_name}"}
+
+
 def upload_client_file(
     client_id: int, body: FileUploadRequest, session: Session = Depends(get_session)
 ):
@@ -8307,19 +8907,25 @@ def _build_proposal_pdf(prop, session):
 
     title_s = ParagraphStyle("PTitle", parent=styles["Normal"], fontSize=26, fontName="Helvetica-Bold",
                              textColor=dark, leading=28, spaceAfter=2)
-    sub_s = ParagraphStyle("PSub", parent=styles["Normal"], fontSize=11, textColor=mid)
+    sub_s = ParagraphStyle(
+        "PSub", parent=styles["Normal"], fontSize=11, textColor=mid)
     h2 = ParagraphStyle("PH2", parent=styles["Normal"], fontSize=11, fontName="Helvetica-Bold",
                         textColor=dark, spaceBefore=14, spaceAfter=4)
-    normal = ParagraphStyle("PNorm", parent=styles["Normal"], fontSize=10, textColor=dark)
-    small = ParagraphStyle("PSmall", parent=styles["Normal"], fontSize=8, textColor=mid)
-    footer_s = ParagraphStyle("PFoot", parent=styles["Normal"], fontSize=9, textColor=mid, alignment=1)
+    normal = ParagraphStyle(
+        "PNorm", parent=styles["Normal"], fontSize=10, textColor=dark)
+    small = ParagraphStyle(
+        "PSmall", parent=styles["Normal"], fontSize=8, textColor=mid)
+    footer_s = ParagraphStyle(
+        "PFoot", parent=styles["Normal"], fontSize=9, textColor=mid, alignment=1)
 
     els = []
 
     # ── HEADER ────────────────────────────────────────────────────────────────
     header_data = [
-        [Paragraph("QUOTATION", title_s), Paragraph(f"# Q-{prop.id:04d}", title_s)],
-        [Paragraph("SERP Hawk", sub_s), Paragraph(f"Currency: {currency}", sub_s)],
+        [Paragraph("QUOTATION", title_s), Paragraph(
+            f"# Q-{prop.id:04d}", title_s)],
+        [Paragraph("SERP Hawk", sub_s), Paragraph(
+            f"Currency: {currency}", sub_s)],
     ]
     header_tbl = Table(header_data, colWidths=[90*mm, 80*mm])
     header_tbl.setStyle(TableStyle([
@@ -8328,14 +8934,18 @@ def _build_proposal_pdf(prop, session):
         ("PADDING", (0, 0), (-1, -1), 0),
     ]))
     els.append(header_tbl)
-    els.append(HRFlowable(width="100%", thickness=2, color=accent, spaceAfter=10))
+    els.append(HRFlowable(width="100%", thickness=2,
+               color=accent, spaceAfter=10))
 
     # ── BILL TO / META ────────────────────────────────────────────────────────
     meta_data = [
         [Paragraph("BILL TO", small), Paragraph("QUOTE DETAILS", small)],
-        [Paragraph(f"<b>{recipient_name}</b>", normal), Paragraph(f"<b>Status:</b> {prop.status}", normal)],
-        [Paragraph(recipient_email, normal), Paragraph(f"<b>Valid Until:</b> {prop.valid_until or '—'}", normal)],
-        ["", Paragraph(f"<b>Created:</b> {prop.created_at.strftime('%B %d, %Y') if prop.created_at else '—'}", normal)],
+        [Paragraph(f"<b>{recipient_name}</b>", normal),
+         Paragraph(f"<b>Status:</b> {prop.status}", normal)],
+        [Paragraph(recipient_email, normal), Paragraph(
+            f"<b>Valid Until:</b> {prop.valid_until or '—'}", normal)],
+        ["", Paragraph(
+            f"<b>Created:</b> {prop.created_at.strftime('%B %d, %Y') if prop.created_at else '—'}", normal)],
     ]
     meta_tbl = Table(meta_data, colWidths=[90*mm, 80*mm])
     meta_tbl.setStyle(TableStyle([
@@ -8352,7 +8962,8 @@ def _build_proposal_pdf(prop, session):
     # ── LINE ITEMS TABLE ─────────────────────────────────────────────────────
     if line_items:
         els.append(Paragraph("Items", h2))
-        rows = [["#", "Product", "Qty", "Unit", f"Unit Price ({curr_symbol})", f"Total ({curr_symbol})"]]
+        rows = [["#", "Product", "Qty", "Unit",
+                 f"Unit Price ({curr_symbol})", f"Total ({curr_symbol})"]]
         subtotal = 0.0
         for idx, li in enumerate(line_items, 1):
             qty = float(li.get("quantity", 1))
@@ -8368,11 +8979,13 @@ def _build_proposal_pdf(prop, session):
                 f"{curr_symbol}{line_total:,.2f}",
             ])
         # Subtotal / Total rows
-        rows.append(["", "", "", "", "Subtotal", f"{curr_symbol}{subtotal:,.2f}"])
+        rows.append(["", "", "", "", "Subtotal",
+                    f"{curr_symbol}{subtotal:,.2f}"])
         grand = prop.total_value or subtotal
         rows.append(["", "", "", "", "TOTAL", f"{curr_symbol}{grand:,.2f}"])
 
-        items_tbl = Table(rows, colWidths=[8*mm, 65*mm, 16*mm, 16*mm, 35*mm, 30*mm])
+        items_tbl = Table(
+            rows, colWidths=[8*mm, 65*mm, 16*mm, 16*mm, 35*mm, 30*mm])
         items_tbl.setStyle(TableStyle([
             # Header
             ("BACKGROUND", (0, 0), (-1, 0), accent),
@@ -8391,12 +9004,14 @@ def _build_proposal_pdf(prop, session):
             ("FONTNAME", (4, -1), (-1, -1), "Helvetica-Bold"),
             ("FONTSIZE", (4, -1), (-1, -1), 10),
             # Alt row shading
-            *[("BACKGROUND", (0, i), (-1, i), light_bg) for i in range(2, len(rows)-2, 2)],
+            *[("BACKGROUND", (0, i), (-1, i), light_bg)
+              for i in range(2, len(rows)-2, 2)],
         ]))
         els.append(items_tbl)
     else:
         # Fallback — just show total_value if no line items
-        els.append(Paragraph(f"Total Value: {curr_symbol}{prop.total_value:,.2f}" if prop.total_value else "No items.", normal))
+        els.append(Paragraph(
+            f"Total Value: {curr_symbol}{prop.total_value:,.2f}" if prop.total_value else "No items.", normal))
 
     # ── NOTES ─────────────────────────────────────────────────────────────────
     if prop.content:
@@ -8420,10 +9035,11 @@ def _build_proposal_pdf(prop, session):
 # ─────────────────────────────────────────────────────────────────────────────
 # WebSocket Real-Time Chat
 # ─────────────────────────────────────────────────────────────────────────────
-import json as _json
+
 
 class ConnectionManager:
     """Keeps track of active WebSocket connections per thread."""
+
     def __init__(self):
         self.active: Dict[int, List[WebSocket]] = {}  # thread_id -> list of ws
 
@@ -8444,7 +9060,9 @@ class ConnectionManager:
                 except Exception:
                     pass
 
+
 ws_manager = ConnectionManager()
+
 
 @app.websocket("/ws/chat/{thread_id}")
 async def ws_chat(websocket: WebSocket, thread_id: int):
@@ -8483,7 +9101,8 @@ async def ws_chat(websocket: WebSocket, thread_id: int):
             elif action == "typing":
                 await ws_manager.broadcast(
                     thread_id,
-                    {"type": "typing", "user_id": data.get("user_id"), "user_name": data.get("user_name")},
+                    {"type": "typing", "user_id": data.get(
+                        "user_id"), "user_name": data.get("user_name")},
                     exclude=websocket,
                 )
 
@@ -8507,7 +9126,8 @@ async def ws_chat(websocket: WebSocket, thread_id: int):
                         session.commit()
                     await ws_manager.broadcast(
                         thread_id,
-                        {"type": "read_receipt", "message_ids": msg_ids, "read_by": data.get("user_id")},
+                        {"type": "read_receipt", "message_ids": msg_ids,
+                            "read_by": data.get("user_id")},
                         exclude=websocket,
                     )
 
@@ -8525,15 +9145,18 @@ class PasswordChangeRequest(BaseModel):
     current_password: str
     new_password: str
 
+
 @app.post("/change-password")
 def change_password(body: PasswordChangeRequest, session: Session = Depends(get_session)):
     user = session.get(User, body.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if not _verify_password(body.current_password, user):
-        raise HTTPException(status_code=400, detail="Current password is incorrect")
+        raise HTTPException(
+            status_code=400, detail="Current password is incorrect")
     if len(body.new_password) < 6:
-        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+        raise HTTPException(
+            status_code=400, detail="New password must be at least 6 characters")
     user.password = _hash_password(body.new_password)
     user.updatedAt = datetime.now(timezone.utc)
     session.add(user)
@@ -8544,15 +9167,18 @@ def change_password(body: PasswordChangeRequest, session: Session = Depends(get_
 # ─────────────────────────────────────────────────────────────────────────────
 # Webhooks / Zapier Integration
 # ─────────────────────────────────────────────────────────────────────────────
-import secrets as _secrets
 
 # In-memory webhook store (in production, use a DB table)
-_webhooks: Dict[str, dict] = {}  # id -> {url, events, secret, created_at, name}
+# id -> {url, events, secret, created_at, name}
+_webhooks: Dict[str, dict] = {}
+
 
 class WebhookRegisterRequest(BaseModel):
     url: str
-    events: List[str]   # e.g. ["client.created", "invoice.paid", "message.sent"]
+    # e.g. ["client.created", "invoice.paid", "message.sent"]
+    events: List[str]
     name: Optional[str] = None
+
 
 @app.post("/webhooks")
 def register_webhook(body: WebhookRegisterRequest):
@@ -8565,7 +9191,8 @@ def register_webhook(body: WebhookRegisterRequest):
     ]
     for ev in body.events:
         if ev not in valid_events:
-            raise HTTPException(status_code=400, detail=f"Invalid event: {ev}. Valid events: {valid_events}")
+            raise HTTPException(
+                status_code=400, detail=f"Invalid event: {ev}. Valid events: {valid_events}")
     wh_id = _secrets.token_urlsafe(16)
     wh_secret = _secrets.token_urlsafe(32)
     _webhooks[wh_id] = {
@@ -8578,12 +9205,14 @@ def register_webhook(body: WebhookRegisterRequest):
     }
     return {"webhook_id": wh_id, "secret": wh_secret, "events": body.events}
 
+
 @app.get("/webhooks")
 def list_webhooks():
     return {"webhooks": [
         {k: v for k, v in wh.items() if k != "secret"}
         for wh in _webhooks.values()
     ]}
+
 
 @app.delete("/webhooks/{webhook_id}")
 def delete_webhook(webhook_id: str):
@@ -8592,16 +9221,14 @@ def delete_webhook(webhook_id: str):
     del _webhooks[webhook_id]
     return {"ok": True}
 
-import httpx as _httpx
-import hmac as _hmac
-import hashlib as _hashlib_hmac
 
 async def _fire_webhooks(event: str, payload: dict):
     """Fire all registered webhooks for an event. Non-blocking, best-effort."""
     body_str = _json.dumps(payload)
     for wh in _webhooks.values():
         if event in wh["events"]:
-            sig = _hmac.new(wh["secret"].encode(), body_str.encode(), _hashlib_hmac.sha256).hexdigest()
+            sig = _hmac.new(wh["secret"].encode(
+            ), body_str.encode(), _hashlib_hmac.sha256).hexdigest()
             try:
                 async with _httpx.AsyncClient(timeout=10) as client:
                     await client.post(
@@ -8623,6 +9250,7 @@ async def _fire_webhooks(event: str, payload: dict):
 class CompetitorAddRequest(BaseModel):
     client_id: int
     competitor_domain: str
+
 
 @app.post("/competitors/analyze")
 async def analyze_competitor(body: CompetitorAddRequest, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
@@ -8692,7 +9320,8 @@ Return ONLY valid JSON, no markdown."""
         )
         analysis_raw = resp.choices[0].message.content or ""
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI Analysis Failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"AI Analysis Failed: {str(e)}")
 
     # Parse LLM response
     try:
@@ -8741,10 +9370,12 @@ Return ONLY valid JSON, no markdown."""
         "analysis": analysis,
     }
 
+
 @app.get("/competitors/{client_id}")
 def get_competitors(client_id: int, session: Session = Depends(get_session)):
     analyses = session.exec(
-        select(CompetitorAnalysis).where(CompetitorAnalysis.clientId == client_id)
+        select(CompetitorAnalysis).where(
+            CompetitorAnalysis.clientId == client_id)
     ).all()
     return {"competitors": [
         {
@@ -8758,6 +9389,7 @@ def get_competitors(client_id: int, session: Session = Depends(get_session)):
         }
         for a in analyses
     ]}
+
 
 @app.delete("/competitors/{analysis_id}")
 def delete_competitor(analysis_id: int, session: Session = Depends(get_session)):
@@ -8773,7 +9405,6 @@ def delete_competitor(analysis_id: int, session: Session = Depends(get_session))
 # Deals (Visual Sales Pipeline)
 # ─────────────────────────────────────────────────────────────────────────────
 
-from database import Deal
 
 @app.get("/deals")
 def get_deals(user_id: Optional[int] = None, session: Session = Depends(get_session)):
@@ -8781,7 +9412,7 @@ def get_deals(user_id: Optional[int] = None, session: Session = Depends(get_sess
     if user_id:
         q = q.where(Deal.assigned_to == user_id)
     deals = session.exec(q).all()
-    
+
     # We fetch client names for the UI manually
     results = []
     for d in deals:
@@ -8799,6 +9430,7 @@ def get_deals(user_id: Optional[int] = None, session: Session = Depends(get_sess
         })
     return {"deals": results}
 
+
 @app.post("/deals")
 def create_deal(body: DealCreateRequest, session: Session = Depends(get_session)):
     deal = Deal(
@@ -8814,20 +9446,27 @@ def create_deal(body: DealCreateRequest, session: Session = Depends(get_session)
     session.refresh(deal)
     return {"ok": True, "id": deal.id}
 
+
 @app.put("/deals/{deal_id}")
 def update_deal(deal_id: int, body: DealUpdateRequest, session: Session = Depends(get_session)):
     deal = session.get(Deal, deal_id)
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
-    if body.title is not None: deal.title = body.title
-    if body.value is not None: deal.value = body.value
-    if body.assigned_to is not None: deal.assigned_to = body.assigned_to
-    if body.stage is not None: deal.stage = body.stage
-    if body.expected_close_date is not None: deal.expected_close_date = body.expected_close_date
+    if body.title is not None:
+        deal.title = body.title
+    if body.value is not None:
+        deal.value = body.value
+    if body.assigned_to is not None:
+        deal.assigned_to = body.assigned_to
+    if body.stage is not None:
+        deal.stage = body.stage
+    if body.expected_close_date is not None:
+        deal.expected_close_date = body.expected_close_date
     deal.updated_at = datetime.now(timezone.utc)
     session.add(deal)
     session.commit()
     return {"ok": True}
+
 
 @app.delete("/deals/{deal_id}")
 def delete_deal(deal_id: int, session: Session = Depends(get_session)):
@@ -8848,7 +9487,8 @@ def _report_date(value: Optional[str], fallback: date) -> date:
     try:
         return date.fromisoformat(value)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Dates must use YYYY-MM-DD format")
+        raise HTTPException(
+            status_code=400, detail="Dates must use YYYY-MM-DD format")
 
 
 def _in_report_range(value: Optional[datetime], start: date, end: date) -> bool:
@@ -8866,7 +9506,8 @@ def reports_summary(
     start = _report_date(start_date, today - timedelta(days=29))
     end = _report_date(end_date, today)
     if start > end:
-        raise HTTPException(status_code=400, detail="start_date must be before end_date")
+        raise HTTPException(
+            status_code=400, detail="start_date must be before end_date")
 
     def scoped(model):
         query = select(model)
@@ -8875,42 +9516,59 @@ def reports_summary(
             query = query.where(model.tenant_id == tenant_id)
         return session.exec(query).all()
 
-    leads = [lead for lead in scoped(Lead) if _in_report_range(lead.created_at, start, end)]
+    leads = [lead for lead in scoped(
+        Lead) if _in_report_range(lead.created_at, start, end)]
     all_leads = scoped(Lead)
     clients = scoped(ClientProfile)
-    deals = [deal for deal in scoped(Deal) if _in_report_range(deal.created_at, start, end)]
-    emails = [email for email in scoped(SentEmail) if _in_report_range(email.sent_at, start, end)]
-    activities = [activity for activity in scoped(ActivityLog) if _in_report_range(activity.createdAt, start, end)]
-    calls = [call for call in scoped(CallLog) if _in_report_range(call.createdAt, start, end)]
-    conversations = [conversation for conversation in scoped(ConversationLog) if _in_report_range(conversation.created_at, start, end)]
-    tickets = [ticket for ticket in scoped(ProjectTicket) if _in_report_range(ticket.created_at, start, end)]
-    cases = [case for case in scoped(Case) if _in_report_range(case.created_at, start, end)]
-    meetings = [meeting for meeting in scoped(Meeting) if meeting.scheduled_at and _in_report_range(meeting.scheduled_at, start, end)]
-    task_entries = [entry for entry in scoped(TaskSheetEntry) if start <= date.fromisoformat(entry.work_date) <= end]
+    deals = [deal for deal in scoped(
+        Deal) if _in_report_range(deal.created_at, start, end)]
+    emails = [email for email in scoped(
+        SentEmail) if _in_report_range(email.sent_at, start, end)]
+    activities = [activity for activity in scoped(
+        ActivityLog) if _in_report_range(activity.createdAt, start, end)]
+    calls = [call for call in scoped(
+        CallLog) if _in_report_range(call.createdAt, start, end)]
+    conversations = [conversation for conversation in scoped(
+        ConversationLog) if _in_report_range(conversation.created_at, start, end)]
+    tickets = [ticket for ticket in scoped(
+        ProjectTicket) if _in_report_range(ticket.created_at, start, end)]
+    cases = [case for case in scoped(
+        Case) if _in_report_range(case.created_at, start, end)]
+    meetings = [meeting for meeting in scoped(
+        Meeting) if meeting.scheduled_at and _in_report_range(meeting.scheduled_at, start, end)]
+    task_entries = [entry for entry in scoped(
+        TaskSheetEntry) if start <= date.fromisoformat(entry.work_date) <= end]
     users = {user.id: user for user in scoped(User)}
 
     converted_leads = [lead for lead in all_leads if lead.is_converted]
-    closed_deals = [deal for deal in deals if deal.stage in ("Closed Won", "Closed Lost")]
+    closed_deals = [deal for deal in deals if deal.stage in (
+        "Closed Won", "Closed Lost")]
     won_deals = [deal for deal in deals if deal.stage == "Closed Won"]
-    conversion_percentage = round((len(converted_leads) / len(all_leads)) * 100, 2) if all_leads else 0
-    win_rate = round((len(won_deals) / len(closed_deals)) * 100, 2) if closed_deals else 0
+    conversion_percentage = round(
+        (len(converted_leads) / len(all_leads)) * 100, 2) if all_leads else 0
+    win_rate = round((len(won_deals) / len(closed_deals))
+                     * 100, 2) if closed_deals else 0
 
     source_map: dict[str, dict] = {}
     for lead in leads:
         source = (lead.source or "Unknown").strip() or "Unknown"
-        bucket = source_map.setdefault(source, {"source": source, "leads": 0, "converted": 0, "conversion_percentage": 0})
+        bucket = source_map.setdefault(
+            source, {"source": source, "leads": 0, "converted": 0, "conversion_percentage": 0})
         bucket["leads"] += 1
         if lead.is_converted:
             bucket["converted"] += 1
     for bucket in source_map.values():
-        bucket["conversion_percentage"] = round((bucket["converted"] / bucket["leads"]) * 100, 2) if bucket["leads"] else 0
+        bucket["conversion_percentage"] = round(
+            (bucket["converted"] / bucket["leads"]) * 100, 2) if bucket["leads"] else 0
 
     staff: dict[int, dict] = {}
+
     def staff_bucket(user_id: Optional[int], name: Optional[str] = None):
         if not user_id:
             return None
         user = users.get(user_id)
-        bucket = staff.setdefault(user_id, {"user_id": user_id, "name": name or (user.name if user else "Unknown"), "role": user.role if user else "Unknown", "activities": 0, "calls": 0, "emails": 0, "tickets": 0, "cases": 0, "meetings": 0, "task_entries": 0, "completed_tasks": 0})
+        bucket = staff.setdefault(user_id, {"user_id": user_id, "name": name or (user.name if user else "Unknown"), "role": user.role if user else "Unknown",
+                                  "activities": 0, "calls": 0, "emails": 0, "tickets": 0, "cases": 0, "meetings": 0, "task_entries": 0, "completed_tasks": 0})
         return bucket
 
     for item in activities:
@@ -8918,16 +9576,19 @@ def reports_summary(
             staff_bucket(item.userId)["activities"] += 1
     for item in calls:
         if item.assigned_to:
-            bucket = staff_bucket(next((u.id for u in users.values() if u.name and u.name == item.assigned_to), None), item.assigned_to)
+            bucket = staff_bucket(next((u.id for u in users.values(
+            ) if u.name and u.name == item.assigned_to), None), item.assigned_to)
             if bucket:
                 bucket["calls"] += 1
     for item in emails:
-        lead = next((lead for lead in all_leads if lead.email == item.to_email), None)
+        lead = next(
+            (lead for lead in all_leads if lead.email == item.to_email), None)
         bucket = staff_bucket(lead.owner_id if lead else None)
         if bucket:
             bucket["emails"] += 1
     for item in tickets:
-        owner = next((u for u in users.values() if (u.name or "").lower() == (item.current_owner or "").lower() or str(u.id) == (item.current_owner or "")), None)
+        owner = next((u for u in users.values() if (u.name or "").lower() == (
+            item.current_owner or "").lower() or str(u.id) == (item.current_owner or "")), None)
         bucket = staff_bucket(owner.id if owner else None)
         if bucket:
             bucket["tickets"] += 1
@@ -8946,27 +9607,41 @@ def reports_summary(
             if item.status.lower() in ("done", "completed"):
                 bucket["completed_tasks"] += 1
     for bucket in staff.values():
-        bucket["total_work"] = sum(bucket[key] for key in ("activities", "calls", "emails", "tickets", "cases", "meetings", "task_entries"))
+        bucket["total_work"] = sum(bucket[key] for key in (
+            "activities", "calls", "emails", "tickets", "cases", "meetings", "task_entries"))
 
     daily: dict[str, dict] = {}
     for offset in range((end - start).days + 1):
         day = (start + timedelta(days=offset)).isoformat()
-        daily[day] = {"date": day, "leads": 0, "clients_onboarded": 0, "deals_won": 0, "emails": 0, "activities": 0, "calls": 0, "meetings": 0, "task_entries": 0, "tickets": 0, "cases_resolved": 0}
-    for lead in leads: daily[lead.created_at.date().isoformat()]["leads"] += 1
+        daily[day] = {"date": day, "leads": 0, "clients_onboarded": 0, "deals_won": 0, "emails": 0,
+                      "activities": 0, "calls": 0, "meetings": 0, "task_entries": 0, "tickets": 0, "cases_resolved": 0}
+    for lead in leads:
+        daily[lead.created_at.date().isoformat()]["leads"] += 1
     for client in clients:
         user = users.get(client.userId) if client.userId else None
-        if user and _in_report_range(user.createdAt, start, end): daily[user.createdAt.date().isoformat()]["clients_onboarded"] += 1
-    for deal in won_deals: daily[deal.created_at.date().isoformat()]["deals_won"] += 1
-    for email in emails: daily[email.sent_at.date().isoformat()]["emails"] += 1
-    for activity in activities: daily[activity.createdAt.date().isoformat()]["activities"] += 1
-    for call in calls: daily[call.createdAt.date().isoformat()]["calls"] += 1
-    for meeting in meetings: daily[meeting.scheduled_at.date().isoformat()]["meetings"] += 1
-    for entry in task_entries: daily[date.fromisoformat(entry.work_date).isoformat()]["task_entries"] += 1
-    for ticket in tickets: daily[ticket.created_at.date().isoformat()]["tickets"] += 1
+        if user and _in_report_range(user.createdAt, start, end):
+            daily[user.createdAt.date().isoformat()]["clients_onboarded"] += 1
+    for deal in won_deals:
+        daily[deal.created_at.date().isoformat()]["deals_won"] += 1
+    for email in emails:
+        daily[email.sent_at.date().isoformat()]["emails"] += 1
+    for activity in activities:
+        daily[activity.createdAt.date().isoformat()]["activities"] += 1
+    for call in calls:
+        daily[call.createdAt.date().isoformat()]["calls"] += 1
+    for meeting in meetings:
+        daily[meeting.scheduled_at.date().isoformat()]["meetings"] += 1
+    for entry in task_entries:
+        daily[date.fromisoformat(
+            entry.work_date).isoformat()]["task_entries"] += 1
+    for ticket in tickets:
+        daily[ticket.created_at.date().isoformat()]["tickets"] += 1
     for case in cases:
-        if case.status in ("Resolved", "Closed"): daily[case.created_at.date().isoformat()]["cases_resolved"] += 1
+        if case.status in ("Resolved", "Closed"):
+            daily[case.created_at.date().isoformat()]["cases_resolved"] += 1
 
-    onboarded = [client for client in clients if client.userId and users.get(client.userId) and _in_report_range(users[client.userId].createdAt, start, end)]
+    onboarded = [client for client in clients if client.userId and users.get(
+        client.userId) and _in_report_range(users[client.userId].createdAt, start, end)]
     return {
         "range": {"start_date": start.isoformat(), "end_date": end.isoformat()},
         "summary": {"leads": len(leads), "clients_onboarded": len(onboarded), "total_clients": len(clients), "deals_created": len(deals), "deals_won": len(won_deals), "pipeline_value": round(sum(deal.value or 0 for deal in deals if deal.stage not in ("Closed Lost",)), 2), "won_value": round(sum(deal.value or 0 for deal in won_deals), 2), "emails": len(emails), "activities": len(activities), "calls": len(calls), "meetings": len(meetings), "tickets": len(tickets), "task_entries": len(task_entries), "cases_resolved": sum(1 for case in cases if case.status in ("Resolved", "Closed")), "conversion_percentage": conversion_percentage, "deal_win_rate": win_rate},
@@ -9004,9 +9679,11 @@ _portal_config: Dict[str, Any] = {
     },
 }
 
+
 @app.get("/portal/config")
 def get_portal_config():
     return _portal_config
+
 
 @app.put("/portal/config")
 def update_portal_config(body: Dict[str, Any]):
@@ -9017,11 +9694,14 @@ def update_portal_config(body: Dict[str, Any]):
             else:
                 _portal_config[key] = val
 # ─── Sidebar Preferences Endpoint ──────────────────────────────────────────────
+
+
 class SidebarPrefsRequest(BaseModel):
     sidebar_preferences: dict
 
+
 @app.get("/users/me/sidebar-preferences")
-async def get_sidebar_preferences(user_id: Optional[int] = Query(None), session: Session = Depends(get_session)):
+def get_sidebar_preferences(user_id: Optional[int] = Query(None), session: Session = Depends(get_session)):
     from modules.api_tracker import current_salesperson_id
     uid = user_id or current_salesperson_id.get()
     if not uid:
@@ -9032,8 +9712,9 @@ async def get_sidebar_preferences(user_id: Optional[int] = Query(None), session:
         return {"ok": True, "sidebar_preferences": user.sidebar_preferences}
     return {"ok": True, "sidebar_preferences": {}}
 
+
 @app.post("/users/me/sidebar-preferences")
-async def update_sidebar_preferences(req: SidebarPrefsRequest, user_id: Optional[int] = Query(None), session: Session = Depends(get_session)):
+def update_sidebar_preferences(req: SidebarPrefsRequest, user_id: Optional[int] = Query(None), session: Session = Depends(get_session)):
     from modules.api_tracker import current_salesperson_id
     uid = user_id or current_salesperson_id.get()
     if not uid:
@@ -9048,28 +9729,34 @@ async def update_sidebar_preferences(req: SidebarPrefsRequest, user_id: Optional
     return {"ok": True, "message": "Sidebar preferences updated."}
 
 # ─── Auto-fill Client Endpoint ───────────────────────────────────────────────
+
+
 class AutoFillRequest(BaseModel):
     website: str
+
 
 @app.post("/clients/auto-fill")
 async def auto_fill_client(request: AutoFillRequest):
     from modules.scraper import scrape_website
     from modules.llm_engine import extract_client_profile_from_website
-    
+
     try:
         raw_text = await scrape_website(request.website)
         if not raw_text:
             return {"ok": False, "error": "Could not extract content from the website."}
-            
-        profile_data = extract_client_profile_from_website(raw_text, request.website)
+
+        profile_data = extract_client_profile_from_website(
+            raw_text, request.website)
         return {"ok": True, "data": profile_data}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+
 @app.get("/chatbot/history/{session_id}")
-async def get_chatbot_history(session_id: str, session: Session = Depends(get_session)):
+def get_chatbot_history(session_id: str, session: Session = Depends(get_session)):
     from database import ChatbotMessage
-    messages = session.exec(select(ChatbotMessage).where(ChatbotMessage.session_id == session_id).order_by(ChatbotMessage.created_at.asc())).all()
+    messages = session.exec(select(ChatbotMessage).where(
+        ChatbotMessage.session_id == session_id).order_by(ChatbotMessage.created_at.asc())).all()
     history = []
     for m in messages:
         history.append({
@@ -9080,41 +9767,47 @@ async def get_chatbot_history(session_id: str, session: Session = Depends(get_se
     return {"ok": True, "history": history}
 
 # ─── Chatbot endpoint ────────────────────────────────────────────────────────
+
+
 @app.post("/chatbot/message")
 async def chatbot_message(
-    request: ChatbotRequest, 
+    request: ChatbotRequest,
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session)
 ):
     from modules.llm_engine import process_chatbot_command
     from database import ClientProfile, ClientNote, ConversationLog, ActivityLog, Project, MarketplaceService, User, ChatbotSession, ChatbotMessage
     from modules.api_tracker import current_salesperson_id
-    
+
     user_id = current_salesperson_id.get()
 
     # Handle Session Memory
     session_id = request.session_id or f"anon_{datetime.utcnow().timestamp()}"
-    cb_session = session.exec(select(ChatbotSession).where(ChatbotSession.session_id == session_id)).first()
+    cb_session = session.exec(select(ChatbotSession).where(
+        ChatbotSession.session_id == session_id)).first()
     if not cb_session:
         cb_session = ChatbotSession(session_id=session_id, user_id=user_id)
         session.add(cb_session)
         session.commit()
-    
+
     # Save user message
-    user_msg = ChatbotMessage(session_id=session_id, role="user", content=request.message)
+    user_msg = ChatbotMessage(session_id=session_id,
+                              role="user", content=request.message)
     session.add(user_msg)
     session.commit()
-    
+
     # Load recent history (last 10 messages)
-    history_records = session.exec(select(ChatbotMessage).where(ChatbotMessage.session_id == session_id).order_by(ChatbotMessage.created_at.desc()).limit(10)).all()
+    history_records = session.exec(select(ChatbotMessage).where(
+        ChatbotMessage.session_id == session_id).order_by(ChatbotMessage.created_at.desc()).limit(10)).all()
     history_records.reverse()
-    chat_history_str = "\n".join([f"{m.role}: {m.content}" for m in history_records])
+    chat_history_str = "\n".join(
+        [f"{m.role}: {m.content}" for m in history_records])
 
     # Gather rich CRM summary for context
     active_clients = session.exec(select(ClientProfile).limit(10)).all()
     client_names = [c.companyName for c in active_clients if c.companyName]
     crm_summary = f"CRM Summary: {len(client_names)} active clients ({', '.join(client_names[:5])}...)\nHistory:\n{chat_history_str}"
-    
+
     client_context = None
     if request.client_id:
         cp = session.get(ClientProfile, request.client_id)
@@ -9126,24 +9819,25 @@ async def chatbot_message(
                 "email": cp.user.email if cp.user else None,
                 "industry": cp.industry
             }
-            
+
     # Advanced Omni-Agent AI processing
-    result = process_chatbot_command(request.message, client_context, request.current_route, crm_summary, user_role=request.user_role)
-    
+    result = process_chatbot_command(
+        request.message, client_context, request.current_route, crm_summary, user_role=request.user_role)
+
     actions = result.get("actions", [])
     action_taken = None
     route = None
-    
+
     try:
         for action_obj in actions:
             action_name = action_obj.get("action")
             params = action_obj.get("parameters", {})
-            
+
             if action_name == "research_lead":
                 from database import Lead
                 company_name = params.get("company_name", "Unknown Company")
                 website = params.get("website", "")
-                
+
                 # Create lead immediately
                 lead = Lead(
                     company_name=company_name,
@@ -9155,7 +9849,7 @@ async def chatbot_message(
                 session.add(lead)
                 session.commit()
                 session.refresh(lead)
-                
+
                 # Kick off smart research endpoint logic in background or inline
                 # For simplicity, we just use the background task if it was a website
                 if website:
@@ -9163,19 +9857,20 @@ async def chatbot_message(
                     # We should probably do a smart-research call for this Lead
                     # Let's trigger a background smart research for Lead
                     pass
-                
+
                 action_taken = "lead_created"
                 route = f"/leads/{lead.id}"
-                
+
             elif action_name == "bulk_import_websites":
                 from modules.scraper import scrape_website
                 from modules.llm_engine import extract_client_profile_from_website
-                
+
                 urls = params.get("urls", [])
                 for website_url in urls:
                     # Create a skeleton client first
                     cp = ClientProfile(
-                        companyName=website_url.replace("https://", "").replace("http://", "").split("/")[0],
+                        companyName=website_url.replace(
+                            "https://", "").replace("http://", "").split("/")[0],
                         websiteUrl=website_url,
                         status="Active",
                         tagline="Scraping in progress..."
@@ -9183,19 +9878,22 @@ async def chatbot_message(
                     session.add(cp)
                     session.commit()
                     session.refresh(cp)
-                    
+
                     # Spawn the background task to scrape and auto-research!
-                    background_tasks.add_task(_auto_research_client_bg, cp.id, website_url)
-                    
+                    background_tasks.add_task(
+                        _auto_research_client_bg, cp.id, website_url)
+
                 action_taken = "bulk_clients_created"
-                
+
             elif action_name == "create_client":
                 from modules.scraper import scrape_website
                 from modules.llm_engine import extract_client_profile_from_website
-                
+
                 website_url = params.get("website")
-                email = params.get("email") or f"bot_{datetime.utcnow().timestamp()}@placeholder.com"
-                existing_user = session.exec(select(User).where(User.email == email)).first() if hasattr(User, 'email') else None
+                email = params.get(
+                    "email") or f"bot_{datetime.utcnow().timestamp()}@placeholder.com"
+                existing_user = session.exec(select(User).where(
+                    User.email == email)).first() if hasattr(User, 'email') else None
                 user = existing_user
                 if not user:
                     user = User(
@@ -9220,10 +9918,11 @@ async def chatbot_message(
                 session.refresh(cp)
                 action_taken = "client_created"
                 route = f"/clients/{cp.id}"
-                
+
                 if website_url:
-                    background_tasks.add_task(_auto_research_client_bg, cp.id, website_url)
-                
+                    background_tasks.add_task(
+                        _auto_research_client_bg, cp.id, website_url)
+
             elif action_name == "create_deal":
                 from database import Deal
                 client_id = params.get("client_id") or request.client_id
@@ -9238,7 +9937,7 @@ async def chatbot_message(
                     session.add(deal)
                     session.commit()
                     action_taken = "deal_created"
-                    
+
             elif action_name == "draft_email":
                 client_id = params.get("client_id") or request.client_id
                 if client_id:
@@ -9246,26 +9945,28 @@ async def chatbot_message(
                     # For now, navigate to the email agent
                     action_taken = "navigate"
                     route = f"/email-agent?client_id={client_id}"
-                
+
             elif action_name == "navigate_user":
                 action_taken = "navigate"
                 route = params.get("route", "/")
-                
+
             elif action_name == "trigger_whatsapp_support":
                 action_taken = "trigger_whatsapp"
-                
+
                 # 1. Update the reply for the user
                 result["reply"] = "I've notified our live agents. Please wait a moment while they connect."
-                
+
                 # 2. Extract issue summary
-                issue_summary = params.get("issue_summary", result.get("reply", "No issue summary provided."))
-                
+                issue_summary = params.get("issue_summary", result.get(
+                    "reply", "No issue summary provided."))
+
                 # 3. Create LiveChatSession and Send AI WhatsApp summary to admin
                 try:
                     from database import LiveChatSession
                     if request.session_id:
                         # check if exists
-                        existing_lcs = session.exec(select(LiveChatSession).where(LiveChatSession.session_id == request.session_id)).first()
+                        existing_lcs = session.exec(select(LiveChatSession).where(
+                            LiveChatSession.session_id == request.session_id)).first()
                         if not existing_lcs:
                             lcs = LiveChatSession(
                                 session_id=request.session_id,
@@ -9274,47 +9975,52 @@ async def chatbot_message(
                             )
                             session.add(lcs)
                             session.commit()
-                    
+
                     from modules.whatsapp import send_whatsapp_message
-                    
+
                     company = client_context["company_name"] if client_context else "Unknown Visitor"
                     msg = f"🚨 *Live Chat Request!* 🚨\n\n*From:* {company}\n*Issue:* {issue_summary}\n\n*Chat History:*\n{request.chat_history or request.message}\n\nReply *YES* to claim this chat and talk directly to the visitor!"
-                    
+
                     from database import User
-                    admins = session.exec(select(User).where(User.role.in_(["SuperAdmin", "Admin"]))).all()
-                    
+                    admins = session.exec(select(User).where(
+                        User.role.in_(["SuperAdmin", "Admin"]))).all()
+
                     admin_phones = []
                     for adm in admins:
                         if adm.phone:
-                            p = adm.phone.replace("whatsapp:", "").replace("+", "").replace("-", "").replace(" ", "").strip()
+                            p = adm.phone.replace("whatsapp:", "").replace(
+                                "+", "").replace("-", "").replace(" ", "").strip()
                             admin_phones.append(f"whatsapp:+{p}")
-                            
+
                     if not admin_phones:
-                        print("No admins with phone numbers found for live chat handoff.")
+                        print(
+                            "No admins with phone numbers found for live chat handoff.")
                     else:
                         for phone_str in set(admin_phones):
                             try:
                                 send_whatsapp_message(msg, phone_str)
-                                
+
                                 # Store a pending action in WhatsAppSession so if they reply YES it triggers live chat
                                 from database import WhatsAppSession
                                 import json
-                                pending = session.exec(select(WhatsAppSession).where(WhatsAppSession.phone_number == phone_str)).first()
+                                pending = session.exec(select(WhatsAppSession).where(
+                                    WhatsAppSession.phone_number == phone_str)).first()
                                 if pending:
                                     session.delete(pending)
                                 new_pending = WhatsAppSession(
                                     phone_number=phone_str,
                                     pending_action="claim_live_chat",
-                                    action_data=json.dumps({"session_id": request.session_id}) if request.session_id else "{}"
+                                    action_data=json.dumps(
+                                        {"session_id": request.session_id}) if request.session_id else "{}"
                                 )
                                 session.add(new_pending)
                             except Exception as e:
                                 print(f"Failed to send to {phone_str}: {e}")
                         session.commit()
-                    
+
                 except Exception as e:
                     print("WhatsApp Chatbot Handoff Error:", e)
-                
+
             elif action_name == "add_note_to_client":
                 target_client_id = request.client_id or params.get("client_id")
                 if target_client_id:
@@ -9325,18 +10031,20 @@ async def chatbot_message(
                         type="Note"
                     )
                     session.add(new_note)
-                    log = ActivityLog(clientId=target_client_id, action="Note Added via Omni-Agent", details=new_note.content[:100], method="bot")
+                    log = ActivityLog(clientId=target_client_id, action="Note Added via Omni-Agent",
+                                      details=new_note.content[:100], method="bot")
                     session.add(log)
                     session.commit()
                     action_taken = "note_added"
-                    
+
     except Exception as e:
         print(f"Chatbot mutation error: {e}")
 
     # Save bot message
     try:
         bot_reply = result.get("reply", "I processed your request.")
-        bot_msg = ChatbotMessage(session_id=session_id, role="assistant", content=bot_reply, action_taken=action_taken)
+        bot_msg = ChatbotMessage(
+            session_id=session_id, role="assistant", content=bot_reply, action_taken=action_taken)
         session.add(bot_msg)
         session.commit()
     except Exception as e:
@@ -9345,53 +10053,62 @@ async def chatbot_message(
     # Fallback response format for the frontend
     return {
         "reply": result.get("reply", "I processed your request."),
-        "intent": "omni_agent", # Legacy
+        "intent": "omni_agent",  # Legacy
         "actions": actions,
         "action_taken": action_taken,
         "route": route
     }
 
+
 class LiveChatSendRequest(BaseModel):
     message: str
+
 
 @app.post("/chatbot/live-chat/{session_id}/send")
 def live_chat_send(session_id: str, request: LiveChatSendRequest, db: Session = Depends(get_session)):
     from database import LiveChatSession, LiveChatMessage, WhatsAppSession
-    lcs = db.exec(select(LiveChatSession).where(LiveChatSession.session_id == session_id)).first()
+    lcs = db.exec(select(LiveChatSession).where(
+        LiveChatSession.session_id == session_id)).first()
     if not lcs or lcs.status != "active":
         return {"ok": False, "error": "Live chat is not active"}
-    
+
     # Save message
-    msg = LiveChatMessage(session_id=session_id, sender="user", message=request.message)
+    msg = LiveChatMessage(session_id=session_id,
+                          sender="user", message=request.message)
     db.add(msg)
     db.commit()
-    
+
     # Forward to WhatsApp
     from modules.whatsapp import send_whatsapp_message
-    active_admin = db.exec(select(WhatsAppSession).where(WhatsAppSession.active_live_chat_session == session_id)).first()
+    active_admin = db.exec(select(WhatsAppSession).where(
+        WhatsAppSession.active_live_chat_session == session_id)).first()
     if active_admin:
-        send_whatsapp_message(f"👤 *Visitor:* {request.message}", active_admin.phone_number)
-        
+        send_whatsapp_message(
+            f"👤 *Visitor:* {request.message}", active_admin.phone_number)
+
     return {"ok": True}
+
 
 @app.get("/chatbot/live-chat/{session_id}/sync")
 def live_chat_sync(session_id: str, db: Session = Depends(get_session)):
     from database import LiveChatSession, LiveChatMessage
-    lcs = db.exec(select(LiveChatSession).where(LiveChatSession.session_id == session_id)).first()
+    lcs = db.exec(select(LiveChatSession).where(
+        LiveChatSession.session_id == session_id)).first()
     if not lcs:
         return {"status": "inactive", "messages": []}
-    
+
     # Fetch all admin messages
-    messages = db.exec(select(LiveChatMessage).where(LiveChatMessage.session_id == session_id).order_by(LiveChatMessage.timestamp.asc())).all()
-    
+    messages = db.exec(select(LiveChatMessage).where(
+        LiveChatMessage.session_id == session_id).order_by(LiveChatMessage.timestamp.asc())).all()
+
     return {
         "status": lcs.status,
         "messages": [
-            {"sender": m.sender, "message": m.message, "timestamp": m.timestamp.isoformat()}
+            {"sender": m.sender, "message": m.message,
+                "timestamp": m.timestamp.isoformat()}
             for m in messages
         ]
     }
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -9405,6 +10122,7 @@ class MarketplaceServiceCreate(BaseModel):
     estimated_cost: float = 0.0
     provider_client_id: Optional[int] = None
     provider_name: Optional[str] = None
+
 
 class MarketplaceServiceUpdate(BaseModel):
     service_name: Optional[str] = None
@@ -9448,7 +10166,8 @@ def list_marketplace_services(
     session: Session = Depends(get_session),
 ):
     _require_roles(session, ["Admin"])
-    query = select(MarketplaceService).where(MarketplaceService.is_active == True)
+    query = select(MarketplaceService).where(
+        MarketplaceService.is_active == True)
     # Filter by tenant so each account only sees their own extracted services
     tenant_id = current_tenant_id.get()
     if tenant_id and tenant_id > 0:
@@ -9475,7 +10194,8 @@ def list_marketplace_services(
     if max_cost is not None:
         query = query.where(MarketplaceService.estimated_cost <= max_cost)
     if provider:
-        query = query.where(MarketplaceService.provider_name.ilike(f"%{provider}%"))
+        query = query.where(
+            MarketplaceService.provider_name.ilike(f"%{provider}%"))
 
     total = len(session.exec(query).all())
     offset = (page - 1) * per_page
@@ -9584,7 +10304,8 @@ def ai_categorize_marketplace_service(
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
 
-    import openai, os
+    import openai
+    import os
     client_ai = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     prompt = f"""You are a B2B service categorization expert.
@@ -9621,17 +10342,14 @@ Respond with ONLY valid JSON (no markdown):
         session.refresh(svc)
         return {"service": _marketplace_row(svc)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI categorization failed: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"AI categorization failed: {e}")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RADAR ANALYSIS ENGINE — Google Maps Competitor Intelligence
 # ─────────────────────────────────────────────────────────────────────────────
-from modules.radar_engine import (
-    find_place, find_nearby_competitors, calculate_market_density,
-    sort_nearest, sort_largest_market, sort_largest_team, sort_most_similar,
-    score_market_size, estimate_team_size
-)
-from database import RadarAnalysis, CompetitorRelationship
+
 
 class RadarSearchRequest(BaseModel):
     query: str
@@ -9639,6 +10357,7 @@ class RadarSearchRequest(BaseModel):
     place_id: Optional[str] = None
     company_name: Optional[str] = None
     website: Optional[str] = None
+
 
 class RadarAnalyzeRequest(BaseModel):
     place_id: str
@@ -9656,12 +10375,14 @@ class RadarAnalyzeRequest(BaseModel):
     client_id: Optional[int] = None
     lead_id: Optional[int] = None
 
+
 class RadarAddClientRequest(BaseModel):
     competitor: dict
     source_client_id: Optional[int] = None
     source_lead_id: Optional[int] = None
     source_client_name: str
     radar_id: Optional[int] = None
+
 
 @app.post("/radar/search")
 async def radar_search(body: RadarSearchRequest):
@@ -9673,38 +10394,41 @@ async def radar_search(body: RadarSearchRequest):
             place = await get_place_details(body.place_id)
         else:
             place = await find_place(body.query, body.location_hint)
-            
+
         if not place:
             fallback_location = body.location_hint
             website_to_scrape = body.website
-            
+
             # Extract website from query if not provided explicitly
             if not website_to_scrape:
                 import re
-                urls = re.findall(r'(https?://\S+|www\.\S+|\b\w+\.\w{2,}\b)', body.query)
+                urls = re.findall(
+                    r'(https?://\S+|www\.\S+|\b\w+\.\w{2,}\b)', body.query)
                 for u in urls:
                     if "." in u and len(u.split(".")[-1]) >= 2:
                         website_to_scrape = u
                         break
-            
+
             if not fallback_location and website_to_scrape:
                 try:
                     from modules.scraper import scrape_website
                     from openai import AsyncOpenAI
                     import os
-                    
+
                     try:
                         scraped_text = await scrape_website(website_to_scrape)
                     except Exception:
                         scraped_text = ""
-                        
+
                     from modules.llm_engine import get_openai_client
                     client_ai = get_openai_client()
                     resp = client_ai.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[
-                            {"role": "system", "content": "You are a data extraction assistant. Return ONLY the primary physical city and state (e.g. 'Miami, FL' or 'San Francisco, CA') for the given company. Use the provided website content if available, otherwise use your internal knowledge. If totally unknown, reply 'UNKNOWN'."},
-                            {"role": "user", "content": f"Company: {body.company_name or body.query}\nWebsite: {website_to_scrape}\n\nWebsite Content:\n{scraped_text[:10000]}"}
+                            {"role": "system",
+                                "content": "You are a data extraction assistant. Return ONLY the primary physical city and state (e.g. 'Miami, FL' or 'San Francisco, CA') for the given company. Use the provided website content if available, otherwise use your internal knowledge. If totally unknown, reply 'UNKNOWN'."},
+                            {"role": "user",
+                                "content": f"Company: {body.company_name or body.query}\nWebsite: {website_to_scrape}\n\nWebsite Content:\n{scraped_text[:10000]}"}
                         ],
                         temperature=0
                     )
@@ -9713,11 +10437,11 @@ async def radar_search(body: RadarSearchRequest):
                         fallback_location = extracted
                 except Exception as e:
                     print(f"Failed to scrape/extract location: {e}")
-            
+
             geocode_place = None
             if fallback_location:
                 geocode_place = await find_place(fallback_location)
-                
+
             if geocode_place:
                 place = {
                     "place_id": geocode_place.get("place_id", "synthetic_id"),
@@ -9741,14 +10465,16 @@ async def radar_search(body: RadarSearchRequest):
                     err = f"Our AI scanned the website, but '{body.company_name or body.query}' appears to be a fully remote business with no physical headquarters. Please manually enter a target city to scan."
                 else:
                     err = f"Could not find the target location '{fallback_location}' on Google Maps. The name might be ambiguous."
-                
+
                 raise HTTPException(status_code=404, detail=err)
 
         return {"place": place}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Radar search failed: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Radar search failed: {e}")
+
 
 @app.post("/radar/analyze")
 async def radar_analyze(body: RadarAnalyzeRequest, session: Session = Depends(get_session)):
@@ -9778,7 +10504,8 @@ async def radar_analyze(body: RadarAnalyzeRequest, session: Session = Depends(ge
             client_id=body.client_id,
             lead_id=body.lead_id,
             target_name=body.target_name,
-            target_place_id=body.place_id if hasattr(body, 'place_id') else None,
+            target_place_id=body.place_id if hasattr(
+                body, 'place_id') else None,
             target_lat=body.target_lat,
             target_lng=body.target_lng,
             target_address=body.target_address,
@@ -9818,12 +10545,15 @@ async def radar_analyze(body: RadarAnalyzeRequest, session: Session = Depends(ge
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Radar analysis failed: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Radar analysis failed: {e}")
+
 
 @app.get("/radar/analyses")
 def get_all_radar_analyses(session: Session = Depends(get_session)):
     """Get all radar analyses."""
-    analyses = session.exec(select(RadarAnalysis).order_by(RadarAnalysis.run_date.desc()).limit(50)).all()
+    analyses = session.exec(select(RadarAnalysis).order_by(
+        RadarAnalysis.run_date.desc()).limit(50)).all()
     return [
         {
             "id": a.id,
@@ -9838,11 +10568,13 @@ def get_all_radar_analyses(session: Session = Depends(get_session)):
         for a in analyses
     ]
 
+
 @app.get("/radar/analyses/{client_id}")
 def get_client_radar_analyses(client_id: int, session: Session = Depends(get_session)):
     """Get radar analyses for a specific client."""
     analyses = session.exec(
-        select(RadarAnalysis).where(RadarAnalysis.client_id == client_id).order_by(RadarAnalysis.run_date.desc())
+        select(RadarAnalysis).where(RadarAnalysis.client_id ==
+                                    client_id).order_by(RadarAnalysis.run_date.desc())
     ).all()
     return [
         {
@@ -9860,6 +10592,7 @@ def get_client_radar_analyses(client_id: int, session: Session = Depends(get_ses
         for a in analyses
     ]
 
+
 @app.post("/radar/add-client")
 def radar_add_client(body: RadarAddClientRequest, session: Session = Depends(get_session)):
     """Add a competitor discovered via radar to the CRM as a Lead (not a Client)."""
@@ -9874,9 +10607,11 @@ def radar_add_client(body: RadarAddClientRequest, session: Session = Depends(get
         # Check for existing Lead by website or name to avoid duplicates
         existing_lead = None
         if website:
-            existing_lead = session.exec(select(Lead).where(Lead.website == website)).first()
+            existing_lead = session.exec(
+                select(Lead).where(Lead.website == website)).first()
         if not existing_lead:
-            existing_lead = session.exec(select(Lead).where(Lead.company_name == name)).first()
+            existing_lead = session.exec(
+                select(Lead).where(Lead.company_name == name)).first()
 
         if existing_lead:
             # Update existing lead with fresher radar data
@@ -9948,23 +10683,26 @@ def radar_add_client(body: RadarAddClientRequest, session: Session = Depends(get
         raise HTTPException(status_code=500, detail=f"Failed to add lead: {e}")
 
 
-
 @app.get("/radar/relationships/{client_id}")
 def get_radar_relationships(client_id: int, type: str = "client", session: Session = Depends(get_session)):
     """Get the competitor discovery graph for a client or lead (who they found + who found them)."""
     if type == "lead":
         discovered = session.exec(
-            select(CompetitorRelationship).where(CompetitorRelationship.source_lead_id == client_id)
+            select(CompetitorRelationship).where(
+                CompetitorRelationship.source_lead_id == client_id)
         ).all()
         found_from = session.exec(
-            select(CompetitorRelationship).where(CompetitorRelationship.discovered_lead_id == client_id)
+            select(CompetitorRelationship).where(
+                CompetitorRelationship.discovered_lead_id == client_id)
         ).all()
     else:
         discovered = session.exec(
-            select(CompetitorRelationship).where(CompetitorRelationship.source_client_id == client_id)
+            select(CompetitorRelationship).where(
+                CompetitorRelationship.source_client_id == client_id)
         ).all()
         found_from = session.exec(
-            select(CompetitorRelationship).where(CompetitorRelationship.discovered_client_id == client_id)
+            select(CompetitorRelationship).where(
+                CompetitorRelationship.discovered_client_id == client_id)
         ).all()
 
     return {
@@ -9993,6 +10731,7 @@ def get_radar_relationships(client_id: int, type: str = "client", session: Sessi
 class AutomationScanRequest(BaseModel):
     url: str
 
+
 @app.post("/automations/intelligence-scan")
 async def automations_intelligence_scan(body: AutomationScanRequest):
     import json as _json
@@ -10000,18 +10739,18 @@ async def automations_intelligence_scan(body: AutomationScanRequest):
     import requests
     from modules.llm_engine import get_openai_client
     from modules.scraper import scrape_website
-    
+
     url = body.url.strip()
     if not url.startswith("http"):
         url = "https://" + url
-    
+
     domain = url.replace("https://", "").replace("http://", "").split("/")[0]
-    
+
     try:
         scraped_content = await scrape_website(url)
     except Exception as e:
         scraped_content = f"Failed to scrape: {str(e)}"
-        
+
     serp_data_str = "No Google Search API key provided, search data unavailable."
     serper_api_key = os.environ.get("SERPER_API_KEY")
     if serper_api_key:
@@ -10022,7 +10761,8 @@ async def automations_intelligence_scan(body: AutomationScanRequest):
                 'X-API-KEY': serper_api_key,
                 'Content-Type': 'application/json'
             }
-            serp_response = requests.post("https://google.serper.dev/search", headers=headers, data=payload, timeout=10)
+            serp_response = requests.post(
+                "https://google.serper.dev/search", headers=headers, data=payload, timeout=10)
             if serp_response.ok:
                 serp_json = serp_response.json()
                 serp_data_str = _json.dumps({
@@ -10031,7 +10771,7 @@ async def automations_intelligence_scan(body: AutomationScanRequest):
                 })
         except Exception as e:
             serp_data_str = f"Error fetching SERP: {str(e)}"
-    
+
     prompt = f"""
     You are an expert business intelligence gathering AI.
     We are running a scan on the website/domain: {url} ({domain}).
@@ -10093,7 +10833,7 @@ async def automations_intelligence_scan(body: AutomationScanRequest):
     
     Do not use markdown blocks. Return only raw JSON.
     """
-    
+
     try:
         client_ai = get_openai_client()
         resp = client_ai.chat.completions.create(
@@ -10107,13 +10847,12 @@ async def automations_intelligence_scan(body: AutomationScanRequest):
         data = _json.loads(content)
         return data
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to scan: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to scan: {str(e)}")
 
 # =====================================================================
 # ENHANCED CRM ARCHITECTURE - LEADS, ACCOUNTS, CONTACTS
 # =====================================================================
-import json
-import pandas as pd
 
 
 class LeadCreateRequest(BaseModel):
@@ -10128,6 +10867,7 @@ class LeadCreateRequest(BaseModel):
     status: str = "New"
     notes: Optional[str] = None
 
+
 class AccountCreateRequest(BaseModel):
     company_name: str
     website: Optional[str] = None
@@ -10135,6 +10875,7 @@ class AccountCreateRequest(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     owner_id: Optional[int] = None
+
 
 class ContactCreateRequest(BaseModel):
     first_name: str
@@ -10156,6 +10897,8 @@ class ContactCreateRequest(BaseModel):
     parent_contact_id: Optional[int] = None
 
 # ---- LEADS API ----
+
+
 @app.get("/leads")
 def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_session)):
     query = select(Lead)
@@ -10166,6 +10909,7 @@ def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_ses
         query = query.where(Lead.tenant_id == tenant_id)
     leads = session.exec(query.order_by(Lead.created_at.desc())).all()
     return {"leads": leads}
+
 
 @app.get("/leads/export-csv")
 def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(get_session)):
@@ -10186,9 +10930,10 @@ def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(
     all_user_ids = list({l.owner_id for l in leads if l.owner_id})
     users_by_id = {}
     if all_user_ids:
-        users = session.exec(select(User).where(User.id.in_(all_user_ids))).all()
+        users = session.exec(select(User).where(
+            User.id.in_(all_user_ids))).all()
         users_by_id = {u.id: u for u in users}
-    
+
     output = _io.StringIO()
     writer = _csv.writer(output)
 
@@ -10199,6 +10944,7 @@ def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(
         try:
             if isinstance(val, str):
                 val = _json.loads(val)
+
             def extract(obj):
                 if isinstance(obj, dict):
                     return [x for v in obj.values() for x in extract(v)]
@@ -10242,8 +10988,10 @@ def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(
             l.address or "",
             l.source or "",
             l.status or "",
-            l.lead_score if hasattr(l, "lead_score") and l.lead_score is not None else "",
-            l.deal_value if hasattr(l, "deal_value") and l.deal_value is not None else "",
+            l.lead_score if hasattr(
+                l, "lead_score") and l.lead_score is not None else "",
+            l.deal_value if hasattr(
+                l, "deal_value") and l.deal_value is not None else "",
             owner_name,
             "Yes" if l.is_converted else "No",
             (l.notes or "")[:300],
@@ -10260,21 +11008,24 @@ def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(
         headers={"Content-Disposition": "attachment; filename=serphawk_leads.csv"}
     )
 
+
 @app.post("/leads")
 def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
     if tenant_id and tenant_id != 1:
         tenant = session.get(Tenant, tenant_id)
         if tenant:
-            current_count = session.exec(select(func.count(Lead.id)).where(Lead.tenant_id == tenant_id)).one()
+            current_count = session.exec(
+                select(func.count(Lead.id)).where(Lead.tenant_id == tenant_id)).one()
             if current_count >= tenant.limit_clients:
-                raise HTTPException(status_code=403, detail=f"Lead limit reached. Maximum allowed: {tenant.limit_clients}")
+                raise HTTPException(
+                    status_code=403, detail=f"Lead limit reached. Maximum allowed: {tenant.limit_clients}")
     lead = Lead(**body.dict())
     lead.tenant_id = current_tenant_id.get()
     session.add(lead)
     session.commit()
     session.refresh(lead)
-    
+
     try:
         _notify_admins(
             session, current_tenant_id.get(),
@@ -10285,12 +11036,13 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
         )
     except Exception:
         pass
-    
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message("New Lead Added", lead.dict(), f"{base_url}/leads/{lead.id}")
+        send_ai_polished_whatsapp_message(
+            "New Lead Added", lead.dict(), f"{base_url}/leads/{lead.id}")
     except Exception as e:
         print("WhatsApp Error:", e)
 
@@ -10304,8 +11056,9 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
         )
     except Exception as e:
         print(f"AutoResearch trigger error for lead {lead.id}: {e}")
-        
+
     return lead
+
 
 @app.get("/leads/{lead_id}")
 def get_lead(lead_id: int, session: Session = Depends(get_session)):
@@ -10314,56 +11067,72 @@ def get_lead(lead_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Lead not found")
     return lead
 
+
 @app.get("/leads/{lead_id}/activities")
 def get_lead_activities(lead_id: int, session: Session = Depends(get_session)):
     return {"activities": []}
+
 
 @app.get("/leads/{lead_id}/timeline")
 def get_lead_timeline(lead_id: int, session: Session = Depends(get_session)):
     events: list[dict] = []
     # Activities
     for a in session.exec(select(ActivityLog).where(ActivityLog.lead_id == lead_id)).all():
-        events.append({"type": "activity", "id": a.id, "title": a.action or a.method or "Activity", "detail": a.content or "", "date": a.createdAt.isoformat() if a.createdAt else None})
+        events.append({"type": "activity", "id": a.id, "title": a.action or a.method or "Activity",
+                      "detail": a.content or "", "date": a.createdAt.isoformat() if a.createdAt else None})
     # Emails
     for e in session.exec(select(SentEmail).where(SentEmail.lead_id == lead_id)).all():
-        events.append({"type": "email", "id": e.id, "title": f"Email: {e.subject or 'No subject'}", "detail": e.to_email or "", "date": e.sent_at.isoformat() if e.sent_at else None})
+        events.append({"type": "email", "id": e.id, "title": f"Email: {e.subject or 'No subject'}",
+                      "detail": e.to_email or "", "date": e.sent_at.isoformat() if e.sent_at else None})
     # Notes
     for n in session.exec(select(ClientNote).where(ClientNote.lead_id == lead_id)).all():
-        events.append({"type": "note", "id": n.id, "title": "Note Added", "detail": n.content or "", "date": n.created_at.isoformat() if n.created_at else None})
+        events.append({"type": "note", "id": n.id, "title": "Note Added",
+                      "detail": n.content or "", "date": n.created_at.isoformat() if n.created_at else None})
     # Conversations
     for c in session.exec(select(ConversationLog).where(ConversationLog.lead_id == lead_id)).all():
-        events.append({"type": "conversation", "id": c.id, "title": c.title or "Conversation", "detail": c.description or "", "date": c.created_at.isoformat() if c.created_at else None})
-    
+        events.append({"type": "conversation", "id": c.id, "title": c.title or "Conversation",
+                      "detail": c.description or "", "date": c.created_at.isoformat() if c.created_at else None})
+
     events.sort(key=lambda x: x["date"] or "", reverse=True)
     return {"timeline": events}
 
+
 @app.get("/leads/{lead_id}/activities")
 def get_lead_activities(lead_id: int, session: Session = Depends(get_session)):
-    acts = session.exec(select(ActivityLog).where(ActivityLog.lead_id == lead_id).order_by(ActivityLog.createdAt.desc())).all()
+    acts = session.exec(select(ActivityLog).where(
+        ActivityLog.lead_id == lead_id).order_by(ActivityLog.createdAt.desc())).all()
     return {"activities": [a.dict() for a in acts]}
+
 
 @app.get("/leads/{lead_id}/notes")
 def get_lead_notes(lead_id: int, session: Session = Depends(get_session)):
-    notes = session.exec(select(ClientNote).where(ClientNote.lead_id == lead_id).order_by(ClientNote.created_at.desc())).all()
+    notes = session.exec(select(ClientNote).where(
+        ClientNote.lead_id == lead_id).order_by(ClientNote.created_at.desc())).all()
     return {"notes": [n.dict() for n in notes]}
+
 
 class LeadNoteCreate(BaseModel):
     content: str
     author_name: str = "Admin"
     tags: Optional[List[str]] = []
 
+
 @app.post("/leads/{lead_id}/notes")
 def create_lead_note(lead_id: int, body: LeadNoteCreate, session: Session = Depends(get_session)):
-    note = ClientNote(lead_id=lead_id, content=body.content, author_name=body.author_name, tags=body.tags)
+    note = ClientNote(lead_id=lead_id, content=body.content,
+                      author_name=body.author_name, tags=body.tags)
     session.add(note)
     session.commit()
     session.refresh(note)
     return note.dict()
 
+
 @app.get("/leads/{lead_id}/conversations")
 def get_lead_conversations(lead_id: int, session: Session = Depends(get_session)):
-    convs = session.exec(select(ConversationLog).where(ConversationLog.lead_id == lead_id).order_by(ConversationLog.created_at.desc())).all()
+    convs = session.exec(select(ConversationLog).where(
+        ConversationLog.lead_id == lead_id).order_by(ConversationLog.created_at.desc())).all()
     return {"conversations": [c.dict() for c in convs]}
+
 
 class LeadConversationCreate(BaseModel):
     title: str
@@ -10371,24 +11140,28 @@ class LeadConversationCreate(BaseModel):
     description: Optional[str] = None
     author_name: str = "Admin"
 
+
 @app.post("/leads/{lead_id}/conversations")
 def create_lead_conversation(lead_id: int, body: LeadConversationCreate, session: Session = Depends(get_session)):
-    conv = ConversationLog(lead_id=lead_id, title=body.title, type=body.type, description=body.description, author_name=body.author_name)
+    conv = ConversationLog(lead_id=lead_id, title=body.title, type=body.type,
+                           description=body.description, author_name=body.author_name)
     session.add(conv)
     session.commit()
     session.refresh(conv)
     return conv.dict()
 
+
 @app.get("/leads/{lead_id}/files")
 def get_lead_files(lead_id: int, session: Session = Depends(get_session)):
     return {"files": []}
+
 
 @app.post("/leads/{lead_id}/auto-research")
 def auto_research_lead(lead_id: int, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-        
+
     try:
         # Trigger the same deep background research we use on creation
         _trigger_background_research(
@@ -10399,7 +11172,9 @@ def auto_research_lead(lead_id: int, session: Session = Depends(get_session)):
         )
         return {"ok": True, "message": "Research started in background"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to auto-research: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to auto-research: {str(e)}")
+
 
 @app.post("/leads/{lead_id}/extract-services")
 async def extract_lead_services_endpoint(lead_id: int, session: Session = Depends(get_session)):
@@ -10428,11 +11203,13 @@ async def extract_lead_services_endpoint(lead_id: int, session: Session = Depend
         from modules.scraper import scrape_website
         website_text = await scrape_website(website_url)
         if website_text.startswith("ERROR"):
-            print(f"[extract-services] Scrape failed for {website_url}: {website_text[:100]}. Falling back to LLM.")
+            print(
+                f"[extract-services] Scrape failed for {website_url}: {website_text[:100]}. Falling back to LLM.")
             website_text = ""
             scrape_method = "llm_fallback"
     except Exception as scrape_err:
-        print(f"[extract-services] Scraper exception ({website_url}): {scrape_err}. Falling back to LLM.")
+        print(
+            f"[extract-services] Scraper exception ({website_url}): {scrape_err}. Falling back to LLM.")
         scrape_method = "llm_fallback"
 
     # ── Step 2: Extract services (from scraped text, or via LLM knowledge) ─────
@@ -10477,7 +11254,8 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
                 response_format={"type": "json_object"},
                 temperature=0.3,
             )
-            services = _json.loads(resp.choices[0].message.content).get("services", [])
+            services = _json.loads(
+                resp.choices[0].message.content).get("services", [])
         except Exception as llm_err:
             print(f"[extract-services] LLM fallback also failed: {llm_err}")
 
@@ -10526,7 +11304,8 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
             normalized_name=svc_name,
             category=svc.get("category"),
             description=svc.get("brief"),
-            estimated_cost=float(str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip() if str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip().replace(".","").isdigit() else 0),
+            estimated_cost=float(str(svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip() if str(
+                svc.get("approx_cost", "0")).replace("$", "").replace(",", "").split("-")[0].strip().replace(".", "").isdigit() else 0),
             cost_is_estimated=svc.get("cost_is_estimated", True),
             provider_name=company_name,
             provider_client_id=None,
@@ -10552,6 +11331,7 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
         "message": f"Extracted {len(services)} services via {method_label}. Added {added} to Marketplace.",
     }
 
+
 @app.put("/leads/{lead_id}")
 def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
@@ -10571,25 +11351,28 @@ def generate_lead_outbound_draft(lead_id: int, session: Session = Depends(get_se
     lead = session.get(Lead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-        
+
     try:
         from modules.llm_engine import get_openai_client
         import json as _json
         client_ai = get_openai_client()
-        
+
         # Get existing research
-        research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
-        
+        research = session.exec(select(ClientResearch).where(
+            ClientResearch.lead_id == lead_id)).first()
+
         # If no OSINT data yet, run deep investigation synchronously (blocking) so we have rich context
         if not research or not research.email_agent_data:
             from modules.llm_engine import deep_investigate_company
             url = lead.website or ""
             if not url and lead.company_name:
-                slug = lead.company_name.lower().replace(" ", "").replace(",","").replace(".","")
+                slug = lead.company_name.lower().replace(
+                    " ", "").replace(",", "").replace(".", "")
                 url = f"https://www.{slug}.com"
-            
+
             if url:
-                print(f"[DraftGen] No existing research for lead {lead_id}. Running deep investigation first...")
+                print(
+                    f"[DraftGen] No existing research for lead {lead_id}. Running deep investigation first...")
                 try:
                     osint_data = deep_investigate_company(
                         company_name=lead.company_name or "Unknown",
@@ -10598,28 +11381,37 @@ def generate_lead_outbound_draft(lead_id: int, session: Session = Depends(get_se
                     )
                     # Save research so it's available and also for context
                     if not research:
-                        research = ClientResearch(lead_id=lead_id, tenant_id=current_tenant_id.get())
+                        research = ClientResearch(
+                            lead_id=lead_id, tenant_id=current_tenant_id.get())
                         session.add(research)
-                    research.company_overview = osint_data.get("company_overview", "")
+                    research.company_overview = osint_data.get(
+                        "company_overview", "")
                     research.email_agent_data = _json.dumps(osint_data)
                     # Update lead phone/email if found
                     contacts = osint_data.get("contacts", []) or []
                     contact = contacts[0] if contacts else {}
                     company_info = osint_data.get("company_info", {}) or {}
                     if not lead.email:
-                        email_found = contact.get("email") or company_info.get("extracted_emails","").split(",")[0].strip()
-                        if email_found: lead.email = email_found
+                        email_found = contact.get("email") or company_info.get(
+                            "extracted_emails", "").split(",")[0].strip()
+                        if email_found:
+                            lead.email = email_found
                     if not lead.phone:
-                        phone_found = contact.get("phone_number") or company_info.get("extracted_phone_numbers","").split(",")[0].strip()
-                        if phone_found: lead.phone = phone_found
+                        phone_found = contact.get("phone_number") or company_info.get(
+                            "extracted_phone_numbers", "").split(",")[0].strip()
+                        if phone_found:
+                            lead.phone = phone_found
                     session.add(lead)
                     session.commit()
-                    print(f"[DraftGen] Deep investigation complete for lead {lead_id}")
+                    print(
+                        f"[DraftGen] Deep investigation complete for lead {lead_id}")
                 except Exception as osint_err:
                     session.rollback()
-                    print(f"[DraftGen] OSINT failed (continuing with draft anyway): {osint_err}")
+                    print(
+                        f"[DraftGen] OSINT failed (continuing with draft anyway): {osint_err}")
                     # Re-fetch after rollback to avoid stale session state
-                    research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+                    research = session.exec(select(ClientResearch).where(
+                        ClientResearch.lead_id == lead_id)).first()
 
         research_context = ""
         if research:
@@ -10637,11 +11429,11 @@ def generate_lead_outbound_draft(lead_id: int, session: Session = Depends(get_se
 
         # Get Notes (Leads don't have notes implemented yet, skipping)
         notes = []
-        
+
         interaction_context = ""
         if notes:
-            interaction_context += "Recent Notes:\n" + "\n".join([f"- {n.content}" for n in notes]) + "\n"
-
+            interaction_context += "Recent Notes:\n" + \
+                "\n".join([f"- {n.content}" for n in notes]) + "\n"
 
         prompt = f"""
         You are an expert SDR (Sales Development Representative) at an agency. 
@@ -10662,7 +11454,7 @@ def generate_lead_outbound_draft(lead_id: int, session: Session = Depends(get_se
             "whatsapp_draft": "Short, punchy WhatsApp message (plain text, emojis allowed)"
         }}
         """
-        
+
         resp = client_ai.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
@@ -10672,13 +11464,13 @@ def generate_lead_outbound_draft(lead_id: int, session: Session = Depends(get_se
         content = resp.choices[0].message.content.strip()
         if content.startswith("```"):
             content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-            
+
         data = _json.loads(content)
-        
+
         # Save as a draft in SentEmail
         from database import SentEmail
         to_email = lead.email or "unknown@example.com"
-        
+
         draft = SentEmail(
             tenant_id=current_tenant_id.get(),
             lead_id=lead_id,
@@ -10692,21 +11484,23 @@ def generate_lead_outbound_draft(lead_id: int, session: Session = Depends(get_se
             sent_at=datetime.now(timezone.utc)
         )
         session.add(draft)
-        
+
         # ── Safe upsert research (use existing row, never re-insert) ──────────
         if not research:
-            research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+            research = session.exec(select(ClientResearch).where(
+                ClientResearch.lead_id == lead_id)).first()
         if not research:
-            research = ClientResearch(lead_id=lead_id, tenant_id=current_tenant_id.get())
+            research = ClientResearch(
+                lead_id=lead_id, tenant_id=current_tenant_id.get())
             session.add(research)
-        
+
         ea_payload = {}
         if research.email_agent_data:
             try:
                 ea_payload = _json.loads(research.email_agent_data)
             except:
                 pass
-                
+
         # Ensure company_info exists so the UI doesn't show empty fields if auto-research wasn't run
         if "company_info" not in ea_payload:
             ea_payload["company_info"] = {
@@ -10716,21 +11510,23 @@ def generate_lead_outbound_draft(lead_id: int, session: Session = Depends(get_se
                 "company_social_media": {},
                 "summary": "AI Draft generated. Run 'AI Agent Analysis' in Pre-Sales tab for deep OSINT data."
             }
-            
+
         ea_payload["draft"] = data
-        ea_payload["email_hook"] = data.get("whatsapp_draft", "Custom outreach generated from latest interactions.")
-        
+        ea_payload["email_hook"] = data.get(
+            "whatsapp_draft", "Custom outreach generated from latest interactions.")
+
         research.email_agent_data = _json.dumps(ea_payload)
-        
+
         session.commit()
-        
+
         return {"ok": True, "draft": data}
     except Exception as e:
         session.rollback()
         print(f"Error generating lead draft: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to generate draft: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate draft: {str(e)}")
 
 
 @app.post("/leads/{lead_id}/swot")
@@ -10739,11 +11535,12 @@ async def generate_lead_swot(lead_id: int, session: Session = Depends(get_sessio
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     if not lead.website:
-        raise HTTPException(status_code=400, detail="Lead has no website URL configured")
-        
+        raise HTTPException(
+            status_code=400, detail="Lead has no website URL configured")
+
     from modules.llm_engine import generate_swot_analysis
     import json
-    
+
     swot_data = await generate_swot_analysis(lead.website, lead.company_name or "Lead")
     lead.swot_analysis = json.dumps(swot_data)
     session.add(lead)
@@ -10751,7 +11548,6 @@ async def generate_lead_swot(lead_id: int, session: Session = Depends(get_sessio
     session.refresh(lead)
     return {"ok": True, "swot_analysis": swot_data}
 
-from sqlmodel import text
 
 @app.delete("/debug/purge-leads")
 def purge_leads_debug(session: Session = Depends(get_session)):
@@ -10775,12 +11571,13 @@ def purge_leads_debug(session: Session = Depends(get_session)):
     session.commit()
     return {"ok": True, "message": "All leads purged"}
 
+
 @app.delete("/leads/{lead_id}")
 def delete_lead(lead_id: int, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-        
+
     try:
         # Delete related records to prevent ForeignKeyViolation
         queries = [
@@ -10795,17 +11592,20 @@ def delete_lead(lead_id: int, session: Session = Depends(get_session)):
         ]
         for q in queries:
             session.execute(text(q), {"lead_id": lead_id})
-            
+
         session.delete(lead)
         session.commit()
     except Exception as e:
         session.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to delete lead: {str(e)}")
-        
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete lead: {str(e)}")
+
     return {"ok": True}
+
 
 class LeadAIAnalyzeRequest(BaseModel):
     agent_type: str
+
 
 @app.post("/leads/{lead_id}/ai/analyze")
 async def analyze_lead_ai(lead_id: int, body: LeadAIAnalyzeRequest, session: Session = Depends(get_session)):
@@ -10813,18 +11613,18 @@ async def analyze_lead_ai(lead_id: int, body: LeadAIAnalyzeRequest, session: Ses
     lead = session.get(Lead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-        
+
     url = lead.website or f"https://{lead.company_name.lower().replace(' ', '')}.com"
-    
+
     results = lead.ai_analysis_results or {}
-    
+
     try:
         from modules.llm_engine import get_openai_client
         import json
         client = get_openai_client()
-        
+
         system_prompt = f"You are an elite B2B CRM intelligence AI. Analyze this target lead: Company: {lead.company_name}, Website: {url}, Industry: {lead.industry or 'Unknown'}. "
-        
+
         prompt = None
         if body.agent_type == "scanner":
             prompt = system_prompt + """
@@ -10915,7 +11715,7 @@ Return ONLY valid JSON matching exactly:
                     "Notify Slack #sales when lead visits pricing page"
                 ]
             }
-            
+
         if prompt:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -10924,7 +11724,7 @@ Return ONLY valid JSON matching exactly:
                 temperature=0.7,
             )
             data = json.loads(response.choices[0].message.content)
-            
+
             if body.agent_type == "calling":
                 results["calling"] = data.get("calling", data)
             elif body.agent_type == "competitor":
@@ -10934,18 +11734,20 @@ Return ONLY valid JSON matching exactly:
 
     except Exception as e:
         print(f"Error generating AI analysis: {e}")
-        raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
-        
+        raise HTTPException(
+            status_code=502, detail=f"AI generation failed: {e}")
+
     lead.ai_analysis_results = results
-    
+
     from sqlalchemy.orm.attributes import flag_modified
     flag_modified(lead, "ai_analysis_results")
-    
+
     session.add(lead)
     session.commit()
     session.refresh(lead)
-    
+
     return {"ok": True, "lead": lead}
+
 
 @app.post("/leads/{lead_id}/convert")
 def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)):
@@ -10953,8 +11755,9 @@ def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     if lead.is_converted:
-        raise HTTPException(status_code=400, detail="Lead is already converted")
-    
+        raise HTTPException(
+            status_code=400, detail="Lead is already converted")
+
     # 1. Create Account
     account = Account(
         company_name=lead.company_name,
@@ -10967,7 +11770,7 @@ def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)
     session.add(account)
     session.commit()
     session.refresh(account)
-    
+
     # 2. Create ClientProfile
     client = ClientProfile(
         companyName=lead.company_name,
@@ -10982,25 +11785,28 @@ def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)
     session.add(client)
     session.commit()
     session.refresh(client)
-    
+
     # 3. Re-link Contacts
-    contacts = session.exec(select(Contact).where(Contact.lead_id == lead.id)).all()
+    contacts = session.exec(select(Contact).where(
+        Contact.lead_id == lead.id)).all()
     for contact in contacts:
         contact.account_id = account.id
         contact.client_id = client.id
         session.add(contact)
-        
+
     # 3.5 Re-link Research Data and Sent Emails
-    research_entries = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead.id)).all()
+    research_entries = session.exec(select(ClientResearch).where(
+        ClientResearch.lead_id == lead.id)).all()
     for r in research_entries:
         r.client_id = client.id
         session.add(r)
-        
-    sent_emails = session.exec(select(SentEmail).where(SentEmail.lead_id == lead.id)).all()
+
+    sent_emails = session.exec(select(SentEmail).where(
+        SentEmail.lead_id == lead.id)).all()
     for e in sent_emails:
         e.client_id = client.id
         session.add(e)
-    
+
     # 4. Mark Lead as converted
     lead.is_converted = True
     lead.converted_client_id = client.id
@@ -11008,14 +11814,18 @@ def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)
     lead.status = "Converted"
     session.add(lead)
     session.commit()
-    
+
     return {"message": "Lead converted successfully", "client_id": client.id, "account_id": account.id}
 
 # ---- ACCOUNTS API ----
+
+
 @app.get("/accounts")
 def get_accounts(session: Session = Depends(get_session)):
-    accounts = session.exec(select(Account).order_by(Account.created_at.desc())).all()
+    accounts = session.exec(select(Account).order_by(
+        Account.created_at.desc())).all()
     return {"accounts": accounts}
+
 
 @app.post("/accounts")
 def create_account(body: AccountCreateRequest, session: Session = Depends(get_session)):
@@ -11025,12 +11835,14 @@ def create_account(body: AccountCreateRequest, session: Session = Depends(get_se
     session.refresh(account)
     return account
 
+
 @app.get("/accounts/{account_id}")
 def get_account(account_id: int, session: Session = Depends(get_session)):
     account = session.get(Account, account_id)
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     return account
+
 
 @app.put("/accounts/{account_id}")
 def update_account(account_id: int, body: AccountCreateRequest, session: Session = Depends(get_session)):
@@ -11044,6 +11856,7 @@ def update_account(account_id: int, body: AccountCreateRequest, session: Session
     session.refresh(account)
     return account
 
+
 @app.delete("/accounts/{account_id}")
 def delete_account(account_id: int, session: Session = Depends(get_session)):
     account = session.get(Account, account_id)
@@ -11054,6 +11867,8 @@ def delete_account(account_id: int, session: Session = Depends(get_session)):
     return {"ok": True}
 
 # ---- CONTACTS API ----
+
+
 @app.get("/contacts")
 def get_contacts(search: Optional[str] = Query(None), session: Session = Depends(get_session)):
     query = select(Contact)
@@ -11068,40 +11883,46 @@ def get_contacts(search: Optional[str] = Query(None), session: Session = Depends
         )
     else:
         query = query.where(Contact.parent_contact_id == None)
-        
+
     query = query.order_by(Contact.created_at.desc())
     contacts = session.exec(query).all()
-    
+
     result = []
     for c in contacts:
-        children_count = session.exec(select(func.count(Contact.id)).where(Contact.parent_contact_id == c.id)).one()
+        children_count = session.exec(select(func.count(Contact.id)).where(
+            Contact.parent_contact_id == c.id)).one()
         c_dict = c.dict()
         c_dict["children_count"] = children_count
-        
+
         if search:
             path = []
             curr = c
             while curr.parent_contact_id:
                 parent = session.get(Contact, curr.parent_contact_id)
-                if not parent: break
+                if not parent:
+                    break
                 path.insert(0, parent.full_name or "Unknown")
                 curr = parent
             c_dict["hierarchy_path"] = " → ".join(path) if path else ""
-            
+
         result.append(c_dict)
-        
+
     return {"contacts": result}
+
 
 @app.get("/contacts/{contact_id}/children")
 def get_contact_children(contact_id: int, session: Session = Depends(get_session)):
-    children = session.exec(select(Contact).where(Contact.parent_contact_id == contact_id).order_by(Contact.created_at.desc())).all()
+    children = session.exec(select(Contact).where(
+        Contact.parent_contact_id == contact_id).order_by(Contact.created_at.desc())).all()
     result = []
     for c in children:
-        c_count = session.exec(select(func.count(Contact.id)).where(Contact.parent_contact_id == c.id)).one()
+        c_count = session.exec(select(func.count(Contact.id)).where(
+            Contact.parent_contact_id == c.id)).one()
         c_dict = c.dict()
         c_dict["children_count"] = c_count
         result.append(c_dict)
     return {"children": result}
+
 
 @app.post("/contacts")
 def create_contact(body: ContactCreateRequest, session: Session = Depends(get_session)):
@@ -11111,7 +11932,7 @@ def create_contact(body: ContactCreateRequest, session: Session = Depends(get_se
         contact.full_name = f"{contact.first_name} {contact.last_name}"
     elif contact.first_name:
         contact.full_name = contact.first_name
-        
+
     if body.create_new_lead:
         lead = Lead(
             company_name=contact.full_name,
@@ -11127,12 +11948,14 @@ def create_contact(body: ContactCreateRequest, session: Session = Depends(get_se
     if body.parent_contact_id:
         parent = session.get(Contact, body.parent_contact_id)
         if not parent:
-            raise HTTPException(status_code=400, detail="Invalid parent contact.")
+            raise HTTPException(
+                status_code=400, detail="Invalid parent contact.")
 
     session.add(contact)
     session.commit()
     session.refresh(contact)
     return contact
+
 
 @app.get("/contacts/{contact_id}")
 def get_contact(contact_id: int, session: Session = Depends(get_session)):
@@ -11141,136 +11964,151 @@ def get_contact(contact_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Contact not found")
     return contact
 
+
 @app.put("/contacts/{contact_id}")
 def update_contact(contact_id: int, body: ContactCreateRequest, session: Session = Depends(get_session)):
     contact = session.get(Contact, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
-        
+
     # Check for circular hierarchy if parent_contact_id is changing
     if body.parent_contact_id is not None and body.parent_contact_id != contact.parent_contact_id:
         if body.parent_contact_id == contact.id:
-            raise HTTPException(status_code=400, detail="A contact cannot be its own parent.")
+            raise HTTPException(
+                status_code=400, detail="A contact cannot be its own parent.")
         curr_parent_id = body.parent_contact_id
         while curr_parent_id:
             if curr_parent_id == contact.id:
-                raise HTTPException(status_code=400, detail="Circular hierarchy detected. Cannot move contact under its own descendant.")
+                raise HTTPException(
+                    status_code=400, detail="Circular hierarchy detected. Cannot move contact under its own descendant.")
             parent_contact = session.get(Contact, curr_parent_id)
             if not parent_contact:
-                raise HTTPException(status_code=400, detail="Invalid parent contact.")
+                raise HTTPException(
+                    status_code=400, detail="Invalid parent contact.")
             curr_parent_id = parent_contact.parent_contact_id
-            
+
     for key, value in body.dict().items():
         setattr(contact, key, value)
-    
+
     if contact.first_name and contact.last_name:
         contact.full_name = f"{contact.first_name} {contact.last_name}"
-        
+
     session.add(contact)
     session.commit()
     session.refresh(contact)
     return contact
+
 
 @app.delete("/contacts/{contact_id}")
 def delete_contact(contact_id: int, action: Optional[str] = Query("cascade"), session: Session = Depends(get_session)):
     contact = session.get(Contact, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
-        
-    children = session.exec(select(Contact).where(Contact.parent_contact_id == contact.id)).all()
-    
+
+    children = session.exec(select(Contact).where(
+        Contact.parent_contact_id == contact.id)).all()
+
     if action == "move_to_parent":
         for child in children:
             child.parent_contact_id = contact.parent_contact_id
             session.add(child)
         session.delete(contact)
-    else: # cascade
+    else:  # cascade
         def delete_recursively(c_id):
-            sub_children = session.exec(select(Contact).where(Contact.parent_contact_id == c_id)).all()
+            sub_children = session.exec(select(Contact).where(
+                Contact.parent_contact_id == c_id)).all()
             for child in sub_children:
                 delete_recursively(child.id)
             c = session.get(Contact, c_id)
-            if c: session.delete(c)
+            if c:
+                session.delete(c)
         for child in children:
             delete_recursively(child.id)
         session.delete(contact)
-        
+
     session.commit()
     return {"ok": True}
 
 
-
 # ---- IMPORT SYSTEM ----
 class ImportPreviewRequest(BaseModel):
-    module: str # leads, accounts, contacts, clients
+    module: str  # leads, accounts, contacts, clients
+
 
 @app.post("/api/import/preview")
 async def import_preview(file: UploadFile = File(...)):
     if not file.filename.endswith(('.csv', '.xlsx', '.xls')):
-        raise HTTPException(status_code=400, detail="Only CSV, XLSX, and XLS files are supported")
-    
+        raise HTTPException(
+            status_code=400, detail="Only CSV, XLSX, and XLS files are supported")
+
     try:
         if file.filename.endswith('.csv'):
             df = pd.read_csv(file.file, nrows=5)
         else:
             df = pd.read_excel(file.file, nrows=5)
-            
+
         columns = df.columns.tolist()
         preview_data = df.fillna('').head(3).to_dict(orient='records')
-        
+
         return {
             "columns": columns,
             "preview_data": preview_data,
             "total_columns": len(columns)
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to read file: {str(e)}")
+
 
 @app.post("/api/import/execute")
 async def import_execute(
     module: str = Form(...),
-    mapping: str = Form(...), # JSON string
+    mapping: str = Form(...),  # JSON string
     skip_duplicates: bool = Form(True),
     update_existing: bool = Form(False),
     file: UploadFile = File(...),
     session: Session = Depends(get_session)
 ):
     try:
-        column_mapping = json.loads(mapping) # e.g. {"First Name": "first_name", ...}
-        
+        # e.g. {"First Name": "first_name", ...}
+        column_mapping = json.loads(mapping)
+
         if file.filename.endswith('.csv'):
             df = pd.read_csv(file.file)
         else:
             df = pd.read_excel(file.file)
-            
+
         df = df.fillna('')
         records = df.to_dict(orient='records')
-        
+
         imported_count = 0
         skipped_count = 0
         updated_count = 0
-        
+
         for record in records:
             mapped_record = {}
             for file_col, db_col in column_mapping.items():
                 if file_col in record and db_col:
                     mapped_record[db_col] = record[file_col]
-                    
+
             if not mapped_record:
                 continue
-                
+
             if module == 'leads':
                 # Duplicate check by email or website
                 existing = None
                 if mapped_record.get('email'):
-                    existing = session.exec(select(Lead).where(Lead.email == mapped_record['email'])).first()
+                    existing = session.exec(select(Lead).where(
+                        Lead.email == mapped_record['email'])).first()
                 if not existing and mapped_record.get('website'):
-                    existing = session.exec(select(Lead).where(Lead.website == mapped_record['website'])).first()
-                    
+                    existing = session.exec(select(Lead).where(
+                        Lead.website == mapped_record['website'])).first()
+
                 if existing:
                     if update_existing:
                         for k, v in mapped_record.items():
-                            if v: setattr(existing, k, v)
+                            if v:
+                                setattr(existing, k, v)
                         session.add(existing)
                         updated_count += 1
                     else:
@@ -11281,16 +12119,18 @@ async def import_execute(
                     lead = Lead(**mapped_record)
                     session.add(lead)
                     imported_count += 1
-                    
+
             elif module == 'contacts':
                 existing = None
                 if mapped_record.get('email'):
-                    existing = session.exec(select(Contact).where(Contact.email == mapped_record['email'])).first()
-                    
+                    existing = session.exec(select(Contact).where(
+                        Contact.email == mapped_record['email'])).first()
+
                 if existing:
                     if update_existing:
                         for k, v in mapped_record.items():
-                            if v: setattr(existing, k, v)
+                            if v:
+                                setattr(existing, k, v)
                         session.add(existing)
                         updated_count += 1
                     else:
@@ -11305,9 +12145,9 @@ async def import_execute(
                         contact.full_name = contact.first_name
                     session.add(contact)
                     imported_count += 1
-            
+
             # Additional modules (accounts, clients) follow similar logic...
-        
+
         session.commit()
         return {
             "success": True,
@@ -11321,7 +12161,6 @@ async def import_execute(
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
 
-
 @app.post("/leads/{lead_id}/followup")
 def add_lead_followup(lead_id: int, body: ClientFollowUpRequest, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
@@ -11333,7 +12172,7 @@ def add_lead_followup(lead_id: int, body: ClientFollowUpRequest, session: Sessio
     new_note = f"Follow-up: {body.content}"
     lead.notes = existing_notes + "\n" + new_note if existing_notes else new_note
     session.add(lead)
-    
+
     # Log activity
     from datetime import datetime
     activity = ActivityLog(
@@ -11359,7 +12198,7 @@ def add_lead_followup(lead_id: int, body: ClientFollowUpRequest, session: Sessio
             session.add(client_research)
 
     session.commit()
-    
+
     return {"success": True, "message": "Follow-up added to lead."}
 
 
@@ -11383,7 +12222,8 @@ def get_lead_notes(lead_id: int, session: Session = Depends(get_session)):
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     notes = session.exec(
-        select(LeadNote).where(LeadNote.lead_id == lead_id).order_by(LeadNote.created_at.desc())
+        select(LeadNote).where(LeadNote.lead_id ==
+                               lead_id).order_by(LeadNote.created_at.desc())
     ).all()
     return {"ok": True, "notes": [
         {
@@ -11420,7 +12260,8 @@ def add_lead_note(lead_id: int, body: LeadNoteRequest, session: Session = Depend
 
     timestamped = f"[{now.strftime('%Y-%m-%d %H:%M')}] {content}"
     existing_notes = lead.notes or ""
-    lead.notes = existing_notes + "\n" + timestamped if existing_notes else timestamped
+    lead.notes = existing_notes + "\n" + \
+        timestamped if existing_notes else timestamped
     session.add(lead)
 
     activity = ActivityLog(
@@ -11444,7 +12285,7 @@ def add_lead_note(lead_id: int, body: LeadNoteRequest, session: Session = Depend
 # ═══════════════════════════════════════════════════════════════════════════════
 # ACTIVITIES: MEETINGS
 # ═══════════════════════════════════════════════════════════════════════════════
-from database import Meeting, Product, CRMQuote, QuoteItem, SalesOrder, PurchaseOrder, Case, Solution
+
 
 class MeetingCreateRequest(BaseModel):
     title: str
@@ -11461,6 +12302,7 @@ class MeetingCreateRequest(BaseModel):
     attendees: Optional[List[str]] = []
     notes: Optional[str] = None
 
+
 class MeetingUpdateRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
@@ -11472,6 +12314,7 @@ class MeetingUpdateRequest(BaseModel):
     attendees: Optional[List[str]] = None
     notes: Optional[str] = None
     outcome: Optional[str] = None
+
 
 def _meeting_dict(m: Meeting, session: Session) -> dict:
     host = session.get(User, m.host_id) if m.host_id else None
@@ -11492,6 +12335,7 @@ def _meeting_dict(m: Meeting, session: Session) -> dict:
         "updated_at": m.updated_at.isoformat(),
     }
 
+
 @app.get("/meetings")
 def list_meetings(
     status: Optional[str] = None,
@@ -11503,7 +12347,7 @@ def list_meetings(
     tenant_id = current_tenant_id.get()
     if tenant_id:
         q = q.where(Meeting.tenant_id == tenant_id)
-        
+
     if status:
         q = q.where(Meeting.status == status)
     if lead_id:
@@ -11512,6 +12356,7 @@ def list_meetings(
         q = q.where(Meeting.client_id == client_id)
     meetings = session.exec(q).all()
     return {"meetings": [_meeting_dict(m, session) for m in meetings]}
+
 
 @app.post("/meetings")
 def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_session)):
@@ -11530,7 +12375,8 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
     session.refresh(m)
 
     try:
-        dt_str = m.scheduled_at.strftime("%b %d, %I:%M %p") if m.scheduled_at else "TBD"
+        dt_str = m.scheduled_at.strftime(
+            "%b %d, %I:%M %p") if m.scheduled_at else "TBD"
         _notify_admins(
             session, current_tenant_id.get(),
             title=f"📅 Meeting Scheduled: {m.title}",
@@ -11542,7 +12388,8 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
         pass
 
     # ── EMAIL NOTIFICATION TO ATTENDEES ──
-    dt_str = m.scheduled_at.strftime("%Y-%m-%d %H:%M") if m.scheduled_at else "TBD"
+    dt_str = m.scheduled_at.strftime(
+        "%Y-%m-%d %H:%M") if m.scheduled_at else "TBD"
     subject = f"Meeting Scheduled: {m.title}"
     notes = (m.notes or "").strip()
     recips = [a.strip() for a in (m.attendees or []) if a and a.strip()]
@@ -11550,13 +12397,16 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
     to_email = None
     if m.client_id:
         c = session.get(ClientProfile, m.client_id)
-        if c: to_email = c.user.email if c.user else None
+        if c:
+            to_email = c.user.email if c.user else None
     elif m.lead_id:
         l = session.get(Lead, m.lead_id)
-        if l: to_email = l.email
+        if l:
+            to_email = l.email
     elif m.contact_id:
         ct = session.get(Contact, m.contact_id)
-        if ct: to_email = ct.email
+        if ct:
+            to_email = ct.email
 
     if to_email and to_email.strip() not in recips:
         recips.append(to_email.strip())
@@ -11666,16 +12516,18 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
         except Exception as e:
             print("Failed to send meeting invite email:", e)
             session.rollback()
-            
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message("New Meeting Scheduled", _meeting_dict(m, session), f"{base_url}/meetings")
+        send_ai_polished_whatsapp_message(
+            "New Meeting Scheduled", _meeting_dict(m, session), f"{base_url}/meetings")
     except Exception as e:
         print("WhatsApp Error:", e)
 
     return {"meeting": _meeting_dict(m, session)}
+
 
 @app.get("/meetings/{meeting_id}")
 def get_meeting(meeting_id: int, session: Session = Depends(get_session)):
@@ -11683,6 +12535,7 @@ def get_meeting(meeting_id: int, session: Session = Depends(get_session)):
     if not m:
         raise HTTPException(status_code=404, detail="Meeting not found")
     return {"meeting": _meeting_dict(m, session)}
+
 
 @app.put("/meetings/{meeting_id}")
 def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session = Depends(get_session)):
@@ -11693,7 +12546,8 @@ def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session
     if "scheduled_at" in updates:
         if updates["scheduled_at"]:
             try:
-                updates["scheduled_at"] = datetime.fromisoformat(updates["scheduled_at"])
+                updates["scheduled_at"] = datetime.fromisoformat(
+                    updates["scheduled_at"])
             except Exception:
                 updates["scheduled_at"] = None
         else:
@@ -11704,16 +12558,18 @@ def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session
     session.add(m)
     session.commit()
     session.refresh(m)
-    
+
     # ── WHATSAPP NOTIFICATION ──
     try:
         from modules.whatsapp import send_ai_polished_whatsapp_message
         base_url = "https://crm-seo.allytechcourses.com"
-        send_ai_polished_whatsapp_message("Meeting Updated", _meeting_dict(m, session), f"{base_url}/meetings")
+        send_ai_polished_whatsapp_message(
+            "Meeting Updated", _meeting_dict(m, session), f"{base_url}/meetings")
     except Exception as e:
         print("WhatsApp Error:", e)
-        
+
     return {"meeting": _meeting_dict(m, session)}
+
 
 @app.delete("/meetings/{meeting_id}")
 def delete_meeting(meeting_id: int, session: Session = Depends(get_session)):
@@ -11724,24 +12580,32 @@ def delete_meeting(meeting_id: int, session: Session = Depends(get_session)):
     session.commit()
     return {"ok": True}
 
+
 @app.post("/meetings/import")
 async def import_meetings(file: UploadFile = File(...), session: Session = Depends(get_session)):
     """Import meetings from CSV/Excel"""
-    import pandas as pd, io
+    import pandas as pd
+    import io
     content = await file.read()
     try:
-        df = pd.read_excel(io.BytesIO(content)) if file.filename.endswith((".xlsx",".xls")) else pd.read_csv(io.BytesIO(content))
+        df = pd.read_excel(io.BytesIO(content)) if file.filename.endswith(
+            (".xlsx", ".xls")) else pd.read_csv(io.BytesIO(content))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not parse file: {e}")
+        raise HTTPException(
+            status_code=400, detail=f"Could not parse file: {e}")
     imported = 0
     for _, row in df.iterrows():
         try:
             m = Meeting(
-                title=str(row.get("title") or row.get("Title") or "Imported Meeting"),
-                description=str(row.get("description") or row.get("Description") or "") or None,
+                title=str(row.get("title") or row.get(
+                    "Title") or "Imported Meeting"),
+                description=str(row.get("description") or row.get(
+                    "Description") or "") or None,
                 notes=str(row.get("notes") or row.get("Notes") or "") or None,
-                status=str(row.get("status") or row.get("Status") or "Scheduled"),
-                meeting_type=str(row.get("meeting_type") or row.get("Type") or "Meeting"),
+                status=str(row.get("status") or row.get(
+                    "Status") or "Scheduled"),
+                meeting_type=str(row.get("meeting_type")
+                                 or row.get("Type") or "Meeting"),
             )
             session.add(m)
             imported += 1
@@ -11767,6 +12631,7 @@ class ProductCreateRequest(BaseModel):
     stock_quantity: Optional[int] = None
     is_active: bool = True
 
+
 class ProductUpdateRequest(BaseModel):
     name: Optional[str] = None
     sku: Optional[str] = None
@@ -11778,6 +12643,7 @@ class ProductUpdateRequest(BaseModel):
     stock_quantity: Optional[int] = None
     is_active: Optional[bool] = None
 
+
 @app.get("/products")
 def list_products(category: Optional[str] = None, active_only: bool = False, session: Session = Depends(get_session)):
     q = select(Product).order_by(Product.name)
@@ -11787,7 +12653,6 @@ def list_products(category: Optional[str] = None, active_only: bool = False, ses
         q = q.where(Product.is_active == True)
     products = session.exec(q).all()
     return {"products": [p.model_dump() for p in products]}
-
 
 
 @app.post("/products/export-pdf")
@@ -11801,12 +12666,14 @@ def export_products_pdf(body: dict = {}, session: Session = Depends(get_session)
     recipient = (body or {}).get("email") if isinstance(body, dict) else None
     if recipient:
         try:
-            send_pdf_email(recipient, "Product Catalog – SERPHAWK", "Please find the catalog PDF attached.", pdf_bytes, "catalog.pdf")
+            send_pdf_email(recipient, "Product Catalog – SERPHAWK",
+                           "Please find the catalog PDF attached.", pdf_bytes, "catalog.pdf")
             return {"ok": True, "message": f"PDF sent to {recipient}"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     return Response(content=pdf_bytes, media_type="application/pdf",
                     headers={"Content-Disposition": "attachment; filename=catalog.pdf"})
+
 
 @app.post("/products")
 def create_product(body: ProductCreateRequest, session: Session = Depends(get_session)):
@@ -11816,12 +12683,14 @@ def create_product(body: ProductCreateRequest, session: Session = Depends(get_se
     session.refresh(p)
     return {"product": p.model_dump()}
 
+
 @app.get("/products/{product_id}")
 def get_product(product_id: int, session: Session = Depends(get_session)):
     p = session.get(Product, product_id)
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
     return {"product": p.model_dump()}
+
 
 @app.put("/products/{product_id}")
 def update_product(product_id: int, body: ProductUpdateRequest, session: Session = Depends(get_session)):
@@ -11835,6 +12704,7 @@ def update_product(product_id: int, body: ProductUpdateRequest, session: Session
     session.commit()
     session.refresh(p)
     return {"product": p.model_dump()}
+
 
 @app.delete("/products/{product_id}")
 def delete_product(product_id: int, session: Session = Depends(get_session)):
@@ -11865,10 +12735,12 @@ class QuoteCreateRequest(BaseModel):
     items: list[dict] = []
     send_email: bool = False
 
+
 class QuoteEmailSendRequest(BaseModel):
     subject: Optional[str] = None
     body_html: Optional[str] = None
     send_to: Optional[str] = None
+
 
 @app.get("/quotes")
 def list_quotes(status: Optional[str] = None, client_id: Optional[int] = None, lead_id: Optional[int] = None, session: Session = Depends(get_session)):
@@ -11883,24 +12755,27 @@ def list_quotes(status: Optional[str] = None, client_id: Optional[int] = None, l
     if not quotes:
         return {"quotes": []}
     # Batch-load related records (fix N+1)
-    cids  = list({qt.client_id for qt in quotes if qt.client_id})
-    lids  = list({qt.lead_id   for qt in quotes if qt.lead_id})
-    qids  = [qt.id for qt in quotes]
-    cps   = session.exec(select(ClientProfile).where(ClientProfile.id.in_(cids))).all() if cids else []
-    leads = session.exec(select(Lead).where(Lead.id.in_(lids))).all() if lids else []
-    items = session.exec(select(QuoteItem).where(QuoteItem.quote_id.in_(qids))).all() if qids else []
-    cp_map    = {cp.id: cp for cp in cps}
-    lead_map  = {l.id: l   for l in leads}
+    cids = list({qt.client_id for qt in quotes if qt.client_id})
+    lids = list({qt.lead_id for qt in quotes if qt.lead_id})
+    qids = [qt.id for qt in quotes]
+    cps = session.exec(select(ClientProfile).where(
+        ClientProfile.id.in_(cids))).all() if cids else []
+    leads = session.exec(select(Lead).where(
+        Lead.id.in_(lids))).all() if lids else []
+    items = session.exec(select(QuoteItem).where(
+        QuoteItem.quote_id.in_(qids))).all() if qids else []
+    cp_map = {cp.id: cp for cp in cps}
+    lead_map = {l.id: l for l in leads}
     items_map: dict = {}
     for it in items:
         items_map.setdefault(it.quote_id, []).append(it)
     result = []
     for qt in quotes:
         d = qt.model_dump()
-        cp   = cp_map.get(qt.client_id)
+        cp = cp_map.get(qt.client_id)
         lead = lead_map.get(qt.lead_id)
         d["client_name"] = cp.companyName if cp else None
-        d["lead_name"]   = lead.company_name if lead else None
+        d["lead_name"] = lead.company_name if lead else None
         d["items"] = [i.model_dump() for i in items_map.get(qt.id, [])]
         result.append(d)
     return {"quotes": result}
@@ -11909,12 +12784,14 @@ def list_quotes(status: Optional[str] = None, client_id: Optional[int] = None, l
 def _quote_dict(qt: CRMQuote, session: Session) -> dict:
     client = session.get(ClientProfile, qt.client_id) if qt.client_id else None
     lead = session.get(Lead, qt.lead_id) if qt.lead_id else None
-    items = session.exec(select(QuoteItem).where(QuoteItem.quote_id == qt.id)).all()
+    items = session.exec(select(QuoteItem).where(
+        QuoteItem.quote_id == qt.id)).all()
     d = qt.model_dump()
     d["client_name"] = client.companyName if client else None
     d["lead_name"] = lead.company_name if lead else None
     d["items"] = [i.model_dump() for i in items]
     return d
+
 
 def _require_tenant():
     """Return the active tenant id or raise 401 when the request is unauthenticated.
@@ -11922,12 +12799,15 @@ def _require_tenant():
     and writing with -1 crashes on the tenants FK — surface a clear login prompt instead."""
     tenant_id = current_tenant_id.get()
     if tenant_id is None or tenant_id == -1:
-        raise HTTPException(status_code=401, detail="Session expired. Please log in again.")
+        raise HTTPException(
+            status_code=401, detail="Session expired. Please log in again.")
     return tenant_id
+
 
 @app.post("/quotes")
 def create_quote(body: QuoteCreateRequest, session: Session = Depends(get_session)):
-    import random, string
+    import random
+    import string
     _require_tenant()
     body_data = body.model_dump(exclude={"items"})
     q = CRMQuote(**body_data)
@@ -11935,7 +12815,7 @@ def create_quote(body: QuoteCreateRequest, session: Session = Depends(get_sessio
     session.add(q)
     session.commit()
     session.refresh(q)
-    
+
     for item in body.items:
         qi = QuoteItem(
             quote_id=q.id,
@@ -12004,9 +12884,12 @@ def quote_email_preview(quote_id: int, session: Session = Depends(get_session)):
     q = session.get(CRMQuote, quote_id)
     if not q:
         raise HTTPException(status_code=404, detail="Quote not found")
-    recipient_email, recipient_name, company_name = _quote_email_recipient(q, session)
-    subject, body_html, body_fragment, items = _quote_email_content(q, session, recipient_name)
-    sender_email, _password, _smtp_server, _smtp_port = _quote_smtp_sender(session)
+    recipient_email, recipient_name, company_name = _quote_email_recipient(
+        q, session)
+    subject, body_html, body_fragment, items = _quote_email_content(
+        q, session, recipient_name)
+    sender_email, _password, _smtp_server, _smtp_port = _quote_smtp_sender(
+        session)
     return {
         "from_email": sender_email,
         "recipient_email": recipient_email,
@@ -12042,7 +12925,8 @@ def _quote_email_recipient(q: CRMQuote, session: Session):
 
     if contact and contact.email:
         recipient_email = contact.email
-        recipient_name = contact.full_name or f"{contact.first_name or ''} {contact.last_name or ''}".strip() or None
+        recipient_name = contact.full_name or f"{contact.first_name or ''} {contact.last_name or ''}".strip(
+        ) or None
 
     if not recipient_email and lead and lead.email:
         recipient_email = lead.email
@@ -12068,7 +12952,8 @@ def _quote_email_content(q: CRMQuote, session: Session, recipient_name=None):
     Used both for actually sending it and for previewing it before sending,
     so the preview always reflects exactly what the recipient will receive."""
     # ── Build items table ──
-    items = session.exec(select(QuoteItem).where(QuoteItem.quote_id == q.id)).all()
+    items = session.exec(select(QuoteItem).where(
+        QuoteItem.quote_id == q.id)).all()
 
     # ── Notes / Terms section ──
     extra_section = ""
@@ -12143,7 +13028,8 @@ def _quote_smtp_sender(session: Session):
 
     tenant_id = current_tenant_id.get()
     if tenant_id:
-        es = session.exec(select(EmailSettings).where(EmailSettings.tenant_id == tenant_id)).first()
+        es = session.exec(select(EmailSettings).where(
+            EmailSettings.tenant_id == tenant_id)).first()
         if es:
             sender = es.from_email
             password = es.smtp_pass
@@ -12151,10 +13037,14 @@ def _quote_smtp_sender(session: Session):
             smtp_port = es.smtp_port
 
     if not sender or not password:
-        sender = sender or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
-        password = password or os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
-        smtp_server = smtp_server or os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "mail.serphawk.in")
-        smtp_port = smtp_port or os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
+        sender = sender or os.getenv("EMAIL_SENDER") or os.getenv(
+            "OUTLOOK_EMAIL", "crm@serphawk.in")
+        password = password or os.getenv(
+            "EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
+        smtp_server = smtp_server or os.getenv(
+            "EMAIL_HOST") or os.getenv("SMTP_SERVER", "mail.serphawk.in")
+        smtp_port = smtp_port or os.getenv(
+            "EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
 
     return sender, password, smtp_server, smtp_port
 
@@ -12203,15 +13093,18 @@ def _send_quote_created_email(q: CRMQuote, session: Session, subject_override=No
         recipient_name = recipient_name or "there"
 
     if not recipient_email:
-        print(f"[Quote email skipped] no linked lead/client/contact email for quote {q.quote_number}")
+        print(
+            f"[Quote email skipped] no linked lead/client/contact email for quote {q.quote_number}")
         return False
 
-    subject, html, _fragment, _items = _quote_email_content(q, session, recipient_name)
+    subject, html, _fragment, _items = _quote_email_content(
+        q, session, recipient_name)
     if subject_override:
         subject = subject_override
     if body_html_override:
         from modules.email_sender import branded_email
-        html = branded_email(title=subject, body_html=_normalize_email_fragment(body_html_override))
+        html = branded_email(
+            title=subject, body_html=_normalize_email_fragment(body_html_override))
 
     from modules.email_sender import send_email_outlook
     send_email_outlook(
@@ -12223,8 +13116,10 @@ def _send_quote_created_email(q: CRMQuote, session: Session, subject_override=No
         smtp_server=smtp_server,
         smtp_port=int(smtp_port),
     )
-    print(f"Quote email sent to {recipient_email} for quote {q.quote_number or q.id}")
+    print(
+        f"Quote email sent to {recipient_email} for quote {q.quote_number or q.id}")
     return True
+
 
 @app.get("/quotes/{quote_id}")
 def get_quote(quote_id: int, session: Session = Depends(get_session)):
@@ -12232,6 +13127,7 @@ def get_quote(quote_id: int, session: Session = Depends(get_session)):
     if not q:
         raise HTTPException(status_code=404, detail="Quote not found")
     return {"quote": _quote_dict(q, session)}
+
 
 @app.get("/quotes/{quote_id}/pdf")
 def quote_pdf(quote_id: int, provider: Optional[str] = None, session: Session = Depends(get_session)):
@@ -12241,7 +13137,7 @@ def quote_pdf(quote_id: int, provider: Optional[str] = None, session: Session = 
     q = session.get(CRMQuote, quote_id)
     if not q:
         raise HTTPException(status_code=404, detail="Quote not found")
-        
+
     client_name = ""
     client_company = ""
     client_email = ""
@@ -12249,9 +13145,10 @@ def quote_pdf(quote_id: int, provider: Optional[str] = None, session: Session = 
     client_address = ""
     if q.client_id:
         c = session.get(ClientProfile, q.client_id)
-        if c: 
+        if c:
             user = session.get(User, c.userId) if c.userId else None
-            client_name = c.companyName or (user.name if user else f"Client #{c.id}")
+            client_name = c.companyName or (
+                user.name if user else f"Client #{c.id}")
             client_company = c.companyName or ""
             client_email = user.email if user else ""
             client_phone = c.phone or ""
@@ -12265,7 +13162,8 @@ def quote_pdf(quote_id: int, provider: Optional[str] = None, session: Session = 
             client_phone = l.phone or ""
             client_address = l.address or ""
 
-    quote_items = session.exec(select(QuoteItem).where(QuoteItem.quote_id == q.id)).all()
+    quote_items = session.exec(select(QuoteItem).where(
+        QuoteItem.quote_id == q.id)).all()
     items = []
     for li in quote_items:
         amt = float(li.unit_price or 0)
@@ -12303,6 +13201,7 @@ def quote_pdf(quote_id: int, provider: Optional[str] = None, session: Session = 
         "Content-Disposition": f'attachment; filename="quote-{q.quote_number or q.id}.pdf"'
     })
 
+
 @app.put("/quotes/{quote_id}")
 def update_quote(quote_id: int, body: QuoteCreateRequest, session: Session = Depends(get_session)):
     q = session.get(CRMQuote, quote_id)
@@ -12315,6 +13214,7 @@ def update_quote(quote_id: int, body: QuoteCreateRequest, session: Session = Dep
     session.commit()
     session.refresh(q)
     return {"quote": _quote_dict(q, session)}
+
 
 @app.delete("/quotes/{quote_id}")
 def delete_quote(quote_id: int, session: Session = Depends(get_session)):
@@ -12341,6 +13241,7 @@ class SalesOrderCreateRequest(BaseModel):
     notes: Optional[str] = None
     owner_id: Optional[int] = None
 
+
 @app.get("/sales-orders")
 def list_sales_orders(status: Optional[str] = None, client_id: Optional[int] = None, session: Session = Depends(get_session)):
     q = select(SalesOrder).order_by(SalesOrder.created_at.desc())
@@ -12350,6 +13251,7 @@ def list_sales_orders(status: Optional[str] = None, client_id: Optional[int] = N
         q = q.where(SalesOrder.client_id == client_id)
     orders = session.exec(q).all()
     return {"orders": [_so_dict(o, session) for o in orders]}
+
 
 def _sales_order_recipient(o: SalesOrder, session: Session):
     """Resolve the recipient (email, name) for a sales order.
@@ -12373,7 +13275,8 @@ def _sales_order_recipient(o: SalesOrder, session: Session):
                     recipient_name = client.companyName
             if not recipient_email:
                 contact = session.exec(
-                    select(Contact).where(Contact.client_id == o.client_id, Contact.email.is_not(None)).limit(1)
+                    select(Contact).where(Contact.client_id ==
+                                          o.client_id, Contact.email.is_not(None)).limit(1)
                 ).first()
                 if contact and contact.email:
                     recipient_email = contact.email
@@ -12402,19 +13305,20 @@ def _so_dict(o: SalesOrder, session: Session) -> dict:
     return d
 
 
-
 @app.post("/sales-orders/export-pdf")
 def export_sales_orders_pdf(body: dict = {}, session: Session = Depends(get_session)):
     """Export all sales orders as a downloadable PDF."""
     from modules.pdf_export import sales_order_pdf, send_pdf_email
     from fastapi.responses import Response
-    orders = session.exec(select(SalesOrder).order_by(SalesOrder.created_at.desc())).all()
+    orders = session.exec(select(SalesOrder).order_by(
+        SalesOrder.created_at.desc())).all()
     rows = []
     for o in orders:
         client_name = None
         if o.client_id:
             c = session.get(Client, o.client_id)
-            if c: client_name = c.name
+            if c:
+                client_name = c.name
         rows.append({
             "order_number": o.order_number, "client_name": client_name or o.lead_name or "—",
             "grand_total": float(o.grand_total or 0), "currency": o.currency,
@@ -12425,22 +13329,26 @@ def export_sales_orders_pdf(body: dict = {}, session: Session = Depends(get_sess
     recipient = (body or {}).get("email") if isinstance(body, dict) else None
     if recipient:
         try:
-            send_pdf_email(recipient, "Sales Orders – SERPHAWK", "Please find the sales orders PDF attached.", pdf_bytes, "sales_orders.pdf")
+            send_pdf_email(recipient, "Sales Orders – SERPHAWK",
+                           "Please find the sales orders PDF attached.", pdf_bytes, "sales_orders.pdf")
             return {"ok": True, "message": f"PDF sent to {recipient}"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     return Response(content=pdf_bytes, media_type="application/pdf",
                     headers={"Content-Disposition": "attachment; filename=sales_orders.pdf"})
 
+
 @app.post("/sales-orders")
 def create_sales_order(body: SalesOrderCreateRequest, session: Session = Depends(get_session)):
-    import random, string
+    import random
+    import string
     o = SalesOrder(**body.model_dump())
     o.order_number = "SO-" + "".join(random.choices(string.digits, k=6))
     session.add(o)
     session.commit()
     session.refresh(o)
     return {"order": _so_dict(o, session)}
+
 
 @app.put("/sales-orders/{order_id}")
 def update_sales_order(order_id: int, body: SalesOrderCreateRequest, session: Session = Depends(get_session)):
@@ -12454,6 +13362,7 @@ def update_sales_order(order_id: int, body: SalesOrderCreateRequest, session: Se
     session.commit()
     session.refresh(o)
     return {"order": _so_dict(o, session)}
+
 
 @app.delete("/sales-orders/{order_id}")
 def delete_sales_order(order_id: int, session: Session = Depends(get_session)):
@@ -12479,6 +13388,7 @@ class PurchaseOrderCreateRequest(BaseModel):
     notes: Optional[str] = None
     owner_id: Optional[int] = None
 
+
 @app.get("/purchase-orders")
 def list_purchase_orders(status: Optional[str] = None, session: Session = Depends(get_session)):
     q = select(PurchaseOrder).order_by(PurchaseOrder.created_at.desc())
@@ -12488,13 +13398,13 @@ def list_purchase_orders(status: Optional[str] = None, session: Session = Depend
     return {"orders": [o.model_dump() for o in orders]}
 
 
-
 @app.post("/purchase-orders/export-pdf")
 def export_purchase_orders_pdf(body: dict = {}, session: Session = Depends(get_session)):
     """Export all purchase orders as a downloadable PDF."""
     from modules.pdf_export import purchase_order_pdf, send_pdf_email
     from fastapi.responses import Response
-    orders = session.exec(select(PurchaseOrder).order_by(PurchaseOrder.created_at.desc())).all()
+    orders = session.exec(select(PurchaseOrder).order_by(
+        PurchaseOrder.created_at.desc())).all()
     rows = [
         {"po_number": o.po_number, "vendor_name": o.vendor_name, "vendor_email": o.vendor_email,
          "grand_total": float(o.grand_total or 0), "currency": o.currency, "status": o.status,
@@ -12506,22 +13416,26 @@ def export_purchase_orders_pdf(body: dict = {}, session: Session = Depends(get_s
     recipient = (body or {}).get("email") if isinstance(body, dict) else None
     if recipient:
         try:
-            send_pdf_email(recipient, "Purchase Orders – SERPHAWK", "Please find the purchase orders PDF attached.", pdf_bytes, "purchase_orders.pdf")
+            send_pdf_email(recipient, "Purchase Orders – SERPHAWK",
+                           "Please find the purchase orders PDF attached.", pdf_bytes, "purchase_orders.pdf")
             return {"ok": True, "message": f"PDF sent to {recipient}"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     return Response(content=pdf_bytes, media_type="application/pdf",
                     headers={"Content-Disposition": "attachment; filename=purchase_orders.pdf"})
 
+
 @app.post("/purchase-orders")
 def create_purchase_order(body: PurchaseOrderCreateRequest, session: Session = Depends(get_session)):
-    import random, string
+    import random
+    import string
     o = PurchaseOrder(**body.model_dump())
     o.po_number = "PO-" + "".join(random.choices(string.digits, k=6))
     session.add(o)
     session.commit()
     session.refresh(o)
     return {"order": o.model_dump()}
+
 
 @app.put("/purchase-orders/{order_id}")
 def update_purchase_order(order_id: int, body: PurchaseOrderCreateRequest, session: Session = Depends(get_session)):
@@ -12535,6 +13449,7 @@ def update_purchase_order(order_id: int, body: PurchaseOrderCreateRequest, sessi
     session.commit()
     session.refresh(o)
     return {"order": o.model_dump()}
+
 
 @app.delete("/purchase-orders/{order_id}")
 def delete_purchase_order(order_id: int, session: Session = Depends(get_session)):
@@ -12562,7 +13477,8 @@ def _quote_export_data(qt, session: Session) -> dict:
     client_name = client_company = client_email = client_phone = client_address = ""
     if client:
         user = session.get(User, client.userId) if client.userId else None
-        client_name = client.companyName or (user.name if user else f"Client #{client.id}")
+        client_name = client.companyName or (
+            user.name if user else f"Client #{client.id}")
         client_company = client.companyName or ""
         client_email = user.email if user else ""
         client_phone = client.phone or ""
@@ -12577,7 +13493,8 @@ def _quote_export_data(qt, session: Session) -> dict:
     for li in session.exec(select(QuoteItem).where(QuoteItem.quote_id == qt.id)).all():
         amt = float(li.unit_price or 0)
         qty = li.quantity or 1
-        items.append({"description": li.description or "", "quantity": qty, "unit_price": amt, "total": amt * qty})
+        items.append({"description": li.description or "",
+                     "quantity": qty, "unit_price": amt, "total": amt * qty})
     return {
         "quote_number": qt.quote_number or str(qt.id),
         "title": qt.title,
@@ -12618,20 +13535,24 @@ def export_quotes_pdf(body: ExportPdfRequest, session: Session = Depends(get_ses
 
     export_format = (body.format or "pdf").strip().lower()
     if export_format not in ("pdf", "csv", "xlsx"):
-        raise HTTPException(status_code=400, detail="format must be pdf, csv or xlsx")
+        raise HTTPException(
+            status_code=400, detail="format must be pdf, csv or xlsx")
 
     def _build_csv() -> bytes:
         output = _io.StringIO()
         writer = _csv.writer(output)
-        writer.writerow(["Quote #", "Title", "Status", "Client", "Company", "Email", "Phone", "Currency", "Subtotal", "Grand Total", "Valid Until", "Created", "Notes"])
+        writer.writerow(["Quote #", "Title", "Status", "Client", "Company", "Email", "Phone",
+                        "Currency", "Subtotal", "Grand Total", "Valid Until", "Created", "Notes"])
         for qt in quotes:
             d = _quote_export_data(qt, session)
             writer.writerow([
                 d["quote_number"], d.get("title") or "", d.get("status") or "",
-                d.get("client_name") or "", d.get("client_company") or "", d.get("client_email") or "",
+                d.get("client_name") or "", d.get(
+                    "client_company") or "", d.get("client_email") or "",
                 d.get("client_phone") or "", d.get("currency") or "$",
                 f'{d.get("subtotal") or 0:.2f}', f'{d.get("grand_total") or 0:.2f}',
-                d.get("valid_until") or "", d.get("created_at") or "", d.get("notes") or "",
+                d.get("valid_until") or "", d.get(
+                    "created_at") or "", d.get("notes") or "",
             ])
         return ("\ufeff" + output.getvalue()).encode("utf-8")
 
@@ -12640,19 +13561,24 @@ def export_quotes_pdf(body: ExportPdfRequest, session: Session = Depends(get_ses
         wb = Workbook()
         ws = wb.active
         ws.title = "Quotes"
-        headers = ["Quote #", "Title", "Status", "Client", "Company", "Email", "Phone", "Currency", "Subtotal", "Grand Total", "Valid Until", "Created", "Notes"]
+        headers = ["Quote #", "Title", "Status", "Client", "Company", "Email", "Phone",
+                   "Currency", "Subtotal", "Grand Total", "Valid Until", "Created", "Notes"]
         ws.append(headers)
         for qt in quotes:
             d = _quote_export_data(qt, session)
             ws.append([
                 d["quote_number"], d.get("title") or "", d.get("status") or "",
-                d.get("client_name") or "", d.get("client_company") or "", d.get("client_email") or "",
+                d.get("client_name") or "", d.get(
+                    "client_company") or "", d.get("client_email") or "",
                 d.get("client_phone") or "", d.get("currency") or "$",
-                float(d.get("subtotal") or 0), float(d.get("grand_total") or 0),
-                d.get("valid_until") or "", d.get("created_at") or "", d.get("notes") or "",
+                float(d.get("subtotal") or 0), float(
+                    d.get("grand_total") or 0),
+                d.get("valid_until") or "", d.get(
+                    "created_at") or "", d.get("notes") or "",
             ])
         ws2 = wb.create_sheet("Items")
-        ws2.append(["Quote #", "Description", "Quantity", "Unit Price", "Total"])
+        ws2.append(["Quote #", "Description",
+                   "Quantity", "Unit Price", "Total"])
         for qt in quotes:
             d = _quote_export_data(qt, session)
             for it in d.get("items") or []:
@@ -12676,7 +13602,8 @@ def export_quotes_pdf(body: ExportPdfRequest, session: Session = Depends(get_ses
     else:
         writer = PdfWriter()
         for qt in quotes:
-            page = PdfReader(BytesIO(quote_pdf(_quote_export_data(qt, session)))).pages[0]
+            page = PdfReader(
+                BytesIO(quote_pdf(_quote_export_data(qt, session)))).pages[0]
             writer.add_page(page)
         buf = BytesIO()
         writer.write(buf)
@@ -12686,7 +13613,8 @@ def export_quotes_pdf(body: ExportPdfRequest, session: Session = Depends(get_ses
 
     if body.email:
         try:
-            send_pdf_email(body.email, "Quotes PDF", "<p>The requested quotes report is attached.</p>", data, fname)
+            send_pdf_email(body.email, "Quotes PDF",
+                           "<p>The requested quotes report is attached.</p>", data, fname)
             return {"sent": True, "recipient": body.email, "count": len(quotes)}
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Email failed: {e}")
@@ -12711,10 +13639,12 @@ def export_sales_orders_pdf(body: ExportPdfRequest, session: Session = Depends(g
     orders = session.exec(q).all()
     data = []
     for o in orders:
-        client = session.get(ClientProfile, o.client_id) if o.client_id else None
+        client = session.get(
+            ClientProfile, o.client_id) if o.client_id else None
         lead = session.get(Lead, o.lead_id) if o.lead_id else None
         d = o.model_dump()
-        d["client_name"] = client.companyName if client else (lead.company_name if lead else None)
+        d["client_name"] = client.companyName if client else (
+            lead.company_name if lead else None)
         data.append(d)
     pdf = sales_order_pdf(data)
     if body.email:
@@ -12736,7 +13666,8 @@ def export_sales_orders_pdf(body: ExportPdfRequest, session: Session = Depends(g
 def _so_party(o: SalesOrder, session: Session) -> dict:
     """Resolve buyer info (name, company, email, phone, address) for a sales order."""
     from database import ClientProfile, Lead, User, Contact
-    party = {"name": None, "company": None, "email": None, "phone": None, "address": None}
+    party = {"name": None, "company": None,
+             "email": None, "phone": None, "address": None}
     if o.lead_id:
         l = session.get(Lead, o.lead_id)
         if l:
@@ -12759,7 +13690,8 @@ def _so_party(o: SalesOrder, session: Session) -> dict:
                     party["name"] = party["name"] or u.name
             if not party["email"]:
                 contact = session.exec(
-                    select(Contact).where(Contact.client_id == o.client_id, Contact.email.is_not(None)).first()
+                    select(Contact).where(Contact.client_id ==
+                                          o.client_id, Contact.email.is_not(None)).first()
                 )
                 if contact:
                     party["email"] = contact.email
@@ -12774,7 +13706,8 @@ def export_single_sales_order_pdf(order_id: int, session: Session = Depends(get_
     if not o:
         raise HTTPException(status_code=404, detail="Sales order not found")
     party = _so_party(o, session)
-    pdf = single_sales_order_pdf(o.model_dump(), client_name=party["name"], lead_name=party["name"], party=party)
+    pdf = single_sales_order_pdf(
+        o.model_dump(), client_name=party["name"], lead_name=party["name"], party=party)
     filename = f"sales_order_{o.order_number or o.id}.pdf"
     return Response(
         content=pdf,
@@ -12794,11 +13727,14 @@ def send_single_sales_order_pdf_email(order_id: int, body: ExportPdfRequest, ses
     default_email, default_name = _sales_order_recipient(o, session)
     recipient = (body.email or "").strip() or default_email
     if not recipient:
-        raise HTTPException(status_code=400, detail="No recipient email. Provide an email or link this order to a lead/client that has one.")
+        raise HTTPException(
+            status_code=400, detail="No recipient email. Provide an email or link this order to a lead/client that has one.")
     party = _so_party(o, session)
-    pdf = single_sales_order_pdf(o.model_dump(), client_name=party["name"], lead_name=party["name"], party=party)
+    pdf = single_sales_order_pdf(
+        o.model_dump(), client_name=party["name"], lead_name=party["name"], party=party)
     filename = f"{o.order_number or f'SO-{o.id}'}.pdf"
-    subject = f"Sales Order {o.order_number or o.id} — {party['name'] or ''}".strip()
+    subject = f"Sales Order {o.order_number or o.id} — {party['name'] or ''}".strip(
+    )
     from modules.email_sender import branded_email, _summary_table, _attachment_note
     recipient_display = default_name or party["name"] or "there"
     name_line = f"Hi {recipient_display},"
@@ -12824,7 +13760,8 @@ def send_single_sales_order_pdf_email(order_id: int, body: ExportPdfRequest, ses
     # Resolve SMTP the same way quote emails do: per-tenant EmailSettings, then env vars.
     sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
     if not sender or not password:
-        raise HTTPException(status_code=500, detail="SMTP not configured. Add email settings in the Mail Settings page.")
+        raise HTTPException(
+            status_code=500, detail="SMTP not configured. Add email settings in the Mail Settings page.")
     try:
         from modules.email_sender import send_email_outlook
         send_email_outlook(
@@ -12898,10 +13835,12 @@ def send_single_purchase_order_pdf_email(order_id: int, body: ExportPdfRequest, 
     default_email = (o.vendor_email or "").strip()
     recipient = (body.email or "").strip() or default_email
     if not recipient:
-        raise HTTPException(status_code=400, detail="No recipient email. Provide an email or set the vendor email.")
+        raise HTTPException(
+            status_code=400, detail="No recipient email. Provide an email or set the vendor email.")
     pdf = single_purchase_order_pdf(o.model_dump())
     filename = f"{o.po_number or f'PO-{o.id}'}.pdf"
-    subject = f"Purchase Order {o.po_number or o.id} — {o.vendor_name or ''}".strip()
+    subject = f"Purchase Order {o.po_number or o.id} — {o.vendor_name or ''}".strip(
+    )
     from modules.email_sender import branded_email, _summary_table, _attachment_note
     body_html = branded_email(
         title=f"Purchase Order {o.po_number or o.id}",
@@ -12924,7 +13863,8 @@ def send_single_purchase_order_pdf_email(order_id: int, body: ExportPdfRequest, 
     )
     sender, password, smtp_server, smtp_port = _quote_smtp_sender(session)
     if not sender or not password:
-        raise HTTPException(status_code=500, detail="SMTP not configured. Add email settings in the Mail Settings page.")
+        raise HTTPException(
+            status_code=500, detail="SMTP not configured. Add email settings in the Mail Settings page.")
     try:
         from modules.email_sender import send_email_outlook
         send_email_outlook(
@@ -12962,6 +13902,7 @@ class PosReceiptRequest(BaseModel):
     taxLabel: str = "IVA"
     email: Optional[str] = None
 
+
 @app.post("/export-pdf/receipt")
 def export_pos_receipt_pdf(body: PosReceiptRequest):
     """Generate a clean A4 POS receipt (Serphawk) and return it as a PDF download."""
@@ -12969,7 +13910,8 @@ def export_pos_receipt_pdf(body: PosReceiptRequest):
     from modules.pdf_export import pos_receipt_pdf, send_pdf_email
     pdf = pos_receipt_pdf(body.model_dump())
     ticket = body.ticketNumber
-    filename = f"receipt_{ticket}.pdf" if ticket is not None and str(ticket) not in ("", "None") else "receipt.pdf"
+    filename = f"receipt_{ticket}.pdf" if ticket is not None and str(
+        ticket) not in ("", "None") else "receipt.pdf"
     if body.email:
         try:
             send_pdf_email(
@@ -13003,6 +13945,7 @@ class CaseCreateRequest(BaseModel):
     contact_id: Optional[int] = None
     assigned_to: Optional[int] = None
 
+
 class CaseUpdateRequest(BaseModel):
     subject: Optional[str] = None
     description: Optional[str] = None
@@ -13013,6 +13956,7 @@ class CaseUpdateRequest(BaseModel):
     url: Optional[str] = None
     assigned_to: Optional[int] = None
     resolution: Optional[str] = None
+
 
 def _case_dict(c: Case, session: Session) -> dict:
     client = session.get(ClientProfile, c.client_id) if c.client_id else None
@@ -13027,7 +13971,9 @@ def _case_dict(c: Case, session: Session) -> dict:
     d["updated_at"] = c.updated_at.isoformat()
     return d
 
+
 _scmhub_cases_engine = None
+
 
 def _scmhub_cases_conn():
     """Read-only connection to the SCMHub database's `case` table."""
@@ -13038,8 +13984,10 @@ def _scmhub_cases_conn():
         if not url:
             return None
         from sqlalchemy import create_engine as _sch_create_engine
-        _scmhub_cases_engine = _sch_create_engine(url, pool_pre_ping=True, pool_recycle=300)
+        _scmhub_cases_engine = _sch_create_engine(
+            url, pool_pre_ping=True, pool_recycle=300)
     return _scmhub_cases_engine
+
 
 @app.get("/scmhub-cases")
 def list_scmhub_cases(status: Optional[str] = None):
@@ -13055,7 +14003,8 @@ def list_scmhub_cases(status: Optional[str] = None):
         # `case` on creation; if that best-effort sync was skipped or failed,
         # mirror them lazily here so they are never silently invisible.
         try:
-            existing = {r[0] for r in s.execute(_text('SELECT case_number FROM "case"')).all()}
+            existing = {r[0] for r in s.execute(
+                _text('SELECT case_number FROM "case"')).all()}
             src = s.execute(_text('''
                 SELECT id, case_number, subject, description, status, priority, assigned_to,
                        client_id, lead_id, contact_id, created_at, updated_at
@@ -13070,24 +14019,25 @@ def list_scmhub_cases(status: Optional[str] = None):
                     entity_type, entity_id = "lead", row["lead_id"]
                 elif row["contact_id"]:
                     entity_type, entity_id = "contact", row["contact_id"]
-                s.execute(_text('DELETE FROM "case" WHERE case_number = :cn'), {"cn": row["case_number"]})
+                s.execute(_text('DELETE FROM "case" WHERE case_number = :cn'), {
+                          "cn": row["case_number"]})
                 s.execute(_text('''
                     INSERT INTO "case" (case_number, title, description, status, priority,
                         assigned_to, created_by, entity_type, entity_id, created_at, updated_at)
                     VALUES (:case_number, :title, :description, :status, :priority,
                         :assigned_to, :created_by, :entity_type, :entity_id,
                         :created_at, :updated_at)'''), {
-                        "case_number": row["case_number"],
-                        "title": row["subject"],
-                        "description": row["description"],
-                        "status": row["status"],
-                        "priority": row["priority"],
-                        "assigned_to": row["assigned_to"],
-                        "created_by": None,
-                        "entity_type": entity_type,
-                        "entity_id": entity_id,
-                        "created_at": row["created_at"],
-                        "updated_at": row["updated_at"]})
+                    "case_number": row["case_number"],
+                    "title": row["subject"],
+                    "description": row["description"],
+                    "status": row["status"],
+                    "priority": row["priority"],
+                    "assigned_to": row["assigned_to"],
+                    "created_by": None,
+                    "entity_type": entity_type,
+                    "entity_id": entity_id,
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"]})
                 existing.add(row["case_number"])
             s.commit()
         except Exception:
@@ -13102,11 +14052,13 @@ def list_scmhub_cases(status: Optional[str] = None):
         rows = s.execute(_text(sql), params).mappings().all()
         return {"cases": [dict(r) for r in rows]}
 
+
 class ScmhubCaseUpdateRequest(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
+
 
 @app.put("/scmhub-cases/{case_id}")
 def update_scmhub_case(case_id: int, body: ScmhubCaseUpdateRequest):
@@ -13116,10 +14068,12 @@ def update_scmhub_case(case_id: int, body: ScmhubCaseUpdateRequest):
     from sqlalchemy import text as _text
     eng = _scmhub_cases_conn()
     if eng is None:
-        raise HTTPException(status_code=503, detail="SCMHUB_DATABASE_URL not configured")
+        raise HTTPException(
+            status_code=503, detail="SCMHUB_DATABASE_URL not configured")
     from sqlalchemy.orm import Session as _ORM_Session
     with _ORM_Session(eng) as s:
-        row = s.execute(_text('SELECT id, case_number, title, description, status, priority FROM "case" WHERE id = :id'), {"id": case_id}).mappings().first()
+        row = s.execute(_text('SELECT id, case_number, title, description, status, priority FROM "case" WHERE id = :id'), {
+                        "id": case_id}).mappings().first()
         if not row:
             raise HTTPException(status_code=404, detail="Case not found")
 
@@ -13137,7 +14091,8 @@ def update_scmhub_case(case_id: int, body: ScmhubCaseUpdateRequest):
             return {"ok": True, "case": dict(row)}
 
         sets = ", ".join(f"{k} = :{k}" for k in updates)
-        s.execute(_text(f'UPDATE "case" SET {sets}, updated_at = now() WHERE id = :id'), {**updates, "id": case_id})
+        s.execute(_text(f'UPDATE "case" SET {sets}, updated_at = now() WHERE id = :id'), {
+                  **updates, "id": case_id})
 
         source_updates: dict = {}
         if "title" in updates:
@@ -13146,7 +14101,8 @@ def update_scmhub_case(case_id: int, body: ScmhubCaseUpdateRequest):
             source_updates["description"] = updates["description"]
         if "status" in updates:
             source_updates["status"] = updates["status"]
-            source_updates["resolved_at"] = "now()" if updates["status"] in ("Resolved", "Closed") else None
+            source_updates["resolved_at"] = "now()" if updates["status"] in (
+                "Resolved", "Closed") else None
         if "priority" in updates:
             source_updates["priority"] = updates["priority"]
         if source_updates:
@@ -13173,8 +14129,10 @@ def update_scmhub_case(case_id: int, body: ScmhubCaseUpdateRequest):
                           {**src_params, "case_number": row["case_number"]})
 
         s.commit()
-        fresh = s.execute(_text('SELECT id, case_number, title, description, status, priority, assigned_to, created_by, entity_type, entity_id, created_at, updated_at FROM "case" WHERE id = :id'), {"id": case_id}).mappings().first()
+        fresh = s.execute(_text('SELECT id, case_number, title, description, status, priority, assigned_to, created_by, entity_type, entity_id, created_at, updated_at FROM "case" WHERE id = :id'), {
+                          "id": case_id}).mappings().first()
         return {"ok": True, "case": dict(fresh)}
+
 
 @app.get("/cases")
 def list_cases(status: Optional[str] = None, priority: Optional[str] = None, client_id: Optional[int] = None, session: Session = Depends(get_session)):
@@ -13188,13 +14146,15 @@ def list_cases(status: Optional[str] = None, priority: Optional[str] = None, cli
     cases = session.exec(q).all()
     return {"cases": [_case_dict(c, session) for c in cases]}
 
+
 def _notify_admins(session, tenant_id, title, message, notif_type="info", link=None):
     from database import User, Notification
     from sqlmodel import select
     # Notifications are best-effort telemetry: a failure here must never break
     # the request or leave the session in a rolled-back state.
     try:
-        admins = session.exec(select(User).where(User.role.in_(["admin", "Admin"]))).all()
+        admins = session.exec(select(User).where(
+            User.role.in_(["admin", "Admin"]))).all()
         for admin in admins:
             if tenant_id and admin.tenant_id and admin.tenant_id != tenant_id:
                 continue
@@ -13217,9 +14177,12 @@ def _notify_admins(session, tenant_id, title, message, notif_type="info", link=N
             pass
         print(f"_notify_admins failed (swallowed): {e}")
 
+
 @app.post("/cases")
 def create_case(body: CaseCreateRequest, session: Session = Depends(get_session)):
-    raise HTTPException(status_code=403, detail="Cases are created in the SCMHub project.")
+    raise HTTPException(
+        status_code=403, detail="Cases are created in the SCMHub project.")
+
 
 @app.get("/cases/{case_id}")
 def get_case(case_id: int, session: Session = Depends(get_session)):
@@ -13227,6 +14190,7 @@ def get_case(case_id: int, session: Session = Depends(get_session)):
     if not c:
         raise HTTPException(status_code=404, detail="Case not found")
     return {"case": _case_dict(c, session)}
+
 
 @app.put("/cases/{case_id}")
 def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depends(get_session)):
@@ -13253,12 +14217,14 @@ def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depend
                 session, tenant_id,
                 title=f"{icon} Case {c.case_number}: {new_status}",
                 message=f"{c.subject} — Status changed from {old_status} → {new_status}",
-                notif_type="success" if new_status in ("Resolved", "Closed") else "info",
+                notif_type="success" if new_status in (
+                    "Resolved", "Closed") else "info",
                 link=f"/support/cases"
             )
         except Exception:
             pass
     return {"case": _case_dict(c, session)}
+
 
 @app.delete("/cases/{case_id}")
 def delete_case(case_id: int, session: Session = Depends(get_session)):
@@ -13282,6 +14248,7 @@ class SolutionCreateRequest(BaseModel):
     is_published: bool = True
     author_id: Optional[int] = None
 
+
 class SolutionUpdateRequest(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
@@ -13289,15 +14256,19 @@ class SolutionUpdateRequest(BaseModel):
     tags: Optional[List[str]] = None
     is_published: Optional[bool] = None
 
+
 @app.get("/solutions")
 def list_solutions(category: Optional[str] = None, q: Optional[str] = None, session: Session = Depends(get_session)):
-    query = select(Solution).where(Solution.is_published == True).order_by(Solution.view_count.desc())
+    query = select(Solution).where(Solution.is_published ==
+                                   True).order_by(Solution.view_count.desc())
     if category:
         query = query.where(Solution.category == category)
     solutions = session.exec(query).all()
     if q:
-        solutions = [s for s in solutions if q.lower() in s.title.lower() or q.lower() in s.content.lower()]
+        solutions = [s for s in solutions if q.lower(
+        ) in s.title.lower() or q.lower() in s.content.lower()]
     return {"solutions": [s.model_dump() for s in solutions]}
+
 
 @app.post("/solutions")
 def create_solution(body: SolutionCreateRequest, session: Session = Depends(get_session)):
@@ -13306,6 +14277,7 @@ def create_solution(body: SolutionCreateRequest, session: Session = Depends(get_
     session.commit()
     session.refresh(s)
     return {"solution": s.model_dump()}
+
 
 @app.get("/solutions/{solution_id}")
 def get_solution(solution_id: int, session: Session = Depends(get_session)):
@@ -13316,6 +14288,7 @@ def get_solution(solution_id: int, session: Session = Depends(get_session)):
     session.add(s)
     session.commit()
     return {"solution": s.model_dump()}
+
 
 @app.put("/solutions/{solution_id}")
 def update_solution(solution_id: int, body: SolutionUpdateRequest, session: Session = Depends(get_session)):
@@ -13330,6 +14303,7 @@ def update_solution(solution_id: int, body: SolutionUpdateRequest, session: Sess
     session.refresh(s)
     return {"solution": s.model_dump()}
 
+
 @app.delete("/solutions/{solution_id}")
 def delete_solution(solution_id: int, session: Session = Depends(get_session)):
     s = session.get(Solution, solution_id)
@@ -13338,6 +14312,7 @@ def delete_solution(solution_id: int, session: Session = Depends(get_session)):
     session.delete(s)
     session.commit()
     return {"ok": True}
+
 
 @app.post("/solutions/{solution_id}/helpful")
 def mark_solution_helpful(solution_id: int, session: Session = Depends(get_session)):
@@ -13349,27 +14324,31 @@ def mark_solution_helpful(solution_id: int, session: Session = Depends(get_sessi
     session.commit()
     return {"helpful_count": s.helpful_count}
 
+
 @app.post("/leads/{lead_id}/simulate-call")
 def simulate_lead_call(lead_id: int, req: Optional[SimulateCallRequest] = None, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
-    if not lead: raise HTTPException(status_code=404, detail="Lead not found")
-    
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
     tenant_id = current_tenant_id.get()
     if tenant_id:
         tenant = session.get(Tenant, tenant_id)
         if tenant:
-            user = session.exec(select(User).where(User.tenant_id == tenant_id)).first()
+            user = session.exec(select(User).where(
+                User.tenant_id == tenant_id)).first()
             if user and user.role == "Demo":
                 if tenant.usage_calls >= tenant.limit_calls:
-                    raise HTTPException(status_code=403, detail=f"Demo limit reached. You can only log up to {tenant.limit_calls} calls/pitches.")
+                    raise HTTPException(
+                        status_code=403, detail=f"Demo limit reached. You can only log up to {tenant.limit_calls} calls/pitches.")
                 tenant.usage_calls += 1
                 session.add(tenant)
                 session.commit()
-    
+
     client_name = lead.company_name or "Valued Lead"
     industry = lead.industry or "Unknown Industry"
     notes = lead.notes or "No prior notes."
-    
+
     prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
 Your task is to write a highly tailored, direct sales script to be read over the phone to this specific lead. 
 DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
@@ -13408,8 +14387,9 @@ Instructions:
         pitch = response.choices[0].message.content or ""
     except Exception as e:
         print("Error in lead simulation:", e)
-        raise HTTPException(status_code=500, detail=f"Failed to simulate call: {str(e)}")
-        
+        raise HTTPException(
+            status_code=500, detail=f"Failed to simulate call: {str(e)}")
+
     call = CallLog(
         phone_number=lead.phone or "Unknown",
         duration_seconds=180,
@@ -13420,32 +14400,36 @@ Instructions:
     session.add(call)
     session.commit()
     session.refresh(call)
-    
-    return {"ok": True, "call_id": call.id, "pitch": pitch}
+
+    return {"ok": True, "call_id": call.id, "pitch": pitch, "audio_url": None}
+
 
 @app.post("/contacts/{contact_id}/simulate-call")
 def simulate_contact_call(contact_id: int, req: Optional[SimulateCallRequest] = None, session: Session = Depends(get_session)):
     contact = session.get(Contact, contact_id)
-    if not contact: raise HTTPException(status_code=404, detail="Contact not found")
-    
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
     tenant_id = current_tenant_id.get()
     if tenant_id:
         tenant = session.get(Tenant, tenant_id)
         if tenant:
-            user = session.exec(select(User).where(User.tenant_id == tenant_id)).first()
+            user = session.exec(select(User).where(
+                User.tenant_id == tenant_id)).first()
             if user and user.role == "Demo":
                 if tenant.usage_calls >= tenant.limit_calls:
-                    raise HTTPException(status_code=403, detail=f"Demo limit reached. You can only log up to {tenant.limit_calls} calls/pitches.")
+                    raise HTTPException(
+                        status_code=403, detail=f"Demo limit reached. You can only log up to {tenant.limit_calls} calls/pitches.")
                 tenant.usage_calls += 1
                 session.add(tenant)
                 session.commit()
-    
-    
-    client_name = f"{contact.first_name} {contact.last_name or ''}".strip() or "Valued Contact"
+
+    client_name = f"{contact.first_name} {contact.last_name or ''}".strip(
+    ) or "Valued Contact"
     department = contact.department or "Unknown Department"
     designation = contact.designation or "Unknown Title"
     notes = contact.notes or "No prior notes."
-    
+
     prompt = f"""You are an expert sales representative for "SERP Hawk" (an elite SEO and Digital Marketing Agency).
 Your task is to write a highly tailored, direct sales script to be read over the phone to this specific contact. 
 DO NOT use generic placeholders like "[Your Name]" or "[Your Company]" - assume the persona of a SERP Hawk sales rep.
@@ -13482,8 +14466,9 @@ Instructions:
         pitch = response.choices[0].message.content or ""
     except Exception as e:
         print("Error in contact simulation:", e)
-        raise HTTPException(status_code=500, detail=f"Failed to simulate call: {str(e)}")
-        
+        raise HTTPException(
+            status_code=500, detail=f"Failed to simulate call: {str(e)}")
+
     call = CallLog(
         phone_number=contact.mobile_number or "Unknown",
         duration_seconds=180,
@@ -13494,8 +14479,9 @@ Instructions:
     session.add(call)
     session.commit()
     session.refresh(call)
-    
-    return {"ok": True, "call_id": call.id, "pitch": pitch}
+
+    return {"ok": True, "call_id": call.id, "pitch": pitch, "audio_url": None}
+
 
 @app.get("/work-queue")
 def get_work_queue(
@@ -13512,53 +14498,60 @@ def get_work_queue(
             target_date = today_date + timedelta(days=1)
         else:
             target_date = today_date
-            
+
         start_dt = datetime.combine(target_date, datetime.min.time())
         end_dt = datetime.combine(target_date, datetime.max.time())
-        
+
         # Work Queue is personal by design. Admins can inspect the same personal
         # queue by selecting their own account; do not leak the whole workspace.
         is_admin = False
-        
+
         # 1. Tasks
         tasks_q = session.query(Task)
         if not is_admin:
             tasks_q = tasks_q.filter(Task.assigned_to == user_id)
-        tasks = [task for task in tasks_q.all() if (task.due_date or "")[:10] == target_date.isoformat()]
-        
+        tasks = [task for task in tasks_q.all() if (task.due_date or "")[
+            :10] == target_date.isoformat()]
+
         # 2. Meetings
-        meetings_q = session.query(Meeting).filter(Meeting.scheduled_at >= start_dt, Meeting.scheduled_at <= end_dt)
+        meetings_q = session.query(Meeting).filter(
+            Meeting.scheduled_at >= start_dt, Meeting.scheduled_at <= end_dt)
         if not is_admin:
             meetings_q = meetings_q.filter(Meeting.host_id == user_id)
         meetings = meetings_q.all()
-        
+
         # 3. Scheduled Calls
         calls_q = session.query(ScheduledCall)
         user_owner_names = {str(user_id).lower()}
         current_user = session.get(User, user_id)
         if current_user:
-            user_owner_names.update({(current_user.name or "").strip().lower(), (current_user.email or "").strip().lower()})
-        calls = [call for call in calls_q.all() if call.scheduled_at and start_dt <= call.scheduled_at <= end_dt and (call.assigned_to or "").strip().lower() in user_owner_names]
-        
+            user_owner_names.update({(current_user.name or "").strip(
+            ).lower(), (current_user.email or "").strip().lower()})
+        calls = [call for call in calls_q.all() if call.scheduled_at and start_dt <= call.scheduled_at <=
+                 end_dt and (call.assigned_to or "").strip().lower() in user_owner_names]
+
         # 4. Leads (using created_at as proxy for activity if followup doesn't exist, wait Lead has no followup_date)
         # We'll just show leads created on that day
-        leads_q = session.query(Lead).filter(Lead.created_at >= start_dt, Lead.created_at <= end_dt)
+        leads_q = session.query(Lead).filter(
+            Lead.created_at >= start_dt, Lead.created_at <= end_dt)
         if not is_admin:
             leads_q = leads_q.filter(Lead.owner_id == user_id)
         leads = leads_q.all()
-        
+
         # 5. Contacts
-        contacts_q = session.query(Contact).filter(Contact.created_at >= start_dt, Contact.created_at <= end_dt)
+        contacts_q = session.query(Contact).filter(
+            Contact.created_at >= start_dt, Contact.created_at <= end_dt)
         if not is_admin:
             contacts_q = contacts_q.filter(Contact.owner_id == user_id)
         contacts = contacts_q.all()
-        
+
         # 6. Deals
-        deals_q = session.query(Deal).filter(Deal.created_at >= start_dt, Deal.created_at <= end_dt)
+        deals_q = session.query(Deal).filter(
+            Deal.created_at >= start_dt, Deal.created_at <= end_dt)
         if not is_admin:
             deals_q = deals_q.filter(Deal.owner_id == user_id)
         deals = deals_q.all()
-        
+
         # 7. Tickets (developer/intern ownership, split by selected date)
         user = session.get(User, user_id)
         tickets = []
@@ -13566,25 +14559,32 @@ def get_work_queue(
         ticket_ongoing = []
         ticket_completed = []
         if user and user.role in ["ProjectMember", "Intern", "Developer"]:
-            owner_names = {str(user.id).lower(), (user.name or "").strip().lower(), (user.email or "").strip().lower()}
+            owner_names = {str(user.id).lower(), (user.name or "").strip(
+            ).lower(), (user.email or "").strip().lower()}
             all_project_tickets = session.query(ProjectTicket).all()
-            owned_tickets = [ticket for ticket in all_project_tickets if (ticket.current_owner or "").strip().lower() in owner_names]
-            ticket_due = [ticket for ticket in owned_tickets if ticket.requested_date == target_date.isoformat()]
-            ticket_ongoing = [ticket for ticket in owned_tickets if ticket.current_state == "In Dev"]
-            ticket_completed = [ticket for ticket in owned_tickets if ticket.date_release_prod == target_date.isoformat()]
-            tickets = list({ticket.id: ticket for ticket in ticket_due + ticket_ongoing + ticket_completed}.values())
+            owned_tickets = [ticket for ticket in all_project_tickets if (
+                ticket.current_owner or "").strip().lower() in owner_names]
+            ticket_due = [
+                ticket for ticket in owned_tickets if ticket.requested_date == target_date.isoformat()]
+            ticket_ongoing = [
+                ticket for ticket in owned_tickets if ticket.current_state == "In Dev"]
+            ticket_completed = [
+                ticket for ticket in owned_tickets if ticket.date_release_prod == target_date.isoformat()]
+            tickets = list({ticket.id: ticket for ticket in ticket_due +
+                           ticket_ongoing + ticket_completed}.values())
 
         # Sales ownership: only clients/leads assigned to the signed-in user.
         clients = []
         if user and user.role in ["Admin", "Employee", "SalesManager", "Sales", "Demo"]:
-            clients = session.query(ClientProfile).filter(ClientProfile.assignedEmployeeId == user_id).all()
+            clients = session.query(ClientProfile).filter(
+                ClientProfile.assignedEmployeeId == user_id).all()
 
         # Support cases assigned to this user; admins see all cases.
         cases_q = session.query(Case)
         if not is_admin:
             cases_q = cases_q.filter(Case.assigned_to == user_id)
         cases = cases_q.all()
-        
+
         return {
             "ok": True,
             "date": target_date.isoformat(),
@@ -13609,15 +14609,9 @@ def get_work_queue(
 # EMAIL TRACKER APIs
 # ──────────────────────────────────────────────────────
 
-import os
-import json
-from fastapi.responses import RedirectResponse
-from google_auth_oauthlib.flow import Flow
-from googleapiclient.discovery import build
-import google.auth.transport.requests
-from google.oauth2.credentials import Credentials
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
 
 def get_google_oauth_flow(state=None):
     client_config = {
@@ -13634,11 +14628,12 @@ def get_google_oauth_flow(state=None):
         redirect_uri="http://localhost:8000/auth/google/callback"
     )
 
+
 @app.get("/auth/google/login")
 def google_oauth_login(user_id: int):
     if not os.environ.get("GOOGLE_CLIENT_ID"):
         return RedirectResponse(url=f"http://localhost:3000/admin/settings?error=Missing_Google_Keys")
-        
+
     flow = get_google_oauth_flow()
     authorization_url, state = flow.authorization_url(
         access_type='offline',
@@ -13648,19 +14643,21 @@ def google_oauth_login(user_id: int):
     )
     return RedirectResponse(url=authorization_url)
 
+
 @app.get("/auth/google/callback")
 def google_oauth_callback(state: str, code: str, session: Session = Depends(get_session)):
     flow = get_google_oauth_flow()
     flow.fetch_token(code=code)
     credentials = flow.credentials
-    
+
     service = build('gmail', 'v1', credentials=credentials)
     profile = service.users().getProfile(userId='me').execute()
     email_address = profile['emailAddress']
-    
+
     user_id = int(state)
-    integration = session.query(EmailIntegration).filter_by(user_id=user_id, email_address=email_address).first()
-    
+    integration = session.query(EmailIntegration).filter_by(
+        user_id=user_id, email_address=email_address).first()
+
     if not integration:
         integration = EmailIntegration(
             user_id=user_id,
@@ -13669,28 +14666,32 @@ def google_oauth_callback(state: str, code: str, session: Session = Depends(get_
             status="Connected"
         )
         session.add(integration)
-        
+
     integration.access_token = credentials.token
     integration.refresh_token = credentials.refresh_token or integration.refresh_token
     integration.token_expiry = credentials.expiry
     session.commit()
-    
+
     return RedirectResponse(url="http://localhost:3000/admin/settings")
+
 
 @app.get("/email-integrations")
 def get_email_integrations(user_id: int, session: Session = Depends(get_session)):
-    integrations = session.query(EmailIntegration).filter(EmailIntegration.user_id == user_id).all()
+    integrations = session.query(EmailIntegration).filter(
+        EmailIntegration.user_id == user_id).all()
     return {"ok": True, "integrations": integrations}
+
 
 @app.post("/email-integrations/{integration_id}/sync")
 def sync_email_integration(integration_id: int, session: Session = Depends(get_session)):
     integration = session.get(EmailIntegration, integration_id)
     if not integration:
         raise HTTPException(status_code=404, detail="Integration not found")
-        
+
     if not integration.access_token:
-        raise HTTPException(status_code=400, detail="Missing OAuth token. Please reconnect.")
-        
+        raise HTTPException(
+            status_code=400, detail="Missing OAuth token. Please reconnect.")
+
     creds = Credentials(
         token=integration.access_token,
         refresh_token=integration.refresh_token,
@@ -13698,40 +14699,41 @@ def sync_email_integration(integration_id: int, session: Session = Depends(get_s
         client_id=os.environ.get("GOOGLE_CLIENT_ID"),
         client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
     )
-    
+
     if creds.expired and creds.refresh_token:
         creds.refresh(google.auth.transport.requests.Request())
         integration.access_token = creds.token
         integration.token_expiry = creds.expiry
         session.commit()
-        
+
     service = build('gmail', 'v1', credentials=creds)
     results = service.users().messages().list(userId='me', maxResults=5).execute()
     messages = results.get('messages', [])
-    
+
     if not messages:
         return {"ok": True, "count": 0, "emails": []}
-        
+
     extracted = []
     from modules.llm_engine import get_openai_client
     import re
-    
+
     for msg in messages:
-        txt = service.users().messages().get(userId='me', id=msg['id'], format='full').execute()
+        txt = service.users().messages().get(
+            userId='me', id=msg['id'], format='full').execute()
         payload = txt.get('payload', {})
         headers = payload.get('headers', [])
-        
+
         subject = "No Subject"
         sender = "Unknown Sender"
-        
+
         for d in headers:
             if d['name'] == 'Subject':
                 subject = d['value']
             if d['name'] == 'From':
                 sender = d['value']
-                
+
         snippet = txt.get('snippet', '')
-        
+
         prompt = f"""
         Classify this inbound email for a digital marketing agency CRM.
         Sender: {sender}
@@ -13755,7 +14757,7 @@ def sync_email_integration(integration_id: int, session: Session = Depends(get_s
         except Exception:
             suggested_type = "Unknown"
             ai_analysis = "Failed to classify"
-            
+
         match = re.match(r"(.*)<(.*)>", sender)
         if match:
             sender_name = match.group(1).strip()
@@ -13775,23 +14777,26 @@ def sync_email_integration(integration_id: int, session: Session = Depends(get_s
         )
         session.add(new_email)
         extracted.append(new_email)
-        
+
     integration.last_synced_at = datetime.now(timezone.utc)
     session.commit()
-    
+
     # Refresh objects so they have DB IDs
     for e in extracted:
         session.refresh(e)
-        
+
         # ── WHATSAPP NOTIFICATION ──
         try:
             from modules.whatsapp import send_ai_polished_whatsapp_message
             base_url = "https://crm-seo.allytechcourses.com"
-            send_ai_polished_whatsapp_message("New Incoming Email", e.dict(), f"{base_url}/admin/settings?tab=email_tracker")
+            send_ai_polished_whatsapp_message(
+                "New Incoming Email", e.dict(), f"{base_url}/admin/settings?tab=email_tracker")
         except Exception as ex:
             print("WhatsApp Email Hook Error:", ex)
 
     return {"ok": True, "count": len(extracted), "emails": [e.dict() for e in extracted]}
+
+
 @app.get("/extracted-emails")
 def get_extracted_emails(user_id: int, session: Session = Depends(get_session)):
     emails = session.query(ExtractedEmail).join(EmailIntegration).filter(
@@ -13800,18 +14805,20 @@ def get_extracted_emails(user_id: int, session: Session = Depends(get_session)):
     ).order_by(ExtractedEmail.created_at.desc()).all()
     return {"ok": True, "emails": emails}
 
+
 class VerifyEmailRequest(BaseModel):
-    action: str # convert_to_lead, convert_to_client, dismiss
+    action: str  # convert_to_lead, convert_to_client, dismiss
+
 
 @app.post("/extracted-emails/{email_id}/verify")
 def verify_extracted_email(email_id: int, data: VerifyEmailRequest, session: Session = Depends(get_session)):
     email_obj = session.get(ExtractedEmail, email_id)
     if not email_obj:
         raise HTTPException(status_code=404, detail="Email not found")
-        
+
     integration = session.get(EmailIntegration, email_obj.integration_id)
     user_id = integration.user_id if integration else None
-    
+
     if data.action == "dismiss":
         email_obj.status = "Dismissed"
     elif data.action == "convert_to_lead":
@@ -13835,11 +14842,9 @@ def verify_extracted_email(email_id: int, data: VerifyEmailRequest, session: Ses
             assignedEmployeeId=user_id
         )
         session.add(client)
-        
+
     session.commit()
     return {"ok": True, "status": email_obj.status}
-
-from fastapi.responses import PlainTextResponse
 
 
 @app.post("/whatsapp-webhook")
@@ -13865,10 +14870,12 @@ async def whatsapp_webhook(
 
     # 1. Authorize sender dynamically — match by last 10 digits of phone
     from database import User
-    sender_phone = From.replace("whatsapp:", "").replace("+", "").replace("-", "").replace(" ", "").strip()
+    sender_phone = From.replace("whatsapp:", "").replace(
+        "+", "").replace("-", "").replace(" ", "").strip()
     match_str = sender_phone[-10:] if len(sender_phone) >= 10 else sender_phone
 
-    auth_user = session.exec(select(User).where(User.phone.like(f"%{match_str}%"))).first()
+    auth_user = session.exec(select(User).where(
+        User.phone.like(f"%{match_str}%"))).first()
 
     if not auth_user:
         print(f"[WhatsApp] Unauthorized sender {From} tried to use the bot.")
@@ -13876,7 +14883,8 @@ async def whatsapp_webhook(
 
     allowed_roles = {"admin", "superadmin", "salesmanager", "employee"}
     if (auth_user.role or "").lower().replace(" ", "") not in allowed_roles:
-        print(f"[WhatsApp] Sender {From} authorized but lacks CRM bot role ({auth_user.role}).")
+        print(
+            f"[WhatsApp] Sender {From} authorized but lacks CRM bot role ({auth_user.role}).")
         return EMPTY_TWIML
 
     # Inject tenant context — use current_tenant_id defined at module level in main.py
@@ -13904,7 +14912,8 @@ async def whatsapp_webhook(
     # 2.1 Security Key Auth
     expected_key = os.environ.get("WHATSAPP_SECURITY_KEY")
     if expected_key:
-        greeting_words = {"hi", "hello", "hey", "start", "login", "reset", "authenticate"}
+        greeting_words = {"hi", "hello", "hey",
+                          "start", "login", "reset", "authenticate"}
 
         # If user greets/starts OR has no active session: prompt for password
         if not ws_session or (msg_text in greeting_words and ws_session.pending_action != "auth"):
@@ -13974,7 +14983,8 @@ async def whatsapp_webhook(
                 "🎙️ Got your voice note! Transcribing and processing... give me a moment ⏳",
                 From
             )
-            voice_transcript = transcribe_voice_message(MediaUrl0, account_sid, auth_token)
+            voice_transcript = transcribe_voice_message(
+                MediaUrl0, account_sid, auth_token)
             Body = voice_transcript
             msg_text = voice_transcript.strip().lower()
             print(f"[Voice] Final transcript: {voice_transcript}")
@@ -13993,8 +15003,10 @@ async def whatsapp_webhook(
         account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
         auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
         try:
-            send_whatsapp_message("🖼️ Got your image! Scanning for details... ⏳", From)
-            import requests as _req, base64
+            send_whatsapp_message(
+                "🖼️ Got your image! Scanning for details... ⏳", From)
+            import requests as _req
+            import base64
             from requests.auth import HTTPBasicAuth
             img_resp = _req.get(
                 MediaUrl0,
@@ -14007,12 +15019,14 @@ async def whatsapp_webhook(
             print(f"[Image] Downloaded {len(img_resp.content)} bytes")
         except Exception as ie:
             print(f"[Image] Failed: {ie}")
-            send_whatsapp_message("❌ Sorry, I couldn't process the image you sent.", From)
+            send_whatsapp_message(
+                "❌ Sorry, I couldn't process the image you sent.", From)
             return EMPTY_TWIML
 
     # 2.2 Handle Active Live Chat
     if ws_session and ws_session.active_live_chat_session:
-        print(f"[WhatsApp] User in live chat: {ws_session.active_live_chat_session}")
+        print(
+            f"[WhatsApp] User in live chat: {ws_session.active_live_chat_session}")
         if msg_text in ("end", "stop", "exit"):
             from database import LiveChatSession
             lcs = session.exec(
@@ -14027,7 +15041,8 @@ async def whatsapp_webhook(
                 session.commit()
             except Exception:
                 session.rollback()
-            send_whatsapp_message("✅ Live chat ended. Send a new command whenever you're ready.", From)
+            send_whatsapp_message(
+                "✅ Live chat ended. Send a new command whenever you're ready.", From)
         else:
             from database import LiveChatMessage
             chat_msg = LiveChatMessage(
@@ -14119,26 +15134,31 @@ async def whatsapp_webhook(
                     def _bg_research(lead_id, c_name, c_url, from_number):
                         import requests as _r
                         try:
-                            base = os.environ.get("BASE_URL", "http://localhost:8000")
+                            base = os.environ.get(
+                                "BASE_URL", "http://localhost:8000")
                             resp = _r.post(
                                 f"{base}/smart-research",
-                                json={"company_name": c_name, "company_url": c_url},
+                                json={"company_name": c_name,
+                                      "company_url": c_url},
                                 timeout=120
                             )
                             if resp.ok:
                                 from modules.whatsapp import send_whatsapp_message as _send
-                                _send(f"✅ Research complete for *{c_name}*! AI draft is ready in the CRM.", from_number)
+                                _send(
+                                    f"✅ Research complete for *{c_name}*! AI draft is ready in the CRM.", from_number)
                         except Exception as ex:
                             print(f"[WhatsApp BG Research] Error: {ex}")
 
-                    background_tasks.add_task(_bg_research, new_lead.id, name, website or "", From)
+                    background_tasks.add_task(
+                        _bg_research, new_lead.id, name, website or "", From)
 
                 elif msg_text == "3":  # Contact
                     from database import Contact
                     name_parts = name.split(" ", 1)
                     new_contact = Contact(
                         first_name=name_parts[0],
-                        last_name=name_parts[1] if len(name_parts) > 1 else None,
+                        last_name=name_parts[1] if len(
+                            name_parts) > 1 else None,
                         full_name=name,
                         email=email,
                         mobile_number=phone,
@@ -14147,7 +15167,8 @@ async def whatsapp_webhook(
                     )
                     session.add(new_contact)
                     session.commit()
-                    reply_msg = f"✅ Contact *{name}* added!\n" + (f"📧 {email}\n" if email else "") + (f"📞 {phone}\n" if phone else "")
+                    reply_msg = f"✅ Contact *{name}* added!\n" + (
+                        f"📧 {email}\n" if email else "") + (f"📞 {phone}\n" if phone else "")
 
             # ── schedule_meeting ─────────────────────────────────────────
             elif action == "schedule_meeting":
@@ -14160,12 +15181,14 @@ async def whatsapp_webhook(
                 # Try to find linked client or lead
                 from database import ClientProfile, Lead
                 client_match = session.exec(
-                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{target_name}%"))
+                    select(ClientProfile).where(
+                        ClientProfile.companyName.ilike(f"%{target_name}%"))
                 ).first()
                 lead_match = None
                 if not client_match:
                     lead_match = session.exec(
-                        select(Lead).where(Lead.company_name.ilike(f"%{target_name}%"))
+                        select(Lead).where(
+                            Lead.company_name.ilike(f"%{target_name}%"))
                     ).first()
 
                 new_meeting = Meeting(
@@ -14190,12 +15213,14 @@ async def whatsapp_webhook(
 
                 # Try client first, then lead
                 client = session.exec(
-                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{target_name}%"))
+                    select(ClientProfile).where(
+                        ClientProfile.companyName.ilike(f"%{target_name}%"))
                 ).first()
                 lead = None
                 if not client:
                     lead = session.exec(
-                        select(Lead).where(Lead.company_name.ilike(f"%{target_name}%"))
+                        select(Lead).where(
+                            Lead.company_name.ilike(f"%{target_name}%"))
                     ).first()
 
                 if client:
@@ -14208,12 +15233,14 @@ async def whatsapp_webhook(
                     )
                     session.add(note)
                     session.commit()
-                    snippet = content[:80] + ("..." if len(content) > 80 else "")
+                    snippet = content[:80] + \
+                        ("..." if len(content) > 80 else "")
                     reply_msg = f"📝 Note added to *{client.companyName}*:\n\"{snippet}\""
                 elif lead:
                     # Append to lead's notes field
                     from datetime import datetime
-                    lead.notes = f"{lead.notes or ''}\n[{datetime.utcnow().strftime('%Y-%m-%d')} WhatsApp] {content}".strip()
+                    lead.notes = f"{lead.notes or ''}\n[{datetime.utcnow().strftime('%Y-%m-%d')} WhatsApp] {content}".strip(
+                    )
                     lead.last_activity = f"WhatsApp note: {content[:50]}"
                     session.commit()
                     reply_msg = f"📝 Note added to lead *{lead.company_name}*:\n\"{content[:80]}\""
@@ -14235,7 +15262,8 @@ async def whatsapp_webhook(
                 client_id = None
                 if client_name:
                     client = session.exec(
-                        select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{client_name}%"))
+                        select(ClientProfile).where(
+                            ClientProfile.companyName.ilike(f"%{client_name}%"))
                     ).first()
                     if client:
                         client_id = client.id
@@ -14268,7 +15296,8 @@ async def whatsapp_webhook(
 
                 # Find the salesperson/employee by name
                 sales_user = session.exec(
-                    select(_User).where(_User.name.ilike(f"%{salesperson_name}%"))
+                    select(_User).where(
+                        _User.name.ilike(f"%{salesperson_name}%"))
                 ).first()
 
                 if not sales_user:
@@ -14277,7 +15306,8 @@ async def whatsapp_webhook(
                     entity_found = False
                     if entity_type in ("client", "both"):
                         client = session.exec(
-                            select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{entity_name}%"))
+                            select(ClientProfile).where(
+                                ClientProfile.companyName.ilike(f"%{entity_name}%"))
                         ).first()
                         if client:
                             client.assignedEmployeeId = sales_user.id
@@ -14287,7 +15317,8 @@ async def whatsapp_webhook(
 
                     if not entity_found:
                         lead = session.exec(
-                            select(Lead).where(Lead.company_name.ilike(f"%{entity_name}%"))
+                            select(Lead).where(
+                                Lead.company_name.ilike(f"%{entity_name}%"))
                         ).first()
                         if lead:
                             lead.owner_id = sales_user.id
@@ -14305,7 +15336,8 @@ async def whatsapp_webhook(
                 new_status = args.get("new_status", "")
 
                 lead = session.exec(
-                    select(Lead).where(Lead.company_name.ilike(f"%{lead_name}%"))
+                    select(Lead).where(
+                        Lead.company_name.ilike(f"%{lead_name}%"))
                 ).first()
                 if lead:
                     old_status = lead.status
@@ -14324,7 +15356,8 @@ async def whatsapp_webhook(
                 new_status = args.get("new_status", "")
 
                 client = session.exec(
-                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{client_name}%"))
+                    select(ClientProfile).where(
+                        ClientProfile.companyName.ilike(f"%{client_name}%"))
                 ).first()
                 if client:
                     old_status = client.status
@@ -14341,26 +15374,31 @@ async def whatsapp_webhook(
                 context_hint = args.get("context", "")
 
                 client = session.exec(
-                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{entity_name}%"))
+                    select(ClientProfile).where(
+                        ClientProfile.companyName.ilike(f"%{entity_name}%"))
                 ).first()
                 lead = None
                 if not client:
                     lead = session.exec(
-                        select(Lead).where(Lead.company_name.ilike(f"%{entity_name}%"))
+                        select(Lead).where(
+                            Lead.company_name.ilike(f"%{entity_name}%"))
                     ).first()
 
                 entity = client or lead
                 if not entity:
                     reply_msg = f"⚠️ *{entity_name}* not found in clients or leads."
                 else:
-                    real_name = getattr(entity, "companyName", None) or getattr(entity, "company_name", entity_name)
-                    website = getattr(entity, "websiteUrl", None) or getattr(entity, "website", "")
+                    real_name = getattr(entity, "companyName", None) or getattr(
+                        entity, "company_name", entity_name)
+                    website = getattr(entity, "websiteUrl", None) or getattr(
+                        entity, "website", "")
                     reply_msg = f"✍️ Generating AI email draft for *{real_name}*... I'll send it back shortly!"
 
                     def _gen_draft(e_name, e_website, e_context, from_number):
                         try:
                             from modules.llm_engine import get_openai_client as _oai, generate_email, analyze_content
-                            analysis = analyze_content(f"Company: {e_name}\nWebsite: {e_website}\nContext: {e_context}")
+                            analysis = analyze_content(
+                                f"Company: {e_name}\nWebsite: {e_website}\nContext: {e_context}")
                             draft = generate_email(analysis)
                             subject = draft.get("subject", "")
                             body = draft.get("english_body", "")[:600]
@@ -14368,7 +15406,7 @@ async def whatsapp_webhook(
                             msg = (
                                 f"📧 *Email Draft for {e_name}:*\n\n"
                                 f"*Subject:* {subject}\n\n"
-                                f"{body}{'...' if len(draft.get('english_body','')) > 600 else ''}\n\n"
+                                f"{body}{'...' if len(draft.get('english_body', '')) > 600 else ''}\n\n"
                                 + (f"💬 *WhatsApp Draft:*\n{wa_draft}" if wa_draft else "")
                             )
                             from modules.whatsapp import send_whatsapp_message as _send
@@ -14376,9 +15414,11 @@ async def whatsapp_webhook(
                         except Exception as ex:
                             print(f"[WhatsApp Draft] Error: {ex}")
                             from modules.whatsapp import send_whatsapp_message as _send
-                            _send(f"❌ Draft generation failed for *{e_name}*. Try again!", from_number)
+                            _send(
+                                f"❌ Draft generation failed for *{e_name}*. Try again!", from_number)
 
-                    background_tasks.add_task(_gen_draft, real_name, website, context_hint, From)
+                    background_tasks.add_task(
+                        _gen_draft, real_name, website, context_hint, From)
 
             # ── send_success_message ──────────────────────────────────────
             elif action == "send_success_message":
@@ -14386,38 +15426,47 @@ async def whatsapp_webhook(
                 entity_name = args.get("entity_name", "")
 
                 client = session.exec(
-                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{entity_name}%"))
+                    select(ClientProfile).where(
+                        ClientProfile.companyName.ilike(f"%{entity_name}%"))
                 ).first()
                 lead = None
                 if not client:
                     lead = session.exec(
-                        select(Lead).where(Lead.company_name.ilike(f"%{entity_name}%"))
+                        select(Lead).where(
+                            Lead.company_name.ilike(f"%{entity_name}%"))
                     ).first()
 
                 entity = client or lead
                 if not entity:
                     reply_msg = f"⚠️ *{entity_name}* not found."
                 else:
-                    real_name = getattr(entity, "companyName", None) or getattr(entity, "company_name", entity_name)
+                    real_name = getattr(entity, "companyName", None) or getattr(
+                        entity, "company_name", entity_name)
                     # Look for existing research
                     research = None
                     if client:
                         research = session.exec(
-                            select(ClientResearch).where(ClientResearch.client_id == client.id)
+                            select(ClientResearch).where(
+                                ClientResearch.client_id == client.id)
                         ).first()
                     elif lead:
                         research = session.exec(
-                            select(ClientResearch).where(ClientResearch.lead_id == lead.id)
+                            select(ClientResearch).where(
+                                ClientResearch.lead_id == lead.id)
                         ).first()
 
                     if research and research.email_agent_data:
                         try:
-                            res_data = json.loads(research.email_agent_data) if isinstance(research.email_agent_data, str) else research.email_agent_data
-                            verdict = res_data.get("executive_verdict") or res_data.get("company_overview", "")
-                            opportunity = res_data.get("serphawk_opportunity", {})
+                            res_data = json.loads(research.email_agent_data) if isinstance(
+                                research.email_agent_data, str) else research.email_agent_data
+                            verdict = res_data.get("executive_verdict") or res_data.get(
+                                "company_overview", "")
+                            opportunity = res_data.get(
+                                "serphawk_opportunity", {})
                             fit_score = opportunity.get("fit_score", "N/A")
                             pitch_angle = opportunity.get("pitch_angle", "N/A")
-                            rec_services = opportunity.get("recommended_services", [])
+                            rec_services = opportunity.get(
+                                "recommended_services", [])
                             swot = getattr(entity, "swot_analysis", None)
 
                             success_msg = (
@@ -14425,7 +15474,8 @@ async def whatsapp_webhook(
                                 f"📊 *Fit Score:* {fit_score}/10\n\n"
                                 f"📋 *Overview:*\n{verdict[:300]}{'...' if len(verdict) > 300 else ''}\n\n"
                                 f"🎯 *Pitch Angle:*\n{pitch_angle[:200]}\n\n"
-                                + (f"✨ *Recommended Services:*\n" + "\n".join([f"• {s}" for s in rec_services[:5]]) if rec_services else "")
+                                + (f"✨ *Recommended Services:*\n" + "\n".join(
+                                    [f"• {s}" for s in rec_services[:5]]) if rec_services else "")
                                 + (f"\n\n📊 *SWOT:*\n{swot[:300]}" if swot else "")
                             )
                             reply_msg = success_msg
@@ -14445,15 +15495,18 @@ async def whatsapp_webhook(
                 note = args.get("note", "")
 
                 client = session.exec(
-                    select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{entity_name}%"))
+                    select(ClientProfile).where(
+                        ClientProfile.companyName.ilike(f"%{entity_name}%"))
                 ).first()
                 lead = None
                 if not client:
                     lead = session.exec(
-                        select(Lead).where(Lead.company_name.ilike(f"%{entity_name}%"))
+                        select(Lead).where(
+                            Lead.company_name.ilike(f"%{entity_name}%"))
                     ).first()
 
-                real_name = (client and client.companyName) or (lead and lead.company_name) or entity_name
+                real_name = (client and client.companyName) or (
+                    lead and lead.company_name) or entity_name
                 client_id = client.id if client else None
 
                 task = Task(
@@ -14487,7 +15540,8 @@ async def whatsapp_webhook(
                 session.commit()
             except Exception:
                 session.rollback()
-            send_whatsapp_message("❌ Action cancelled. Send a new command whenever you're ready.", From)
+            send_whatsapp_message(
+                "❌ Action cancelled. Send a new command whenever you're ready.", From)
             return EMPTY_TWIML
         else:
             # User is correcting — pass to AI with previous state
@@ -14535,14 +15589,17 @@ async def whatsapp_webhook(
         if clients:
             lines = [f"📋 *Your Clients ({len(clients)}):*\n"]
             for c in clients:
-                status_emoji = {"Active": "🟢", "Hold": "🟡", "Pending": "🔵"}.get(c.status, "⚪")
-                lines.append(f"{status_emoji} *{c.companyName or 'Unnamed'}* — {c.status}")
+                status_emoji = {"Active": "🟢", "Hold": "🟡",
+                                "Pending": "🔵"}.get(c.status, "⚪")
+                lines.append(
+                    f"{status_emoji} *{c.companyName or 'Unnamed'}* — {c.status}")
                 if c.websiteUrl:
                     lines.append(f"   🌐 {c.websiteUrl}")
             lines.append(f"\n💬 Say _'tell me about [name]'_ for full details.")
             send_whatsapp_message("\n".join(lines), From)
         else:
-            send_whatsapp_message("📋 No clients found" + (f" with status *{status_filter}*" if status_filter else "") + ".", From)
+            send_whatsapp_message(
+                "📋 No clients found" + (f" with status *{status_filter}*" if status_filter else "") + ".", From)
         return EMPTY_TWIML
 
     # ── list_leads ────────────────────────────────────────────────────────
@@ -14558,17 +15615,20 @@ async def whatsapp_webhook(
         q = q.order_by(Lead.created_at.desc()).limit(limit)
         leads = session.exec(q).all()
         if leads:
-            status_emojis = {"New": "🆕", "Contacted": "📞", "Qualified": "⭐", "Proposal Sent": "📄", "Closed Won": "🏆", "Closed Lost": "❌"}
+            status_emojis = {"New": "🆕", "Contacted": "📞", "Qualified": "⭐",
+                             "Proposal Sent": "📄", "Closed Won": "🏆", "Closed Lost": "❌"}
             lines = [f"🎯 *Your Leads ({len(leads)}):*\n"]
             for l in leads:
                 emoji = status_emojis.get(l.status, "🔵")
                 lines.append(f"{emoji} *{l.company_name}* — {l.status}")
                 if l.website:
                     lines.append(f"   🌐 {l.website}")
-            lines.append(f"\n💬 Say _'update lead [name] to Qualified'_ to change status.")
+            lines.append(
+                f"\n💬 Say _'update lead [name] to Qualified'_ to change status.")
             send_whatsapp_message("\n".join(lines), From)
         else:
-            send_whatsapp_message("🎯 No leads found" + (f" with status *{status_filter}*" if status_filter else "") + ".", From)
+            send_whatsapp_message(
+                "🎯 No leads found" + (f" with status *{status_filter}*" if status_filter else "") + ".", From)
         return EMPTY_TWIML
 
     # ── list_tasks ────────────────────────────────────────────────────────
@@ -14586,7 +15646,8 @@ async def whatsapp_webhook(
         q = q.order_by(Task.created_at.desc()).limit(limit)
         tasks = session.exec(q).all()
         if tasks:
-            priority_emojis = {"Urgent": "🚨", "High": "🔴", "Medium": "🟡", "Low": "🟢"}
+            priority_emojis = {"Urgent": "🚨",
+                               "High": "🔴", "Medium": "🟡", "Low": "🟢"}
             lines = [f"✅ *Your Pending Tasks ({len(tasks)}):*\n"]
             for t in tasks:
                 p_emoji = priority_emojis.get(t.priority, "⚪")
@@ -14597,7 +15658,8 @@ async def whatsapp_webhook(
                     lines.append(f"   📌 Status: {t.status}")
             send_whatsapp_message("\n".join(lines), From)
         else:
-            send_whatsapp_message("✅ No pending tasks! You're all caught up 🎉", From)
+            send_whatsapp_message(
+                "✅ No pending tasks! You're all caught up 🎉", From)
         return EMPTY_TWIML
 
     # ── list_upcoming_meetings ────────────────────────────────────────────
@@ -14625,17 +15687,22 @@ async def whatsapp_webhook(
         lines = [f"📅 *Upcoming Meetings & Calls:*\n"]
         total = 0
         for m in mtgs:
-            time_str = m.scheduled_at.strftime("%d %b, %I:%M %p") if m.scheduled_at else "Time TBD"
-            lines.append(f"📋 *{m.title}*\n   🕐 {time_str} | 📁 {m.meeting_type}")
+            time_str = m.scheduled_at.strftime(
+                "%d %b, %I:%M %p") if m.scheduled_at else "Time TBD"
+            lines.append(
+                f"📋 *{m.title}*\n   🕐 {time_str} | 📁 {m.meeting_type}")
             total += 1
         for sc in sched_calls:
-            lines.append(f"📞 *{sc.title}*\n   👤 {sc.entity_name or 'Unknown'} | 📁 {sc.status}")
+            lines.append(
+                f"📞 *{sc.title}*\n   👤 {sc.entity_name or 'Unknown'} | 📁 {sc.status}")
             total += 1
 
         if total == 0:
-            send_whatsapp_message("📅 No upcoming meetings or calls scheduled.", From)
+            send_whatsapp_message(
+                "📅 No upcoming meetings or calls scheduled.", From)
         else:
-            lines.append(f"\n💬 Say _'schedule meeting with [name] tomorrow 5pm'_ to add one.")
+            lines.append(
+                f"\n💬 Say _'schedule meeting with [name] tomorrow 5pm'_ to add one.")
             send_whatsapp_message("\n".join(lines), From)
         return EMPTY_TWIML
 
@@ -14645,7 +15712,8 @@ async def whatsapp_webhook(
         name_q = params.get("name", "")
 
         client = session.exec(
-            select(ClientProfile).where(ClientProfile.companyName.ilike(f"%{name_q}%"))
+            select(ClientProfile).where(
+                ClientProfile.companyName.ilike(f"%{name_q}%"))
         ).first()
         lead = None
         if not client:
@@ -14660,15 +15728,19 @@ async def whatsapp_webhook(
                 .order_by(ClientNote.created_at.desc()).limit(3)
             ).all()
             research = session.exec(
-                select(ClientResearch).where(ClientResearch.client_id == client.id)
+                select(ClientResearch).where(
+                    ClientResearch.client_id == client.id)
             ).first()
 
-            status_emoji = {"Active": "🟢", "Hold": "🟡", "Pending": "🔵"}.get(client.status, "⚪")
-            email_val = (client.customFields or {}).get("email", "") if client.customFields else ""
+            status_emoji = {"Active": "🟢", "Hold": "🟡",
+                            "Pending": "🔵"}.get(client.status, "⚪")
+            email_val = (client.customFields or {}).get(
+                "email", "") if client.customFields else ""
             assigned_user = None
             if client.assignedEmployeeId:
                 from database import User as _U
-                assigned_user = session.exec(select(_U).where(_U.id == client.assignedEmployeeId)).first()
+                assigned_user = session.exec(select(_U).where(
+                    _U.id == client.assignedEmployeeId)).first()
 
             lines = [
                 f"🏢 *{client.companyName}*\n",
@@ -14685,13 +15757,16 @@ async def whatsapp_webhook(
             if notes:
                 lines.append("📝 *Recent Notes:*")
                 for n in notes:
-                    snippet = n.content[:100] + ("..." if len(n.content) > 100 else "")
+                    snippet = n.content[:100] + \
+                        ("..." if len(n.content) > 100 else "")
                     lines.append(f"• {snippet}")
 
             if research:
-                lines.append("\n🤖 *AI Research:* Available — say _'agent results for {name_q}'_ to view")
+                lines.append(
+                    "\n🤖 *AI Research:* Available — say _'agent results for {name_q}'_ to view")
 
-            lines.append(f"\n💬 Options:\n• _Note that {name_q} ..._\n• _Assign [person] to {name_q}_\n• _Generate draft for {name_q}_")
+            lines.append(
+                f"\n💬 Options:\n• _Note that {name_q} ..._\n• _Assign [person] to {name_q}_\n• _Generate draft for {name_q}_")
             send_whatsapp_message("\n".join(filter(None, lines)), From)
         elif lead:
             lines = [
@@ -14707,7 +15782,8 @@ async def whatsapp_webhook(
             ]
             send_whatsapp_message("\n".join(filter(None, lines)), From)
         else:
-            send_whatsapp_message(f"⚠️ *{name_q}* not found in clients or leads. Check the name and try again.", From)
+            send_whatsapp_message(
+                f"⚠️ *{name_q}* not found in clients or leads. Check the name and try again.", From)
         return EMPTY_TWIML
 
     # ── radar_search ──────────────────────────────────────────────────────
@@ -14715,21 +15791,27 @@ async def whatsapp_webhook(
         query_r = params.get("query", "")
         location_r = params.get("location", "")
         full_query = f"{query_r} {location_r}".strip()
-        send_whatsapp_message(f"🔍 Running radar research on *{full_query}*... give me a moment ⏳", From)
+        send_whatsapp_message(
+            f"🔍 Running radar research on *{full_query}*... give me a moment ⏳", From)
         try:
             import asyncio
             from modules.scraper import scrape_website
             from modules.llm_engine import analyze_content
             if query_r.startswith("http") or ("." in query_r.split()[0] if query_r.split() else False):
-                url = query_r if query_r.startswith("http") else f"https://{query_r}"
+                url = query_r if query_r.startswith(
+                    "http") else f"https://{query_r}"
                 try:
                     scraped = asyncio.run(scrape_website(url))
-                    text_to_analyze = scraped.get("text", "") or scraped.get("raw", "")
-                    analysis = analyze_content(f"Website: {url}\n\n{text_to_analyze}")
+                    text_to_analyze = scraped.get(
+                        "text", "") or scraped.get("raw", "")
+                    analysis = analyze_content(
+                        f"Website: {url}\n\n{text_to_analyze}")
                 except Exception:
-                    analysis = analyze_content(f"Research this website and business: {url}")
+                    analysis = analyze_content(
+                        f"Research this website and business: {url}")
             else:
-                analysis = analyze_content(f"Market/keyword research: {full_query}\nProvide market analysis, key players, recommended services.")
+                analysis = analyze_content(
+                    f"Market/keyword research: {full_query}\nProvide market analysis, key players, recommended services.")
 
             company = analysis.get("company_name", full_query)
             what_they_do = analysis.get("what_they_do", "N/A")
@@ -14741,7 +15823,8 @@ async def whatsapp_webhook(
                 f"📋 *What they do:*\n{what_they_do}\n\n"
             )
             if services:
-                radar_msg += "💡 *Relevant services for them:*\n" + "\n".join([f"• {s}" for s in services[:5]]) + "\n\n"
+                radar_msg += "💡 *Relevant services for them:*\n" + \
+                    "\n".join([f"• {s}" for s in services[:5]]) + "\n\n"
             if contacts:
                 radar_msg += "👥 *Key contacts found:*\n"
                 for c in contacts[:3]:
@@ -14749,12 +15832,14 @@ async def whatsapp_webhook(
                     r = c.get("role") or ""
                     e = c.get("email") or ""
                     p = c.get("phone_number") or ""
-                    radar_msg += f"• {n}" + (f" ({r})" if r else "") + (f" — {e}" if e else "") + (f" 📞{p}" if p else "") + "\n"
+                    radar_msg += f"• {n}" + (f" ({r})" if r else "") + (
+                        f" — {e}" if e else "") + (f" 📞{p}" if p else "") + "\n"
             radar_msg += "\n💬 Reply *pitch for [name]* or *add [name]* to CRM!"
             send_whatsapp_message(radar_msg, From)
         except Exception as re_err:
             print(f"[WhatsApp Radar] Error: {re_err}")
-            send_whatsapp_message(f"❌ Radar research failed for *{full_query}*. Try again!", From)
+            send_whatsapp_message(
+                f"❌ Radar research failed for *{full_query}*. Try again!", From)
         return EMPTY_TWIML
 
     # ── get_call_pitch ────────────────────────────────────────────────────
@@ -14764,7 +15849,8 @@ async def whatsapp_webhook(
             from database import ClientProfile, Lead
             search_term = f"%{client_name_p}%"
             client_p = session.exec(
-                select(ClientProfile).where(ClientProfile.companyName.ilike(search_term))
+                select(ClientProfile).where(
+                    ClientProfile.companyName.ilike(search_term))
             ).first()
             lead_p = None
             if not client_p:
@@ -14783,7 +15869,8 @@ async def whatsapp_webhook(
                     _c = _oai()
                     _r = _c.chat.completions.create(
                         model="gpt-4o-mini",
-                        messages=[{"role": "user", "content": f"Generate a short, punchy 30-second cold-call pitch for a digital marketing agency (SerpHawk) reaching out to {entity_name}. Keep it under 120 words. Be conversational and warm."}]
+                        messages=[
+                            {"role": "user", "content": f"Generate a short, punchy 30-second cold-call pitch for a digital marketing agency (SerpHawk) reaching out to {entity_name}. Keep it under 120 words. Be conversational and warm."}]
                     )
                     pitch_text = _r.choices[0].message.content
                     client_p.call_pitch_text = pitch_text
@@ -14794,28 +15881,34 @@ async def whatsapp_webhook(
                 _c = _oai()
                 _r = _c.chat.completions.create(
                     model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": f"Generate a short, punchy 30-second cold-call pitch for a digital marketing agency (SerpHawk) reaching out to {entity_name}. Keep it under 120 words. Be conversational and warm."}]
+                    messages=[
+                        {"role": "user", "content": f"Generate a short, punchy 30-second cold-call pitch for a digital marketing agency (SerpHawk) reaching out to {entity_name}. Keep it under 120 words. Be conversational and warm."}]
                 )
                 pitch_text = _r.choices[0].message.content
 
             if pitch_text:
-                send_whatsapp_message(f"📞 *Call Pitch for {entity_name}:*\n\n{pitch_text}", From)
+                send_whatsapp_message(
+                    f"📞 *Call Pitch for {entity_name}:*\n\n{pitch_text}", From)
             else:
-                send_whatsapp_message(f"❌ Couldn't find *{client_name_p}* in your CRM. Add them first or try a different name.", From)
+                send_whatsapp_message(
+                    f"❌ Couldn't find *{client_name_p}* in your CRM. Add them first or try a different name.", From)
         except Exception as pe:
             print(f"[WhatsApp Pitch] Error: {pe}")
-            send_whatsapp_message(f"❌ Error getting pitch for *{client_name_p}*. Try again!", From)
+            send_whatsapp_message(
+                f"❌ Error getting pitch for *{client_name_p}*. Try again!", From)
         return EMPTY_TWIML
 
     # ── research_client ───────────────────────────────────────────────────
     elif action_name == "research_client":
         query_rc = params.get("query", "")
-        send_whatsapp_message(f"🔬 Researching *{query_rc}*... give me a moment ⏳", From)
+        send_whatsapp_message(
+            f"🔬 Researching *{query_rc}*... give me a moment ⏳", From)
         try:
             from database import ClientProfile, Lead
             from modules.llm_engine import analyze_content
             if query_rc.startswith("http") or ("." in query_rc and " " not in query_rc):
-                url = query_rc if query_rc.startswith("http") else f"https://{query_rc}"
+                url = query_rc if query_rc.startswith(
+                    "http") else f"https://{query_rc}"
                 try:
                     import asyncio
                     from modules.scraper import scrape_website
@@ -14823,17 +15916,21 @@ async def whatsapp_webhook(
                     text = scraped.get("text", "") or scraped.get("raw", "")
                     analysis = analyze_content(f"Website: {url}\n\n{text}")
                 except Exception:
-                    analysis = analyze_content(f"Research this company from their website: {url}")
+                    analysis = analyze_content(
+                        f"Research this company from their website: {url}")
             else:
                 search_term = f"%{query_rc}%"
-                client_rc = session.exec(select(ClientProfile).where(ClientProfile.companyName.ilike(search_term))).first()
-                lead_rc = session.exec(select(Lead).where(Lead.company_name.ilike(search_term))).first()
+                client_rc = session.exec(select(ClientProfile).where(
+                    ClientProfile.companyName.ilike(search_term))).first()
+                lead_rc = session.exec(select(Lead).where(
+                    Lead.company_name.ilike(search_term))).first()
                 extra_ctx = ""
                 if client_rc:
                     extra_ctx = f"CRM info — website: {client_rc.websiteUrl or 'unknown'}, notes: {client_rc.tagline or ''}"
                 elif lead_rc:
                     extra_ctx = f"CRM info — website: {lead_rc.website or 'unknown'}, email: {lead_rc.email or 'unknown'}"
-                analysis = analyze_content(f"Research this company: {query_rc}\n{extra_ctx}")
+                analysis = analyze_content(
+                    f"Research this company: {query_rc}\n{extra_ctx}")
 
             company = analysis.get("company_name", query_rc)
             what_they_do = analysis.get("what_they_do", "N/A")
@@ -14843,7 +15940,8 @@ async def whatsapp_webhook(
 
             res_msg = f"🔬 *Research: {company}*\n\n📋 *About:*\n{what_they_do}\n\n"
             if services:
-                res_msg += "💡 *Best services for them:*\n" + "\n".join([f"• {s}" for s in services[:4]]) + "\n\n"
+                res_msg += "💡 *Best services for them:*\n" + \
+                    "\n".join([f"• {s}" for s in services[:4]]) + "\n\n"
             if contacts:
                 res_msg += "👥 *Key contacts:*\n"
                 for c in contacts[:3]:
@@ -14851,7 +15949,8 @@ async def whatsapp_webhook(
                     r = c.get("role") or ""
                     e = c.get("email") or ""
                     p = c.get("phone_number") or ""
-                    res_msg += f"• {n}" + (f" ({r})" if r else "") + (f" — {e}" if e else "") + (f" 📞{p}" if p else "") + "\n"
+                    res_msg += f"• {n}" + (f" ({r})" if r else "") + (
+                        f" — {e}" if e else "") + (f" 📞{p}" if p else "") + "\n"
             soc_links = [v for v in socials.values() if v]
             if soc_links:
                 res_msg += "\n🌐 *Social:* " + " | ".join(soc_links[:3])
@@ -14859,7 +15958,8 @@ async def whatsapp_webhook(
             send_whatsapp_message(res_msg, From)
         except Exception as rce:
             print(f"[WhatsApp Research] Error: {rce}")
-            send_whatsapp_message(f"❌ Research failed for *{query_rc}*. Try again!", From)
+            send_whatsapp_message(
+                f"❌ Research failed for *{query_rc}*. Try again!", From)
         return EMPTY_TWIML
 
     # ── Confirm-flow actions: save session and ask user to confirm ────────
@@ -14903,7 +16003,8 @@ async def whatsapp_webhook(
             "send_success_message": "🤖 Get Agent Results",
             "quick_followup":       "⏰ Schedule Follow-up",
         }
-        label = action_labels.get(action_name, action_name.replace("_", " ").title())
+        label = action_labels.get(
+            action_name, action_name.replace("_", " ").title())
 
         field_icons = {
             "name": "👤", "email": "📧", "phone": "📞", "website": "🌐",
@@ -14924,7 +16025,8 @@ async def whatsapp_webhook(
         # Voice transcript prefix
         voice_prefix = ""
         if voice_transcript:
-            short_transcript = voice_transcript[:150] + ("..." if len(voice_transcript) > 150 else "")
+            short_transcript = voice_transcript[:150] + \
+                ("..." if len(voice_transcript) > 150 else "")
             voice_prefix = f"🎙️ *I heard:* \"{short_transcript}\"\n\n"
 
         if action_name == "add_entity":
@@ -14975,12 +16077,12 @@ async def whatsapp_webhook(
         return EMPTY_TWIML
 
 
-
 # --- Email Tracking Endpoint ---
 
 class EmailStatusUpdate(BaseModel):
     email_id: str
     status: str
+
 
 @app.post("/api/emails/update-status")
 def update_email_status(payload: EmailStatusUpdate, session: Session = Depends(get_session)):
@@ -14989,7 +16091,7 @@ def update_email_status(payload: EmailStatusUpdate, session: Session = Depends(g
         email = session.get(SentEmail, email_id)
         if not email:
             return {"error": "Email not found"}
-        
+
         email.status = payload.status
         session.add(email)
         session.commit()
@@ -14997,8 +16099,10 @@ def update_email_status(payload: EmailStatusUpdate, session: Session = Depends(g
     except Exception as e:
         return {"error": str(e)}
 
+
 class EmailReplyUpdate(BaseModel):
     from_email: str
+
 
 @app.post("/api/emails/mark-replied")
 def mark_email_replied(payload: EmailReplyUpdate, session: Session = Depends(get_session)):
@@ -15006,24 +16110,25 @@ def mark_email_replied(payload: EmailReplyUpdate, session: Session = Depends(get
         import re
         print(f"--- DEBUG: Received Reply Payload ---")
         print(f"Payload from_email: '{payload.from_email}'")
-        
+
         raw_email = payload.from_email
         match = re.search(r'<(.+?)>', raw_email)
         if match:
             raw_email = match.group(1).strip()
         else:
             raw_email = raw_email.strip()
-            
+
         print(f"Extracted raw email: '{raw_email}'")
-        
+
         # Find the most recent email sent to this address
-        query = select(SentEmail).where(SentEmail.to_email == raw_email).order_by(SentEmail.sent_at.desc())
+        query = select(SentEmail).where(SentEmail.to_email ==
+                                        raw_email).order_by(SentEmail.sent_at.desc())
         email = session.exec(query).first()
-        
+
         if not email:
             print(f"ERROR: No outbound email found in DB for '{raw_email}'")
             return {"error": "No previous outbound email found for this address."}
-            
+
         email.status = "Replied"
         session.add(email)
         session.commit()
@@ -15035,7 +16140,7 @@ def mark_email_replied(payload: EmailReplyUpdate, session: Session = Depends(get
 
 
 # ─── DATABASE MANAGEMENT ──────────────────────────────────────────────────
-from sqlalchemy import inspect, text
+
 
 @app.get("/admin/db/tables")
 def get_db_tables(session: Session = Depends(get_session)):
@@ -15044,30 +16149,32 @@ def get_db_tables(session: Session = Depends(get_session)):
     tables = inspector.get_table_names()
     return {"tables": tables}
 
+
 @app.get("/admin/db/tables/{table_name}")
 def get_db_table_data(table_name: str, page: int = 1, per_page: int = 50, sort_col: str = None, sort_dir: str = "asc", session: Session = Depends(get_session)):
     _require_roles(session, ["Admin"])
     inspector = inspect(session.bind)
     if table_name not in inspector.get_table_names():
         raise HTTPException(status_code=404, detail="Table not found")
-        
-    columns = [{"name": col["name"], "type": str(col["type"])} for col in inspector.get_columns(table_name)]
-    
+
+    columns = [{"name": col["name"], "type": str(
+        col["type"])} for col in inspector.get_columns(table_name)]
+
     query = f'SELECT * FROM "{table_name}"'
     if sort_col:
         # Prevent basic SQL injection on column name
         if sort_col in [c["name"] for c in columns]:
             direction = "ASC" if sort_dir.lower() == "asc" else "DESC"
             query += f' ORDER BY "{sort_col}" {direction}'
-    
+
     query += f" LIMIT {per_page} OFFSET {(page - 1) * per_page}"
-    
+
     result = session.exec(text(query)).mappings().all()
-    
+
     # Get total count
     count_query = f'SELECT COUNT(*) FROM "{table_name}"'
     total = session.exec(text(count_query)).scalar()
-    
+
     return {
         "columns": columns,
         "data": [dict(row) for row in result],
@@ -15076,35 +16183,39 @@ def get_db_table_data(table_name: str, page: int = 1, per_page: int = 50, sort_c
         "per_page": per_page
     }
 
+
 @app.get("/admin/db/export/{table_name}")
 def export_db_table(table_name: str, session: Session = Depends(get_session)):
     _require_roles(session, ["Admin"])
     from fastapi.responses import StreamingResponse
-    import csv, io
+    import csv
+    import io
     inspector = inspect(session.bind)
     if table_name not in inspector.get_table_names():
         raise HTTPException(status_code=404, detail="Table not found")
-        
+
     columns = [col["name"] for col in inspector.get_columns(table_name)]
     query = f'SELECT * FROM "{table_name}"'
     result = session.exec(text(query)).mappings().all()
-    
+
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=columns)
     writer.writeheader()
     for row in result:
         writer.writerow(dict(row))
-        
+
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={table_name}_export.csv"}
+        headers={
+            "Content-Disposition": f"attachment; filename={table_name}_export.csv"}
     )
 
 # ═══════════════════════════════════════════════════════════════
 # INVENTORY MODULE ENDPOINTS
 # ═══════════════════════════════════════════════════════════════
+
 
 class InventoryItemCreate(BaseModel):
     code: str
@@ -15116,6 +16227,7 @@ class InventoryItemCreate(BaseModel):
     unit: Optional[str] = None
     min_stock: Optional[float] = 0
     current_stock: Optional[float] = 0
+
 
 class InventorySupplierCreate(BaseModel):
     supplier_name: str
@@ -15129,12 +16241,15 @@ class InventorySupplierCreate(BaseModel):
     is_preferred: bool = False
     notes: Optional[str] = None
 
+
 @app.get("/inventory")
 def get_inventory(session: Session = Depends(get_session)):
-    items = session.exec(select(InventoryItem).order_by(InventoryItem.created_at.desc())).all()
+    items = session.exec(select(InventoryItem).order_by(
+        InventoryItem.created_at.desc())).all()
     result = []
     for item in items:
-        suppliers = session.exec(select(InventorySupplier).where(InventorySupplier.item_id == item.id)).all()
+        suppliers = session.exec(select(InventorySupplier).where(
+            InventorySupplier.item_id == item.id)).all()
         result.append({
             "id": item.id, "code": item.code, "name": item.name,
             "description": item.description, "category": item.category,
@@ -15154,6 +16269,7 @@ def get_inventory(session: Session = Depends(get_session)):
             ]
         })
     return {"items": result, "total": len(result)}
+
 
 @app.post("/inventory/export-pdf")
 def export_inventory_pdf(body: ExportPdfRequest, session: Session = Depends(get_session)):
@@ -15187,6 +16303,7 @@ def export_inventory_pdf(body: ExportPdfRequest, session: Session = Depends(get_
         headers={"Content-Disposition": "attachment; filename=inventory_list.pdf"}
     )
 
+
 @app.get("/inventory/{item_id}/pdf")
 def export_single_inventory_pdf(item_id: int, session: Session = Depends(get_session)):
     from fastapi.responses import Response
@@ -15194,7 +16311,8 @@ def export_single_inventory_pdf(item_id: int, session: Session = Depends(get_ses
     item = session.get(InventoryItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    suppliers = session.exec(select(InventorySupplier).where(InventorySupplier.item_id == item.id)).all()
+    suppliers = session.exec(select(InventorySupplier).where(
+        InventorySupplier.item_id == item.id)).all()
     pdf = single_inventory_pdf({
         "code": item.code, "name": item.name, "description": item.description,
         "category": item.category, "unit": item.unit,
@@ -15208,8 +16326,10 @@ def export_single_inventory_pdf(item_id: int, session: Session = Depends(get_ses
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
+
 class MultiInvPdfRequest(BaseModel):
     item_ids: List[int]
+
 
 @app.post("/inventory/pdf")
 def export_multi_inventory_pdf(body: MultiInvPdfRequest, session: Session = Depends(get_session)):
@@ -15219,7 +16339,8 @@ def export_multi_inventory_pdf(body: MultiInvPdfRequest, session: Session = Depe
     if not ids:
         raise HTTPException(status_code=400, detail="No items selected")
     if len(ids) > 100:
-        raise HTTPException(status_code=400, detail="Select at most 100 items at a time")
+        raise HTTPException(
+            status_code=400, detail="Select at most 100 items at a time")
     items = []
     for pid in ids:
         item = session.get(InventoryItem, pid)
@@ -15238,6 +16359,7 @@ def export_multi_inventory_pdf(body: MultiInvPdfRequest, session: Session = Depe
         media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename=inventory_items.pdf"}
     )
+
 
 @app.post("/products/export-pdf")
 def export_catalog_pdf(body: ExportPdfRequest, session: Session = Depends(get_session)):
@@ -15261,6 +16383,7 @@ def export_catalog_pdf(body: ExportPdfRequest, session: Session = Depends(get_se
         headers={"Content-Disposition": "attachment; filename=product_catalog.pdf"}
     )
 
+
 @app.post("/inventory")
 def create_inventory_item(data: InventoryItemCreate, session: Session = Depends(get_session)):
     item = InventoryItem(**data.dict())
@@ -15269,6 +16392,7 @@ def create_inventory_item(data: InventoryItemCreate, session: Session = Depends(
     session.commit()
     session.refresh(item)
     return item
+
 
 @app.put("/inventory/{item_id}")
 def update_inventory_item(item_id: int, data: InventoryItemCreate, session: Session = Depends(get_session)):
@@ -15283,6 +16407,7 @@ def update_inventory_item(item_id: int, data: InventoryItemCreate, session: Sess
     session.refresh(item)
     return item
 
+
 @app.delete("/inventory/{item_id}")
 def delete_inventory_item(item_id: int, session: Session = Depends(get_session)):
     from sqlmodel import delete
@@ -15290,27 +16415,30 @@ def delete_inventory_item(item_id: int, session: Session = Depends(get_session))
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     # delete related
-    session.exec(delete(InventorySupplier).where(InventorySupplier.item_id == item_id))
+    session.exec(delete(InventorySupplier).where(
+        InventorySupplier.item_id == item_id))
     session.exec(delete(RFQRequest).where(RFQRequest.item_id == item_id))
     session.delete(item)
     session.commit()
     return {"ok": True}
+
 
 @app.post("/inventory/{item_id}/suppliers")
 def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session = Depends(get_session)):
     item = session.get(InventoryItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    
+
     supplier_user_id = None
     credentials_created = False
     generated_password = None
-    
+
     # Auto-create supplier login if email provided
     if data.supplier_email:
         generated_password = _generate_unique_password()
         hashed = _hash_password(generated_password)
-        existing_user = session.exec(select(User).where(User.email == data.supplier_email)).first()
+        existing_user = session.exec(select(User).where(
+            User.email == data.supplier_email)).first()
         if existing_user:
             # Update role + reset password so we always have fresh credentials to show
             existing_user.role = "Supplier"
@@ -15336,15 +16464,16 @@ def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session =
             session.refresh(supplier_user)
             supplier_user_id = supplier_user.id
         credentials_created = True
-    
-    supplier = InventorySupplier(item_id=item_id, supplier_user_id=supplier_user_id, **data.dict())
+
+    supplier = InventorySupplier(
+        item_id=item_id, supplier_user_id=supplier_user_id, **data.dict())
     if generated_password:
         supplier.login_password = generated_password
         supplier.credentials_sent = False
     session.add(supplier)
     session.commit()
     session.refresh(supplier)
-    
+
     result = {
         "id": supplier.id,
         "supplier_name": supplier.supplier_name,
@@ -15355,8 +16484,9 @@ def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session =
     if credentials_created and generated_password:
         result["login_email"] = data.supplier_email
         result["login_password"] = generated_password
-    
+
     return result
+
 
 @app.delete("/inventory/suppliers/{supplier_id}")
 def delete_supplier(supplier_id: int, session: Session = Depends(get_session)):
@@ -15366,6 +16496,7 @@ def delete_supplier(supplier_id: int, session: Session = Depends(get_session)):
     session.delete(s)
     session.commit()
     return {"ok": True}
+
 
 @app.put("/inventory/suppliers/{supplier_id}")
 def update_supplier(supplier_id: int, data: InventorySupplierCreate, session: Session = Depends(get_session)):
@@ -15379,6 +16510,7 @@ def update_supplier(supplier_id: int, data: InventorySupplierCreate, session: Se
     session.refresh(s)
     return s
 
+
 @app.post("/inventory/suppliers/{supplier_id}/send-credentials")
 def send_supplier_credentials(supplier_id: int, session: Session = Depends(get_session)):
     """Email the supplier's portal login credentials to their inbox (manual send button)."""
@@ -15386,11 +16518,14 @@ def send_supplier_credentials(supplier_id: int, session: Session = Depends(get_s
     if not s:
         raise HTTPException(status_code=404, detail="Supplier not found")
     if not s.supplier_email:
-        raise HTTPException(status_code=400, detail="Supplier has no email address on file")
+        raise HTTPException(
+            status_code=400, detail="Supplier has no email address on file")
     if not s.login_password:
-        raise HTTPException(status_code=400, detail="No login credentials exist for this supplier")
+        raise HTTPException(
+            status_code=400, detail="No login credentials exist for this supplier")
 
-    login_url = (os.environ.get("FRONTEND_URL") or "https://crm-seo.allytechcourses.com").rstrip("/") + "/login"
+    login_url = (os.environ.get("FRONTEND_URL")
+                 or "https://crm-seo.allytechcourses.com").rstrip("/") + "/login"
     subject = "Your SERP Hawk Supplier Portal Login"
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
@@ -15442,8 +16577,11 @@ def send_supplier_credentials(supplier_id: int, session: Session = Depends(get_s
     session.commit()
 
     if not sent:
-        raise HTTPException(status_code=500, detail="Email could not be sent. Check SMTP configuration.")
+        raise HTTPException(
+            status_code=500, detail="Email could not be sent. Check SMTP configuration.")
     return {"ok": True, "email_sent": True, "recipient": s.supplier_email}
+
+
 class SupplierAddItemRequest(BaseModel):
     supplier_name: str
     supplier_email: str
@@ -15462,10 +16600,11 @@ class SupplierAddItemRequest(BaseModel):
     lot_number: Optional[str] = None
     notes: Optional[str] = None
 
+
 @app.post("/supplier/inventory/add-item")
 def supplier_add_item(req: SupplierAddItemRequest, session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
-    
+
     # Create the item
     item = InventoryItem(
         tenant_id=tenant_id,
@@ -15482,9 +16621,10 @@ def supplier_add_item(req: SupplierAddItemRequest, session: Session = Depends(ge
     session.add(item)
     session.commit()
     session.refresh(item)
-    
+
     # Check if a user for this supplier exists to grab ID
-    user = session.exec(select(User).where(User.email == req.supplier_email).where(User.tenant_id == tenant_id)).first()
+    user = session.exec(select(User).where(User.email == req.supplier_email).where(
+        User.tenant_id == tenant_id)).first()
     supplier_user_id = user.id if user else None
 
     # Attach this supplier to the item
@@ -15501,25 +16641,28 @@ def supplier_add_item(req: SupplierAddItemRequest, session: Session = Depends(ge
     )
     session.add(supplier)
     session.commit()
-    
+
     return {"ok": True, "item_id": item.id}
+
 
 @app.get("/supplier/inventory")
 def get_supplier_inventory(email: str, session: Session = Depends(get_session)):
     """Get all inventory items that this supplier is linked to"""
     # Find all supplier records for this email
     supplier_records = session.exec(
-        select(InventorySupplier).where(InventorySupplier.supplier_email == email)
+        select(InventorySupplier).where(
+            InventorySupplier.supplier_email == email)
     ).all()
-    
+
     if not supplier_records:
         # also try by user_id
         user = session.exec(select(User).where(User.email == email)).first()
         if user:
             supplier_records = session.exec(
-                select(InventorySupplier).where(InventorySupplier.supplier_user_id == user.id)
+                select(InventorySupplier).where(
+                    InventorySupplier.supplier_user_id == user.id)
             ).all()
-    
+
     result = []
     seen_items = set()
     for sr in supplier_records:
@@ -15530,7 +16673,8 @@ def get_supplier_inventory(email: str, session: Session = Depends(get_session)):
         if not item:
             continue
         # Get all suppliers for this item
-        all_suppliers = session.exec(select(InventorySupplier).where(InventorySupplier.item_id == item.id)).all()
+        all_suppliers = session.exec(select(InventorySupplier).where(
+            InventorySupplier.item_id == item.id)).all()
         result.append({
             "id": item.id, "code": item.code, "name": item.name,
             "description": item.description, "category": item.category,
@@ -15548,6 +16692,7 @@ def get_supplier_inventory(email: str, session: Session = Depends(get_session)):
         })
     return {"items": result, "total": len(result)}
 
+
 @app.put("/supplier/inventory/{supplier_record_id}")
 def supplier_update_record(supplier_record_id: int, data: InventorySupplierCreate, session: Session = Depends(get_session)):
     """Supplier updates their own record for an item"""
@@ -15560,6 +16705,7 @@ def supplier_update_record(supplier_record_id: int, data: InventorySupplierCreat
     session.commit()
     session.refresh(s)
     return {"ok": True}
+
 
 @app.put("/supplier/inventory/{supplier_record_id}/stock")
 def supplier_update_stock(supplier_record_id: int, current_stock: float, session: Session = Depends(get_session)):
@@ -15580,7 +16726,6 @@ def supplier_update_stock(supplier_record_id: int, current_stock: float, session
 # RFQ ENDPOINTS
 # ═══════════════════════════════════════════════════════════════
 
-import secrets
 
 class RFQCreate(BaseModel):
     item_id: int
@@ -15589,6 +16734,7 @@ class RFQCreate(BaseModel):
     quantity: Optional[float] = None
     notes: Optional[str] = None
 
+
 class RFQResponseCreate(BaseModel):
     unit_price: float
     currency: str = "USD"
@@ -15596,13 +16742,16 @@ class RFQResponseCreate(BaseModel):
     valid_until: Optional[str] = None
     notes: Optional[str] = None
 
+
 @app.get("/rfq")
 def get_rfqs(session: Session = Depends(get_session)):
-    rfqs = session.exec(select(RFQRequest).order_by(RFQRequest.created_at.desc())).all()
+    rfqs = session.exec(select(RFQRequest).order_by(
+        RFQRequest.created_at.desc())).all()
     result = []
     for r in rfqs:
         item = session.get(InventoryItem, r.item_id)
-        responses = session.exec(select(RFQResponse).where(RFQResponse.rfq_id == r.id)).all()
+        responses = session.exec(select(RFQResponse).where(
+            RFQResponse.rfq_id == r.id)).all()
         result.append({
             "id": r.id, "item_id": r.item_id,
             "item_name": item.name if item else "—", "item_code": item.code if item else "—",
@@ -15618,6 +16767,7 @@ def get_rfqs(session: Session = Depends(get_session)):
         })
     return {"rfqs": result, "total": len(result)}
 
+
 @app.post("/rfq")
 def create_rfq(data: RFQCreate, session: Session = Depends(get_session)):
     token = secrets.token_urlsafe(32)
@@ -15626,6 +16776,7 @@ def create_rfq(data: RFQCreate, session: Session = Depends(get_session)):
     session.commit()
     session.refresh(rfq)
     return {"id": rfq.id, "token": token, "status": rfq.status}
+
 
 @app.post("/rfq/{rfq_id}/respond")
 def respond_to_rfq(rfq_id: int, data: RFQResponseCreate, token: str = None, session: Session = Depends(get_session)):
@@ -15638,6 +16789,7 @@ def respond_to_rfq(rfq_id: int, data: RFQResponseCreate, token: str = None, sess
     session.add(rfq)
     session.commit()
     return {"ok": True}
+
 
 @app.put("/rfq/{rfq_id}/status")
 def update_rfq_status(rfq_id: int, status: str, session: Session = Depends(get_session)):
@@ -15653,9 +16805,11 @@ def update_rfq_status(rfq_id: int, status: str, session: Session = Depends(get_s
 # API KEYS ENDPOINTS
 # ═══════════════════════════════════════════════════════════════
 
+
 @app.get("/api-keys")
 def list_api_keys(session: Session = Depends(get_session)):
-    keys = session.exec(select(APIKey).where(APIKey.is_active == True).order_by(APIKey.created_at.desc())).all()
+    keys = session.exec(select(APIKey).where(
+        APIKey.is_active == True).order_by(APIKey.created_at.desc())).all()
     return {"keys": [
         {"id": k.id, "name": k.name, "key_prefix": k.key_prefix,
          "scopes": k.scopes or [], "created_at": k.created_at.isoformat(),
@@ -15663,21 +16817,25 @@ def list_api_keys(session: Session = Depends(get_session)):
         for k in keys
     ]}
 
+
 class APIKeyCreate(BaseModel):
     name: str
     scopes: Optional[List[str]] = ["read", "write"]
+
 
 @app.post("/api-keys")
 def create_api_key(data: APIKeyCreate, session: Session = Depends(get_session)):
     raw_key = "sk_live_" + secrets.token_urlsafe(32)
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
     prefix = raw_key[:12]
-    key = APIKey(name=data.name, key_hash=key_hash, key_prefix=prefix, scopes=data.scopes)
+    key = APIKey(name=data.name, key_hash=key_hash,
+                 key_prefix=prefix, scopes=data.scopes)
     session.add(key)
     session.commit()
     session.refresh(key)
     # Return full key ONCE - never shown again
     return {"id": key.id, "name": key.name, "key": raw_key, "key_prefix": prefix, "scopes": key.scopes}
+
 
 @app.delete("/api-keys/{key_id}")
 def revoke_api_key(key_id: int, session: Session = Depends(get_session)):
@@ -15693,7 +16851,6 @@ def revoke_api_key(key_id: int, session: Session = Depends(get_session)):
 # IMPORT: CSV/Excel bulk upload for leads
 # ═══════════════════════════════════════════════════════════════
 
-import io, csv
 
 @app.post("/import/leads/csv")
 async def import_leads_csv(file: UploadFile = File(...), session: Session = Depends(get_session)):
@@ -15702,11 +16859,11 @@ async def import_leads_csv(file: UploadFile = File(...), session: Session = Depe
         decoded = content.decode("utf-8-sig")
     except Exception:
         decoded = content.decode("latin-1")
-    
+
     reader = csv.DictReader(io.StringIO(decoded))
     created, skipped = 0, 0
     errors = []
-    
+
     FIELD_MAP = {
         "company": "company_name", "company name": "company_name", "companyname": "company_name",
         "name": "company_name",
@@ -15719,7 +16876,7 @@ async def import_leads_csv(file: UploadFile = File(...), session: Session = Depe
         "address": "address", "location": "address",
         "notes": "notes", "note": "notes", "comments": "notes",
     }
-    
+
     for i, row in enumerate(reader):
         try:
             mapped = {}
@@ -15727,12 +16884,12 @@ async def import_leads_csv(file: UploadFile = File(...), session: Session = Depe
                 key = (col or "").strip().lower()
                 if key in FIELD_MAP:
                     mapped[FIELD_MAP[key]] = (val or "").strip()
-            
+
             company_name = mapped.get("company_name", "")
             if not company_name:
                 skipped += 1
                 continue
-            
+
             lead = Lead(
                 company_name=company_name,
                 website=mapped.get("website") or None,
@@ -15748,18 +16905,19 @@ async def import_leads_csv(file: UploadFile = File(...), session: Session = Depe
             created += 1
         except Exception as e:
             errors.append(f"Row {i+2}: {str(e)}")
-    
+
     session.commit()
     return {"created": created, "skipped": skipped, "errors": errors}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-from pydantic import BaseModel
+
 
 class ContactLinkRequest(BaseModel):
     contact_id: int
     role_at_company: Optional[str] = None
     is_primary: bool = False
+
 
 @app.post("/clients/{client_id}/contacts")
 def link_contact_to_client(client_id: int, body: ContactLinkRequest, session: Session = Depends(get_session)):
@@ -15773,6 +16931,7 @@ def link_contact_to_client(client_id: int, body: ContactLinkRequest, session: Se
     session.commit()
     return {"status": "success"}
 
+
 @app.post("/leads/{lead_id}/contacts")
 def link_contact_to_lead(lead_id: int, body: ContactLinkRequest, session: Session = Depends(get_session)):
     link = ContactLeadLink(
@@ -15785,30 +16944,37 @@ def link_contact_to_lead(lead_id: int, body: ContactLinkRequest, session: Sessio
     session.commit()
     return {"status": "success"}
 
+
 @app.get("/clients/{client_id}/contacts")
 def get_client_contacts(client_id: int, session: Session = Depends(get_session)):
-    links = session.exec(select(ContactClientLink).where(ContactClientLink.client_id == client_id)).all()
+    links = session.exec(select(ContactClientLink).where(
+        ContactClientLink.client_id == client_id)).all()
     results = []
     for link in links:
         c = session.get(Contact, link.contact_id)
         if c:
-            results.append({"link_id": link.id, "contact": c, "role": link.role_at_company, "is_primary": link.is_primary})
+            results.append({"link_id": link.id, "contact": c,
+                           "role": link.role_at_company, "is_primary": link.is_primary})
     return results
+
 
 @app.get("/leads/{lead_id}/contacts")
 def get_lead_contacts(lead_id: int, session: Session = Depends(get_session)):
-    links = session.exec(select(ContactLeadLink).where(ContactLeadLink.lead_id == lead_id)).all()
+    links = session.exec(select(ContactLeadLink).where(
+        ContactLeadLink.lead_id == lead_id)).all()
     results = []
     for link in links:
         c = session.get(Contact, link.contact_id)
         if c:
-            results.append({"link_id": link.id, "contact": c, "role": link.role_at_company, "is_primary": link.is_primary})
+            results.append({"link_id": link.id, "contact": c,
+                           "role": link.role_at_company, "is_primary": link.is_primary})
     return results
+
 
 @app.get("/telemetry/audit-logs")
 def get_telemetry_audit_logs(
-    limit: int = 100, 
-    offset: int = 0, 
+    limit: int = 100,
+    offset: int = 0,
     user_id: Optional[int] = None,
     session: Session = Depends(get_session)
 ):
@@ -15818,14 +16984,15 @@ def get_telemetry_audit_logs(
     """
     from sqlmodel import select
     from database import AuditLog, User
-    
-    stmt = select(AuditLog, User).join(User, AuditLog.user_id == User.id, isouter=True)
+
+    stmt = select(AuditLog, User).join(
+        User, AuditLog.user_id == User.id, isouter=True)
     if user_id:
         stmt = stmt.where(AuditLog.user_id == user_id)
-        
+
     stmt = stmt.order_by(AuditLog.timestamp.desc()).offset(offset).limit(limit)
     results = session.exec(stmt).all()
-    
+
     logs = []
     for log, user in results:
         logs.append({
@@ -15840,13 +17007,13 @@ def get_telemetry_audit_logs(
             "changes": log.changes,
             "timestamp": log.timestamp.isoformat()
         })
-        
+
     from sqlalchemy import func
     count_stmt = select(func.count(AuditLog.id))
     if user_id:
         count_stmt = count_stmt.where(AuditLog.user_id == user_id)
     total_count = session.exec(count_stmt).one()
-    
+
     return {
         "logs": logs,
         "total_count": total_count,
@@ -15854,9 +17021,11 @@ def get_telemetry_audit_logs(
         "offset": offset
     }
 
+
 @app.post("/demo/signup")
 def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_session)):
-    existing = session.exec(select(User).where(User.email == body.email)).first()
+    existing = session.exec(select(User).where(
+        User.email == body.email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already exists")
 
@@ -15870,7 +17039,8 @@ def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_
         )
     ).first()
     if not otp_rec:
-        raise HTTPException(status_code=400, detail="Please verify your email before creating the account.")
+        raise HTTPException(
+            status_code=400, detail="Please verify your email before creating the account.")
 
     tenant = Tenant(
         name=f"Demo Tenant {body.email}",
@@ -15894,7 +17064,7 @@ def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_
     session.add(user)
     session.commit()
     session.refresh(user)
-    
+
     # Notify Admin of new signup (wrapped in try-except so it doesn't block signup if it fails)
     admin = session.exec(select(User).where(User.role == "Admin")).first()
     if admin:
@@ -15912,8 +17082,9 @@ def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_
         except Exception as e:
             session.rollback()
             print(f"Failed to create admin notification for demo signup: {e}")
-    
+
     return {"success": True, "user": _user_dict(user)}
+
 
 @app.get("/dev/diagnostic")
 def diagnostic(session: Session = Depends(get_session)):
@@ -15922,41 +17093,46 @@ def diagnostic(session: Session = Depends(get_session)):
     results = {}
     for user in demo_users:
         tid = user.tenant_id
+
         def q(model, order_col):
-            if not tid: return []
+            if not tid:
+                return []
             return session.exec(select(model).where(getattr(model, "tenant_id") == tid).order_by(order_col.desc())).all()
-        
+
         results[user.email] = {
             "tenant_id": tid,
             "clients_count": len(q(ClientProfile, ClientProfile.id)),
             "leads_count": len(q(Lead, Lead.created_at)),
             "usage_clients": session.get(Tenant, tid).usage_clients if tid and session.get(Tenant, tid) else 0
         }
-    
+
     return {"demo_payloads": results}
+
 
 class OnboardingRequest(BaseModel):
     company: str
     phone: Optional[str] = None
+
 
 @app.post("/onboarding")
 def complete_onboarding(body: OnboardingRequest, session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
     if not tenant_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
-        
+
     tenant = session.get(Tenant, tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-        
+
     tenant.business_name = body.company
     if body.phone:
         tenant.phone = body.phone
-        
+
     session.add(tenant)
     session.commit()
-    
+
     return {"success": True, "message": "Profile updated"}
+
 
 @app.get("/telemetry/demo-accounts")
 def get_demo_accounts(session: Session = Depends(get_session)):
@@ -15964,8 +17140,9 @@ def get_demo_accounts(session: Session = Depends(get_session)):
     _require_roles(session, ["Admin"])
     from database import User
     from sqlmodel import select
-    demo_users = session.exec(select(User).where(User.role == "Demo").order_by(User.createdAt.desc())).all()
-    
+    demo_users = session.exec(select(User).where(
+        User.role == "Demo").order_by(User.createdAt.desc())).all()
+
     return {
         "success": True,
         "accounts": [
@@ -15979,17 +17156,19 @@ def get_demo_accounts(session: Session = Depends(get_session)):
         ]
     }
 
+
 @app.get("/demo/limits")
 def get_demo_limits(session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
     if not tenant_id:
         return {"success": False, "message": "No tenant ID"}
-    
+
     tenant = session.get(Tenant, tenant_id)
     if not tenant:
         return {"success": False, "message": "Tenant not found"}
-        
-    lead_count = session.exec(select(func.count(Lead.id)).where(Lead.tenant_id == tenant_id)).one()
+
+    lead_count = session.exec(select(func.count(Lead.id)).where(
+        Lead.tenant_id == tenant_id)).one()
 
     return {
         "success": True,
@@ -16002,16 +17181,18 @@ def get_demo_limits(session: Session = Depends(get_session)):
         }
     }
 
+
 @app.post("/demo/upgrade")
 def request_demo_upgrade(session: Session = Depends(get_session)):
     from modules.api_tracker import current_salesperson_id
     user_id = current_salesperson_id.get()
     if not user_id:
         return {"success": False, "message": "No user ID"}
-    
+
     user = session.get(User, user_id)
-    
-    admin_users = session.exec(select(User).where(User.role.in_(["SuperAdmin", "Admin"]))).all()
+
+    admin_users = session.exec(select(User).where(
+        User.role.in_(["SuperAdmin", "Admin"]))).all()
     for admin in admin_users:
         n = Notification(
             user_id=admin.id,
@@ -16020,15 +17201,17 @@ def request_demo_upgrade(session: Session = Depends(get_session)):
             type="info"
         )
         session.add(n)
-        
+
     session.commit()
     return {"success": True, "message": "Upgrade request sent to admin."}
+
 
 @app.get("/telemetry/demo-account/{user_id}")
 def get_demo_account_detail(user_id: int, session: Session = Depends(get_session)):
     """Return full summary of a Demo user's activity - queries by tenant_id."""
     _require_roles(session, ["Admin"])
-    from database import (User, Tenant, ClientProfile, Lead, RadarAnalysis, SentEmail, Contact, Meeting, CallLog, Project, Notification, ClientResearch, CompetitorAnalysis)
+    from database import (User, Tenant, ClientProfile, Lead, RadarAnalysis, SentEmail,
+                          Contact, Meeting, CallLog, Project, Notification, ClientResearch, CompetitorAnalysis)
     from sqlmodel import select
 
     user = session.get(User, user_id)
@@ -16052,13 +17235,13 @@ def get_demo_account_detail(user_id: int, session: Session = Depends(get_session
         )
         return session.exec(stmt).all()
 
-    raw_clients  = q(ClientProfile, ClientProfile.id)
-    raw_leads    = q(Lead, Lead.created_at)
-    raw_radar    = q(RadarAnalysis, RadarAnalysis.run_date)
-    raw_emails   = q(SentEmail, SentEmail.sent_at)
+    raw_clients = q(ClientProfile, ClientProfile.id)
+    raw_leads = q(Lead, Lead.created_at)
+    raw_radar = q(RadarAnalysis, RadarAnalysis.run_date)
+    raw_emails = q(SentEmail, SentEmail.sent_at)
     raw_contacts = q(Contact, Contact.id)
     raw_meetings = q(Meeting, Meeting.scheduled_at)
-    raw_calls    = q(CallLog, CallLog.received_at)
+    raw_calls = q(CallLog, CallLog.received_at)
     raw_projects = q(Project, Project.id)
     raw_research = q(ClientResearch, ClientResearch.updated_at)
     raw_competitor = q(CompetitorAnalysis, CompetitorAnalysis.last_updated)
@@ -16108,31 +17291,31 @@ def get_demo_account_detail(user_id: int, session: Session = Depends(get_session
             "upgrade_requested": upgrade_requested,
         },
         "clients":  [{"id": c.id, "company": c.companyName or c.projectName or "—",
-                       "website": c.websiteUrl or "—", "status": c.status or "—",
-                       "created_at": None} for c in raw_clients],
+                      "website": c.websiteUrl or "—", "status": c.status or "—",
+                      "created_at": None} for c in raw_clients],
         "leads":    [{"id": l.id, "name": l.company_name or "—", "email": l.email or "—",
-                       "company": l.company_name or "—", "status": l.status or "—",
-                       "created_at": l.created_at.isoformat() if l.created_at else None} for l in raw_leads],
+                      "company": l.company_name or "—", "status": l.status or "—",
+                      "created_at": l.created_at.isoformat() if l.created_at else None} for l in raw_leads],
         "contacts": [{"id": c.id,
-                       "name": (c.full_name or f"{c.first_name} {c.last_name or ''}").strip() or "—",
-                       "email": c.email or "—", "designation": c.designation or "—",
-                       "created_at": c.created_at.isoformat() if c.created_at else None} for c in raw_contacts],
+                      "name": (c.full_name or f"{c.first_name} {c.last_name or ''}").strip() or "—",
+                      "email": c.email or "—", "designation": c.designation or "—",
+                      "created_at": c.created_at.isoformat() if c.created_at else None} for c in raw_contacts],
         "radar":    [{"id": r.id, "target_name": r.target_name or "—",
-                       "target_website": r.target_website or "—",
-                       "competitor_count": r.competitor_count or 0, "radius_km": r.radius_km or 0,
-                       "run_date": r.run_date.isoformat() if r.run_date else None} for r in raw_radar],
+                      "target_website": r.target_website or "—",
+                      "competitor_count": r.competitor_count or 0, "radius_km": r.radius_km or 0,
+                      "run_date": r.run_date.isoformat() if r.run_date else None} for r in raw_radar],
         "emails":   [{"id": e.id, "to": e.to_email or "—", "subject": e.subject or "—",
-                       "status": e.status or "—",
-                       "sent_at": e.sent_at.isoformat() if e.sent_at else None} for e in raw_emails],
+                      "status": e.status or "—",
+                      "sent_at": e.sent_at.isoformat() if e.sent_at else None} for e in raw_emails],
         "meetings": [{"id": m.id, "title": m.title or "—", "status": m.status or "—",
-                       "scheduled_at": m.scheduled_at.isoformat() if m.scheduled_at else None} for m in raw_meetings],
+                      "scheduled_at": m.scheduled_at.isoformat() if m.scheduled_at else None} for m in raw_meetings],
         "calls":    [{"id": c.id, "phone": c.phone_number or "—", "duration": c.duration_seconds or 0,
-                       "summary": c.summary or c.description or "—",
-                       "received_at": c.received_at.isoformat() if c.received_at else None} for c in raw_calls],
+                      "summary": c.summary or c.description or "—",
+                      "received_at": c.received_at.isoformat() if c.received_at else None} for c in raw_calls],
         "projects": [{"id": p.id, "name": p.name or "—", "status": p.status or "—",
-                       "progress": p.progress or 0} for p in raw_projects],
+                      "progress": p.progress or 0} for p in raw_projects],
         "team_members": [{"id": u.id, "name": u.name or "—", "email": u.email or "—",
-                           "role": u.role or "—"} for u in raw_team],
+                          "role": u.role or "—"} for u in raw_team],
         "researches": [{"id": r.id, "company_overview": r.company_overview or "", "updated_at": r.updated_at.isoformat() if r.updated_at else None} for r in raw_research],
         "competitors": [{"id": c.id, "competitor_domain": c.competitor_domain or "", "last_updated": c.last_updated.isoformat() if c.last_updated else None} for c in raw_competitor],
         "limits": limits,
@@ -16146,7 +17329,8 @@ def backfill_tenant_data(user_id: int, session: Session = Depends(get_session)):
     Patches old records created before tenant isolation was enforced.
     """
     _require_roles(session, ["Admin"])
-    from database import (User, ClientProfile, Lead, Contact, Meeting, CallLog, Project, SentEmail, RadarAnalysis)
+    from database import (User, ClientProfile, Lead, Contact,
+                          Meeting, CallLog, Project, SentEmail, RadarAnalysis)
     from sqlmodel import select
 
     user = session.get(User, user_id)
@@ -16155,7 +17339,8 @@ def backfill_tenant_data(user_id: int, session: Session = Depends(get_session)):
 
     tid = user.tenant_id
     if not tid:
-        raise HTTPException(status_code=400, detail="User has no tenant_id assigned")
+        raise HTTPException(
+            status_code=400, detail="User has no tenant_id assigned")
 
     counts = {}
 
@@ -16206,7 +17391,8 @@ def backfill_tenant_data(user_id: int, session: Session = Depends(get_session)):
 
     # Helper for generic backfill linked to client_ids
     def backfill_model(model_cls):
-        if not all_client_ids or not hasattr(model_cls, "client_id"): return 0
+        if not all_client_ids or not hasattr(model_cls, "client_id"):
+            return 0
         fixes = session.exec(
             select(model_cls)
             .where(model_cls.client_id.in_(all_client_ids), model_cls.tenant_id == None)
@@ -16235,7 +17421,7 @@ def request_upgrade(
     user = session.exec(select(User).where(User.email == email)).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
+
     admin = session.exec(select(User).where(User.role == "Admin")).first()
     if admin:
         notification = Notification(
@@ -16247,8 +17433,9 @@ def request_upgrade(
         )
         session.add(notification)
         session.commit()
-    
+
     return {"status": "success", "message": "Upgrade request sent to admin."}
+
 
 class EmailSettingsRequest(BaseModel):
     smtp_host: str
@@ -16258,13 +17445,16 @@ class EmailSettingsRequest(BaseModel):
     from_name: str
     from_email: str
 
+
 @app.get("/settings/email")
 def get_email_settings(session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
     if not tenant_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    settings = session.exec(select(EmailSettings).where(EmailSettings.tenant_id == tenant_id)).first()
+    settings = session.exec(select(EmailSettings).where(
+        EmailSettings.tenant_id == tenant_id)).first()
     return settings or {}
+
 
 @app.post("/settings/email")
 def save_email_settings(body: EmailSettingsRequest, otp_verified: bool = False, session: Session = Depends(get_session)):
@@ -16272,7 +17462,7 @@ def save_email_settings(body: EmailSettingsRequest, otp_verified: bool = False, 
     uid = current_salesperson_id.get()
     if not tenant_id or not uid:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    
+
     # Check OTP verification for the from_email address
     if not otp_verified:
         from database import EmailOTP
@@ -16285,9 +17475,11 @@ def save_email_settings(body: EmailSettingsRequest, otp_verified: bool = False, 
             )
         ).first()
         if not verified:
-            raise HTTPException(status_code=400, detail="Email address not verified. Please complete OTP verification first.")
-    
-    settings = session.exec(select(EmailSettings).where(EmailSettings.tenant_id == tenant_id)).first()
+            raise HTTPException(
+                status_code=400, detail="Email address not verified. Please complete OTP verification first.")
+
+    settings = session.exec(select(EmailSettings).where(
+        EmailSettings.tenant_id == tenant_id)).first()
     if not settings:
         settings = EmailSettings(tenant_id=tenant_id, **body.dict())
         session.add(settings)
@@ -16296,7 +17488,7 @@ def save_email_settings(body: EmailSettingsRequest, otp_verified: bool = False, 
             setattr(settings, k, v)
         settings.updated_at = datetime.now(timezone.utc)
         session.add(settings)
-    
+
     session.commit()
     return {"success": True}
 
@@ -16304,14 +17496,17 @@ def save_email_settings(body: EmailSettingsRequest, otp_verified: bool = False, 
 # EMAIL OTP: Send & Verify OTP for mail account setup
 # ──────────────────────────────────────────────────────
 
+
 class SendEmailOTPRequest(BaseModel):
     email: str
     purpose: str = "smtp_settings"  # smtp_settings | integration
+
 
 class VerifyEmailOTPRequest(BaseModel):
     email: str
     otp_code: str
     purpose: str = "smtp_settings"
+
 
 @app.post("/email-otp/send")
 def send_email_otp(body: SendEmailOTPRequest, session: Session = Depends(get_session)):
@@ -16322,9 +17517,11 @@ def send_email_otp(body: SendEmailOTPRequest, session: Session = Depends(get_ses
     # Signup OTPs are not tied to a logged-in user (account doesn't exist yet)
     if body.purpose == "signup":
         uid = None
-        existing_user = session.exec(select(User).where(User.email == body.email)).first()
+        existing_user = session.exec(
+            select(User).where(User.email == body.email)).first()
         if existing_user:
-            raise HTTPException(status_code=400, detail="Email already registered. Please sign in instead.")
+            raise HTTPException(
+                status_code=400, detail="Email already registered. Please sign in instead.")
     else:
         uid = current_salesperson_id.get()
         if not uid:
@@ -16351,7 +17548,8 @@ def send_email_otp(body: SendEmailOTPRequest, session: Session = Depends(get_ses
     session.commit()
 
     from modules.email_sender import send_otp_email
-    sent = send_otp_email(body.email, otp_code, purpose=body.purpose.replace("_", " "))
+    sent = send_otp_email(body.email, otp_code,
+                          purpose=body.purpose.replace("_", " "))
 
     return {
         "success": True,
@@ -16385,16 +17583,19 @@ def verify_email_otp(body: VerifyEmailOTPRequest, session: Session = Depends(get
     ).first()
 
     if not rec or rec.verified or rec.expires_at < _dt.utcnow():
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP code.")
+        raise HTTPException(
+            status_code=400, detail="Invalid or expired OTP code.")
 
     rec.verified = True
     session.commit()
 
     return {"success": True, "verified": True, "message": "Email verified successfully."}
 
+
 @app.get("/leads/{lead_id}/research")
 def get_lead_research(lead_id: int, session: Session = Depends(get_session)):
-    research = session.exec(select(ClientResearch).where(ClientResearch.lead_id == lead_id)).first()
+    research = session.exec(select(ClientResearch).where(
+        ClientResearch.lead_id == lead_id)).first()
     if not research:
         return {"research": None}
     return {"research": {
@@ -16405,6 +17606,7 @@ def get_lead_research(lead_id: int, session: Session = Depends(get_session)):
         "email_agent_data": research.email_agent_data,
         "updated_at": research.updated_at.isoformat(),
     }}
+
 
 @app.get("/leads/{lead_id}/sent-emails")
 def get_lead_sent_emails(lead_id: int, session: Session = Depends(get_session)):
@@ -16433,4 +17635,3 @@ def get_lead_sent_emails(lead_id: int, session: Session = Depends(get_session)):
                 "received_at": r.received_at.isoformat() if r.received_at else None,
             })
     return {"emails": [{**e.dict(), "replies": replies_by_email.get(e.id, [])} for e in emails]}
-

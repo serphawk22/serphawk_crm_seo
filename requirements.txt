@@ -40,3 +40,6 @@ openpyxl>=3.1.0
 # HTML sanitization (inbound email reply rendering)
 bleach>=6.1.0
 tinycss2>=1.2.0
+
+# Text-to-speech fallback for the AI voice agent (primary: OpenAI TTS)
+gTTS>=2.5.0

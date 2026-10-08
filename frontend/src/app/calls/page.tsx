@@ -9,6 +9,7 @@ import {
   Volume2, ExternalLink
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
+import QuickCallPanel from "@/components/voice-agent/QuickCallPanel";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/context/LanguageContext";
 
@@ -1095,6 +1096,18 @@ export default function CallsPage() {
                         </div>
                         <p className="text-sm text-slate-700 dark:text-zinc-200 font-medium leading-relaxed whitespace-pre-wrap">{generatedPitch}</p>
                       </div>
+
+                      {/* Two-way AI call: speaks the pitch above, listens to the client and answers live */}
+                      <QuickCallPanel
+                        key={`${genType}-${genEntityId}`}
+                        entityType={genType}
+                        entityId={genEntityId}
+                        entityName={getEntityName(genType, genEntityId)}
+                        defaultPhone={getEntityPhone(genType, genEntityId)}
+                        pitchText={generatedPitch}
+                        notify={addToast}
+                        onCallStarted={fetchAll}
+                      />
 
                       <div className="pt-4 border-t border-slate-100 dark:border-zinc-800">
                         <button
