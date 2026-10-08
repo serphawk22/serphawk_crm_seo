@@ -126,6 +126,62 @@ class User(SQLModel, table=True):
     assigned_requests: List["ServiceRequest"] = Relationship(back_populates="assigned_employee")
     deals: List["Deal"] = Relationship(back_populates="assigned_user")
 
+
+class EmailAgentProfile(SQLModel, table=True):
+    """Email Agent sender profile — deliberately separate from the login record.
+
+    Holds the sender identity used for Email Agent generation/sending and the
+    email signature. Nothing here is used for authentication: the users.email /
+    users.password login credentials are never read or written through this
+    table. One row per user (user_id unique).
+    """
+    __tablename__ = "email_agent_profiles"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True, unique=True)
+    agent_name: Optional[str] = Field(default=None, max_length=255)
+    agent_email: Optional[str] = Field(default=None, max_length=255)
+    agent_phone: Optional[str] = Field(default=None, max_length=50)
+    signature: Optional[str] = Field(default=None, sa_column=Column(Text))
+    auto_append_signature: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+    user: Optional[User] = Relationship()
+
+
+class UserEmailIntegration(SQLModel, table=True):
+    """Per-user Email Integration — SMTP/IMAP account used by the Email Agent.
+
+    Distinct from the tenant-level EmailSettings table (quotes/inbox) and from
+    the OAuth-based EmailIntegration tracker table. The app password is stored
+    ENCRYPTED (Fernet, key from EMAIL_CREDENTIAL_ENCRYPTION_KEY) and is never
+    returned by any API response.
+    """
+    __tablename__ = "user_email_integrations"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True, unique=True)
+    email: str = Field(max_length=255)
+    encrypted_app_password: str = Field(sa_column=Column(Text))
+    provider: str = Field(default="custom", max_length=50)
+    smtp_host: str = Field(max_length=255)
+    smtp_port: int = Field(default=587)
+    smtp_security: str = Field(default="starttls", max_length=20)  # ssl | starttls | none
+    imap_host: str = Field(max_length=255)
+    imap_port: int = Field(default=993)
+    imap_security: str = Field(default="ssl", max_length=20)  # ssl | starttls | none
+    is_active: bool = Field(default=True)
+    smtp_status: Optional[str] = Field(default="not_tested", max_length=20)  # connected | failed | not_tested
+    imap_status: Optional[str] = Field(default="not_tested", max_length=20)
+    last_tested_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+    user: Optional[User] = Relationship()
+
 class PasswordResetToken(SQLModel, table=True):
     """One-time token used to reset a user's password."""
     __tablename__ = "password_reset_tokens"

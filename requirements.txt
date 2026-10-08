@@ -40,3 +40,6 @@ openpyxl>=3.1.0
 # HTML sanitization (inbound email reply rendering)
 bleach>=6.1.0
 tinycss2>=1.2.0
+
+# Email Integration — at-rest encryption for per-user app passwords (Fernet)
+cryptography>=42.0.0
