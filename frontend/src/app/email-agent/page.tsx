@@ -6,7 +6,7 @@ import {
   Bot, Send, Sparkles, Mail, Clock, User, Globe, ChevronDown, ChevronUp,
   CheckCircle, Building2, Briefcase, Target, AtSign, FileText, Copy, Check,
   TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign, MessageCircle, Trash2, Youtube,
-  Save, X, Loader2, AlertTriangle, Settings
+  Save, X, Loader2, AlertTriangle, Settings, Search
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
@@ -148,6 +148,114 @@ function BottomUpFillMail() {
 }
 
 
+interface CountryDialCode {
+  name: string;
+  nativeName?: string;
+  code: string;
+  dialCode: string;
+  flag: string;
+}
+
+const COUNTRY_DIAL_CODES: CountryDialCode[] = [
+  { name: "Spain", nativeName: "España", code: "ES", dialCode: "+34", flag: "🇪🇸" },
+  { name: "India", nativeName: "Bharat", code: "IN", dialCode: "+91", flag: "🇮🇳" },
+  { name: "United States", nativeName: "USA", code: "US", dialCode: "+1", flag: "🇺🇸" },
+  { name: "United Kingdom", nativeName: "UK", code: "GB", dialCode: "+44", flag: "🇬🇧" },
+  { name: "Canada", nativeName: "Canada", code: "CA", dialCode: "+1", flag: "🇨🇦" },
+  { name: "Mexico", nativeName: "México", code: "MX", dialCode: "+52", flag: "🇲🇽" },
+  { name: "Australia", nativeName: "Australia", code: "AU", dialCode: "+61", flag: "🇦🇺" },
+  { name: "Germany", nativeName: "Deutschland", code: "DE", dialCode: "+49", flag: "🇩🇪" },
+  { name: "France", nativeName: "France", code: "FR", dialCode: "+33", flag: "🇫🇷" },
+  { name: "Italy", nativeName: "Italia", code: "IT", dialCode: "+39", flag: "🇮🇹" },
+  { name: "Portugal", nativeName: "Portugal", code: "PT", dialCode: "+351", flag: "🇵🇹" },
+  { name: "United Arab Emirates", nativeName: "UAE", code: "AE", dialCode: "+971", flag: "🇦🇪" },
+  { name: "Saudi Arabia", nativeName: "KSA", code: "SA", dialCode: "+966", flag: "🇸🇦" },
+  { name: "Singapore", nativeName: "Singapore", code: "SG", dialCode: "+65", flag: "🇸🇬" },
+  { name: "Japan", nativeName: "Nihon", code: "JP", dialCode: "+81", flag: "🇯🇵" },
+  { name: "China", nativeName: "China", code: "CN", dialCode: "+86", flag: "🇨🇳" },
+  { name: "Brazil", nativeName: "Brasil", code: "BR", dialCode: "+55", flag: "🇧🇷" },
+  { name: "Argentina", nativeName: "Argentina", code: "AR", dialCode: "+54", flag: "🇦🇷" },
+  { name: "Colombia", nativeName: "Colombia", code: "CO", dialCode: "+57", flag: "🇨🇴" },
+  { name: "Chile", nativeName: "Chile", code: "CL", dialCode: "+56", flag: "🇨🇱" },
+  { name: "Peru", nativeName: "Perú", code: "PE", dialCode: "+51", flag: "🇵🇪" },
+  { name: "Ecuador", nativeName: "Ecuador", code: "EC", dialCode: "+593", flag: "🇪🇨" },
+  { name: "Netherlands", nativeName: "Nederland", code: "NL", dialCode: "+31", flag: "🇳🇱" },
+  { name: "Switzerland", nativeName: "Schweiz", code: "CH", dialCode: "+41", flag: "🇨🇭" },
+  { name: "Sweden", nativeName: "Sverige", code: "SE", dialCode: "+46", flag: "🇸🇪" },
+  { name: "Norway", nativeName: "Norge", code: "NO", dialCode: "+47", flag: "🇳🇴" },
+  { name: "Denmark", nativeName: "Danmark", code: "DK", dialCode: "+45", flag: "🇩🇰" },
+  { name: "Finland", nativeName: "Suomi", code: "FI", dialCode: "+358", flag: "🇫🇮" },
+  { name: "Ireland", nativeName: "Éire", code: "IE", dialCode: "+353", flag: "🇮🇪" },
+  { name: "Belgium", nativeName: "België", code: "BE", dialCode: "+32", flag: "🇧🇪" },
+  { name: "Austria", nativeName: "Österreich", code: "AT", dialCode: "+43", flag: "🇦🇹" },
+  { name: "Poland", nativeName: "Polska", code: "PL", dialCode: "+48", flag: "🇵🇱" },
+  { name: "Greece", nativeName: "Hellas", code: "GR", dialCode: "+30", flag: "🇬🇷" },
+  { name: "Turkey", nativeName: "Türkiye", code: "TR", dialCode: "+90", flag: "🇹🇷" },
+  { name: "South Africa", nativeName: "South Africa", code: "ZA", dialCode: "+27", flag: "🇿🇦" },
+  { name: "Egypt", nativeName: "Misr", code: "EG", dialCode: "+20", flag: "🇪🇬" },
+  { name: "Nigeria", nativeName: "Nigeria", code: "NG", dialCode: "+234", flag: "🇳🇬" },
+  { name: "Kenya", nativeName: "Kenya", code: "KE", dialCode: "+254", flag: "🇰🇪" },
+  { name: "Morocco", nativeName: "Maroc", code: "MA", dialCode: "+212", flag: "🇲🇦" },
+  { name: "New Zealand", nativeName: "Aotearoa", code: "NZ", dialCode: "+64", flag: "🇳🇿" },
+  { name: "South Korea", nativeName: "Hanguk", code: "KR", dialCode: "+82", flag: "🇰🇷" },
+  { name: "Philippines", nativeName: "Pilipinas", code: "PH", dialCode: "+63", flag: "🇵🇭" },
+  { name: "Malaysia", nativeName: "Malaysia", code: "MY", dialCode: "+60", flag: "🇲🇾" },
+  { name: "Indonesia", nativeName: "Indonesia", code: "ID", dialCode: "+62", flag: "🇮🇩" },
+  { name: "Thailand", nativeName: "Mueang Thai", code: "TH", dialCode: "+66", flag: "🇹🇭" },
+  { name: "Vietnam", nativeName: "Việt Nam", code: "VN", dialCode: "+84", flag: "🇻🇳" },
+  { name: "Pakistan", nativeName: "Pakistan", code: "PK", dialCode: "+92", flag: "🇵🇰" },
+  { name: "Bangladesh", nativeName: "Bangladesh", code: "BD", dialCode: "+880", flag: "🇧🇩" },
+  { name: "Sri Lanka", nativeName: "Sri Lanka", code: "LK", dialCode: "+94", flag: "🇱🇰" },
+  { name: "Nepal", nativeName: "Nepal", code: "NP", dialCode: "+977", flag: "🇳🇵" },
+  { name: "Qatar", nativeName: "Qatar", code: "QA", dialCode: "+974", flag: "🇶🇦" },
+  { name: "Kuwait", nativeName: "Kuwait", code: "KW", dialCode: "+965", flag: "🇰🇼" },
+  { name: "Oman", nativeName: "Oman", code: "OM", dialCode: "+968", flag: "🇴🇲" },
+  { name: "Bahrain", nativeName: "Bahrain", code: "BH", dialCode: "+973", flag: "🇧🇭" },
+  { name: "Israel", nativeName: "Yisra'el", code: "IL", dialCode: "+972", flag: "🇮🇱" },
+  { name: "Jordan", nativeName: "Al-Urdun", code: "JO", dialCode: "+962", flag: "🇯🇴" },
+  { name: "Lebanon", nativeName: "Lubnan", code: "LB", dialCode: "+961", flag: "🇱🇧" },
+  { name: "Hong Kong", nativeName: "Hong Kong", code: "HK", dialCode: "+852", flag: "🇭🇰" },
+  { name: "Taiwan", nativeName: "Taiwan", code: "TW", dialCode: "+886", flag: "🇹🇼" },
+  { name: "Czech Republic", nativeName: "Česko", code: "CZ", dialCode: "+420", flag: "🇨🇿" },
+  { name: "Romania", nativeName: "România", code: "RO", dialCode: "+40", flag: "🇷🇴" },
+  { name: "Hungary", nativeName: "Magyarország", code: "HU", dialCode: "+36", flag: "🇭🇺" },
+  { name: "Uruguay", nativeName: "Uruguay", code: "UY", dialCode: "+598", flag: "🇺🇾" },
+  { name: "Costa Rica", nativeName: "Costa Rica", code: "CR", dialCode: "+506", flag: "🇨🇷" },
+  { name: "Panama", nativeName: "Panamá", code: "PA", dialCode: "+507", flag: "🇵🇦" },
+  { name: "Dominican Republic", nativeName: "República Dominicana", code: "DO", dialCode: "+1", flag: "🇩🇴" },
+  { name: "Puerto Rico", nativeName: "Puerto Rico", code: "PR", dialCode: "+1", flag: "🇵🇷" },
+  { name: "Croatia", nativeName: "Hrvatska", code: "HR", dialCode: "+385", flag: "🇭🇷" },
+  { name: "Bulgaria", nativeName: "Bulgaria", code: "BG", dialCode: "+359", flag: "🇧🇬" },
+  { name: "Ukraine", nativeName: "Ukraina", code: "UA", dialCode: "+380", flag: "🇺🇦" },
+  { name: "Russia", nativeName: "Rossiya", code: "RU", dialCode: "+7", flag: "🇷🇺" },
+];
+
+function parsePhoneNumber(fullNumber: string, defaultCode = "+34"): { dialCode: string; nationalNumber: string } {
+  if (!fullNumber || !fullNumber.trim()) {
+    return { dialCode: defaultCode, nationalNumber: "" };
+  }
+  const clean = fullNumber.trim();
+  const sorted = [...COUNTRY_DIAL_CODES].sort((a, b) => b.dialCode.length - a.dialCode.length);
+  if (clean.startsWith("+")) {
+    for (const c of sorted) {
+      if (clean.startsWith(c.dialCode)) {
+        const rest = clean.slice(c.dialCode.length).trim();
+        return { dialCode: c.dialCode, nationalNumber: rest };
+      }
+    }
+  } else {
+    for (const c of sorted) {
+      const rawDigits = c.dialCode.replace("+", "");
+      if (clean.startsWith(rawDigits) && clean.length > rawDigits.length + 5) {
+        const rest = clean.slice(rawDigits.length).trim();
+        return { dialCode: c.dialCode, nationalNumber: rest };
+      }
+    }
+  }
+  return { dialCode: defaultCode, nationalNumber: clean.replace(/^\+/, "") };
+}
+
+
 export default function EmailAgentPage() {
   const { role } = useRole();
   const { t } = useLanguage();
@@ -175,6 +283,11 @@ export default function EmailAgentPage() {
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: "", email: "", phone: "" });
+  const [selectedCountryCode, setSelectedCountryCode] = useState("+34");
+  const [nationalPhone, setNationalPhone] = useState("");
+  const [countryDropdownOpen, setCountryDropdownOpen] = useState(false);
+  const [countrySearch, setCountrySearch] = useState("");
+  const countryDropdownRef = useRef<HTMLDivElement>(null);
   const [signatureText, setSignatureText] = useState("");
   const [autoAppend, setAutoAppend] = useState(true);
   const [autoAppendSaving, setAutoAppendSaving] = useState(false);
@@ -187,6 +300,27 @@ export default function EmailAgentPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (countryDropdownRef.current && !countryDropdownRef.current.contains(e.target as Node)) {
+        setCountryDropdownOpen(false);
+      }
+    };
+    if (countryDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [countryDropdownOpen]);
+
+  const selectedCountry = COUNTRY_DIAL_CODES.find(c => c.dialCode === selectedCountryCode) || COUNTRY_DIAL_CODES[0];
+
+  const filteredCountries = COUNTRY_DIAL_CODES.filter(c =>
+    c.name.toLowerCase().includes(countrySearch.toLowerCase()) ||
+    (c.nativeName && c.nativeName.toLowerCase().includes(countrySearch.toLowerCase())) ||
+    c.dialCode.includes(countrySearch) ||
+    c.code.toLowerCase().includes(countrySearch.toLowerCase())
+  );
 
   const showToast = (msg: string, type: "ok" | "err" = "ok") => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -201,13 +335,17 @@ export default function EmailAgentPage() {
       if (!res.ok) throw new Error("Failed to fetch profile");
       const data = await res.json();
       const a = data.agent_profile || {};
+      const rawPhone = a.agent_phone || "";
+      const parsed = parsePhoneNumber(rawPhone, "+34");
+      setSelectedCountryCode(parsed.dialCode);
+      setNationalPhone(parsed.nationalNumber);
       setProfile({
         name: a.agent_name || "",
         email: a.agent_email || "",
-        phone: a.agent_phone || "",
+        phone: rawPhone,
         signature: a.signature || "",
       });
-      setProfileForm({ name: a.agent_name || "", email: a.agent_email || "", phone: a.agent_phone || "" });
+      setProfileForm({ name: a.agent_name || "", email: a.agent_email || "", phone: rawPhone });
       setSignatureText(a.signature || "");
       setAutoAppend(a.auto_append_signature !== false);
     } catch {
@@ -244,7 +382,8 @@ export default function EmailAgentPage() {
       setProfileError("Please enter a valid email address.");
       return;
     }
-    if (profileForm.phone.trim() && !/^\+?[0-9\s\-()]{7,20}$/.test(profileForm.phone.trim())) {
+    const combinedPhone = nationalPhone.trim() ? `${selectedCountryCode} ${nationalPhone.trim()}` : "";
+    if (combinedPhone && !/^\+?[0-9\s\-()]{7,20}$/.test(combinedPhone)) {
       setProfileError("Please enter a valid phone number.");
       return;
     }
@@ -257,13 +396,16 @@ export default function EmailAgentPage() {
         body: JSON.stringify({
           agent_name: profileForm.name.trim(),
           agent_email: profileForm.email.trim(),
-          agent_phone: profileForm.phone.trim(),
+          agent_phone: combinedPhone,
           auto_append_signature: autoAppend,
         }),
       });
       if (!res.ok) throw new Error("Failed to update profile");
       const data = await res.json();
       const a = data.agent_profile || {};
+      const parsed = parsePhoneNumber(a.agent_phone || "", selectedCountryCode);
+      setSelectedCountryCode(parsed.dialCode);
+      setNationalPhone(parsed.nationalNumber);
       setProfile({
         name: a.agent_name || "",
         email: a.agent_email || "",
@@ -1115,18 +1257,113 @@ export default function EmailAgentPage() {
                       <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">Sender address for outgoing emails — this does not change your login email.</p>
                     </div>
 
-                    <div>
+                    <div className="relative" ref={countryDropdownRef}>
                       <label className="flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-zinc-200 mb-1.5">
                         <Phone className="w-3.5 h-3.5 text-slate-400" /> Phone Number
                       </label>
-                      <input
-                        type="tel"
-                        value={profileForm.phone}
-                        onChange={(e) => setProfileForm(f => ({ ...f, phone: e.target.value }))}
-                        placeholder="+91 XXXXX XXXXX"
-                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                        style={{ borderColor: "var(--border)", color: "var(--text-primary)", background: "var(--background)" }}
-                      />
+                      <div
+                        className="flex items-center rounded-xl border transition-all focus-within:ring-2 focus-within:ring-blue-500 overflow-visible"
+                        style={{ borderColor: "var(--border)", background: "var(--background)" }}
+                      >
+                        {/* Country Code Trigger Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCountryDropdownOpen(!countryDropdownOpen);
+                            setCountrySearch("");
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-r transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800/60 rounded-l-xl shrink-0"
+                          style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
+                          title={`${selectedCountry.name} (${selectedCountry.dialCode})`}
+                        >
+                          <span className="text-base leading-none">{selectedCountry.flag}</span>
+                          <span className="text-xs font-semibold">{selectedCountry.dialCode}</span>
+                          <ChevronDown className="w-3 h-3 text-slate-400" />
+                        </button>
+
+                        {/* National Phone Number Input */}
+                        <input
+                          type="tel"
+                          value={nationalPhone}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setNationalPhone(val);
+                            setProfileForm(f => ({
+                              ...f,
+                              phone: val.trim() ? `${selectedCountryCode} ${val.trim()}` : ""
+                            }));
+                          }}
+                          placeholder={selectedCountry.code === "ES" ? "612 34 56 78" : selectedCountry.code === "IN" ? "98765 43210" : "555-0199"}
+                          className="w-full px-3 py-2 bg-transparent text-sm outline-none rounded-r-xl"
+                          style={{ color: "var(--text-primary)" }}
+                        />
+                      </div>
+
+                      {/* Searchable Country Code Dropdown */}
+                      {countryDropdownOpen && (
+                        <div
+                          className="absolute left-0 top-full mt-1.5 w-72 max-w-[90vw] rounded-2xl border shadow-2xl z-50 p-2 overflow-hidden bg-white dark:bg-zinc-900"
+                          style={{ borderColor: "var(--border)" }}
+                        >
+                          {/* Search Input */}
+                          <div
+                            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border mb-2 text-xs"
+                            style={{ borderColor: "var(--border)", background: "var(--background)" }}
+                          >
+                            <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <input
+                              type="text"
+                              value={countrySearch}
+                              onChange={(e) => setCountrySearch(e.target.value)}
+                              placeholder="Search country or code..."
+                              className="w-full bg-transparent outline-none text-xs"
+                              style={{ color: "var(--text-primary)" }}
+                              autoFocus
+                            />
+                            {countrySearch && (
+                              <button type="button" onClick={() => setCountrySearch("")} className="text-slate-400 hover:text-slate-600">
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Country List */}
+                          <div className="max-h-48 overflow-y-auto space-y-0.5 custom-scrollbar">
+                            {filteredCountries.length > 0 ? (
+                              filteredCountries.map((c) => (
+                                <button
+                                  key={`${c.code}-${c.dialCode}`}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCountryCode(c.dialCode);
+                                    setCountryDropdownOpen(false);
+                                    setCountrySearch("");
+                                    setProfileForm(f => ({
+                                      ...f,
+                                      phone: nationalPhone.trim() ? `${c.dialCode} ${nationalPhone.trim()}` : ""
+                                    }));
+                                  }}
+                                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors text-left ${
+                                    selectedCountryCode === c.dialCode
+                                      ? "bg-blue-600 text-white font-semibold"
+                                      : "hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-200"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 truncate">
+                                    <span className="text-sm leading-none">{c.flag}</span>
+                                    <span className="truncate">{c.name}</span>
+                                  </div>
+                                  <span className={`text-[11px] font-mono shrink-0 ml-2 ${selectedCountryCode === c.dialCode ? "text-blue-100" : "text-slate-400"}`}>
+                                    {c.dialCode}
+                                  </span>
+                                </button>
+                              ))
+                            ) : (
+                              <p className="text-xs text-slate-400 p-3 text-center">No country found</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex justify-end pt-2">
