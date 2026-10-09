@@ -5,12 +5,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Sparkles, Mail, Clock, User, Globe, ChevronDown, ChevronUp,
   CheckCircle, Building2, Briefcase, Target, AtSign, FileText, Copy, Check,
-  TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign, MessageCircle, Trash2, Youtube
+  TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign, MessageCircle, Trash2, Youtube,
+  Save, X, Loader2, AlertTriangle, Settings
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
 import PageGuide from "@/components/PageGuide";
 import { ResultCard, ResearchResultData, SendEmailResult, CopyButton } from "@/components/email-agent/ResultCard";
+import EmailIntegrationSettings from "@/components/email-agent/EmailIntegrationSettings";
 import GmailAgentLoop from "./GmailAgentLoop";
 import { useRole } from "@/context/RoleContext";
 
@@ -168,9 +170,163 @@ export default function EmailAgentPage() {
   const [expandedCompanies, setExpandedCompanies] = useState<string[]>([]);
   const [selectedEmails, setSelectedEmails] = useState<number[]>([]);
 
+  const [profile, setProfile] = useState<{ name: string; email: string; phone: string; signature: string } | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [profileForm, setProfileForm] = useState({ name: "", email: "", phone: "" });
+  const [signatureText, setSignatureText] = useState("");
+  const [autoAppend, setAutoAppend] = useState(true);
+  const [autoAppendSaving, setAutoAppendSaving] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingSignature, setSavingSignature] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [signatureError, setSignatureError] = useState("");
+  const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const showToast = (msg: string, type: "ok" | "err" = "ok") => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ msg, type });
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
+  };
+
+  const refreshProfile = async () => {
+    setProfileError("");
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/me/agent-profile`);
+      if (!res.ok) throw new Error("Failed to fetch profile");
+      const data = await res.json();
+      const a = data.agent_profile || {};
+      setProfile({
+        name: a.agent_name || "",
+        email: a.agent_email || "",
+        phone: a.agent_phone || "",
+        signature: a.signature || "",
+      });
+      setProfileForm({ name: a.agent_name || "", email: a.agent_email || "", phone: a.agent_phone || "" });
+      setSignatureText(a.signature || "");
+      setAutoAppend(a.auto_append_signature !== false);
+    } catch {
+      setProfileError("Failed to load profile data.");
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshProfile();
+  }, []);
+
+  useEffect(() => {
+    if (showProfile) refreshProfile();
+  }, [showProfile]);
+
+  // Deep link: /email-agent?settings=email opens Email Integration settings
+  // (used by the "Configure Email Integration" send-error action).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("settings") === "email") setShowSettings(true);
+  }, []);
+
+  const handleSaveProfile = async () => {
+    if (savingProfile) return;
+    setProfileError("");
+
+    if (!profileForm.name.trim()) {
+      setProfileError("Full name is required.");
+      return;
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(profileForm.email.trim())) {
+      setProfileError("Please enter a valid email address.");
+      return;
+    }
+    if (profileForm.phone.trim() && !/^\+?[0-9\s\-()]{7,20}$/.test(profileForm.phone.trim())) {
+      setProfileError("Please enter a valid phone number.");
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/me/agent-profile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agent_name: profileForm.name.trim(),
+          agent_email: profileForm.email.trim(),
+          agent_phone: profileForm.phone.trim(),
+          auto_append_signature: autoAppend,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to update profile");
+      const data = await res.json();
+      const a = data.agent_profile || {};
+      setProfile({
+        name: a.agent_name || "",
+        email: a.agent_email || "",
+        phone: a.agent_phone || "",
+        signature: a.signature || "",
+      });
+      setProfileForm({ name: a.agent_name || "", email: a.agent_email || "", phone: a.agent_phone || "" });
+      setSignatureText(a.signature || "");
+      setAutoAppend(a.auto_append_signature !== false);
+      showToast("Profile updated successfully. Email signature updated.");
+    } catch {
+      showToast("Unable to update profile. Please try again.", "err");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleSaveSignature = async () => {
+    if (savingSignature) return;
+    setSignatureError("");
+    setSavingSignature(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/me/agent-profile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signature: signatureText }),
+      });
+      if (!res.ok) throw new Error("Failed to update signature");
+      const data = await res.json();
+      const a = data.agent_profile || {};
+      setProfile(prev => (prev ? { ...prev, signature: a.signature ?? signatureText } : prev));
+      showToast("Email signature updated successfully.");
+    } catch {
+      setSignatureError("Unable to update email signature.");
+      showToast("Unable to update email signature.", "err");
+    } finally {
+      setSavingSignature(false);
+    }
+  };
+
+  const handleToggleAutoAppend = async () => {
+    if (autoAppendSaving) return;
+    const next = !autoAppend;
+    setAutoAppend(next);
+    setAutoAppendSaving(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/me/agent-profile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auto_append_signature: next }),
+      });
+      if (!res.ok) throw new Error("Failed to update setting");
+      const data = await res.json();
+      const a = data.agent_profile || {};
+      setAutoAppend(a.auto_append_signature !== false);
+      showToast(next ? "Auto append signature enabled." : "Auto append signature disabled.");
+    } catch {
+      setAutoAppend(!next);
+      showToast("Unable to update auto append setting.", "err");
+    } finally {
+      setAutoAppendSaving(false);
+    }
+  };
 
   // Added for Gmail Agent Migration: Allows user to dismiss a specific research result and refocuses on the input field seamlessly
   const handleRemoveResult = async (id: string) => {
@@ -416,7 +572,20 @@ export default function EmailAgentPage() {
       });
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text || "Failed to send email");
+        let message = text || "Failed to send email";
+        let code: string | undefined;
+        try {
+          const parsed = JSON.parse(text);
+          if (typeof parsed?.detail === "string") {
+            message = parsed.detail;
+          } else if (parsed?.detail?.message) {
+            message = parsed.detail.message;
+            code = parsed.detail.code;
+          }
+        } catch {}
+        const err = new Error(message) as Error & { code?: string };
+        if (code) err.code = code;
+        throw err;
       }
 
       const data = await res.json();
@@ -544,15 +713,31 @@ export default function EmailAgentPage() {
               <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300">Sender Profile</p>
               <h2 className="text-lg font-black text-slate-900 dark:text-white">SerpHawk</h2>
             </div>
-            <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700 shadow-sm dark:bg-zinc-900 dark:text-emerald-300">Digital Marketing Agency</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowProfile(v => !v)}
+                className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700 shadow-sm transition-colors hover:bg-emerald-100 dark:bg-zinc-900 dark:text-emerald-300 dark:hover:bg-zinc-800"
+              >
+                <User className="w-3 h-3" />
+                Profile
+              </button>
+              <button
+                onClick={() => setShowSettings(v => !v)}
+                className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700 shadow-sm transition-colors hover:bg-emerald-100 dark:bg-zinc-900 dark:text-emerald-300 dark:hover:bg-zinc-800"
+              >
+                <Settings className="w-3 h-3" />
+                Settings
+              </button>
+              <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700 shadow-sm dark:bg-zinc-900 dark:text-emerald-300">Digital Marketing Agency</span>
+            </div>
           </div>
           <div className="grid grid-cols-1 gap-x-8 gap-y-3 text-xs text-slate-600 dark:text-zinc-300 sm:grid-cols-2 lg:grid-cols-3">
             <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Company</strong>SerpHawk Digital Marketing Agency</p>
             <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Industry</strong>Digital Marketing &amp; SEO</p>
             <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Website</strong>serphawk.in</p>
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Sender Name</strong>Relation Manager- SerpHawk</p>
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Contact</strong>+91 9502901416</p>
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Email</strong>crm@serphawk.in</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Sender Name</strong>{profileLoading ? "…" : (profile?.name || "Relation Manager- SerpHawk")}</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Contact</strong>{profileLoading ? "…" : (profile?.phone || "+91 9502901416")}</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Email</strong>{profileLoading ? "…" : (profile?.email || "crm@serphawk.in")}</p>
             <p className="sm:col-span-2 lg:col-span-3"><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Location</strong>BTM Layout, Bengaluru, Karnataka, India</p>
             <p className="sm:col-span-2 lg:col-span-3"><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Services We Offer</strong>Organic SEO · Local SEO · Google Ads · Meta Ads · Social Media · Content Marketing · Web Development · App Development · Automation &amp; Consulting</p>
           </div>
@@ -852,6 +1037,223 @@ export default function EmailAgentPage() {
             </div>
           )}
         </div>
+        {/* Profile Settings Modal — in-page panel, stays on the Email Agent route */}
+        <AnimatePresence>
+          {showProfile && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-[200] p-4"
+              onClick={() => setShowProfile(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.92, y: 24, opacity: 0 }}
+                animate={{ scale: 1, y: 0, opacity: 1 }}
+                exit={{ scale: 0.92, y: 24, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 340, damping: 28 }}
+                className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-zinc-700 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="px-6 py-5 border-b border-slate-100 dark:border-zinc-800 flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-black text-slate-900 dark:text-white">Profile Settings</h2>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 mt-0.5">Manage your sender information and email signature.</p>
+                  </div>
+                  <button
+                    onClick={() => setShowProfile(false)}
+                    className="w-9 h-9 shrink-0 flex items-center justify-center rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                  {profileError && (
+                    <div className="flex items-center gap-2 p-3 text-sm text-red-600 bg-red-50 dark:bg-red-500/10 rounded-xl border border-red-200 dark:border-red-500/20">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      {profileError}
+                    </div>
+                  )}
+                  {signatureError && (
+                    <div className="flex items-center gap-2 p-3 text-sm text-red-600 bg-red-50 dark:bg-red-500/10 rounded-xl border border-red-200 dark:border-red-500/20">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      {signatureError}
+                    </div>
+                  )}
+
+                  {/* Personal Information */}
+                  <div className="rounded-2xl border p-6 space-y-4" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Personal Information</p>
+
+                    <div>
+                      <label className="flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-zinc-200 mb-1.5">
+                        <User className="w-3.5 h-3.5 text-slate-400" /> Full Name
+                      </label>
+                      <input
+                        type="text"
+                        value={profileForm.name}
+                        onChange={(e) => setProfileForm(f => ({ ...f, name: e.target.value }))}
+                        placeholder="Name"
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        style={{ borderColor: "var(--border)", color: "var(--text-primary)", background: "var(--background)" }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-zinc-200 mb-1.5">
+                        <Mail className="w-3.5 h-3.5 text-slate-400" /> Email Address
+                      </label>
+                      <input
+                        type="email"
+                        value={profileForm.email}
+                        onChange={(e) => setProfileForm(f => ({ ...f, email: e.target.value }))}
+                        placeholder="user@example.com"
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        style={{ borderColor: "var(--border)", color: "var(--text-primary)", background: "var(--background)" }}
+                      />
+                      <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">Sender address for outgoing emails — this does not change your login email.</p>
+                    </div>
+
+                    <div>
+                      <label className="flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-zinc-200 mb-1.5">
+                        <Phone className="w-3.5 h-3.5 text-slate-400" /> Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        value={profileForm.phone}
+                        onChange={(e) => setProfileForm(f => ({ ...f, phone: e.target.value }))}
+                        placeholder="+91 XXXXX XXXXX"
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        style={{ borderColor: "var(--border)", color: "var(--text-primary)", background: "var(--background)" }}
+                      />
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        onClick={handleSaveProfile}
+                        disabled={savingProfile}
+                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                      >
+                        {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        Save Changes
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Email Signature */}
+                  <div className="rounded-2xl border p-6 space-y-4" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Email Signature</p>
+                      <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">Customize the signature that will be automatically used in your outgoing emails.</p>
+                    </div>
+                    <textarea
+                      value={signatureText}
+                      onChange={(e) => setSignatureText(e.target.value)}
+                      rows={5}
+                      placeholder={"Best Regards,\nName\nSerpHawk\n+91 XXXXX XXXXX"}
+                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                      style={{ borderColor: "var(--border)", color: "var(--text-primary)", background: "var(--background)" }}
+                    />
+
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Preview</p>
+                      <div
+                        className="rounded-xl border p-4 text-sm whitespace-pre-wrap min-h-[3rem]"
+                        style={{ borderColor: "var(--border)", color: "var(--text-primary)", background: "var(--background)" }}
+                      >
+                        {signatureText.trim() ? signatureText : <span className="text-slate-400 dark:text-zinc-500">No signature configured.</span>}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 pt-4 border-t" style={{ borderColor: "var(--border)" }}>
+                      <div>
+                        <p className="text-sm font-bold text-slate-700 dark:text-zinc-200">Automatically append signature to emails</p>
+                        <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">When enabled, your saved email signature will be automatically added to outgoing emails.</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={`text-[10px] font-black uppercase tracking-widest ${autoAppend ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-zinc-500"}`}>
+                          {autoAppend ? "ON" : "OFF"}
+                        </span>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={autoAppend}
+                          aria-label="Automatically append signature to emails"
+                          onClick={handleToggleAutoAppend}
+                          disabled={autoAppendSaving}
+                          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${autoAppend ? "bg-emerald-500" : "bg-slate-300 dark:bg-zinc-700"}`}
+                        >
+                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${autoAppend ? "translate-x-6" : "translate-x-1"}`} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        onClick={handleSaveSignature}
+                        disabled={savingSignature}
+                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                      >
+                        {savingSignature ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        Save Signature
+                      </button>
+                    </div>
+                  </div>
+
+                  {profileLoading && (
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading profile…
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Email Integration Settings — same component previously hosted in /admin/settings */}
+        <AnimatePresence>
+          {showSettings && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-[200] p-4"
+              onClick={() => setShowSettings(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.92, y: 24, opacity: 0 }}
+                animate={{ scale: 1, y: 0, opacity: 1 }}
+                exit={{ scale: 0.92, y: 24, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 340, damping: 28 }}
+                className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-zinc-700 w-full max-w-2xl max-h-[88vh] flex flex-col overflow-hidden"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="px-6 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-3 shrink-0">
+                  <h2 className="text-lg font-black text-slate-900 dark:text-white">Settings</h2>
+                  <button
+                    onClick={() => setShowSettings(false)}
+                    className="w-9 h-9 shrink-0 flex items-center justify-center rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                  <EmailIntegrationSettings />
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Toast */}
+        {toast && (
+          <div className={`fixed top-4 right-4 z-[300] flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-sm font-semibold ${toast.type === "ok" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}>
+            {toast.type === "ok" ? <CheckCircle className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+            {toast.msg}
+          </div>
+        )}
       </div>
     </div>
   );

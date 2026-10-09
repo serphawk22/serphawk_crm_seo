@@ -174,6 +174,8 @@ from database import (
     Tenant,
     PageVisitTelemetry,
     User,
+    EmailAgentProfile,
+    UserEmailIntegration,
     create_db_and_tables,
     engine,
     InventoryItem,
@@ -1301,37 +1303,83 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     session.refresh(sent_email)
 
     # Step 3.5: Send the actual email (unless skip_send is True).
-    # Primary path is direct SMTP via the configured crm@serphawk.in mailbox.
+    # Primary path is direct SMTP via user's Email Integration, with fallback to configured env mailbox.
     # The N8N webhook is still fired best-effort for follow-up automation.
     if not body.skip_send:
         import os
         import httpx
-        sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
-        password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
-        smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "mail.serphawk.in")
-        smtp_port = os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
+        sender = _email_agent_sender(session)
+        _sig = sender.get("signature") if sender.get("auto_append") else ""
+        integ = _get_user_email_integration(session, current_salesperson_id.get())
+        password = ""
+        smtp_security = None
+        sender_email = None
+        sender_name = sender.get("name") or "Relation Manager- SerpHawk"
+        smtp_server = None
+        smtp_port = 587
+        imap_server = None
+        imap_security = None
+        auth_user = None
+
+        if integ is not None and integ.email and integ.encrypted_app_password:
+            from modules.email_crypto import decrypt_app_password, EmailCredentialEncryptionError
+            try:
+                password = decrypt_app_password(integ.encrypted_app_password)
+            except EmailCredentialEncryptionError:
+                raise HTTPException(status_code=500, detail={
+                    "code": "email_integration_decrypt_failed",
+                    "message": "Unable to decrypt stored email credentials. Please re-save your Email Integration settings.",
+                })
+            sender_email = integ.email
+            smtp_server = integ.smtp_host
+            smtp_port = int(integ.smtp_port)
+            smtp_security = integ.smtp_security
+            imap_server = integ.imap_host
+            imap_security = integ.imap_security
+            auth_user = integ.email
+        else:
+            sender_email = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
+            password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
+            smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "mail.serphawk.in")
+            smtp_port = int(os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587))
+            imap_server = os.getenv("IMAP_SERVER")
 
         try:
             bodies = [b for b in [body.english_body, body.spanish_body] if b and b.strip()]
             full_body = "\n\n---\n\n".join(bodies) if bodies else ""
 
-            # Send directly over SMTP from crm@serphawk.in so mail goes out even if n8n is down.
-            if sender and password:
+            # Send directly over SMTP from the configured mailbox so mail goes out even if n8n is down.
+            if sender_email and password:
                 from modules.email_sender import send_email_outlook
-                send_email_outlook(
-                    to_email=body.to_email,
-                    subject=body.subject,
-                    body=full_body or body.english_body or body.spanish_body or "",
-                    sender_email=sender,
-                    sender_password=password,
-                    smtp_server=smtp_server,
-                    smtp_port=int(smtp_port),
-                    tracking_id=sent_email.id,
-                    tracking_base_url=os.getenv("PUBLIC_BASE_URL"),
-                )
-                print(f"Email sent via SMTP to {body.to_email} from {sender}")
+                try:
+                    send_email_outlook(
+                        to_email=body.to_email,
+                        subject=body.subject,
+                        body=_apply_signature(full_body or body.english_body or body.spanish_body or "", _sig),
+                        sender_email=sender_email,
+                        sender_password=password,
+                        smtp_server=smtp_server,
+                        smtp_port=smtp_port,
+                        tracking_id=sent_email.id,
+                        tracking_base_url=os.getenv("PUBLIC_BASE_URL"),
+                        from_name=sender_name,
+                        reply_to=sender.get("email") or sender_email,
+                        footer_email=sender.get("email") or sender_email,
+                        footer_phone=sender.get("phone"),
+                        security=smtp_security,
+                        auth_user=auth_user,
+                        imap_server=imap_server,
+                        imap_security=imap_security,
+                    )
+                except Exception as send_err:
+                    print(f"Email send failed via SMTP: {send_err}")
+                    raise HTTPException(status_code=502, detail={
+                        "code": "email_integration_send_failed",
+                        "message": f"Unable to send email: {send_err}",
+                    })
+                print(f"Email sent via SMTP to {body.to_email} from {sender_email}")
             else:
-                print("SMTP not configured (missing EMAIL_SENDER/EMAIL_PASSWORD) - skipping direct send")
+                print("SMTP not configured (missing credentials) - skipping direct send")
 
             # Fire the N8N webhook best-effort for follow-up automation (never blocks the reply).
             webhook_url = os.getenv("N8N_EMAIL_WEBHOOK_URL", "https://primary-production-d40bc.up.railway.app/webhook/trigger-cold-email")
@@ -1356,6 +1404,8 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
                     print(f"Webhook successfully triggered and responded from manual send to {webhook_url}")
             except Exception as e:
                 print(f"Manual Email send failed via webhook: {e}")
+        except HTTPException:
+            raise
         except Exception as e:
             print(f"Manual Email send failed: {e}")
 
@@ -1976,6 +2026,140 @@ def _verify_password(plain: str, user: User) -> bool:
 def _user_dict(u: User) -> dict:
     return {"id": u.id, "email": u.email, "name": u.name, "phone": getattr(u, "phone", None), "role": _normalize_role(u.role), "tenant_id": u.tenant_id}
 
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _generate_signature(name, email, phone) -> str:
+    """Build the default email signature from the agent profile values.
+
+    Missing values are omitted entirely (never rendered as undefined/null).
+    """
+    lines = ["Best Regards,"]
+    if (name or "").strip():
+        lines.append(name.strip())
+    if (email or "").strip():
+        lines.append(f"Email: {email.strip()}")
+    if (phone or "").strip():
+        lines.append(f"Phone: {phone.strip()}")
+    return "\n".join(lines)
+
+
+def _get_agent_profile(session: Session, user: User) -> Optional[EmailAgentProfile]:
+    """Read-only lookup of the user's Email Agent profile row (no writes)."""
+    if not user or not user.id:
+        return None
+    return session.exec(select(EmailAgentProfile).where(EmailAgentProfile.user_id == user.id)).first()
+
+
+def _agent_profile_dict(prof: Optional[EmailAgentProfile], user: Optional[User], integ: Optional[UserEmailIntegration] = None) -> dict:
+    """Serialize the agent profile, falling back to the configured SMTP email or login record READ-ONLY
+    for display defaults when no agent profile email is set."""
+    name = (prof.agent_name if prof else None) or (user.name if user else None) or ""
+    email = (prof.agent_email if prof else None) or (integ.email if integ and integ.email else None) or (user.email if user else None) or ""
+    phone = (prof.agent_phone if prof else None) or (getattr(user, "phone", None) if user else None) or ""
+    return {
+        "agent_name": name,
+        "agent_email": email,
+        "agent_phone": phone,
+        "signature": (prof.signature if prof else None) or "",
+        "auto_append_signature": bool(prof.auto_append_signature) if prof else True,
+    }
+
+
+def _email_agent_sender(session: Session) -> dict:
+    """Resolve the authenticated user's sender identity for the Email Agent.
+
+    Source of truth is the email_agent_profiles table (sender name/email/phone/
+    signature/auto-append), fully separate from login credentials. When no agent
+    profile row exists yet, the login record is used READ-ONLY as a display
+    fallback — it is never written from this path. SMTP credentials always stay
+    on the configured mailbox.
+    """
+    user_id = current_salesperson_id.get()
+    user = session.get(User, user_id) if user_id else None
+    if not user:
+        return {
+            "name": "Relation Manager- SerpHawk",
+            "email": os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in"),
+            "phone": "+91 9502901416",
+            "signature": "",
+            "auto_append": False,
+        }
+    integ = _get_user_email_integration(session, user_id)
+    prof = _get_agent_profile(session, user)
+    d = _agent_profile_dict(prof, user, integ)
+    return {
+        "name": (d["agent_name"] or "").strip() or "Relation Manager- SerpHawk",
+        "email": (d["agent_email"] or "").strip() or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in"),
+        "phone": (d["agent_phone"] or "").strip() or "+91 9502901416",
+        "signature": d["signature"] or "",
+        "auto_append": d["auto_append_signature"],
+    }
+
+
+def _get_user_email_integration(session: Session, user_id: Optional[int]) -> Optional[UserEmailIntegration]:
+    """Read the authenticated user's Email Integration row — never another user's."""
+    if not user_id:
+        return None
+    return session.exec(select(UserEmailIntegration).where(UserEmailIntegration.user_id == user_id)).first()
+
+
+def _email_integration_safe_dict(row: Optional[UserEmailIntegration]) -> dict:
+    """Serialize integration config WITHOUT any credential material."""
+    if not row:
+        return {"configured": False, "smtp_status": "not_configured", "imap_status": "not_configured"}
+    return {
+        "configured": True,
+        "email": row.email,
+        "provider": row.provider,
+        "smtp_host": row.smtp_host,
+        "smtp_port": row.smtp_port,
+        "smtp_security": row.smtp_security,
+        "imap_host": row.imap_host,
+        "imap_port": row.imap_port,
+        "imap_security": row.imap_security,
+        "is_active": bool(row.is_active),
+        "smtp_status": row.smtp_status or "not_tested",
+        "imap_status": row.imap_status or "not_tested",
+        "last_tested_at": row.last_tested_at.isoformat() if row.last_tested_at else None,
+    }
+
+
+_DEFAULT_SIGNOFF_GREETING_RE = re.compile(
+    r"^\s*(?:Best regards,?|Saludos cordiales,?|Saludos,?|Warm regards,?|Best,?|Regards,?)\s*$",
+    re.IGNORECASE,
+)
+
+_SIGNOFF_SHAPE_RE = re.compile(
+    r"serphawk|(?:^|\s)[^@\s]+@[^@\s]+\.[^@\s]+|^(?:Email|Phone):\s",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _apply_signature(body: str, signature: str) -> str:
+    """Idempotently apply the user's saved email signature to a generated body.
+
+    - Empty signature: body unchanged.
+    - Signature already present in the body: unchanged (never appended twice).
+    - Otherwise: strip a trailing sign-off block (a greeting line followed by up
+      to 4 lines shaped like a signature — mentioning SerpHawk, an email
+      address, or Email:/Phone: lines) and append the signature with line
+      breaks preserved exactly. This also handles a signature that changed
+      after a draft was written, so only one sign-off is ever sent.
+    """
+    if not body or not signature or not signature.strip():
+        return body
+    if signature.strip() in body:
+        return body
+    lines = body.rstrip().split("\n")
+    for i in range(len(lines) - 1, max(len(lines) - 6, 0) - 1, -1):
+        if _DEFAULT_SIGNOFF_GREETING_RE.match(lines[i]):
+            block = lines[i + 1:]
+            if block and _SIGNOFF_SHAPE_RE.search("\n".join(block)):
+                lines = lines[:i]
+                break
+    return "\n".join(lines).rstrip() + "\n\n" + signature.rstrip()
 
 def _client_dict(cp: ClientProfile, session: Session) -> dict:
     user = session.get(User, cp.userId) if cp.userId else None
@@ -2790,6 +2974,347 @@ def update_current_user(body: UserUpdateMe, session: Session = Depends(get_sessi
     session.refresh(user)
     return {"user": _user_dict(user)}
 
+
+class AgentProfileUpdate(BaseModel):
+    agent_name: Optional[str] = None
+    agent_email: Optional[str] = None
+    agent_phone: Optional[str] = None
+    signature: Optional[str] = None
+    auto_append_signature: Optional[bool] = None
+
+@app.get("/users/me/agent-profile")
+def get_email_agent_profile(session: Session = Depends(get_session)):
+    """Email Agent sender profile (separate from the login record)."""
+    user_id = current_salesperson_id.get()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    integ = _get_user_email_integration(session, user_id)
+    return {"agent_profile": _agent_profile_dict(_get_agent_profile(session, user), user, integ)}
+
+@app.put("/users/me/agent-profile")
+def update_email_agent_profile(body: AgentProfileUpdate, session: Session = Depends(get_session)):
+    """Update the Email Agent sender profile.
+
+    Writes ONLY to email_agent_profiles — the users table (login email,
+    password) is never touched. When any sender field changes, the signature is
+    regenerated from the NEW values in the same transaction; an explicit
+    `signature` in the payload (manual Save Signature) wins over regeneration.
+    Agent emails are sender identities, not accounts, so no uniqueness check
+    applies.
+    """
+    user_id = current_salesperson_id.get()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    prof = _get_agent_profile(session, user)
+    if prof is None:
+        integ = _get_user_email_integration(session, user_id)
+        fallback_email = (integ.email if integ and integ.email else None) or user.email
+        prof = EmailAgentProfile(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            agent_name=user.name,
+            agent_email=fallback_email,
+            agent_phone=getattr(user, "phone", None),
+            signature=getattr(user, "signature", None),
+            auto_append_signature=bool(getattr(user, "auto_append_signature", True)),
+        )
+        session.add(prof)
+
+    profile_touched = body.agent_name is not None or body.agent_email is not None or body.agent_phone is not None
+
+    if body.agent_email is not None:
+        new_email = body.agent_email.strip()
+        if new_email and not _EMAIL_RE.match(new_email):
+            raise HTTPException(status_code=400, detail="Invalid email format")
+        prof.agent_email = new_email
+    if body.agent_name is not None:
+        prof.agent_name = body.agent_name
+    if body.agent_phone is not None:
+        prof.agent_phone = body.agent_phone
+
+    if profile_touched:
+        name = (prof.agent_name or "").strip() or (user.name or "")
+        email = (prof.agent_email or "").strip() or (user.email or "")
+        phone = (prof.agent_phone or "").strip() or (getattr(user, "phone", None) or "")
+        prof.signature = _generate_signature(name, email, phone)
+
+    if body.signature is not None:
+        prof.signature = body.signature
+    if body.auto_append_signature is not None:
+        prof.auto_append_signature = bool(body.auto_append_signature)
+
+    session.commit()
+    session.refresh(prof)
+    integ = _get_user_email_integration(session, user_id)
+    return {"agent_profile": _agent_profile_dict(prof, user, integ)}
+
+
+class SignatureUpdate(BaseModel):
+    signature: Optional[str] = None
+
+@app.put("/users/me/signature")
+def update_current_user_signature(body: SignatureUpdate, session: Session = Depends(get_session)):
+    """Alias kept for compatibility — writes the signature to the agent profile
+    table (never to the login record)."""
+    user_id = current_salesperson_id.get()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    prof = _get_agent_profile(session, user)
+    if prof is None:
+        prof = EmailAgentProfile(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            agent_name=user.name,
+            agent_email=user.email,
+            agent_phone=getattr(user, "phone", None),
+            signature=getattr(user, "signature", None),
+            auto_append_signature=bool(getattr(user, "auto_append_signature", True)),
+        )
+        session.add(prof)
+    prof.signature = body.signature
+    session.commit()
+    session.refresh(prof)
+    return {"ok": True}
+
+
+_EMAIL_INTEGRATION_PROVIDERS = {"gmail", "outlook", "yahoo", "zoho", "custom"}
+_EMAIL_INTEGRATION_SECURITY_ALIASES = {"ssl": "ssl", "ssltls": "ssl", "tls": "ssl", "starttls": "starttls", "none": "none", "": "none"}
+
+
+def _normalize_integration_security(value: Optional[str], label: str) -> Optional[str]:
+    if value is None:
+        return None
+    v = str(value).strip().lower().replace(" ", "").replace("/", "").replace("_", "")
+    if v not in _EMAIL_INTEGRATION_SECURITY_ALIASES:
+        raise HTTPException(status_code=400, detail=f"Invalid {label} security value. Use ssl, starttls, or none.")
+    return _EMAIL_INTEGRATION_SECURITY_ALIASES[v]
+
+
+def _validate_integration_port(port: Optional[int], label: str) -> Optional[int]:
+    if port is None:
+        return None
+    if not isinstance(port, int) or isinstance(port, bool) or not (1 <= port <= 65535):
+        raise HTTPException(status_code=400, detail=f"Invalid {label} port. Use a number between 1 and 65535.")
+    return port
+
+
+class EmailIntegrationUpdate(BaseModel):
+    email: Optional[str] = None
+    app_password: Optional[str] = None
+    provider: Optional[str] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_security: Optional[str] = None
+    imap_host: Optional[str] = None
+    imap_port: Optional[int] = None
+    imap_security: Optional[str] = None
+
+
+@app.get("/users/me/email-integration")
+def get_email_integration(session: Session = Depends(get_session)):
+    """Safe view of the authenticated user's Email Integration. No credentials returned."""
+    user_id = current_salesperson_id.get()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    row = _get_user_email_integration(session, user_id)
+    return {"integration": _email_integration_safe_dict(row)}
+
+
+@app.put("/users/me/email-integration")
+def update_email_integration(body: EmailIntegrationUpdate, session: Session = Depends(get_session)):
+    """Create/update the authenticated user's Email Integration.
+
+    The app password is encrypted at rest and NEVER returned. Server/port/
+    security fields can be updated without re-entering the password.
+    """
+    user_id = current_salesperson_id.get()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    row = _get_user_email_integration(session, user_id)
+    creating = row is None
+    if creating:
+        row = UserEmailIntegration(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            email="",
+            encrypted_app_password="",
+            smtp_host="",
+            imap_host="",
+        )
+        session.add(row)
+
+    if body.email is not None:
+        email = body.email.strip()
+        if not _EMAIL_RE.match(email):
+            raise HTTPException(status_code=400, detail="Invalid email format")
+        row.email = email
+    if body.provider is not None:
+        provider = body.provider.strip().lower()
+        if provider not in _EMAIL_INTEGRATION_PROVIDERS:
+            raise HTTPException(status_code=400, detail="Invalid provider. Use gmail, outlook, yahoo, zoho, or custom.")
+        row.provider = provider
+    if body.smtp_host is not None:
+        host = body.smtp_host.strip()
+        if not host:
+            raise HTTPException(status_code=400, detail="SMTP server is required.")
+        row.smtp_host = host
+    if body.imap_host is not None:
+        host = body.imap_host.strip()
+        if not host:
+            raise HTTPException(status_code=400, detail="IMAP server is required.")
+        row.imap_host = host
+    if body.smtp_port is not None:
+        row.smtp_port = _validate_integration_port(body.smtp_port, "SMTP")
+    if body.imap_port is not None:
+        row.imap_port = _validate_integration_port(body.imap_port, "IMAP")
+    sec = _normalize_integration_security(body.smtp_security, "SMTP")
+    if sec is not None:
+        row.smtp_security = sec
+    sec = _normalize_integration_security(body.imap_security, "IMAP")
+    if sec is not None:
+        row.imap_security = sec
+    if body.app_password is not None:
+        if not body.app_password:
+            raise HTTPException(status_code=400, detail="App password cannot be empty.")
+        from modules.email_crypto import encrypt_app_password, EmailCredentialEncryptionError
+        try:
+            row.encrypted_app_password = encrypt_app_password(body.app_password)
+        except EmailCredentialEncryptionError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    if creating:
+        missing = []
+        if not row.email:
+            missing.append("email address")
+        if not row.encrypted_app_password:
+            missing.append("app password")
+        if not row.smtp_host:
+            missing.append("SMTP server")
+        if not row.imap_host:
+            missing.append("IMAP server")
+        if missing:
+            session.rollback()
+            raise HTTPException(status_code=400, detail="Missing required fields for a new configuration: " + ", ".join(missing) + ".")
+        row.smtp_status = "not_tested"
+        row.imap_status = "not_tested"
+
+    from database import _utcnow as _db_utcnow
+    row.updated_at = _db_utcnow()
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return {"integration": _email_integration_safe_dict(row)}
+
+
+class EmailIntegrationTestRequest(BaseModel):
+    scope: Optional[str] = "all"  # smtp | imap | all
+    # Optional UNSAVED overrides (test-before-save). A temporary app_password is
+    # used for the test only and is NEVER persisted.
+    email: Optional[str] = None
+    app_password: Optional[str] = None
+    provider: Optional[str] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_security: Optional[str] = None
+    imap_host: Optional[str] = None
+    imap_port: Optional[int] = None
+    imap_security: Optional[str] = None
+
+
+@app.post("/users/me/email-integration/test")
+def test_email_integration(body: EmailIntegrationTestRequest, session: Session = Depends(get_session)):
+    """Run a REAL SMTP/IMAP connection test against the saved configuration.
+
+    Optional override fields (including a temporary app_password) test form
+    values BEFORE saving; those credentials are discarded and never stored.
+    Status is persisted only when the saved configuration itself was tested.
+    """
+    user_id = current_salesperson_id.get()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    row = _get_user_email_integration(session, user_id)
+
+    scope = (body.scope or "all").lower()
+    if scope not in ("smtp", "imap", "all"):
+        raise HTTPException(status_code=400, detail="Invalid test scope. Use smtp, imap, or all.")
+
+    overrides = {k: v for k, v in body.model_dump().items() if k != "scope" and v is not None}
+    has_overrides = bool(overrides)
+
+    email = overrides.get("email") or (row.email if row else None)
+    password = overrides.get("app_password")
+    password_from_stored = False
+    if password is None and row is not None and row.encrypted_app_password:
+        from modules.email_crypto import decrypt_app_password, EmailCredentialEncryptionError
+        try:
+            password = decrypt_app_password(row.encrypted_app_password)
+            password_from_stored = True
+        except EmailCredentialEncryptionError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    smtp_host = overrides.get("smtp_host") or (row.smtp_host if row else None)
+    smtp_port = overrides.get("smtp_port") or (row.smtp_port if row else None)
+    smtp_security = _normalize_integration_security(overrides.get("smtp_security") or (row.smtp_security if row else None), "SMTP")
+    imap_host = overrides.get("imap_host") or (row.imap_host if row else None)
+    imap_port = overrides.get("imap_port") or (row.imap_port if row else None)
+    imap_security = _normalize_integration_security(overrides.get("imap_security") or (row.imap_security if row else None), "IMAP")
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email Integration is not configured. Save your email account and app password before testing.")
+
+    from modules.email_integration import test_smtp_connection, test_imap_connection
+
+    result: dict = {"smtp": None, "imap": None, "last_tested_at": None}
+    failures = []
+
+    if scope in ("smtp", "all"):
+        if not smtp_host or not smtp_port:
+            result["smtp"] = {"ok": False, "message": "SMTP server and port are required."}
+        else:
+            ok, message = test_smtp_connection(email, password, smtp_host, int(smtp_port), smtp_security or "starttls")
+            result["smtp"] = {"ok": ok, "message": message}
+            if not ok:
+                failures.append(message)
+
+    if scope in ("imap", "all"):
+        if not imap_host or not imap_port:
+            result["imap"] = {"ok": False, "message": "IMAP server and port are required."}
+        else:
+            ok, message = test_imap_connection(email, password, imap_host, int(imap_port), imap_security or "ssl")
+            result["imap"] = {"ok": ok, "message": message}
+            if not ok:
+                failures.append(message)
+
+    # Persist status ONLY when the saved configuration itself was tested.
+    if row is not None and not has_overrides:
+        from database import _utcnow as _db_utcnow
+        row.last_tested_at = _db_utcnow()
+        if result["smtp"] is not None:
+            row.smtp_status = "connected" if result["smtp"]["ok"] else "failed"
+        if result["imap"] is not None:
+            row.imap_status = "connected" if result["imap"]["ok"] else "failed"
+        session.add(row)
+        session.commit()
+        result["last_tested_at"] = row.last_tested_at.isoformat()
+
+    result["ok"] = not failures
+    return result
 
 @app.get("/users")
 def list_users(role: Optional[str] = None, session: Session = Depends(get_session)):
@@ -5817,6 +6342,8 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
         from database import SentEmail
         import json
         session = next(get_session())
+        profile_sender = _email_agent_sender(session)
+        _sig = profile_sender.get("signature") if profile_sender.get("auto_append") else ""
 
         # --- Static Email Template ---
         OUTREACH_SUBJECT = "Let's grow {company_name} together!"
@@ -5870,11 +6397,28 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
             inbound_body_en = inbound_llm.get("english_body") or INBOUND_BODY_EN.format(company_name=company_name, services=services)
             inbound_body_es = inbound_llm.get("spanish_body") or INBOUND_BODY_ES.format(company_name=company_name, services=services)
 
-        sender = body.sender_email or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
-        password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD", "")
-        smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "smtp.gmail.com")
-        smtp_port = os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
-        imap_server = os.getenv("IMAP_SERVER")
+        integ = _get_user_email_integration(session, current_salesperson_id.get())
+        password = ""
+        smtp_security = None
+        imap_security = None
+        integ_decrypt_failed = False
+        if integ is not None and integ.email and integ.encrypted_app_password:
+            from modules.email_crypto import decrypt_app_password, EmailCredentialEncryptionError
+            try:
+                password = decrypt_app_password(integ.encrypted_app_password)
+            except EmailCredentialEncryptionError:
+                integ_decrypt_failed = True
+            sender = integ.email
+            smtp_server = integ.smtp_host
+            smtp_port = int(integ.smtp_port)
+            smtp_security = integ.smtp_security
+            imap_server = integ.imap_host
+            imap_security = integ.imap_security
+        else:
+            sender = body.sender_email or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in")
+            smtp_server = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER", "smtp.gmail.com")
+            smtp_port = os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
+            imap_server = os.getenv("IMAP_SERVER")
 
         # Provide default subject and content if missing, so frontend always gets a visible draft
         # Build the draft object for both outreach and inbound
@@ -5935,20 +6479,45 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
         # Only send the email if manual is False and all required fields are present.
         # The SentEmail row above already exists, so its id can be embedded as an
         # open-tracking pixel in the outgoing HTML.
+        if not body.manual:
+            if integ is None or not integ.email or not integ.encrypted_app_password:
+                raise HTTPException(status_code=400, detail={
+                    "code": "email_integration_not_configured",
+                    "message": "Email integration is not configured. Please configure your email account in Settings → Email Integration.",
+                })
+            if integ_decrypt_failed:
+                raise HTTPException(status_code=500, detail={
+                    "code": "email_integration_decrypt_failed",
+                    "message": "Unable to decrypt stored email credentials. Please re-save your Email Integration settings.",
+                })
         if not body.manual and all([body.to_email, body.subject, body.body, sender, password]):
             try:
-                send_email_outlook(
-                    to_email=body.to_email,
-                    subject=body.subject,
-                    body=body.body,
-                    sender_email=sender,
-                    sender_password=password,
-                    smtp_server=smtp_server,
-                    smtp_port=smtp_port,
-                    imap_server=imap_server,
-                    tracking_id=sent_email.id,
-                    tracking_base_url=os.getenv("PUBLIC_BASE_URL"),
-                )
+                try:
+                    send_email_outlook(
+                        to_email=body.to_email,
+                        subject=body.subject,
+                        body=_apply_signature(body.body, _sig),
+                        sender_email=sender,
+                        sender_password=password,
+                        smtp_server=smtp_server,
+                        smtp_port=smtp_port,
+                        imap_server=imap_server,
+                        tracking_id=sent_email.id,
+                        tracking_base_url=os.getenv("PUBLIC_BASE_URL"),
+                        from_name=profile_sender.get("name"),
+                        reply_to=profile_sender.get("email"),
+                        footer_email=profile_sender.get("email"),
+                        footer_phone=profile_sender.get("phone"),
+                        security=smtp_security,
+                        auth_user=integ.email if integ else None,
+                        imap_security=imap_security,
+                    )
+                except Exception as send_err:
+                    print(f"Email send via integration failed for user {current_salesperson_id.get()}: {send_err}")
+                    raise HTTPException(status_code=502, detail={
+                        "code": "email_integration_send_failed",
+                        "message": f"Unable to send email: {send_err}",
+                    })
 
                 # --- Trigger n8n Webhook ---
                 try:
@@ -5967,6 +6536,8 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
                 except Exception as wh_e:
                     print(f"Webhook trigger failed: {wh_e}")
 
+            except HTTPException:
+                raise
             except Exception as e:
                 print(f"Email send failed: {e}")
         # If any required field is missing, skip sending and just generate the draft
@@ -5988,6 +6559,8 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
             background_tasks.add_task(generate_llm_draft_task, sent_email.id, body.dict())
 
         return {"ok": True, "email_id": sent_email.id, "draft": draft_obj, "client_id": client_id}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

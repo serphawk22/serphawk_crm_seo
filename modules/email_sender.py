@@ -1,6 +1,7 @@
 import base64
 import smtplib
 import imaplib
+import ssl
 import email as email_lib
 import io
 import os
@@ -92,7 +93,7 @@ _ARCHIVE_FOLDERS = [
     "INBOX.Sent Items",
 ]
 
-def _archive_sent_copy(msg, sender_email, sender_password, smtp_server, imap_server=None):
+def _archive_sent_copy(msg, sender_email, sender_password, smtp_server, imap_server=None, imap_security=None):
     """Append a copy of the sent message into the account's mailbox via IMAP.
     Copies land in the account's Inbox (per requirement); falls back to the
     provider's Sent folder if the Inbox is not writable.
@@ -104,10 +105,20 @@ def _archive_sent_copy(msg, sender_email, sender_password, smtp_server, imap_ser
     if not imap_server:
         return
     try:
-        try:
-            conn = imaplib.IMAP4_SSL(imap_server, timeout=30)
-        except Exception:
+        mode = (imap_security or "").lower()
+        if mode == "ssl":
+            conn = imaplib.IMAP4_SSL(imap_server, timeout=30, ssl_context=ssl.create_default_context())
+        elif mode == "starttls":
             conn = imaplib.IMAP4(imap_server, timeout=30)
+            conn.starttls(ssl_context=ssl.create_default_context())
+        elif mode == "none":
+            conn = imaplib.IMAP4(imap_server, timeout=30)
+        else:
+            # Legacy behavior: SSL first, plain-text fallback.
+            try:
+                conn = imaplib.IMAP4_SSL(imap_server, timeout=30)
+            except Exception:
+                conn = imaplib.IMAP4(imap_server, timeout=30)
         conn.login(sender_email, sender_password)
         for folder in _ARCHIVE_FOLDERS:
             try:
@@ -157,6 +168,13 @@ def send_email_outlook(
     tracking_id: int = None,
     tracking_base_url: str = None,
     extra_headers: dict = None,
+    from_name: str = None,
+    reply_to: str = None,
+    footer_email: str = None,
+    footer_phone: str = None,
+    security: str = None,
+    auth_user: str = None,
+    imap_security: str = None,
 ):
     """
     Send an email over SMTP (supports STARTTLS on 587, falls back to implicit TLS on 465).
@@ -234,23 +252,33 @@ def send_email_outlook(
         msg.attach(part)
 
     sent_success = False
-    if str(smtp_port) == "465":
-        with smtplib.SMTP_SSL(smtp_server, int(smtp_port), timeout=20) as server:
-            server.login(sender_email, sender_password)
+    # Explicit security mode wins ("ssl" | "starttls" | "none"); when not
+    # provided, keep the legacy port-based heuristic (465 => implicit SSL).
+    mode = (security or "").lower()
+    if mode == "ssl" or (not mode and str(smtp_port) == "465"):
+        with smtplib.SMTP_SSL(smtp_server, int(smtp_port), timeout=20, context=ssl.create_default_context()) as server:
+            server.login(auth_user or sender_email, sender_password)
+            server.send_message(msg)
+        sent_success = True
+    elif mode == "none":
+        with smtplib.SMTP(smtp_server, int(smtp_port), timeout=20) as server:
+            server.ehlo()
+            server.login(auth_user or sender_email, sender_password)
             server.send_message(msg)
         sent_success = True
     else:
+        # starttls (also the legacy default for every non-465 port)
         with smtplib.SMTP(smtp_server, int(smtp_port), timeout=20) as server:
             server.ehlo()
-            server.starttls()
+            server.starttls(context=ssl.create_default_context())
             server.ehlo()
-            server.login(sender_email, sender_password)
+            server.login(auth_user or sender_email, sender_password)
             server.send_message(msg)
         sent_success = True
 
     if sent_success:
         # Keep a copy of the sent mail in the account's Inbox / Sent mailbox (Gmail/Outlook/etc.)
-        _archive_sent_copy(msg, sender_email, sender_password, smtp_server, imap_server)
+        _archive_sent_copy(msg, sender_email, sender_password, smtp_server, imap_server, imap_security=imap_security)
 
 
 # ── Branded email shell ───────────────────────────────────────────────────
