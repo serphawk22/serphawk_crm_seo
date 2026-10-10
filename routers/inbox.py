@@ -60,9 +60,10 @@ from database import (
     Task,
     Tenant,
     User,
+    UserEmailIntegration,
     engine,
 )
-from modules import email_ai, inbox_sync
+from modules import company_mailer, email_ai, inbox_sync
 from modules.api_tracker import current_salesperson_id
 
 router = APIRouter(tags=["inbox"])
@@ -129,10 +130,19 @@ def _owned_clients(v: Viewer):
 
 
 def _scope(stmt, model, v: Viewer):
+    """Admins see the whole tenant. Everyone else sees mail linked to their own leads / clients, plus —
+    because the Inbox follows each person's Email Integration — everything received in their own
+    mailbox and everything they sent themselves."""
     stmt = _tenant(stmt, model, v)
     if v.full_access:
         return stmt
-    return stmt.where(or_(model.lead_id.in_(_owned_leads(v)), model.client_id.in_(_owned_clients(v))))
+    conds = [model.lead_id.in_(_owned_leads(v)), model.client_id.in_(_owned_clients(v))]
+    if model is InboxMessage:
+        conds.append(InboxMessage.mailbox.in_(
+            select(func.lower(UserEmailIntegration.email)).where(UserEmailIntegration.user_id == v.user.id)))
+    elif model is SentEmail:
+        conds.append(SentEmail.draft_json.like(f'%"sent_by_user_id": {int(v.user.id)},%'))
+    return stmt.where(or_(*conds))
 
 
 def _owns(session: Session, v: Viewer, lead_id: Optional[int], client_id: Optional[int]) -> bool:
@@ -551,16 +561,28 @@ def inbox_counts(only: Optional[str] = None, v: Viewer = Depends(get_viewer), se
 # ─────────────────────────────────────────────────────────────────────────────
 # One message + its thread
 # ─────────────────────────────────────────────────────────────────────────────
+def _in_my_mailbox(session: Session, v: Viewer, mailbox: Optional[str]) -> bool:
+    if not mailbox:
+        return False
+    return session.exec(select(UserEmailIntegration.id).where(
+        UserEmailIntegration.user_id == v.user.id, func.lower(UserEmailIntegration.email) == mailbox.lower())).first() is not None
+
+
+def _sent_by_me(v: Viewer, msg: SentEmail) -> bool:
+    return f'"sent_by_user_id": {int(v.user.id)},' in (msg.draft_json or "")
+
+
 def _load_message(session: Session, v: Viewer, key: str):
     kind, mid = _parse_key(key)
     if kind == "in":
         msg = session.get(InboxMessage, mid)
-        if not msg or (v.tenant_id is not None and msg.tenant_id != v.tenant_id) or not _owns(session, v, msg.lead_id, msg.client_id):
+        if (not msg or (v.tenant_id is not None and msg.tenant_id != v.tenant_id)
+                or not (_owns(session, v, msg.lead_id, msg.client_id) or _in_my_mailbox(session, v, msg.mailbox))):
             raise HTTPException(status_code=404, detail="Message not found")
         return kind, msg
     msg = session.get(SentEmail, mid)
     if (not msg or (v.tenant_id is not None and msg.tenant_id != v.tenant_id) or msg.status in ("Draft", "Sending")
-            or not _owns(session, v, msg.lead_id, msg.client_id)):
+            or not (_owns(session, v, msg.lead_id, msg.client_id) or _sent_by_me(v, msg))):
         raise HTTPException(status_code=404, detail="Message not found")
     return kind, msg
 
@@ -938,42 +960,35 @@ def inbox_assistant(body: AssistantBody, v: Viewer = Depends(get_viewer), sessio
 # ─────────────────────────────────────────────────────────────────────────────
 # Sending (shared by inbox replies and the record Email tab)
 # ─────────────────────────────────────────────────────────────────────────────
-def _smtp_settings(session: Session, tenant_id: Optional[int]):
-    """Per-tenant mailbox first, then the server's env mailbox — same order as quote emails
-    (main._quote_smtp_sender), minus its hard-coded production fallbacks."""
-    if tenant_id is not None:
-        es = session.exec(
-            select(EmailSettings).where(EmailSettings.tenant_id == tenant_id).execution_options(skip_tenant=True)
-        ).first()
-        if es and es.from_email and es.smtp_pass and es.smtp_host:
-            return es.from_email, es.smtp_pass, es.smtp_host, es.smtp_port or 587
-    sender = os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL")
-    password = os.getenv("EMAIL_PASSWORD") or os.getenv("OUTLOOK_PASSWORD")
-    host = os.getenv("EMAIL_HOST") or os.getenv("SMTP_SERVER")
-    port = os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT") or 587
-    return sender, password, host, port
+def sender_account(session: Session, user_id: Optional[int], tenant_id: Optional[int]):
+    """The mailbox this user sends from: their own Email Integration (Email Agent → Settings), else the
+    company mailbox in Settings → SMTP, else the server's env mailbox. Raises MailAccountError if none."""
+    return company_mailer.resolve_account(session, user_id, tenant_id, allow_server_fallback=True)
 
 
-def sender_status(session: Session, tenant_id: Optional[int]) -> dict:
-    sender, password, host, _ = _smtp_settings(session, tenant_id)
-    return {"address": sender or None, "configured": bool(sender and password and host)}
+def sender_status(session: Session, user_id: Optional[int], tenant_id: Optional[int]) -> dict:
+    try:
+        a = sender_account(session, user_id, tenant_id)
+    except company_mailer.MailAccountError as e:
+        return {"address": None, "configured": False, "source": None, "label": None, "message": str(e)}
+    return {"address": a.email, "configured": True, "source": a.source, "label": company_mailer.SOURCE_LABELS.get(a.source)}
 
 
 def _send_and_record(session: Session, v: Viewer, *, tenant_id: Optional[int], to: str, cc: Optional[str],
                      subject: str, body: str, lead_id: Optional[int], client_id: Optional[int], purpose: Optional[str],
                      source: str, in_reply_to: Optional[str] = None, references: Optional[str] = None,
                      reply_to_key: Optional[str] = None, log_conversation: bool = True) -> SentEmail:
-    from modules.email_sender import send_email_outlook
+    try:
+        account = sender_account(session, v.user.id, tenant_id)
+    except company_mailer.MailAccountError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
-    sender, password, host, port = _smtp_settings(session, tenant_id)
-    if not (sender and password and host):
-        raise HTTPException(status_code=503, detail="Email sending isn't configured. Add a mailbox under Settings → SMTP, or set EMAIL_SENDER / EMAIL_PASSWORD / SMTP_SERVER on the server.")
-
-    message_id = make_msgid(domain=sender.split("@")[-1] if "@" in sender else None)
+    message_id = make_msgid(domain=account.email.split("@")[-1] if "@" in account.email else None)
     actor = v.user.name or v.user.email
     meta = {
         "source": source, "purpose": purpose, "sent_by_user_id": v.user.id, "sent_by_name": actor,
         "message_id": message_id, "in_reply_to": in_reply_to, "reply_to_key": reply_to_key, "cc": cc,
+        "sent_from": account.email, "sent_from_source": account.source,
     }
     row = SentEmail(
         tenant_id=tenant_id, lead_id=lead_id, client_id=client_id, to_email=to, subject=subject[:500],
@@ -986,11 +1001,9 @@ def _send_and_record(session: Session, v: Viewer, *, tenant_id: Optional[int], t
     _release(session)  # SMTP + the IMAP sent-copy can take many seconds
 
     try:
-        send_email_outlook(
-            to_email=to, subject=subject, body=body, sender_email=sender, sender_password=password,
-            smtp_server=host, smtp_port=int(port), tracking_id=row_id,
-            tracking_base_url=os.getenv("PUBLIC_BASE_URL"),
-            extra_headers={"Message-ID": message_id, "In-Reply-To": in_reply_to, "References": references, "Cc": cc},
+        company_mailer.send_via(
+            account, to=to, subject=subject, body=body, tracking_id=row_id, message_id=message_id,
+            extra_headers={"In-Reply-To": in_reply_to, "References": references, "Cc": cc},
         )
     except Exception as e:
         print(f"[Inbox send] SMTP send to {to} failed: {e}")
@@ -1112,6 +1125,8 @@ def inbox_status(v: Viewer = Depends(get_viewer), session: Session = Depends(get
     status = inbox_sync.get_sync_status()
     mailboxes = []
     for cfg in inbox_sync.mailboxes_for_tenant(session, v.tenant_id):
+        if not v.full_access and cfg.user_id != v.user.id:
+            continue  # a salesperson sees the sync state of their own mailbox only
         s = status.get(cfg.address, {})
         mailboxes.append({
             "address": cfg.address, "own_settings": cfg.tenant_owned,
@@ -1119,7 +1134,7 @@ def inbox_status(v: Viewer = Depends(get_viewer), session: Session = Depends(get
         })
     return {
         "mailboxes": mailboxes,
-        "sender": sender_status(session, v.tenant_id),
+        "sender": sender_status(session, v.user.id, v.tenant_id),
         "ai_enabled": bool(os.getenv("OPENAI_API_KEY")),
         "sync_interval_seconds": int(os.getenv("INBOX_SYNC_INTERVAL_SECONDS", "120")),
         "role": v.role,
@@ -1432,7 +1447,7 @@ def composer_context(kind: RecordKind, record_id: int, v: Viewer = Depends(get_v
         "record": {"type": "lead" if kind == "leads" else "client", "id": rec.id, "name": _record_label(kind, rec),
                    "status": rec.status, "owner": {"id": owner.id, "name": owner.name or owner.email} if owner else None},
         "recipients": _recipients(session, kind, rec),
-        "sender": {**sender_status(session, rec.tenant_id), "user_name": v.user.name or v.user.email},
+        "sender": {**sender_status(session, v.user.id, rec.tenant_id), "user_name": v.user.name or v.user.email},
         "context": {**ctx, "emails": emails},
         "suggested_purpose": _suggested_purpose(ctx, emails),
         "purposes": list(email_ai.PURPOSES),

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity, MessageSquare, StickyNote, CheckSquare, Building2, ChevronDown,
   Target, FolderOpen, HeartPulse, LayoutDashboard, Users,
-  TrendingUp, TrendingDown, Lightbulb, ShieldAlert, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, Brain, Loader2, Radar
+  TrendingUp, TrendingDown, Lightbulb, ShieldAlert, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, Brain, Loader2, Radar, CalendarClock
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -26,6 +26,7 @@ import TasksTab from './components/tabs/TasksTab';
 import FilesTab from './components/tabs/FilesTab';
 import AiDataTab from '@/app/admin/clients/[id]/components/tabs/AiDataTab';
 import RecordEmailTab from '@/components/email/RecordEmailTab';
+import RecordFollowUpsTab from '@/components/followups/RecordFollowUpsTab';
 
 // ─── Tab definitions ───────────────────────────────────────────────────────────
 const TABS = [
@@ -33,6 +34,7 @@ const TABS = [
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
   { key: 'ai_data',        label: 'AI DATA',         icon: Brain           },
   { key: 'email',          label: 'EMAIL',           icon: Mail            },
+  { key: 'followups',      label: 'Follow-ups',      icon: CalendarClock   },
   { key: 'files',          label: 'Files',           icon: FolderOpen      },
   { key: 'conversations',  label: 'Conversations',   icon: MessageSquare   },
 ];
@@ -954,6 +956,7 @@ export default function LeadDetailsPage() {
                   />
                 )}
                 {activeTab === 'email' && <RecordEmailTab kind="leads" recordId={id} />}
+                {activeTab === 'followups' && <RecordFollowUpsTab kind="lead" recordId={id} />}
                 {activeTab === 'conversations' && (
                   <ConversationsTab
                     leadId={id}

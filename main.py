@@ -507,6 +507,12 @@ app.include_router(leaderboard_router)
 from routers.inbox import router as inbox_router
 app.include_router(inbox_router)
 
+from routers.followups import router as followups_router
+app.include_router(followups_router)
+
+from routers.email_campaigns import router as email_campaigns_router
+app.include_router(email_campaigns_router)
+
 @app.on_event("startup")
 def on_startup():
     patch_openai()
@@ -596,19 +602,40 @@ def on_startup():
         except Exception as e:
             print(f"Migration sent_emails tracking: {e}")
 
-    # Start the background inbox poller that detects replies to sent emails (IMAP-based).
+    # Say which database this process is bound to (never the credentials), so two environments that
+    # accidentally share one database are easy to spot in the logs.
     try:
-        from modules.email_sender import start_reply_checker_thread
-        start_reply_checker_thread()
-    except Exception as e:
-        print(f"Reply checker thread failed to start: {e}")
+        print(f"[startup] database: {engine.url.get_backend_name()} host={engine.url.host or 'local file'} "
+              f"name={engine.url.database}")
+    except Exception:
+        pass
 
-    # Mirror every inbound email into inbox_messages for the in-app Inbox (+ AI triage).
-    try:
-        from modules.inbox_sync import start_inbox_sync_thread
-        start_inbox_sync_thread()
-    except Exception as e:
-        print(f"Inbox sync thread failed to start: {e}")
+    # Background pollers: reply checker, inbox sync, follow-up scheduler. BACKGROUND_JOBS=0 turns all
+    # three off (modules/background.py): only one environment per database should run them.
+    from modules.background import jobs_enabled
+    if not jobs_enabled():
+        print("[startup] BACKGROUND_JOBS=0: inbox sync, reply checker and follow-up scheduler are NOT started.")
+    else:
+        # Detect replies to sent emails (IMAP-based).
+        try:
+            from modules.email_sender import start_reply_checker_thread
+            start_reply_checker_thread()
+        except Exception as e:
+            print(f"Reply checker thread failed to start: {e}")
+
+        # Mirror every inbound email into inbox_messages for the in-app Inbox (+ AI triage).
+        try:
+            from modules.inbox_sync import start_inbox_sync_thread
+            start_inbox_sync_thread()
+        except Exception as e:
+            print(f"Inbox sync thread failed to start: {e}")
+
+        # Follow-up reminders, automatic follow-up emails, AI note scanning and campaign resume.
+        try:
+            from modules.followups_core import start_followup_scheduler_thread
+            start_followup_scheduler_thread()
+        except Exception as e:
+            print(f"Follow-up scheduler failed to start: {e}")
 
     # Tenant ID Migrations (Dynamic reflection to catch all models)
     from sqlmodel import SQLModel
@@ -12705,14 +12732,23 @@ def _quote_email_content(q: CRMQuote, session: Session, recipient_name=None):
 
 
 def _quote_smtp_sender(session: Session):
-    """Resolve the sender mailbox used for quote emails (per-tenant settings first,
-    then env vars). Returns (sender_email, password, smtp_server, smtp_port)."""
+    """Resolve the sender mailbox used for quote / order / PO emails: the user's own Email Integration,
+    then per-tenant settings, then env vars. Returns (sender_email, password, smtp_server, smtp_port)."""
     import os
 
     sender = None
     password = None
     smtp_server = None
     smtp_port = None
+
+    # The logged-in user's own Email Integration (Email Agent → Settings) comes first.
+    integ = _get_user_email_integration(session, current_salesperson_id.get())
+    if integ is not None and integ.is_active and integ.email and integ.encrypted_app_password and integ.smtp_host:
+        try:
+            from modules.email_crypto import decrypt_app_password
+            return integ.email, decrypt_app_password(integ.encrypted_app_password), integ.smtp_host, int(integ.smtp_port or 587)
+        except Exception as e:
+            print(f"[mail] could not use the user's Email Integration, falling back: {type(e).__name__}")
 
     tenant_id = current_tenant_id.get()
     if tenant_id:

@@ -587,7 +587,8 @@ def _build_reply_fields(msg) -> dict:
     }
 
 
-def _process_inbox_replies(conn, sender_email: str, days_back: int, only_missing: bool = False) -> int:
+def _process_inbox_replies(conn, sender_email: str, days_back: int, only_missing: bool = False,
+                           tenant_id=None) -> int:
     """
     Shared IMAP scan used by both check_email_replies (regular polling) and
     backfill_reply_content (one-off catch-up for old rows). For every inbox
@@ -656,6 +657,8 @@ def _process_inbox_replies(conn, sender_email: str, days_back: int, only_missing
                 )
                 if only_missing:
                     match_stmt = match_stmt.where(SentEmail.reply_body.is_(None))
+                if tenant_id is not None:  # a tenant's / user's own mailbox only matches that tenant's sent mail
+                    match_stmt = match_stmt.where(SentEmail.tenant_id == tenant_id)
                 match = session.exec(match_stmt).first()
                 if not match:
                     continue
@@ -691,69 +694,57 @@ def _process_inbox_replies(conn, sender_email: str, days_back: int, only_missing
     return created
 
 
-def check_email_replies(days_back: int = 5) -> int:
+def _scan_all_mailboxes(days_back: int, only_missing: bool, label: str, tenant_id=None) -> int:
+    """Run the reply scan over every mailbox the CRM syncs: each user's own Email Integration mailbox,
+    each tenant's Settings → SMTP mailbox, and the server's env mailbox. Never raises."""
+    try:
+        from database import engine
+        from sqlmodel import Session
+        from modules import inbox_sync
+        with Session(engine) as session:
+            configs = (inbox_sync.mailboxes_for_tenant(session, tenant_id) if tenant_id is not None
+                       else inbox_sync.get_mailbox_configs(session))
+    except Exception as e:
+        print(f"[{label}] could not load mailboxes: {e}")
+        return 0
+    total = 0
+    for cfg in configs:
+        conn = None
+        try:
+            conn = inbox_sync._connect(cfg)
+            conn.select("INBOX", readonly=True)
+            total += _process_inbox_replies(conn, cfg.address, days_back, only_missing=only_missing,
+                                            tenant_id=cfg.tenant_id if cfg.tenant_owned else None)
+        except Exception as e:
+            print(f"[{label}] IMAP check of {cfg.address} failed: {e}")
+        finally:
+            if conn is not None:
+                try:
+                    conn.logout()
+                except Exception:
+                    pass
+    return total
+
+
+def check_email_replies(days_back: int = 5, tenant_id=None) -> int:
     """
-    Scan the configured mailbox's INBOX for messages received in the last
-    `days_back` days, and record a matching reply for any SentEmail whose
-    to_email == the message's From address. A thread with several replies
-    gets one EmailReply row per message, not a single overwritten field.
+    Scan every configured mailbox's INBOX for messages received in the last `days_back` days, and
+    record a matching reply for any SentEmail whose to_email == the message's From address. A thread
+    with several replies gets one EmailReply row per message, not a single overwritten field.
 
     Returns the number of new replies recorded. Never raises.
     """
-    sender_email, sender_password, imap_server = _get_email_settings()
-    if not (sender_email and sender_password and imap_server):
-        return 0
-
-    conn = None
-    try:
-        try:
-            conn = imaplib.IMAP4_SSL(imap_server, timeout=30)
-        except Exception:
-            conn = imaplib.IMAP4(imap_server, timeout=30)
-        conn.login(sender_email, sender_password)
-        conn.select("INBOX", readonly=True)
-        return _process_inbox_replies(conn, sender_email, days_back, only_missing=False)
-    except Exception as e:
-        print(f"[Reply checker] IMAP check failed: {e}")
-        return 0
-    finally:
-        if conn is not None:
-            try:
-                conn.logout()
-            except Exception:
-                pass
+    return _scan_all_mailboxes(days_back, only_missing=False, label="Reply checker", tenant_id=tenant_id)
 
 
-def backfill_reply_content(days_back: int = 60) -> int:
+def backfill_reply_content(days_back: int = 60, tenant_id=None) -> int:
     """
-    One-time catch-up for SentEmail rows that were already flipped to
-    "Replied" by the old header-only poller (before reply content was
-    captured at all) and so still have reply_body IS NULL. Re-scans the
-    inbox over a wider window and records the reply as a proper EmailReply
-    row, same as the regular poller. Never raises.
+    One-time catch-up for SentEmail rows that were already flipped to "Replied" by the old header-only
+    poller (before reply content was captured at all) and so still have reply_body IS NULL. Re-scans
+    the inbox over a wider window and records the reply as a proper EmailReply row, same as the regular
+    poller. Never raises.
     """
-    sender_email, sender_password, imap_server = _get_email_settings()
-    if not (sender_email and sender_password and imap_server):
-        return 0
-
-    conn = None
-    try:
-        try:
-            conn = imaplib.IMAP4_SSL(imap_server, timeout=30)
-        except Exception:
-            conn = imaplib.IMAP4(imap_server, timeout=30)
-        conn.login(sender_email, sender_password)
-        conn.select("INBOX", readonly=True)
-        return _process_inbox_replies(conn, sender_email, days_back, only_missing=True)
-    except Exception as e:
-        print(f"[Reply backfill] IMAP check failed: {e}")
-        return 0
-    finally:
-        if conn is not None:
-            try:
-                conn.logout()
-            except Exception:
-                pass
+    return _scan_all_mailboxes(days_back, only_missing=True, label="Reply backfill", tenant_id=tenant_id)
 
 
 def _reply_checker_loop(interval_seconds: int):
@@ -774,10 +765,6 @@ def start_reply_checker_thread():
     global _reply_checker_started
     with _reply_checker_lock:
         if _reply_checker_started:
-            return
-        sender, password, imap_server = _get_email_settings()
-        if not (sender and password and imap_server):
-            print("[Reply checker] not started: EMAIL_SENDER/EMAIL_PASSWORD/IMAP_SERVER not fully configured.")
             return
         interval = int(os.environ.get("REPLY_CHECK_INTERVAL_SECONDS", "180"))
         t = threading.Thread(target=_reply_checker_loop, args=(interval,), daemon=True)

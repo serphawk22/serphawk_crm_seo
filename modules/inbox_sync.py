@@ -50,6 +50,7 @@ from database import (
     SentEmail,
     Tenant,
     User,
+    UserEmailIntegration,
     engine as default_engine,
 )
 from modules.email_sender import (
@@ -73,6 +74,12 @@ class MailboxConfig:
     imap_host: str
     tenant_id: Optional[int]
     tenant_owned: bool  # True for email_settings mailboxes: never link outside tenant_id
+    imap_port: Optional[int] = None  # None = default port, SSL first (legacy env / email_settings mailboxes)
+    imap_security: Optional[str] = None  # ssl | starttls | none, from a user's Email Integration
+    user_id: Optional[int] = None  # set for a user's own Email Integration mailbox
+
+    def __repr__(self):  # never leak the password into logs / tracebacks
+        return f"MailboxConfig({self.address!r}, {self.imap_host}, tenant={self.tenant_id})"
 
 
 # ── Status (per process; shown by GET /inbox/status) ─────────────────────────
@@ -239,8 +246,32 @@ def env_mailbox_address() -> str:
     return (sender or "").strip().lower()
 
 
+def _integration_configs(session: Session) -> list:
+    """Each user's own Email Integration mailbox (Email Agent → Settings), so mail sent from and received by
+    that address is synced for them. A password that can't be decrypted is skipped, not fatal."""
+    from modules.email_crypto import EmailCredentialEncryptionError, decrypt_app_password
+    out = []
+    rows = session.exec(select(UserEmailIntegration).where(UserEmailIntegration.is_active == True)  # noqa: E712
+                        .order_by(UserEmailIntegration.id).execution_options(skip_tenant=True)).all()
+    for r in rows:
+        if not (r.email and r.encrypted_app_password and r.imap_host):
+            continue
+        try:
+            password = decrypt_app_password(r.encrypted_app_password)
+        except EmailCredentialEncryptionError as e:
+            print(f"[Inbox sync] skipping {r.email}: {e}")
+            continue
+        out.append(MailboxConfig(r.email.strip().lower(), r.email.strip(), password, r.imap_host.strip(), r.tenant_id, True,
+                                 int(r.imap_port or 993), (r.imap_security or "ssl").lower(), r.user_id))
+    return out
+
+
 def get_mailbox_configs(session: Session) -> list:
     configs, seen = [], set()
+    for cfg in _integration_configs(session):  # a user's own mailbox wins over a shared one with the same address
+        if (cfg.address, cfg.imap_host) not in seen:
+            seen.add((cfg.address, cfg.imap_host))
+            configs.append(cfg)
     settings_rows = session.exec(select(EmailSettings).execution_options(skip_tenant=True)).all()
     for es in settings_rows:
         address = (es.from_email or es.smtp_user or "").strip().lower()
@@ -330,10 +361,20 @@ def link_inbound(session: Session, cfg: MailboxConfig, parsed: dict) -> dict:
 
 # ── IMAP ─────────────────────────────────────────────────────────────────────
 def _connect(cfg: MailboxConfig):
-    try:
-        conn = imaplib.IMAP4_SSL(cfg.imap_host, timeout=30)
-    except Exception:
-        conn = imaplib.IMAP4(cfg.imap_host, timeout=30)
+    import ssl
+    mode = (cfg.imap_security or "").lower()
+    if mode == "ssl":
+        conn = imaplib.IMAP4_SSL(cfg.imap_host, cfg.imap_port or 993, timeout=30, ssl_context=ssl.create_default_context())
+    elif mode == "starttls":
+        conn = imaplib.IMAP4(cfg.imap_host, cfg.imap_port or 143, timeout=30)
+        conn.starttls(ssl_context=ssl.create_default_context())
+    elif mode == "none":
+        conn = imaplib.IMAP4(cfg.imap_host, cfg.imap_port or 143, timeout=30)
+    else:  # legacy env / email_settings mailboxes: SSL first, plain-text fallback
+        try:
+            conn = imaplib.IMAP4_SSL(cfg.imap_host, timeout=30)
+        except Exception:
+            conn = imaplib.IMAP4(cfg.imap_host, timeout=30)
     conn.login(cfg.login, cfg.password)
     return conn
 
