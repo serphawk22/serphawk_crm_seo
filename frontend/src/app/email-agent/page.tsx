@@ -13,7 +13,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import PageGuide from "@/components/PageGuide";
 import { ResultCard, ResearchResultData, SendEmailResult, CopyButton } from "@/components/email-agent/ResultCard";
 import EmailIntegrationSettings from "@/components/email-agent/EmailIntegrationSettings";
-import GmailAgentLoop from "./GmailAgentLoop";
+import ExcelCampaign from "@/components/email-agent/ExcelCampaign";
 import { useRole } from "@/context/RoleContext";
 
 
@@ -259,7 +259,7 @@ function parsePhoneNumber(fullNumber: string, defaultCode = "+34"): { dialCode: 
 export default function EmailAgentPage() {
   const { role } = useRole();
   const { t } = useLanguage();
-  const [mode, setMode] = useState<"single" | "bulk">("single");
+  const [mode, setMode] = useState<"single" | "excel">("single");
   const [companyName, setCompanyName] = useState("");
   const [inputValue, setInputValue] = useState("");
   
@@ -368,6 +368,7 @@ export default function EmailAgentPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("settings") === "email") setShowSettings(true);
+    if (params.get("campaign") || params.get("mode") === "excel") setMode("excel");
   }, []);
 
   const handleSaveProfile = async () => {
@@ -824,10 +825,10 @@ export default function EmailAgentPage() {
                 {t('email_agent.mode_single')}
               </button>
               <button
-                onClick={() => setMode("bulk")}
-                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${mode === "bulk" ? "bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700"}`}
+                onClick={() => setMode("excel")}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${mode === "excel" ? "bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700"}`}
               >
-                {t('email_agent.mode_bulk')}
+                {t('email_agent.mode_excel')}
               </button>
             </div>
           </div>
@@ -972,8 +973,8 @@ export default function EmailAgentPage() {
         )}
           </>
         ) : (
-          <div className="w-full max-w-4xl mx-auto">
-            <GmailAgentLoop />
+          <div className="w-full">
+            <ExcelCampaign onOpenSettings={() => setShowSettings(true)} />
           </div>
         )}
 

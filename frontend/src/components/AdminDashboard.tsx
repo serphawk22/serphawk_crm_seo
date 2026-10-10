@@ -12,6 +12,7 @@ import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { ShieldAlert, LockKeyhole } from "lucide-react";
+import FollowUpsWidget from "@/components/followups/FollowUpsWidget";
 
 // ─── Agent Data Pretty Viewer ──────────────────────────────────────────────────
 function AgentDataViewer({ data, overview }: { data?: string | null; overview?: string | null }) {
@@ -235,6 +236,11 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
           </motion.div>
         ))}
       </div>
+
+      {/* FOLLOW-UPS: pending / overdue / due today / completed */}
+      <motion.div variants={itemVariants}>
+        <FollowUpsWidget />
+      </motion.div>
 
       {/* CALL PITCH WIDGET */}
       <CallPitchWidget />

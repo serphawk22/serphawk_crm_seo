@@ -273,7 +273,7 @@ export default function RecordEmailTab({ kind, recordId }: Props) {
         {!ctx.sender.configured && (
           <div className="flex items-start gap-2 bg-amber-50 px-5 py-2.5 text-xs text-amber-800">
             <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            <span>Sending from the CRM isn’t configured yet — set up a mailbox in <Link href="/admin/settings" className="font-bold underline">Settings → SMTP</Link>. You can still draft here and use “Open in mail app”.</span>
+            <span>Sending isn’t configured yet — connect your own email account in <Link href="/email-agent?settings=email" className="font-bold underline">Email Agent → Settings</Link> (email + app password). Everything you send, receive and track then uses it. You can still draft here and use “Open in mail app”.</span>
           </div>
         )}
       </section>
@@ -400,7 +400,7 @@ export default function RecordEmailTab({ kind, recordId }: Props) {
             </label>
           </div>
           <p className="mt-2 text-[10.5px] text-slate-400">
-            From {ctx.sender.address || 'the CRM mailbox'} as {ctx.sender.user_name} · open tracking on · replies show up in the Inbox and below.
+            From {ctx.sender.address || 'your mailbox'}{ctx.sender.label ? ` (${ctx.sender.label})` : ''} as {ctx.sender.user_name} · open tracking on · replies show up in the Inbox and below.
           </p>
         </section>
 

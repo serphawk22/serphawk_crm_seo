@@ -112,6 +112,26 @@ export function emailTriggerInfo(
     to = [nim(body.to), nim(body.cc)].filter(Boolean) as string[];
     subject = nim(body.subject);
     note = `Send this email to the ${path.startsWith("/leads") ? "lead" : "client"}.`;
+  } else if (method === "POST" && path === "/email-campaigns") {
+    const col = body.mapping?.email;
+    const seen = new Set<string>();
+    const emails: string[] = [];
+    for (const row of Array.isArray(body.rows) ? body.rows : []) {
+      const e = col ? String(row?.[col] ?? "").trim() : "";
+      if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) && !seen.has(e.toLowerCase())) {
+        seen.add(e.toLowerCase());
+        emails.push(e);
+      }
+    }
+    to = emails.length > 5 ? [...emails.slice(0, 5), `…and ${emails.length - 5} more`] : emails;
+    subject = nim(body.subject);
+    note = `Send ${emails.length} personalized email${emails.length === 1 ? "" : "s"} from the uploaded file (placeholders are filled in for each recipient).`;
+  } else if (method === "POST" && /^\/email-campaigns\/\d+\/retry$/.test(path)) {
+    note = "Re-send the failed / unsent emails of this campaign.";
+  } else if (method === "POST" && /^\/followups\/\d+\/send-email$/.test(path)) {
+    to = nim(body.to);
+    subject = nim(body.subject);
+    note = "Send this follow-up email to the contact.";
   } else {
     return null;
   }

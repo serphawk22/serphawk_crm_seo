@@ -1,8 +1,12 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+import threading
+import time
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, select
-from database import engine, SentEmail
+from database import engine, SentEmail, User
+from modules.api_tracker import current_salesperson_id
 import base64
 from fastapi.responses import Response
 import os
@@ -82,26 +86,63 @@ def track_email_open(id: int, session: Session = Depends(get_session)):
     )
 
 
+# These two endpoints log in to mailboxes over IMAP, so unlike the pixel / reply webhooks (which must
+# stay public) they require a logged-in Admin, only touch that admin's own company's mailboxes
+# (SuperAdmin: all) and are rate-limited per scope.
+_ADMIN_ROLES = {"admin", "superadmin"}
+_cooldowns: dict = {}
+_cooldown_lock = threading.Lock()
+
+
+def _require_admin(session: Session = Depends(get_session)):
+    """(user, tenant_id to scan or None for every tenant). 401 without identity, 403 for non-admins."""
+    uid = current_salesperson_id.get()
+    user = session.get(User, uid) if uid else None
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    role = (user.role or "").strip().lower()
+    # Same rule as main._require_roles: admin@serphawk.com is always a superuser.
+    if role == "superadmin" or (user.email or "").lower() == "admin@serphawk.com":
+        return user, None
+    if role in _ADMIN_ROLES:
+        return user, user.tenant_id
+    raise HTTPException(status_code=403, detail="Only an admin can run this.")
+
+
+def _rate_limit(kind: str, scope, seconds: int):
+    key = (kind, scope)
+    with _cooldown_lock:
+        wait = _cooldowns.get(key, 0) + seconds - time.monotonic()
+        if wait > 0:
+            raise HTTPException(status_code=429, detail=f"Already ran recently. Try again in {int(wait) + 1}s.",
+                                headers={"Retry-After": str(int(wait) + 1)})
+        _cooldowns[key] = time.monotonic()
+
+
 @router.post("/check-replies-now")
-def check_replies_now():
+def check_replies_now(admin=Depends(_require_admin)):
     """
     Manually trigger an immediate IMAP inbox scan for replies, instead of
-    waiting for the background poller's next cycle. Useful for testing.
+    waiting for the background poller's next cycle. Admin only.
     """
     from modules.email_sender import check_email_replies
-    updated = check_email_replies()
+    _, tenant_id = admin
+    _rate_limit("check", tenant_id, 20)
+    updated = check_email_replies(tenant_id=tenant_id)
     return {"status": "ok", "updated": updated}
 
 
 @router.post("/backfill-reply-content")
-def backfill_reply_content_now(days_back: int = 60):
+def backfill_reply_content_now(days_back: int = Query(60, ge=1, le=180), admin=Depends(_require_admin)):
     """
     One-time catch-up: fills reply_from/reply_subject/reply_body on
     SentEmail rows that were already marked "Replied" by the old
-    header-only poller, by re-scanning the inbox over a wider window.
+    header-only poller, by re-scanning the inbox over a wider window. Admin only.
     """
     from modules.email_sender import backfill_reply_content
-    filled = backfill_reply_content(days_back=days_back)
+    _, tenant_id = admin
+    _rate_limit("backfill", tenant_id, 120)
+    filled = backfill_reply_content(days_back=days_back, tenant_id=tenant_id)
     return {"status": "ok", "filled": filled}
 
 from pydantic import BaseModel
