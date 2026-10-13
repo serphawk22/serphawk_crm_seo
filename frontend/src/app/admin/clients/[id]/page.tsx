@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity, MessageSquare, StickyNote, Building2, ChevronDown,
   Target, HeartPulse, LayoutDashboard, Users,
-  TrendingUp, TrendingDown, Lightbulb, ShieldAlert, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, Brain, Loader2, Radar
+  TrendingUp, TrendingDown, Lightbulb, ShieldAlert, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, Brain, Loader2, Radar, CalendarClock
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -25,12 +25,14 @@ import NotesTab from './components/tabs/NotesTab';
 import HealthTab from './components/tabs/HealthTab';
 import AiDataTab from './components/tabs/AiDataTab';
 import RecordEmailTab from '@/components/email/RecordEmailTab';
+import RecordFollowUpsTab from '@/components/followups/RecordFollowUpsTab';
 
 // ─── Tab definitions ───────────────────────────────────────────────────────────
 const TABS = [
   { key: 'overview',       label: 'Overview',       icon: LayoutDashboard },
   { key: 'ai_data',        label: 'AI DATA',         icon: Brain           },
   { key: 'email',          label: 'EMAIL',           icon: Mail            },
+  { key: 'followups',      label: 'Follow-ups',      icon: CalendarClock   },
   { key: 'timeline',       label: 'Timeline',        icon: Activity        },
   { key: 'health',         label: 'Health',          icon: HeartPulse      },
   { key: 'conversations',  label: 'Conversations',   icon: MessageSquare   },
@@ -984,6 +986,7 @@ export default function AdminClientDetailPage() {
                   />
                 )}
                 {activeTab === 'email' && <RecordEmailTab kind="clients" recordId={id} />}
+                {activeTab === 'followups' && <RecordFollowUpsTab kind="client" recordId={id} />}
                 {activeTab === 'timeline' && (
                   <TimelineTab
                     timeline={timeline}

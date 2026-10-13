@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Sparkles, Mail, Clock, User, Globe, ChevronDown, ChevronUp,
   CheckCircle, Building2, Briefcase, Target, AtSign, FileText, Copy, Check,
   TrendingUp, Zap, Package, UserPlus, Phone, Store, DollarSign, MessageCircle, Trash2, Youtube,
-  X, HelpCircle
+  X, HelpCircle, Settings
 } from "lucide-react";
 
 export interface SentEmail {
@@ -244,6 +245,16 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
   const [followUpStatus, setFollowUpStatus] = useState<string | null>(null);
   const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sendErrorCode, setSendErrorCode] = useState<string | null>(null);
+
+  const showSendError = (err: unknown, fallback: string) => {
+    setSendError(err instanceof Error ? err.message : fallback);
+    setSendErrorCode(
+      err && typeof err === "object" && "code" in err && (err as { code?: unknown }).code
+        ? String((err as { code?: unknown }).code)
+        : null
+    );
+  };
   const [awaitingSystemConfirm, setAwaitingSystemConfirm] = useState(false);
 
   const handleSaveDraft = async () => {
@@ -254,7 +265,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
       await onSendManually(getUpdatedResult(), companyName, companyUrl, true, "Draft");
       setSendSuccess("Draft saved");
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : "Failed to save draft");
+      showSendError(err, "Failed to save draft");
     } finally { setSending(false); }
   };
 
@@ -359,8 +370,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
       await onSendManually(getUpdatedResult(), companyName, companyUrl, false, "System");
       setSendSuccess("Mail sent");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to send email";
-      setSendError(message);
+      showSendError(err, "Failed to send email");
     }
     setSending(false);
   };
@@ -389,8 +399,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
       await onSendManually(getUpdatedResult(), companyName, companyUrl, true, "System");
       setSendSuccess("Mail sent");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to log sent email";
-      setSendError(message);
+      showSendError(err, "Failed to log sent email");
     }
     setAwaitingSystemConfirm(false);
     setSending(false);
@@ -413,8 +422,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
       await onSendAutomatically(getUpdatedResult(), companyName, companyUrl);
       setSendSuccess("Sent Automatically");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to send email";
-      setSendError(message);
+      showSendError(err, "Failed to send email");
     }
     setSending(false);
   };
@@ -763,6 +771,14 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
               {sendError && (
                 <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
                   {sendError}
+                  {sendErrorCode === "email_integration_not_configured" && (
+                    <Link
+                      href="/email-agent?settings=email"
+                      className="ml-2 inline-flex items-center gap-1 font-bold text-red-200 underline hover:text-white transition-colors"
+                    >
+                      <Settings className="w-3 h-3" /> Configure Email Integration
+                    </Link>
+                  )}
                 </div>
               )}
             </div>

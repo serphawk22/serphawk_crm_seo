@@ -66,7 +66,7 @@ export interface InboxCounts {
 
 export interface InboxStatus {
   mailboxes: { address: string; own_settings: boolean; last_sync_at: string | null; last_error: string | null }[];
-  sender: { address: string | null; configured: boolean };
+  sender: { address: string | null; configured: boolean; source?: string | null; label?: string | null; message?: string };
   ai_enabled: boolean;
   sync_interval_seconds: number;
   role: string;
@@ -118,7 +118,7 @@ export interface ComposerMeeting { key: string; title: string; type: string | nu
 export interface ComposerContext {
   record: { type: 'lead' | 'client'; id: number; name: string; status: string | null; owner: { id: number; name: string } | null };
   recipients: { email: string; name: string | null; source: string }[];
-  sender: { address: string | null; configured: boolean; user_name: string };
+  sender: { address: string | null; configured: boolean; source?: string | null; label?: string | null; user_name: string };
   context: {
     followups: ComposerFollowup[];
     deals: ComposerDeal[];
@@ -157,7 +157,7 @@ export class ApiError extends Error {
 }
 
 /** FastAPI error bodies: {detail: "msg"} | {detail: {message}} | {detail: [{msg}]} | {message}. */
-function errorMessage(data: unknown, status: number): string {
+export function errorMessage(data: unknown, status: number): string {
   const body = (data && typeof data === 'object' ? data : {}) as { detail?: unknown; message?: unknown };
   const detail = body.detail;
   if (typeof detail === 'string') return detail;
@@ -175,7 +175,7 @@ function errorMessage(data: unknown, status: number): string {
 
 export const errorText = (e: unknown, fallback: string): string => (e instanceof Error && e.message ? e.message : fallback);
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init.headers as Record<string, string> | undefined) },
@@ -185,9 +185,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-const post = <T>(path: string, body: unknown = {}) => request<T>(path, { method: 'POST', body: JSON.stringify(body) });
+export const post = <T>(path: string, body: unknown = {}) => request<T>(path, { method: 'POST', body: JSON.stringify(body) });
 
-function query(params: Record<string, string | number | null | undefined>): string {
+export function query(params: Record<string, string | number | boolean | null | undefined>): string {
   const qs = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
     if (v !== null && v !== undefined && v !== '') qs.set(k, String(v));
