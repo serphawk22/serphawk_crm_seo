@@ -64,12 +64,12 @@ export default function AiCopilotPanelLead({ leadId }: AiCopilotPanelLeadProps) 
   const [waitBanner, setWaitBanner] = useState(false);
   const [hasRun, setHasRun] = useState(false);
 
-  const analyze = async () => {
+  const analyze = async (force = false) => {
     setLoading(true);
     setError('');
     setWaitBanner(false);
     try {
-      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/ai-insights`, { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/ai-insights${force ? '?force=true' : ''}`, { method: 'POST' });
       if (res.status === 503 || res.status === 500) {
         // Backend AI is warming up — show friendly banner, no console error
         setWaitBanner(true);
@@ -128,7 +128,7 @@ export default function AiCopilotPanelLead({ leadId }: AiCopilotPanelLeadProps) 
               {language === 'es' ? 'Obtenga estado de salud, riesgos y próximas acciones por IA' : 'Get AI-powered deal health, risks, and next best actions'}
             </p>
             <button
-              onClick={analyze}
+              onClick={() => analyze(true)}
               className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600
                          text-white text-sm font-bold hover:opacity-90 transition-opacity
                          shadow-lg shadow-violet-500/25"
@@ -160,7 +160,7 @@ export default function AiCopilotPanelLead({ leadId }: AiCopilotPanelLeadProps) 
                 : 'Please wait ~2 minutes, then try again.'}
             </p>
             <button
-              onClick={analyze}
+              onClick={() => analyze(true)}
               className="mt-1 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-colors"
             >
               {language === 'es' ? 'Reintentar' : 'Retry'}
@@ -246,7 +246,7 @@ export default function AiCopilotPanelLead({ leadId }: AiCopilotPanelLeadProps) 
 
               {/* Re-analyze */}
               <button
-                onClick={analyze}
+                onClick={() => analyze(true)}
                 className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl
                            text-xs font-bold text-violet-600 dark:text-violet-400
                            border border-violet-200 dark:border-violet-800

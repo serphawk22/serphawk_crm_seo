@@ -54,6 +54,7 @@ import contextvars
 from database import (
     Account,
     ActivityLog,
+    AICall,
     AnalyticsData,
     CallLog,
     ScheduledCall,
@@ -132,6 +133,10 @@ from pydantic import BaseModel
 from database import engine, SentEmail, EmailReply
 from sqlmodel import select
 from modules.tts_service import text_to_speech
+
+
+class BulkDeleteRequest(BaseModel):
+    ids: list[int]
 
 
 def register_sent_emails_endpoint(app, get_session):
@@ -217,9 +222,6 @@ def register_sent_emails_endpoint(app, get_session):
         session.delete(email)
         session.commit()
         return {"ok": True}
-
-    class BulkDeleteRequest(BaseModel):
-        ids: list[int]
 
     @app.post("/sent-emails/bulk-delete")
     def bulk_delete_sent_emails(body: BulkDeleteRequest, session: Session = Depends(get_session)):
@@ -657,6 +659,22 @@ def on_startup():
                 conn.commit()
         except Exception as e:
             print(f"Migration sent_emails tracking: {e}")
+
+    # Auto-migrate AI voice call columns (AI Calls tab reads these directly).
+    ai_call_migrations = [
+        "ALTER TABLE ai_calls ADD COLUMN IF NOT EXISTS important_notes TEXT;",
+        "ALTER TABLE ai_calls ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(255);",
+        "ALTER TABLE ai_calls ADD COLUMN IF NOT EXISTS followup_needed BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE ai_calls ADD COLUMN IF NOT EXISTS followup_date VARCHAR(50);",
+        "ALTER TABLE ai_calls ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMP;",
+    ]
+    for sql in ai_call_migrations:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(sql))
+                conn.commit()
+        except Exception as e:
+            print(f"Migration ai_calls: {e}")
 
     # Start the background inbox poller that detects replies to sent emails (IMAP-based).
     try:
@@ -4048,12 +4066,24 @@ Instructions:
         )
         pitch = response.choices[0].message.content or ""
 
-        call = CallLog(
-            phone_number=cp.phone or "Unknown",
-            duration_seconds=180,
+        # Simulated pitch scripts are recorded as AI Calls (never Call Logs) so they show under
+        # the AI Calls tab and Call Logs stays clean.
+        now = datetime.now(timezone.utc)
+        call = AICall(
+            tenant_id=current_tenant_id.get(),
+            entity_type="client",
+            entity_id=client_id,
+            entity_name=cp.companyName or cp.projectName,
+            to_number=cp.phone or "Unknown",
+            status="completed",
+            mode="simulation",
             summary=f"AI Pitch Simulation for {cp.companyName or cp.projectName}",
-            description=pitch,
-            client_id=client_id,
+            transcript=[{"role": "ai", "text": pitch}],
+            important_notes="Simulated AI pitch script generated from the CRM (not a live call).",
+            duration_seconds=180,
+            created_at=now,
+            ended_at=now,
+            finalized_at=now,
         )
         session.add(call)
         session.commit()
@@ -5070,12 +5100,41 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
 
 # ─── AI Copilot Insights ──────────────────────────────────────────────────────
 
+# In-memory TTL cache so the AI Sales Copilot summary renders instantly on repeat
+# visits instead of re-running a blocking LLM call every time the panel mounts.
+_AI_INSIGHTS_CACHE = {}
+_AI_INSIGHTS_TTL_SECONDS = 600
+
+
+def _get_cached_insights(key):
+    entry = _AI_INSIGHTS_CACHE.get(key)
+    if not entry:
+        return None
+    ts, data = entry
+    if (datetime.utcnow() - ts).total_seconds() > _AI_INSIGHTS_TTL_SECONDS:
+        _AI_INSIGHTS_CACHE.pop(key, None)
+        return None
+    return data
+
+
+def _set_cached_insights(key, data):
+    _AI_INSIGHTS_CACHE[key] = (datetime.utcnow(), data)
+    if len(_AI_INSIGHTS_CACHE) > 500:
+        for k in list(_AI_INSIGHTS_CACHE.keys())[:100]:
+            _AI_INSIGHTS_CACHE.pop(k, None)
+
 
 @app.post("/clients/{client_id}/ai-insights")
-def get_ai_insights(client_id: int, session: Session = Depends(get_session)):
+def get_ai_insights(client_id: int, force: bool = False, session: Session = Depends(get_session)):
     cp = session.get(ClientProfile, client_id)
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
+
+    cache_key = f"insights:client:{client_id}"
+    if not force:
+        cached = _get_cached_insights(cache_key)
+        if cached is not None:
+            return {"insights": cached, "cached": True}
 
     # Gather context
     notes = session.exec(select(ClientNote).where(ClientNote.client_id == client_id).order_by(
@@ -5153,7 +5212,7 @@ Provide a JSON response with exactly these keys:
         with _cf.ThreadPoolExecutor(max_workers=1) as _executor:
             _future = _executor.submit(_call_openai)
             try:
-                insights = _future.result(timeout=25)
+                insights = _future.result(timeout=15)
             except (_cf.TimeoutError, Exception):
                 raise ValueError("OpenAI timed out or failed")
     except Exception as e:
@@ -5176,6 +5235,7 @@ Provide a JSON response with exactly these keys:
             "deal_health_label": "Warm" if score > 60 else "Cold"
         }
 
+    _set_cached_insights(cache_key, insights)
     return {"insights": insights}
 
 
@@ -5184,10 +5244,16 @@ Provide a JSON response with exactly these keys:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.post("/leads/{lead_id}/ai-insights")
-def get_lead_ai_insights(lead_id: int, session: Session = Depends(get_session)):
+def get_lead_ai_insights(lead_id: int, force: bool = False, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
+
+    cache_key = f"insights:lead:{lead_id}"
+    if not force:
+        cached = _get_cached_insights(cache_key)
+        if cached is not None:
+            return {"insights": cached, "cached": True}
 
     notes = session.exec(select(LeadNote).where(LeadNote.lead_id == lead_id).order_by(
         LeadNote.created_at.desc()).limit(10)).all()
@@ -5261,7 +5327,7 @@ Provide a JSON response with exactly these keys:
         with _cf.ThreadPoolExecutor(max_workers=1) as _executor:
             _future = _executor.submit(_call_openai_lead)
             try:
-                insights = _future.result(timeout=25)
+                insights = _future.result(timeout=15)
             except (_cf.TimeoutError, Exception):
                 raise ValueError("OpenAI timed out or failed")
     except Exception:
@@ -5273,6 +5339,7 @@ Provide a JSON response with exactly these keys:
             "follow_up_recommendations": ["Confirm decision maker", "Validate business need"],
             "deal_health_label": "Warm",
         }
+    _set_cached_insights(cache_key, insights)
     return {"insights": insights}
 
 
@@ -6080,6 +6147,168 @@ def _call_dict(c: CallLog, session: Session = None) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# AI Voice Calls (AICall records) — data source for the AI Calls tab
+# ─────────────────────────────────────────────────────────────────────────────
+_AI_CALL_ACTIVE_STATUSES = {"queued", "initiated", "ringing", "in-progress"}
+
+
+def _ai_transcript_text(transcript: Optional[list]) -> Optional[str]:
+    """Render a stored AICall transcript (list of turns) as readable text."""
+    if not transcript:
+        return None
+    who = {"ai": "AI", "agent": "Agent", "client": "Client"}
+    lines = []
+    for turn in transcript:
+        if not isinstance(turn, dict):
+            continue
+        role = turn.get("role")
+        if role == "system":
+            continue
+        text = (turn.get("text") or "").strip()
+        if text:
+            lines.append(f"{who.get(role, role or 'Call')}: {text}")
+    return "\n".join(lines) or None
+
+
+def _ai_call_dict(c: AICall, session: Session = None) -> dict:
+    """Return an AI call in the same shape the other call lists use (plus AI extras)."""
+    started = c.created_at.isoformat() if c.created_at else None
+    completed = c.ended_at.isoformat() if c.ended_at else None
+    status = c.status or "queued"
+    transcript_text = _ai_transcript_text(c.transcript)
+    d = {
+        "id": c.id,
+        # Call-list compatible fields
+        "phone_number": c.to_number,
+        "received_at": started,
+        "duration_seconds": c.duration_seconds,
+        "summary": c.summary,
+        "description": transcript_text,
+        "work_done": c.next_steps,
+        "important_notes": c.important_notes,
+        "assigned_to": c.assigned_to,
+        "followup_needed": bool(c.followup_needed),
+        "followup_date": c.followup_date,
+        "client_id": c.entity_id if c.entity_type == "client" else None,
+        "entity_name": c.entity_name,
+        # AI-call specific extras
+        "entity_type": c.entity_type,
+        "entity_id": c.entity_id,
+        "transcript": transcript_text,
+        "recording_url": c.recording_url,
+        "call_url": c.recording_url,
+        "twilio_call_sid": c.twilio_call_sid,
+        "status": status,
+        "call_status": "pending" if status in _AI_CALL_ACTIVE_STATUSES else status,
+        "outcome": c.outcome,
+        "initiated_at": started,
+        "completed_at": completed,
+        "started_by": c.started_by,
+    }
+    # Resolve the assignee name when only the starting user is known.
+    if not d["assigned_to"] and c.started_by and session is not None:
+        starter = session.get(User, c.started_by)
+        if starter:
+            d["assigned_to"] = starter.name or starter.email
+    # Resolve a friendly entity name if the call only stored an id.
+    if not d["entity_name"] and c.entity_type and c.entity_id and session is not None:
+        try:
+            if c.entity_type == "client":
+                cp = session.get(ClientProfile, c.entity_id)
+                if cp:
+                    d["entity_name"] = cp.companyName or cp.projectName
+            elif c.entity_type == "lead":
+                lead = session.get(Lead, c.entity_id)
+                if lead:
+                    d["entity_name"] = lead.company_name
+        except Exception:
+            pass
+    return d
+
+
+@app.get("/calling-agent-logs")
+def list_calling_agent_logs(session: Session = Depends(get_session)):
+    """AI voice calls, newest first (the AI Calls tab's data source)."""
+    q = select(AICall).order_by(AICall.created_at.desc())
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        q = q.where(AICall.tenant_id == tenant_id)
+    calls = session.exec(q).all()
+    return {"calling_agent_logs": [_ai_call_dict(c, session) for c in calls]}
+
+
+@app.put("/calling-agent-logs/{log_id}")
+@app.patch("/calling-agent-logs/{log_id}")
+def update_calling_agent_log(
+    log_id: int, body: Dict[str, Any], session: Session = Depends(get_session)
+):
+    """Save Changes from the AI call detail form: summary, notes, assignee, follow-up."""
+    c = session.get(AICall, log_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="AI call not found")
+    tenant_id = current_tenant_id.get()
+    if tenant_id and c.tenant_id and c.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="AI call not found")
+
+    if "summary" in body:
+        c.summary = None if body["summary"] is None else str(body["summary"])
+    if "important_notes" in body:
+        val = body["important_notes"]
+        c.important_notes = None if val in (None, "") else str(val)
+    if "assigned_to" in body:
+        c.assigned_to = None if body["assigned_to"] is None else str(body["assigned_to"])
+    if "followup_needed" in body:
+        c.followup_needed = bool(body["followup_needed"])
+    if "followup_date" in body:
+        c.followup_date = None if body["followup_date"] is None else str(body["followup_date"])
+    if "outcome" in body:
+        c.outcome = None if body["outcome"] is None else str(body["outcome"])
+    if "next_steps" in body:
+        c.next_steps = None if body["next_steps"] is None else str(body["next_steps"])
+    if "work_done" in body:  # detail form may use the call-log field name
+        c.next_steps = None if body["work_done"] is None else str(body["work_done"])
+
+    c.updated_at = datetime.now(timezone.utc)
+    session.add(c)
+    session.commit()
+    session.refresh(c)
+    return {"ok": True, "calling_agent_log": _ai_call_dict(c, session)}
+
+
+@app.delete("/calling-agent-logs/{log_id}")
+def delete_calling_agent_log(log_id: int, session: Session = Depends(get_session)):
+    c = session.get(AICall, log_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="AI call not found")
+    tenant_id = current_tenant_id.get()
+    if tenant_id and c.tenant_id and c.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="AI call not found")
+    session.delete(c)
+    session.commit()
+    return {"ok": True, "deleted": 1}
+
+
+@app.delete("/calling-agent-logs")
+def delete_calling_agent_logs(ids: str = Query(...), session: Session = Depends(get_session)):
+    """Bulk delete selected AI calls (the AI Calls tab's Delete button)."""
+    try:
+        id_list = [int(i) for i in str(ids).split(",") if str(i).strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ids must be a comma-separated list of integers")
+    if not id_list:
+        return {"ok": True, "deleted": 0}
+    q = select(AICall).where(AICall.id.in_(id_list))
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        q = q.where(AICall.tenant_id == tenant_id)
+    rows = session.exec(q).all()
+    for c in rows:
+        session.delete(c)
+    session.commit()
+    return {"ok": True, "deleted": len(rows)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Scheduled Calls
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -6529,12 +6758,28 @@ def dashboard_stats(
                 Meeting.scheduled_at.desc()).limit(5)
         ).all()
 
-        recent_calls = session.exec(
-            select(CallLog).where(
+        class _RecentCallRow:
+            __slots__ = ("summary", "phone_number", "createdAt")
+
+            def __init__(self, summary, phone_number, createdAt):
+                self.summary = summary
+                self.phone_number = phone_number
+                self.createdAt = createdAt
+
+        # Manual call logs + AI calls, newest first.
+        recent_calls = [
+            _RecentCallRow(c.summary, c.phone_number, c.createdAt)
+            for c in session.exec(select(CallLog).where(
                 or_(CallLog.assigned_to == user.name,
-                    CallLog.assigned_to == str(user.id))
-            ).order_by(CallLog.createdAt.desc()).limit(5)
-        ).all()
+                    CallLog.assigned_to == str(user.id)))).all()
+        ] + [
+            _RecentCallRow(a.summary, a.to_number, a.created_at)
+            for a in session.exec(select(AICall).where(
+                or_(AICall.assigned_to == user.name,
+                    AICall.assigned_to == str(user.id)))).all()
+        ]
+        recent_calls.sort(key=lambda c: c.createdAt.isoformat() if c.createdAt else "", reverse=True)
+        recent_calls = recent_calls[:5]
 
         activities = []
         for m in recent_meetings:
@@ -6799,7 +7044,9 @@ def dashboard_stats(
             User.tenant_id == current_tenant_id.get())).all()
     )
     total_activities = len(session.exec(select(ActivityLog)).all())
-    total_calls = len(session.exec(select(CallLog)).all())
+    # Calls now live in AI Calls (call_logs is no longer used); keep the metric meaningful.
+    total_calls = len(session.exec(select(CallLog)).all()) + \
+        len(session.exec(select(AICall)).all())
 
     try:
         from database import MarketplaceService
@@ -6815,6 +7062,7 @@ def dashboard_stats(
     all_activities = session.exec(select(ActivityLog)).all()
     all_emails = session.exec(select(SentEmail)).all()
     all_calls_list = session.exec(select(CallLog)).all()
+    all_ai_calls_list = session.exec(select(AICall)).all()
     total_emails_sent = len(all_emails)
     for i in range(6, -1, -1):
         day = datetime.utcnow() - timedelta(days=i)
@@ -6825,8 +7073,9 @@ def dashboard_stats(
             1 for a in all_activities if a.createdAt and day_start <= _as_naive_utc(a.createdAt) < day_end))
         email_chart.append(sum(
             1 for e in all_emails if e.sent_at and day_start <= _as_naive_utc(e.sent_at) < day_end))
-        call_chart.append(sum(
-            1 for c in all_calls_list if c.createdAt and day_start <= _as_naive_utc(c.createdAt) < day_end))
+        call_chart.append(
+            sum(1 for c in all_calls_list if c.createdAt and day_start <= _as_naive_utc(c.createdAt) < day_end)
+            + sum(1 for c in all_ai_calls_list if c.created_at and day_start <= _as_naive_utc(c.created_at) < day_end))
 
     import calendar
     all_invoices = session.exec(select(Invoice)).all()
@@ -7011,13 +7260,21 @@ def client_timeline(client_id: int, session: Session = Depends(get_session)):
             "date": e.sent_at.isoformat() if e.sent_at else None,
         })
 
-    # Calls
+    # Calls (manual logs + AI calls for this client)
     for c in session.exec(select(CallLog).where(CallLog.client_id == client_id)).all():
         events.append({
             "type": "call", "id": c.id,
             "title": f"Call: {c.phone_number or 'Unknown'}",
             "detail": c.description or "",
             "date": c.createdAt.isoformat() if c.createdAt else None,
+        })
+    for a in session.exec(select(AICall).where(
+            AICall.entity_type == "client", AICall.entity_id == client_id)).all():
+        events.append({
+            "type": "call", "id": a.id,
+            "title": f"Call: {a.to_number or 'Unknown'}",
+            "detail": _ai_transcript_text(a.transcript) or "",
+            "date": a.created_at.isoformat() if a.created_at else None,
         })
 
     # Invoices
@@ -9526,8 +9783,28 @@ def reports_summary(
         SentEmail) if _in_report_range(email.sent_at, start, end)]
     activities = [activity for activity in scoped(
         ActivityLog) if _in_report_range(activity.createdAt, start, end)]
-    calls = [call for call in scoped(
-        CallLog) if _in_report_range(call.createdAt, start, end)]
+    class _ReportCallRow:
+        __slots__ = ("id", "createdAt", "phone_number", "assigned_to",
+                     "duration_seconds", "summary", "followup_needed", "followup_date")
+
+        def __init__(self, row, createdAt, phone_number):
+            self.id = row.id
+            self.createdAt = createdAt
+            self.phone_number = phone_number
+            self.assigned_to = row.assigned_to
+            self.duration_seconds = row.duration_seconds
+            self.summary = row.summary
+            self.followup_needed = row.followup_needed
+            self.followup_date = row.followup_date
+
+    # Manual call logs + AI calls both count as calls in reports.
+    calls = [
+        _ReportCallRow(c, _as_naive_utc(c.createdAt), c.phone_number)
+        for c in scoped(CallLog) if _in_report_range(c.createdAt, start, end)
+    ] + [
+        _ReportCallRow(a, _as_naive_utc(a.created_at), a.to_number)
+        for a in scoped(AICall) if _in_report_range(a.created_at, start, end)
+    ]
     conversations = [conversation for conversation in scoped(
         ConversationLog) if _in_report_range(conversation.created_at, start, end)]
     tickets = [ticket for ticket in scoped(
@@ -9769,62 +10046,12 @@ def get_chatbot_history(session_id: str, session: Session = Depends(get_session)
 # ─── Chatbot endpoint ────────────────────────────────────────────────────────
 
 
-@app.post("/chatbot/message")
-async def chatbot_message(
-    request: ChatbotRequest,
-    background_tasks: BackgroundTasks,
-    session: Session = Depends(get_session)
-):
-    from modules.llm_engine import process_chatbot_command
-    from database import ClientProfile, ClientNote, ConversationLog, ActivityLog, Project, MarketplaceService, User, ChatbotSession, ChatbotMessage
-    from modules.api_tracker import current_salesperson_id
+def _execute_chatbot_actions(session, actions, request, client_context, result, background_tasks):
+    """Execute the CRM mutations requested by the Omni-Agent chatbot.
 
-    user_id = current_salesperson_id.get()
-
-    # Handle Session Memory
-    session_id = request.session_id or f"anon_{datetime.utcnow().timestamp()}"
-    cb_session = session.exec(select(ChatbotSession).where(
-        ChatbotSession.session_id == session_id)).first()
-    if not cb_session:
-        cb_session = ChatbotSession(session_id=session_id, user_id=user_id)
-        session.add(cb_session)
-        session.commit()
-
-    # Save user message
-    user_msg = ChatbotMessage(session_id=session_id,
-                              role="user", content=request.message)
-    session.add(user_msg)
-    session.commit()
-
-    # Load recent history (last 10 messages)
-    history_records = session.exec(select(ChatbotMessage).where(
-        ChatbotMessage.session_id == session_id).order_by(ChatbotMessage.created_at.desc()).limit(10)).all()
-    history_records.reverse()
-    chat_history_str = "\n".join(
-        [f"{m.role}: {m.content}" for m in history_records])
-
-    # Gather rich CRM summary for context
-    active_clients = session.exec(select(ClientProfile).limit(10)).all()
-    client_names = [c.companyName for c in active_clients if c.companyName]
-    crm_summary = f"CRM Summary: {len(client_names)} active clients ({', '.join(client_names[:5])}...)\nHistory:\n{chat_history_str}"
-
-    client_context = None
-    if request.client_id:
-        cp = session.get(ClientProfile, request.client_id)
-        if cp:
-            client_context = {
-                "client_id": cp.id,
-                "company_name": cp.companyName,
-                "contact_person": cp.contact_person,
-                "email": cp.user.email if cp.user else None,
-                "industry": cp.industry
-            }
-
-    # Advanced Omni-Agent AI processing
-    result = process_chatbot_command(
-        request.message, client_context, request.current_route, crm_summary, user_role=request.user_role)
-
-    actions = result.get("actions", [])
+    Extracted from the /chatbot/message endpoint so the streaming chatbot endpoint
+    can reuse the exact same action handling. Returns (action_taken, route).
+    """
     action_taken = None
     route = None
 
@@ -10040,6 +10267,68 @@ async def chatbot_message(
     except Exception as e:
         print(f"Chatbot mutation error: {e}")
 
+    return action_taken, route
+
+
+@app.post("/chatbot/message")
+async def chatbot_message(
+    request: ChatbotRequest,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session)
+):
+    from modules.llm_engine import process_chatbot_command
+    from database import ClientProfile, ClientNote, ConversationLog, ActivityLog, Project, MarketplaceService, User, ChatbotSession, ChatbotMessage
+    from modules.api_tracker import current_salesperson_id
+
+    user_id = current_salesperson_id.get()
+
+    # Handle Session Memory
+    session_id = request.session_id or f"anon_{datetime.utcnow().timestamp()}"
+    cb_session = session.exec(select(ChatbotSession).where(
+        ChatbotSession.session_id == session_id)).first()
+    if not cb_session:
+        cb_session = ChatbotSession(session_id=session_id, user_id=user_id)
+        session.add(cb_session)
+        session.commit()
+
+    # Save user message
+    user_msg = ChatbotMessage(session_id=session_id,
+                              role="user", content=request.message)
+    session.add(user_msg)
+    session.commit()
+
+    # Load recent history (last 10 messages)
+    history_records = session.exec(select(ChatbotMessage).where(
+        ChatbotMessage.session_id == session_id).order_by(ChatbotMessage.created_at.desc()).limit(10)).all()
+    history_records.reverse()
+    chat_history_str = "\n".join(
+        [f"{m.role}: {m.content}" for m in history_records])
+
+    # Gather rich CRM summary for context
+    active_clients = session.exec(select(ClientProfile).limit(10)).all()
+    client_names = [c.companyName for c in active_clients if c.companyName]
+    crm_summary = f"CRM Summary: {len(client_names)} active clients ({', '.join(client_names[:5])}...)\nHistory:\n{chat_history_str}"
+
+    client_context = None
+    if request.client_id:
+        cp = session.get(ClientProfile, request.client_id)
+        if cp:
+            client_context = {
+                "client_id": cp.id,
+                "company_name": cp.companyName,
+                "contact_person": cp.contact_person,
+                "email": cp.user.email if cp.user else None,
+                "industry": cp.industry
+            }
+
+    # Advanced Omni-Agent AI processing
+    result = process_chatbot_command(
+        request.message, client_context, request.current_route, crm_summary, user_role=request.user_role)
+
+    actions = result.get("actions", [])
+    action_taken, route = _execute_chatbot_actions(
+        session, actions, request, client_context, result, background_tasks)
+
     # Save bot message
     try:
         bot_reply = result.get("reply", "I processed your request.")
@@ -10058,6 +10347,136 @@ async def chatbot_message(
         "action_taken": action_taken,
         "route": route
     }
+
+
+# ─── Chatbot streaming endpoint (SSE) ─────────────────────────────────────────
+@app.post("/chatbot/message/stream")
+async def chatbot_message_stream(request: ChatbotRequest, background_tasks: BackgroundTasks):
+    """Server-Sent Events variant of /chatbot/message.
+
+    Streams the assistant reply tokens as they are generated, then executes any
+    CRM actions the model requested and emits a final 'done' event. Falls back to
+    the non-streaming /chatbot/message endpoint on the client if this fails.
+    """
+    from fastapi.responses import StreamingResponse
+    import json as _json
+    import queue as _queue
+    import threading as _threading
+    from modules.llm_engine import process_chatbot_command
+    from modules.api_tracker import current_salesperson_id
+
+    user_id = current_salesperson_id.get()
+    session_id = request.session_id or f"anon_{datetime.utcnow().timestamp()}"
+
+    # ── Fast synchronous context prep using a short-lived session ──
+    client_context = None
+    with Session(engine) as prep:
+        cb_session = prep.exec(select(ChatbotSession).where(
+            ChatbotSession.session_id == session_id)).first()
+        if not cb_session:
+            prep.add(ChatbotSession(session_id=session_id, user_id=user_id))
+            prep.commit()
+
+        prep.add(ChatbotMessage(session_id=session_id,
+                                role="user", content=request.message))
+        prep.commit()
+
+        history_records = prep.exec(select(ChatbotMessage).where(
+            ChatbotMessage.session_id == session_id).order_by(
+            ChatbotMessage.created_at.desc()).limit(10)).all()
+        history_records.reverse()
+        chat_history_str = "\n".join(
+            [f"{m.role}: {m.content}" for m in history_records])
+
+        active_clients = prep.exec(select(ClientProfile).limit(10)).all()
+        client_names = [c.companyName for c in active_clients if c.companyName]
+        crm_summary = f"CRM Summary: {len(client_names)} active clients ({', '.join(client_names[:5])}...)\nHistory:\n{chat_history_str}"
+
+        if request.client_id:
+            cp = prep.get(ClientProfile, request.client_id)
+            if cp:
+                client_context = {
+                    "client_id": cp.id,
+                    "company_name": cp.companyName,
+                    "contact_person": cp.contact_person,
+                    "email": cp.user.email if cp.user else None,
+                    "industry": cp.industry,
+                }
+
+    def event_stream():
+        import contextvars as _contextvars
+        q = _queue.Queue()
+        streamed = {"any": False}
+
+        def _on_delta(text):
+            streamed["any"] = True
+            q.put(("delta", text))
+
+        def _worker():
+            try:
+                res = process_chatbot_command(
+                    request.message, client_context, request.current_route,
+                    crm_summary, user_role=request.user_role, on_delta=_on_delta)
+                q.put(("result", res))
+            except Exception as exc:
+                q.put(("error", str(exc)))
+
+        # Preserve request context (tenant / salesperson) for API usage tracking.
+        ctx = _contextvars.copy_context()
+        _threading.Thread(target=lambda: ctx.run(_worker), daemon=True).start()
+
+        yield "data: " + _json.dumps({"type": "start"}) + "\n\n"
+
+        result = None
+        while True:
+            kind, payload = q.get()
+            if kind == "delta":
+                yield "data: " + _json.dumps({"type": "delta", "text": payload}) + "\n\n"
+            elif kind == "result":
+                result = payload
+                break
+            elif kind == "error":
+                yield "data: " + _json.dumps({"type": "error", "message": payload}) + "\n\n"
+                return
+
+        result = result or {"actions": [], "reply": ""}
+        actions = result.get("actions", [])
+
+        action_taken = None
+        route = None
+        if actions:
+            try:
+                with Session(engine) as act_session:
+                    action_taken, route = _execute_chatbot_actions(
+                        act_session, actions, request, client_context, result, background_tasks)
+            except Exception as exc:
+                print(f"Chatbot stream action error: {exc}")
+
+        reply = result.get("reply", "")
+
+        # If nothing was streamed (e.g. a pure tool call), surface the reply now.
+        if not streamed["any"] and reply:
+            yield "data: " + _json.dumps({"type": "delta", "text": reply}) + "\n\n"
+
+        # Persist the assistant reply for session memory
+        try:
+            with Session(engine) as save:
+                save.add(ChatbotMessage(session_id=session_id, role="assistant",
+                                        content=reply, action_taken=action_taken))
+                save.commit()
+        except Exception as exc:
+            print(f"Failed to save bot message: {exc}")
+
+        yield "data: " + _json.dumps({
+            "type": "done", "action_taken": action_taken,
+            "route": route, "reply": reply,
+        }) + "\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 class LiveChatSendRequest(BaseModel):
@@ -14390,12 +14809,23 @@ Instructions:
         raise HTTPException(
             status_code=500, detail=f"Failed to simulate call: {str(e)}")
 
-    call = CallLog(
-        phone_number=lead.phone or "Unknown",
-        duration_seconds=180,
+    # Simulated pitch scripts are recorded as AI Calls (never Call Logs).
+    now = datetime.now(timezone.utc)
+    call = AICall(
+        tenant_id=tenant_id,
+        entity_type="lead",
+        entity_id=lead_id,
+        entity_name=client_name,
+        to_number=lead.phone or "Unknown",
+        status="completed",
+        mode="simulation",
         summary=f"Pitch Generation for {client_name}",
-        description=pitch,
-        tenant_id=tenant_id
+        transcript=[{"role": "ai", "text": pitch}],
+        important_notes="Simulated AI pitch script generated from the CRM (not a live call).",
+        duration_seconds=180,
+        created_at=now,
+        ended_at=now,
+        finalized_at=now,
     )
     session.add(call)
     session.commit()
@@ -14469,12 +14899,23 @@ Instructions:
         raise HTTPException(
             status_code=500, detail=f"Failed to simulate call: {str(e)}")
 
-    call = CallLog(
-        phone_number=contact.mobile_number or "Unknown",
-        duration_seconds=180,
+    # Simulated pitch scripts are recorded as AI Calls (never Call Logs).
+    now = datetime.now(timezone.utc)
+    call = AICall(
+        tenant_id=tenant_id,
+        entity_type="contact",
+        entity_id=contact_id,
+        entity_name=client_name,
+        to_number=contact.mobile_number or "Unknown",
+        status="completed",
+        mode="simulation",
         summary=f"Pitch Generation for {client_name}",
-        description=pitch,
-        tenant_id=tenant_id
+        transcript=[{"role": "ai", "text": pitch}],
+        important_notes="Simulated AI pitch script generated from the CRM (not a live call).",
+        duration_seconds=180,
+        created_at=now,
+        ended_at=now,
+        finalized_at=now,
     )
     session.add(call)
     session.commit()

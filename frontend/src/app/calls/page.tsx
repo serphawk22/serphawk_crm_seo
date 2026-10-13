@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Phone, Plus, X, Clock, Loader2, Check, PhoneCall, PhoneOff, Zap,
   CalendarClock, ChevronDown, ChevronUp, Trash2, Calendar, User,
-  Mail, Mic, CheckCircle, Bell, Bot, AlertCircle,
-  Volume2, ExternalLink
+  Mail, CheckCircle, Bell, Bot, AlertCircle
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import QuickCallPanel from "@/components/voice-agent/QuickCallPanel";
@@ -30,9 +29,11 @@ interface CallEntry {
   summary: string | null;
   description: string | null;
   work_done: string | null;
+  important_notes?: string | null;
   assigned_to: string | null;
   followup_needed: boolean;
   followup_date: string | null;
+  outcome?: string | null;
   client_id: number | null;
   entity_name?: string | null;
 }
@@ -55,19 +56,18 @@ interface ScheduledCall {
   ai_call_completed_at: string | null;
 }
 
-interface AiCallLog {
-  id: number;
+interface AiCallLog extends CallEntry {
   entity_type: string;
   entity_id: number;
-  entity_name: string | null;
-  phone_number: string | null;
   transcript: string | null;
   recording_url: string | null;
   call_url: string | null;
-  duration_seconds: number | null;
+  status: string;
   call_status: string;
+  outcome?: string | null;
   initiated_at: string;
   completed_at: string | null;
+  started_by?: number | null;
 }
 
 interface Toast {
@@ -114,6 +114,13 @@ function formatDuration(s: number | null) {
   return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
 }
 
+// AI voice agent calls (past and present prefixes) live in the dedicated AI Calls tab.
+// They must not appear in the Calls Logged list or count.
+function isAiGeneratedCall(call: Pick<CallEntry, "summary"> | null | undefined): boolean {
+  const s = (call?.summary || "").trim();
+  return s.startsWith("AI Voice Call") || s.startsWith("AI Call");
+}
+
 function AiCallStatusBadge({ status }: { status: string | null }) {
   const { t } = useLanguage();
   if (!status) return null;
@@ -127,99 +134,48 @@ function AiCallStatusBadge({ status }: { status: string | null }) {
   return <span className={cn("text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider", cfg.cls)}>{cfg.label}</span>;
 }
 
-function AiCallResultsPanel({
-  logs,
-  selectedIds,
-  onToggleSelect,
+function AutoGrowTextarea({
+  value,
+  onChange,
+  placeholder,
+  className,
+  minRows = 8,
+  readOnly = false,
 }: {
-  logs: AiCallLog[];
-  selectedIds: Set<number>;
-  onToggleSelect: (id: number) => void;
+  value: string;
+  onChange?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  placeholder?: string;
+  className?: string;
+  minRows?: number;
+  readOnly?: boolean;
 }) {
-  const { t } = useLanguage();
-  if (!logs.length) return null;
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
   return (
-    <div className="space-y-4">
-      {logs.map((log) => (
-        <motion.div key={log.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-          className={cn("bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-950/30 dark:to-indigo-950/30 rounded-2xl border overflow-hidden",
-            selectedIds.has(log.id) ? "border-violet-500 ring-1 ring-violet-500" : "border-violet-200 dark:border-violet-900/40")}>
-          <div className="flex items-center justify-between px-5 py-3 border-b border-violet-100 dark:border-violet-900/30">
-            <div className="flex items-center gap-2.5">
-              <input type="checkbox" checked={selectedIds.has(log.id)} onChange={() => onToggleSelect(log.id)}
-                className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 cursor-pointer" />
-              <Bot className="w-4 h-4 text-violet-600" />
-              <span className="text-sm font-black text-violet-700 dark:text-violet-300">
-                {t("calls.ai_call")} — {log.entity_name || `${log.entity_type} #${log.entity_id}`}
-              </span>
-              <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
-                log.call_status === "completed" ? "bg-emerald-100 text-emerald-700" :
-                log.call_status === "failed"    ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
-              )}>{log.call_status}</span>
-            </div>
-            <div className="flex items-center gap-3 text-[11px] text-slate-500 font-medium">
-              {log.phone_number && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{log.phone_number}</span>}
-              {log.duration_seconds && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDuration(log.duration_seconds)}</span>}
-              <span suppressHydrationWarning>{new Date(log.initiated_at).toLocaleString()}</span>
-            </div>
-          </div>
-          {log.recording_url && (
-            <div className="px-5 py-3 border-b border-violet-100 dark:border-violet-900/30">
-              <p className="text-[10px] font-black text-violet-600 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                <Volume2 className="w-3 h-3" /> {t("calls.call_recording")}
-              </p>
-              <audio controls src={log.recording_url} className="w-full h-10 rounded-xl" />
-              <a href={log.recording_url} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-violet-600 hover:underline mt-1.5 font-bold">
-                <ExternalLink className="w-3 h-3" /> {t("calls.open_new_tab")}
-              </a>
-            </div>
-          )}
-          {log.call_url && (
-            <div className="px-5 py-3 border-b border-violet-100 dark:border-violet-900/30">
-              <p className="text-[10px] font-black text-violet-600 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                <ExternalLink className="w-3 h-3" /> {t("calls.call_url")}
-              </p>
-              <a href={log.call_url} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-violet-600 hover:underline mt-1.5 font-bold break-all">
-                {log.call_url}
-              </a>
-            </div>
-          )}
-          {log.transcript ? (
-            <div className="px-5 py-4">
-              <p className="text-[10px] font-black text-violet-600 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                <Mic className="w-3 h-3" /> {t("calls.conversation_transcript")}
-              </p>
-              <div className="bg-white/70 dark:bg-zinc-900/50 rounded-xl p-4 border border-violet-100 dark:border-violet-900/30 max-h-64 overflow-y-auto">
-                <pre className="text-xs text-slate-700 dark:text-zinc-200 font-medium leading-relaxed whitespace-pre-wrap font-sans">{log.transcript}</pre>
-              </div>
-            </div>
-          ) : log.call_status === "pending" ? (
-            <div className="px-5 py-8 flex flex-col items-center justify-center text-center bg-slate-50/50 dark:bg-zinc-900/30">
-              <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
-                 <Phone className="w-5 h-5 text-slate-400" />
-              </div>
-              <h3 className="text-base font-bold text-slate-700 dark:text-zinc-200 mb-1">{t("calls.dialing_name").replace("{name}", log.entity_name || log.phone_number || "")}</h3>
-              <p className="text-sm text-slate-500 font-medium max-w-sm">
-                {t("calls.dialing_waiting")}
-              </p>
-            </div>
-          ) : (
-            <div className="px-5 py-4 text-sm text-slate-400 font-medium">{t("calls.no_transcript")}</div>
-          )}
-        </motion.div>
-      ))}
-    </div>
+    <textarea
+      ref={ref}
+      rows={minRows}
+      value={value}
+      onChange={onChange}
+      readOnly={readOnly}
+      placeholder={placeholder}
+      className={cn("resize-y overflow-hidden", readOnly && "cursor-not-allowed", className)}
+    />
   );
 }
 
-function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void }) {
+function CallDetailPanel({ call, onSave, isAiCall = false }: { call: CallEntry; onSave: () => void; isAiCall?: boolean }) {
   const { t } = useLanguage();
   const [form, setForm] = useState({
     summary: call.summary || "",
     description: call.description || "",
     work_done: call.work_done || "",
+    important_notes: call.important_notes || "",
     assigned_to: call.assigned_to || "",
     followup_needed: call.followup_needed,
     followup_date: call.followup_date || "",
@@ -230,11 +186,27 @@ function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch(`${API_BASE_URL}/calls/${call.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+      if (isAiCall) {
+        // AI calls persist Summary + Important Notes (plus assignee / follow-up)
+        // through the calling-agent-logs endpoint.
+        await fetch(`${API_BASE_URL}/calling-agent-logs/${call.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            summary: form.summary,
+            important_notes: form.important_notes,
+            assigned_to: form.assigned_to,
+            followup_needed: form.followup_needed,
+            followup_date: form.followup_date || null,
+          }),
+        });
+      } else {
+        await fetch(`${API_BASE_URL}/calls/${call.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        });
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       onSave();
@@ -249,42 +221,156 @@ function CallDetailPanel({ call, onSave }: { call: CallEntry; onSave: () => void
           <p className="text-sm text-slate-700 dark:text-zinc-200 font-medium leading-relaxed whitespace-pre-wrap">{call.description}</p>
         </div>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.summary")}</label>
-          <textarea rows={2} value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })}
-            placeholder={t("calls.summary_placeholder")} className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 text-slate-700 dark:text-zinc-200 resize-none" />
-        </div>
-        <div>
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.work_done")}</label>
-          <textarea rows={2} value={form.work_done} onChange={(e) => setForm({ ...form, work_done: e.target.value })}
-            placeholder={t("calls.work_done_placeholder")} className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-400/30 focus:border-emerald-400 text-slate-700 dark:text-zinc-200 resize-none" />
-        </div>
-        <div>
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.assigned_to")}</label>
-          <input type="text" value={form.assigned_to} onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}
-            placeholder={t("calls.assign_placeholder")} className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 text-slate-700 dark:text-zinc-200" />
-        </div>
-        <div className="flex flex-col justify-end">
-          <label className="flex items-center gap-2.5 cursor-pointer">
-            <div onClick={() => setForm({ ...form, followup_needed: !form.followup_needed })}
-              className={cn("w-11 h-6 rounded-full transition-all relative cursor-pointer", form.followup_needed ? "bg-red-500" : "bg-slate-200 dark:bg-zinc-700")}>
-              <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all", form.followup_needed ? "right-1" : "left-1")} />
+      {isAiCall ? (
+        <>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.summary")}</label>
+            <AutoGrowTextarea
+              value={form.summary}
+              readOnly
+              placeholder={t("calls.summary_placeholder")}
+              minRows={8}
+              className="w-full px-4 py-3 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 text-slate-700 dark:text-zinc-200"
+            />
+            <p className="mt-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t("calls.summary_auto_generated")}</p>
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.important_notes")}</label>
+            <textarea rows={4} value={form.important_notes} onChange={(e) => setForm({ ...form, important_notes: e.target.value })}
+              placeholder={t("calls.important_notes_placeholder")} className="w-full px-4 py-3 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-400/30 focus:border-emerald-400 text-slate-700 dark:text-zinc-200 resize-y" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.assigned_to")}</label>
+              <input type="text" value={form.assigned_to} onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}
+                placeholder={t("calls.assign_placeholder")} className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 text-slate-700 dark:text-zinc-200" />
             </div>
-            <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">{t("calls.followup_needed")}</span>
-          </label>
-          {form.followup_needed && (
-            <input type="date" value={form.followup_date} onChange={(e) => setForm({ ...form, followup_date: e.target.value })}
-              className="mt-2 px-4 py-2 bg-red-50 border border-red-200 rounded-2xl text-sm font-bold text-red-700 outline-none" />
-          )}
+            <div className="flex flex-col justify-end">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <div onClick={() => setForm({ ...form, followup_needed: !form.followup_needed })}
+                  className={cn("w-11 h-6 rounded-full transition-all relative cursor-pointer", form.followup_needed ? "bg-red-500" : "bg-slate-200 dark:bg-zinc-700")}>
+                  <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all", form.followup_needed ? "right-1" : "left-1")} />
+                </div>
+                <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">{t("calls.followup_needed")}</span>
+              </label>
+              {form.followup_needed && (
+                <input type="date" value={form.followup_date} onChange={(e) => setForm({ ...form, followup_date: e.target.value })}
+                  className="mt-2 px-4 py-2 bg-red-50 border border-red-200 rounded-2xl text-sm font-bold text-red-700 outline-none" />
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.summary")}</label>
+            <textarea rows={2} value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })}
+              placeholder={t("calls.summary_placeholder")} className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 text-slate-700 dark:text-zinc-200 resize-none" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.work_done")}</label>
+            <textarea rows={2} value={form.work_done} onChange={(e) => setForm({ ...form, work_done: e.target.value })}
+              placeholder={t("calls.work_done_placeholder")} className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-400/30 focus:border-emerald-400 text-slate-700 dark:text-zinc-200 resize-none" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t("calls.assigned_to")}</label>
+            <input type="text" value={form.assigned_to} onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}
+              placeholder={t("calls.assign_placeholder")} className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 text-slate-700 dark:text-zinc-200" />
+          </div>
+          <div className="flex flex-col justify-end">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <div onClick={() => setForm({ ...form, followup_needed: !form.followup_needed })}
+                className={cn("w-11 h-6 rounded-full transition-all relative cursor-pointer", form.followup_needed ? "bg-red-500" : "bg-slate-200 dark:bg-zinc-700")}>
+                <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all", form.followup_needed ? "right-1" : "left-1")} />
+              </div>
+              <span className="text-sm font-bold text-slate-700 dark:text-zinc-200">{t("calls.followup_needed")}</span>
+            </label>
+            {form.followup_needed && (
+              <input type="date" value={form.followup_date} onChange={(e) => setForm({ ...form, followup_date: e.target.value })}
+                className="mt-2 px-4 py-2 bg-red-50 border border-red-200 rounded-2xl text-sm font-bold text-red-700 outline-none" />
+            )}
+          </div>
         </div>
-      </div>
+      )}
       <button onClick={handleSave} disabled={saving}
         className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-bold text-sm transition-all disabled:opacity-40">
         {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
         {saved ? t("calls.saved") : t("calls.save_changes")}
       </button>
     </div>
+  );
+}
+
+function CallCard({
+  call,
+  isAiCall = false,
+  expanded,
+  onToggleExpand,
+  onSave,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
+}: {
+  call: CallEntry;
+  isAiCall?: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onSave: () => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+}) {
+  const { t } = useLanguage();
+  const showBot = isAiCall || !!call.summary?.startsWith("AI Call");
+  const interested = isAiCall && call.outcome === "interested";
+  return (
+    <motion.div variants={itemVariants}
+      className={cn("bg-white dark:bg-zinc-900/60 backdrop-blur-2xl border rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] p-6 transition-all",
+        selected
+          ? (isAiCall ? "ring-2 ring-violet-400 border-violet-400" : "ring-2 ring-amber-400 border-amber-400")
+          : interested
+            ? "ring-1 ring-emerald-300 border-emerald-300 dark:ring-emerald-700/60 dark:border-emerald-800/60"
+            : call.followup_needed ? "border-red-200 dark:border-red-900/50" : "border-slate-100 dark:border-zinc-800")}>
+      <div className="flex items-start gap-4">
+        {selectable && (
+          <input type="checkbox" checked={selected} onChange={onToggleSelect}
+            className={cn("mt-3.5 w-4 h-4 rounded cursor-pointer", isAiCall ? "text-violet-600 focus:ring-violet-500" : "text-amber-500 focus:ring-amber-500")} />
+        )}
+        <div className={cn("p-3 rounded-2xl shrink-0",
+          interested ? "bg-emerald-50 text-emerald-500" : showBot ? "bg-violet-50 text-violet-500" : call.summary ? "bg-emerald-50 text-emerald-500" : "bg-amber-50 text-amber-500")}>
+          {interested ? <CheckCircle className="w-5 h-5" /> : showBot ? <Bot className="w-5 h-5" /> : <PhoneCall className="w-5 h-5" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 flex-wrap mb-1">
+            <span className="font-black text-slate-800 dark:text-zinc-100 text-lg">{call.entity_name || call.phone_number}</span>
+            {call.entity_name && <span className="text-sm font-bold text-slate-400">({call.phone_number})</span>}
+            {interested && <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">{t("calls.badge_interested")}</span>}
+            {!call.summary && <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">{t("calls.needs_summary")}</span>}
+            {call.followup_needed && <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">{t("calls.followup_badge")}</span>}
+            {call.assigned_to && <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2.5 py-1 rounded-full">{call.assigned_to}</span>}
+          </div>
+          <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-zinc-400 font-medium">
+            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDuration(call.duration_seconds)}</span>
+            <span suppressHydrationWarning>{new Date(call.received_at).toLocaleString()}</span>
+            {call.followup_date && <span className="text-red-600 font-bold">Due: {call.followup_date}</span>}
+          </div>
+          {call.summary && (
+            <p className="text-sm text-slate-600 dark:text-zinc-300 font-medium bg-slate-50 dark:bg-zinc-800 p-3 rounded-2xl border border-slate-100 dark:border-zinc-700 mt-3 line-clamp-2">{call.summary}</p>
+          )}
+        </div>
+        <button onClick={onToggleExpand}
+          className="shrink-0 p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl transition-colors text-slate-500 dark:text-zinc-400">
+          {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+      </div>
+      <AnimatePresence>
+        {expanded && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }} style={{ overflow: "hidden" }}>
+            <CallDetailPanel call={call} onSave={onSave} isAiCall={isAiCall} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
@@ -312,9 +398,28 @@ export default function CallsPage() {
   const [aiContext, setAiContext] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [expandedSchedId, setExpandedSchedId] = useState<number | null>(null);
+  const [expandedAiId, setExpandedAiId] = useState<number | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [selectedCallIds, setSelectedCallIds] = useState<Set<number>>(new Set());
   const [selectedAiCallIds, setSelectedAiCallIds] = useState<Set<number>>(new Set());
+
+  // Manually logged calls only — AI voice agent calls live in the AI Calls tab.
+  const loggedCalls = calls.filter((c) => !isAiGeneratedCall(c));
+
+  // Keep multi-select limited to what is visible in the Calls Logged list.
+  useEffect(() => {
+    if (selectedCallIds.size === 0) return;
+    setSelectedCallIds((prev) => {
+      const liveIds = new Set(loggedCalls.map((c) => c.id));
+      let changed = false;
+      const next = new Set<number>();
+      prev.forEach((id) => {
+        if (liveIds.has(id)) next.add(id);
+        else changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [loggedCalls, selectedCallIds]);
 
   const addToast = (message: string, type: Toast["type"] = "info", duration = 5000) => {
     const id = ++_toastId;
@@ -521,8 +626,8 @@ export default function CallsPage() {
     setSelectedCallIds(newSet);
   };
   const toggleSelectAllCalls = () => {
-    if (selectedCallIds.size === calls.length) setSelectedCallIds(new Set());
-    else setSelectedCallIds(new Set(calls.map(c => c.id)));
+    if (selectedCallIds.size === loggedCalls.length) setSelectedCallIds(new Set());
+    else setSelectedCallIds(new Set(loggedCalls.map(c => c.id)));
   };
   const deleteSelectedCalls = async () => {
     if (selectedCallIds.size === 0) return;
@@ -560,7 +665,7 @@ export default function CallsPage() {
           <div>
             <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-900 via-amber-700 to-slate-900 dark:from-white dark:via-amber-400 dark:to-white tracking-tight">{t("calls.title")}</h1>
             <p className="text-slate-500 dark:text-zinc-400 font-medium mt-1">
-              {calls.length} {t("calls.logged_suffix")} &middot; {scheduledCalls.filter((s) => s.status === "Scheduled").length} {t("calls.scheduled_suffix")} &middot; {aiCallLogs.length} {t("calls.ai_calls_suffix")}
+              {loggedCalls.length} {t("calls.logged_suffix")} &middot; {scheduledCalls.filter((s) => s.status === "Scheduled").length} {t("calls.scheduled_suffix")} &middot; {aiCallLogs.length} {t("calls.ai_calls_suffix")}
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -586,7 +691,7 @@ export default function CallsPage() {
               activeTab === "logged" ? "bg-white dark:bg-zinc-800 text-amber-600 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700")}>
             <PhoneCall className="w-4 h-4" /> {t("calls.tab_logged")}
             <span className={cn("text-xs px-2 py-0.5 rounded-full font-black",
-              activeTab === "logged" ? "bg-amber-100 text-amber-700" : "bg-slate-200 dark:bg-zinc-700 text-slate-500")}>{calls.length}</span>
+              activeTab === "logged" ? "bg-amber-100 text-amber-700" : "bg-slate-200 dark:bg-zinc-700 text-slate-500")}>{loggedCalls.length}</span>
           </button>
           <button onClick={() => setActiveTab("scheduled")}
             className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all",
@@ -612,10 +717,10 @@ export default function CallsPage() {
           {/* Logged Calls */}
           {activeTab === "logged" && (
             <motion.div key="logged" variants={containerVariants} initial="hidden" animate="show" exit="hidden" className="space-y-4">
-              {calls.length > 0 && !loading && (
+              {loggedCalls.length > 0 && !loading && (
                 <div className="flex items-center justify-between bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-2xl">
                   <label className="flex items-center gap-3 cursor-pointer pl-2">
-                    <input type="checkbox" checked={selectedCallIds.size === calls.length && calls.length > 0} onChange={toggleSelectAllCalls}
+                    <input type="checkbox" checked={selectedCallIds.size === loggedCalls.length && loggedCalls.length > 0} onChange={toggleSelectAllCalls}
                       className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 cursor-pointer" />
                     <span className="text-sm font-bold text-slate-600 dark:text-zinc-300">{t("calls.select_all")}</span>
                   </label>
@@ -628,78 +733,25 @@ export default function CallsPage() {
               )}
               {loading ? (
                 <div className="flex justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-amber-500" /></div>
-              ) : calls.length === 0 ? (
+              ) : loggedCalls.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-28 text-slate-400 gap-4">
                   <PhoneOff className="w-14 h-14 opacity-30" />
                   <p className="font-bold text-lg">{t("calls.no_logged")}</p>
                   <button onClick={() => setShowLogModal(true)} className="text-amber-600 font-bold hover:underline">{t("calls.log_first")}</button>
                 </div>
               ) : (
-                <>
-                  {aiCallLogs.filter(log => log.call_status === "pending").map((log) => (
-                    <motion.div key={`pending-${log.id}`} variants={itemVariants}
-                      className="bg-white dark:bg-zinc-900/60 backdrop-blur-2xl border border-slate-100 dark:border-zinc-800 rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] p-6 relative overflow-hidden transition-all">
-                      <div className="flex items-start gap-4">
-                        <div className="mt-3.5 w-4 h-4 rounded" /> 
-                        <div className="p-3 rounded-2xl shrink-0 bg-slate-50 text-slate-400">
-                          <Phone className="w-5 h-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 flex-wrap mb-1">
-                            <span className="font-black text-slate-800 dark:text-zinc-100 text-lg">{log.entity_name || log.phone_number}</span>
-                            <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">{t("calls.dialing")}</span>
-                          </div>
-                          <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-zinc-400 font-medium mt-2">
-                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{t("calls.ongoing_call")}</span>
-                            <span suppressHydrationWarning>{new Date(log.initiated_at).toLocaleString()}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                  {calls.map((call) => (
-                    <motion.div key={call.id} variants={itemVariants}
-                    className={cn("bg-white dark:bg-zinc-900/60 backdrop-blur-2xl border rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] p-6 transition-all",
-                      call.followup_needed ? "border-red-200 dark:border-red-900/50" : "border-slate-100 dark:border-zinc-800",
-                      selectedCallIds.has(call.id) && "ring-2 ring-amber-400 border-amber-400")}>
-                    <div className="flex items-start gap-4">
-                      <input type="checkbox" checked={selectedCallIds.has(call.id)} onChange={() => toggleSelectCall(call.id)}
-                        className="mt-3.5 w-4 h-4 rounded text-amber-500 focus:ring-amber-500 cursor-pointer" />
-                      <div className={cn("p-3 rounded-2xl shrink-0", call.summary?.startsWith("AI Call") ? "bg-violet-50 text-violet-500" : call.summary ? "bg-emerald-50 text-emerald-500" : "bg-amber-50 text-amber-500")}>
-                        {call.summary?.startsWith("AI Call") ? <Bot className="w-5 h-5" /> : <PhoneCall className="w-5 h-5" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 flex-wrap mb-1">
-                          <span className="font-black text-slate-800 dark:text-zinc-100 text-lg">{call.entity_name || call.phone_number}</span>
-                          {call.entity_name && <span className="text-sm font-bold text-slate-400">({call.phone_number})</span>}
-                          {!call.summary && <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">{t("calls.needs_summary")}</span>}
-                          {call.followup_needed && <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">{t("calls.followup_badge")}</span>}
-                          {call.assigned_to && <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2.5 py-1 rounded-full">{call.assigned_to}</span>}
-                        </div>
-                        <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-zinc-400 font-medium">
-                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDuration(call.duration_seconds)}</span>
-                          <span suppressHydrationWarning>{new Date(call.received_at).toLocaleString()}</span>
-                          {call.followup_date && <span className="text-red-600 font-bold">Due: {call.followup_date}</span>}
-                        </div>
-                        {call.summary && (
-                          <p className="text-sm text-slate-600 dark:text-zinc-300 font-medium bg-slate-50 dark:bg-zinc-800 p-3 rounded-2xl border border-slate-100 dark:border-zinc-700 mt-3 line-clamp-2">{call.summary}</p>
-                        )}
-                      </div>
-                      <button onClick={() => setExpandedId(expandedId === call.id ? null : call.id)}
-                        className="shrink-0 p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl transition-colors text-slate-500 dark:text-zinc-400">
-                        {expandedId === call.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                      </button>
-                    </div>
-                    <AnimatePresence>
-                      {expandedId === call.id && (
-                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }} style={{ overflow: "hidden" }}>
-                          <CallDetailPanel call={call} onSave={fetchAll} />
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
-                ))}
-                </>
+                loggedCalls.map((call) => (
+                  <CallCard
+                    key={call.id}
+                    call={call}
+                    expanded={expandedId === call.id}
+                    onToggleExpand={() => setExpandedId(expandedId === call.id ? null : call.id)}
+                    onSave={fetchAll}
+                    selectable
+                    selected={selectedCallIds.has(call.id)}
+                    onToggleSelect={() => toggleSelectCall(call.id)}
+                  />
+                ))
               )}
             </motion.div>
           )}
@@ -788,36 +840,7 @@ export default function CallsPage() {
 
           {/* AI Calls Tab */}
           {activeTab === "ai-calls" && (
-            <motion.div key="ai-calls" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-4">
-              <div className="rounded-3xl border-2 border-violet-300 bg-violet-50 dark:bg-violet-950/30 dark:border-violet-700 p-12 text-center shadow-lg shadow-violet-500/10">
-                <Bot className="w-14 h-14 mx-auto text-violet-600 mb-5" />
-                <h2 className="text-2xl font-black text-violet-800 dark:text-violet-200">AI Calling is coming soon</h2>
-                <p className="mt-3 text-sm font-medium text-violet-700/80 dark:text-violet-300/80 max-w-md mx-auto">The AI calling agent is being prepared. Logged calls and scheduled calls are available now.</p>
-              </div>
-              {false && <>
-              <div className="flex items-start gap-3 p-4 bg-violet-50 dark:bg-violet-950/20 rounded-2xl border border-violet-100 dark:border-violet-900/30">
-                <Bot className="w-5 h-5 text-violet-600 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-bold text-violet-700 dark:text-violet-300">{t("calls.ai_agent_title")}</p>
-                  <p className="text-xs text-violet-600/80 dark:text-violet-400 mt-0.5">
-                    {t("calls.ai_agent_desc")}
-                  </p>
-                </div>
-              </div>
-              {aiCallLogs.length > 0 && !loading && (
-                <div className="flex items-center justify-between bg-violet-50/50 dark:bg-violet-900/10 p-3 rounded-2xl">
-                  <label className="flex items-center gap-3 cursor-pointer pl-2">
-                    <input type="checkbox" checked={selectedAiCallIds.size === aiCallLogs.length && aiCallLogs.length > 0} onChange={toggleSelectAllAiCalls}
-                      className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 cursor-pointer" />
-                    <span className="text-sm font-bold text-violet-700 dark:text-violet-300">{t("calls.select_all")}</span>
-                  </label>
-                  {selectedAiCallIds.size > 0 && (
-                    <button onClick={deleteSelectedAiCalls} className="flex items-center gap-2 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-xl text-sm font-bold transition-colors">
-                      <Trash2 className="w-4 h-4" /> {t("calls.delete_count").replace("{count}", String(selectedAiCallIds.size))}
-                    </button>
-                  )}
-                </div>
-              )}
+            <motion.div key="ai-calls" variants={containerVariants} initial="hidden" animate="show" exit="hidden" className="space-y-4">
               {loading ? (
                 <div className="flex justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-violet-500" /></div>
               ) : aiCallLogs.length === 0 ? (
@@ -826,13 +849,34 @@ export default function CallsPage() {
                   <p className="font-bold text-lg">{t("calls.no_ai_calls")}</p>
                 </div>
               ) : (
-                <AiCallResultsPanel 
-                  logs={aiCallLogs} 
-                  selectedIds={selectedAiCallIds} 
-                  onToggleSelect={toggleSelectAiCall} 
-                />
+                <>
+                  <div className="flex items-center justify-between bg-violet-50/50 dark:bg-violet-900/10 p-3 rounded-2xl">
+                    <label className="flex items-center gap-3 cursor-pointer pl-2">
+                      <input type="checkbox" checked={selectedAiCallIds.size === aiCallLogs.length && aiCallLogs.length > 0} onChange={toggleSelectAllAiCalls}
+                        className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 cursor-pointer" />
+                      <span className="text-sm font-bold text-violet-700 dark:text-violet-300">{t("calls.select_all")}</span>
+                    </label>
+                    {selectedAiCallIds.size > 0 && (
+                      <button onClick={deleteSelectedAiCalls} className="flex items-center gap-2 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-xl text-sm font-bold transition-colors">
+                        <Trash2 className="w-4 h-4" /> {t("calls.delete_count").replace("{count}", String(selectedAiCallIds.size))}
+                      </button>
+                    )}
+                  </div>
+                  {aiCallLogs.map((log) => (
+                    <CallCard
+                      key={log.id}
+                      call={log}
+                      isAiCall
+                      expanded={expandedAiId === log.id}
+                      onToggleExpand={() => setExpandedAiId(expandedAiId === log.id ? null : log.id)}
+                      onSave={fetchAll}
+                      selectable
+                      selected={selectedAiCallIds.has(log.id)}
+                      onToggleSelect={() => toggleSelectAiCall(log.id)}
+                    />
+                  ))}
+                </>
               )}
-              </>}
             </motion.div>
           )}
 
@@ -1046,13 +1090,6 @@ export default function CallsPage() {
                         placeholder="E.g., Focus on our new SEO package, or mention we saw their recent LinkedIn post..."
                         className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl text-sm font-medium text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30 resize-none h-24"
                       />
-                    </div>
-                  )}
-
-                  {genEntityId && genType !== "contact" && getEntityPhone(genType, genEntityId) && (
-                    <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                      <Phone className="w-3.5 h-3.5 shrink-0" />
-                      Phone on file: {getEntityPhone(genType, genEntityId)}
                     </div>
                   )}
 

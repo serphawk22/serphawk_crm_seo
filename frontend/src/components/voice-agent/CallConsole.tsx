@@ -19,6 +19,8 @@ interface Props {
   notify: Notify;
   requestedPitch: VoicePitch | null;
   onRequestHandled: () => void;
+  /** Re-runs the backend's TwiML webhook check right now (clears a stale warning). */
+  onRecheck?: () => void;
 }
 
 const MODE_LABEL: Record<string, { label: string; cls: string }> = {
@@ -38,7 +40,7 @@ function useElapsed(start: string | null, active: boolean) {
   return Math.max(0, Math.floor((now - new Date(start.endsWith("Z") || start.includes("+") ? start : start + "Z").getTime()) / 1000));
 }
 
-export default function CallConsole({ options, notify, requestedPitch, onRequestHandled }: Props) {
+export default function CallConsole({ options, notify, requestedPitch, onRequestHandled, onRecheck }: Props) {
   const [calls, setCalls] = useState<AICall[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AICall | null>(null);
@@ -164,7 +166,27 @@ export default function CallConsole({ options, notify, requestedPitch, onRequest
           <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
           <div>
             <p className="font-black">Twilio voice calling is not configured.</p>
-            <p>Add these to the backend <code>.env</code>: {options.twilio.missing.join(", ")}. <code>PUBLIC_BASE_URL</code> must be a public HTTPS URL Twilio can reach (e.g. an ngrok tunnel in development).</p>
+            <p>Add these to the backend <code>.env</code>: {options.twilio.missing.join(", ")}. <code>VOICE_AGENT_BASE_URL</code> (or <code>PUBLIC_BASE_URL</code>) must be a public HTTPS URL Twilio can reach (e.g. an ngrok tunnel in development).</p>
+          </div>
+        </div>
+      )}
+
+      {!!options.twilio.webhook_problem && (
+        <div className="flex items-start gap-3 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-sm font-medium">
+          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-black">Pre-call check failed: TwiML server unreachable — dialing is paused so calls don&apos;t drop right after the prospect answers.</p>
+            <p>{options.twilio.webhook_problem}</p>
+            {options.twilio.webhook_base && (
+              <p className="mt-1 text-xs">Current webhook base: <code>{options.twilio.webhook_base}</code></p>
+            )}
+            <div className="mt-2 flex items-center gap-3">
+              <button onClick={onRecheck} disabled={!onRecheck}
+                className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold disabled:opacity-50">
+                Re-check now
+              </button>
+              <span className="text-xs opacity-70">Re-checks automatically every few seconds while this is shown.</span>
+            </div>
           </div>
         </div>
       )}
@@ -395,9 +417,9 @@ export default function CallConsole({ options, notify, requestedPitch, onRequest
           <div>
             <label className={labelCls}>Your phone for live takeover (optional)</label>
             <input value={agentPhone} onChange={(e) => setAgentPhone(e.target.value)} placeholder="+14155550199" className={inputCls} />
-            <p className="text-[11px] text-slate-500 mt-1">If the client asks for a person, the AI transfers the call to this number.</p>
+            <p className="text-[11px] text-slate-500 mt-1">Used when you choose <span className="font-medium">Take over (phone)</span> to jump into a live call. The AI never transfers on its own — if the client asks for a sales agent it notes the request and a rep follows up.</p>
           </div>
-          <button onClick={startCall} disabled={busy === "start" || !pitchId || !options.twilio.ready} className={cn(primaryBtn, "w-full")}>
+          <button onClick={startCall} disabled={busy === "start" || !pitchId || !options.twilio.ready || !!options.twilio.webhook_problem} className={cn(primaryBtn, "w-full")}>
             {busy === "start" ? <Loader2 className="w-4 h-4 animate-spin" /> : <PhoneCall className="w-4 h-4" />} Start call
           </button>
         </div>

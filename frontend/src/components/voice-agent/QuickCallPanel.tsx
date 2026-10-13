@@ -48,6 +48,14 @@ export default function QuickCallPanel({ entityType, entityId, entityName, defau
     } catch { /* ignore */ }
     voiceAgentApi.options().then(setOptions).catch((e) => console.error("voice options failed:", e));
   }, []);
+  // While the TwiML webhook check is failing (e.g. the tunnel restarted), keep re-checking so the
+  // warning clears itself — the backend also re-checks before every dial.
+  const webhookProblem = !!options?.twilio?.webhook_problem;
+  useEffect(() => {
+    if (!webhookProblem) return;
+    const t = setInterval(() => { voiceAgentApi.options(true).then(setOptions).catch(() => {}); }, 8000);
+    return () => clearInterval(t);
+  }, [webhookProblem]);
   useEffect(() => { setPhone(defaultPhone || ""); }, [defaultPhone]);
 
   // Keep the selection valid if the available lists change.
@@ -126,7 +134,13 @@ export default function QuickCallPanel({ entityType, entityId, entityName, defau
             <AlertTriangle className="w-4 h-4 shrink-0" /> Calling is not configured on the server. Missing: {options.twilio.missing.join(", ")}
           </div>
         )}
-        <button type="button" onClick={startCall} disabled={busy === "call" || !!twilioMissing || !pitchText.trim()}
+        {!twilioMissing && !!options?.twilio.webhook_problem && (
+          <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>Pre-call check failed — dialing is paused so the call doesn&apos;t drop right after answer. {options.twilio.webhook_problem}</span>
+          </div>
+        )}
+        <button type="button" onClick={startCall} disabled={busy === "call" || !!twilioMissing || !!options?.twilio.webhook_problem || !pitchText.trim()}
           className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl font-bold shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 flex items-center justify-center gap-2">
           {busy === "call" ? <Loader2 className="w-5 h-5 animate-spin" /> : <PhoneCall className="w-5 h-5" />}
           {busy === "call" ? "Preparing voice & dialing…" : `Call ${entityName || entityType} with AI`}

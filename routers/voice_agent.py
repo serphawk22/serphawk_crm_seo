@@ -1,18 +1,3 @@
-"""
-AI Voice Agent router.
-
-- Pitch studio: write a pitch (AI or manual), convert it to speech with a chosen
-  voice / accent / style, preview, edit and regenerate.
-- Outbound calls via Twilio Voice: the generated pitch is played, then the AI
-  listens (speech recognition), understands intent, answers questions, handles
-  objections and interruptions, and adapts the pitch. An agent can take over
-  (typed messages spoken in the AI voice, or a live phone bridge) and hand back.
-- Unanswered / escalated questions are stored for follow-up; resolved answers
-  can be promoted to the knowledge base the AI uses on future calls.
-
-Twilio webhooks are unauthenticated, so each call carries a random token in its
-webhook URLs (and optional signature validation via TWILIO_VALIDATE_WEBHOOKS).
-"""
 import asyncio
 import os
 import re
@@ -22,45 +7,83 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime
-from typing import List, Optional
+from typing import List, NamedTuple, Optional
 from urllib.parse import urlencode
 from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
+from sqlalchemy import update
 from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, select
 
 from database import (
-    engine, User, Tenant, ClientProfile, Lead, Contact, Product, Solution, CallLog, ActivityLog,
+    engine, User, Tenant, ClientProfile, Lead, Contact, Product, Solution, ActivityLog,
     VoicePitch, AICall, CallQuestion, CallKnowledge,
 )
 from modules.api_tracker import current_salesperson_id
 from modules import voice_agent as va
 from modules.tts_service import (
     synthesize, delete_audio, tts_options, twilio_language, language_label, resolve_voice_locale, AUDIO_DIR,
+    synthesize_cached, cached_audio, prewarm_cached, CALL_TTS_MODEL, CALL_TTS_TIMEOUT, FILLER_PHRASES,
 )
 
 router = APIRouter(prefix="/voice-agent", tags=["AI Voice Agent"])
+
+# Boot diagnostic: Twilio fetches every webhook from this base, so a stale value
+# (e.g. an old ngrok URL) is the #1 cause of "could not reach the TwiML server".
+print(f"[voice_agent] Twilio will fetch TwiML from: "
+      f"{va.twilio_config()['public_base'] or '(UNSET — set VOICE_AGENT_BASE_URL or PUBLIC_BASE_URL)'}",
+      flush=True)
 
 ALLOWED_ROLES = {"Admin", "SalesManager", "Employee", "Demo", "SuperAdmin"}
 ACTIVE_STATUSES = {"queued", "initiated", "ringing", "in-progress"}
 TERMINAL_STATUSES = {"completed", "busy", "failed", "no-answer", "canceled"}
 MAX_WAIT_LOOPS = 200  # ~10 minutes of agent typed-mode listening
 
+# Prefix for the AI call summary shown in the AI Calls list. Plain hyphen only — do NOT use an
+# em dash: this string was previously stored double-encoded ("â€”") and looked garbled in the UI.
+AI_CALL_SUMMARY_PREFIX = "AI Voice Call - "
+
 # Fixed lines the agent speaks; translated once per call into the call language (stored in call.context).
 PHRASES = {
     "still_there": "Are you still there?",
     "still_there_2": "Hello? I can call back at a better time if that's easier.",
+    "silence_2": "I can wait a moment if you need a second.",
+    "silence_3": "No pressure at all — whenever you're ready.",
+    "silence_4": "If now isn't a good time, just let me know.",
     "lost_connection": "It seems we've lost the connection. I'll follow up another time. Thanks, and have a great day!",
     "connect_agent": "Let me connect you with my colleague right now, one moment please.",
+    "connect_noted": "Thank you, I've noted your request. One of our sales representatives will get in touch with you shortly.",
     "agent_unavailable": "I'm sorry, my colleague isn't available right this moment. I've noted your request and they'll call you back shortly. Is there anything I can help with in the meantime?",
     "resume": "Thanks for bearing with me. Is there anything else I can help you with?",
     "wait_timeout": "Thanks for your patience. We'll follow up with you shortly. Goodbye!",
     "one_moment": "One moment please.",
+    "hold_check": "That's a great question.",
+    "hold_1": "Let me look into that for you.",
+    "hold_2": "I'm checking that now.",
+    "hold_3": "Let me pull up the details.",
+    "hold_4": "Bear with me for just a second.",
+    "hold_5": "I appreciate your patience, let me confirm that.",
+    "hold_6": "Good question, let me find out.",
+    "hold_7": "Thanks for waiting, I'm on it.",
+    "hold_8": "Let me double-check that for you.",
+    "retry": "Sorry, could you say that again?",
+    "apology": "Sorry, I lost you for a moment. Could you say that again?",
+    "goodbye_silence": "I'll let you go for now. Thanks so much for your time, and have a great day!",
+    "goodbye_error": "Sorry, we ran into a problem. I'll have a colleague call you back shortly. Thanks, and goodbye!",
     "default_opening": "Hi, this is a call from {company}. Do you have a minute?",
 }
+
+# Filler pool played while the reply is generated (paid accounts: a varied set of hold phrases in
+# the call's voice; every phrase is spoken at most ONCE per call, see ``_pick_filler``).
+FILLER_KEYS = ("one_moment", "hold_check", "hold_1", "hold_2", "hold_3", "hold_4", "hold_5", "hold_6",
+               "hold_7", "hold_8")
+# Gentle single silence prompt pool (paid accounts: 1st silence only; the 2nd is a goodbye).
+SILENCE_KEYS = ("still_there", "silence_2", "silence_3", "silence_4")
+# Fixed apology / goodbye lines pre-warmed per call so error and hangup paths never change voice.
+FIXED_KEYS = ("retry", "apology", "goodbye_silence", "goodbye_error", "connect_noted")
 
 
 def get_session():
@@ -277,36 +300,171 @@ def _get_call(session: Session, call_id: int) -> AICall:
 
 
 _TTS_POOL = ThreadPoolExecutor(max_workers=4)
-# Live replies use a fast TTS model with a hard time budget so the client isn't left in silence.
-REPLY_TTS_MODEL = os.getenv("VOICE_AGENT_REPLY_TTS_MODEL", "tts-1")
-REPLY_TTS_BUDGET = float(os.getenv("VOICE_AGENT_REPLY_TTS_SECONDS", "3"))
+# Live call audio uses a fast TTS model with a hard per-request timeout, so no webhook can be
+# dragged past Twilio's drop limit. Both are env-tunable; the defaults are deliberately short.
+# The reply TTS budget is now account-aware (3s trial / 6s paid) — see REPLY_TTS_BUDGET* below.
+REPLY_TTS_MODEL = os.getenv("VOICE_AGENT_REPLY_TTS_MODEL", CALL_TTS_MODEL)
+
+
+class SpokenAudio(NamedTuple):
+    url: Optional[str]
+    tts_ms: int
+    filler: bool
+    voice: str
+
+
+def _call_voice(call: AICall) -> dict:
+    """The voice settings stored on the call when it was dialed — the single source of truth that
+    every webhook turn must read so the voice never changes mid-call."""
+    return {"voice": call.voice or "nova", "accent": call.accent, "style": call.style,
+            "speed": call.speed or 1.0, "language": call.language or "en"}
+
+
+def _filler_text(call: AICall) -> str:
+    return _phrase(call, "retry")
+
+
+def _cached_filler_url(call: AICall) -> Optional[str]:
+    """Public URL of the pre-generated retry clip in the call's selected voice (or None)."""
+    v = _call_voice(call)
+    rel = cached_audio(_filler_text(call), voice=v["voice"], accent=v["accent"], style=v["style"],
+                       speed=v["speed"], language=v["language"], prefix="filler")
+    return _public_audio(rel)
+
+
+def _cached_phrase_url(call: AICall, key: str) -> Optional[str]:
+    """Public URL of a pre-generated fixed phrase (PHRASES[key]) in the call's own voice (or None)."""
+    v = _call_voice(call)
+    rel = cached_audio(_phrase(call, key), voice=v["voice"], accent=v["accent"], style=v["style"],
+                       speed=v["speed"], language=v["language"], prefix="filler")
+    return _public_audio(rel)
+
+
+def _filler_pool(call: AICall) -> List[str]:
+    """The varied hold phrases for this call (translated into the call language). Each one is used
+    at most once per call (see ``_pick_filler``)."""
+    return [_phrase(call, k) for k in FILLER_KEYS]
+
+
+def _silence_pool(call: AICall) -> List[str]:
+    """The gentle 1st-silence prompt pool (4+ varied phrases for the call's language)."""
+    return [_phrase(call, k) for k in SILENCE_KEYS]
+
+
+def _next_silence_prompt(call: AICall, ctx: dict) -> str:
+    """Pick the 1st-silence prompt, never repeating the one used earlier in the call."""
+    pool = [p for p in _silence_pool(call) if p]
+    last = ctx.get("last_silence_prompt")
+    line = next((p for p in pool if p != last), pool[0] if pool else _phrase(call, "still_there"))
+    _update_context(call, last_silence_prompt=line)
+    return line
+
+
+# Per-call record of the hold phrases already spoken, so no line is ever repeated within a call.
+# When the pool runs out the agent takes its own time (a short silent beat) and lets the real reply
+# come through instead of saying the same thing again.
+_USED_FILLERS_BY_CALL: dict = {}
+_FILLER_LOCK = threading.Lock()
+
+
+def _pick_filler(call_id: int, pool: List[str]) -> Optional[str]:
+    """Pick a hold phrase this call has NOT used yet, or ``None`` once they are all spent.
+
+    ``pool`` is the per-turn pool stored in the pending-reply entry. Every phrase is spoken at most
+    ONCE per call; callers play a short silent pause when nothing is left rather than repeating a
+    line the prospect has already heard."""
+    pool = [p for p in pool if p]
+    if not pool:
+        return None
+    with _FILLER_LOCK:
+        used = _USED_FILLERS_BY_CALL.setdefault(call_id, set())
+        picked = next((p for p in pool if p not in used), None)
+        if picked is not None:
+            used.add(picked)
+        return picked
+
+
+def _forget_filler_state(call_id: int) -> None:
+    """Drop the per-call hold-phrase bookkeeping once the call is over."""
+    with _FILLER_LOCK:
+        _USED_FILLERS_BY_CALL.pop(call_id, None)
+
+
+def _tts_budget() -> float:
+    """Hard per-request TTS timeout: 3s on trial (webhook budget), 6s on paid accounts."""
+    return REPLY_TTS_BUDGET_PAID if va.is_paid_account() else REPLY_TTS_BUDGET
+
+
+def _call_audio(call: AICall, text: str, prefix: str = "reply") -> SpokenAudio:
+    """The one shared helper for all call audio (opening pitch, replies and fillers).
+
+    It reads the voice saved on the call record, synthesizes in that voice with a hard timeout
+    (no synchronous retry and no gTTS voice switch) and, when TTS times out or fails, returns the
+    pre-generated filler clip in the SAME voice. It never returns a Twilio ``<Say>`` fallback."""
+    v = _call_voice(call)
+    t0 = time.monotonic()
+    budget = _tts_budget()
+    url = None
+    try:
+        future = _TTS_POOL.submit(
+            synthesize_cached, text, voice=v["voice"], accent=v["accent"], style=v["style"],
+            speed=v["speed"], language=v["language"], prefix=prefix, timeout=budget,
+        )
+        rel = future.result(timeout=budget + 0.5)[0]
+        url = _public_audio(rel)
+    except Exception as e:
+        print(f"[voice-agent] TTS failed for call {call.id} voice={v['voice']}: {e}")
+    tts_ms = int((time.monotonic() - t0) * 1000)
+
+    filler = False
+    if not url:
+        filler = True
+        url = _cached_filler_url(call)
+        if not url:
+            # Rare: the filler clip has not been pre-warmed yet. Render it once, bounded, in the
+            # same voice — still no <Say> and still inside the webhook budget.
+            try:
+                rel = _TTS_POOL.submit(
+                    synthesize_cached, _filler_text(call), voice=v["voice"], accent=v["accent"],
+                    style=v["style"], speed=v["speed"], language=v["language"], prefix="filler",
+                    timeout=budget,
+                ).result(timeout=budget + 0.5)[0]
+                url = _public_audio(rel)
+            except Exception as e:
+                print(f"[voice-agent] filler TTS failed for call {call.id}: {e}")
+    print(f"[voice-agent] audio call={call.id} voice={v['voice']} tts_ms={tts_ms} filler={filler} "
+          f"line={(text or '')[:48]!r}", flush=True)
+    return SpokenAudio(url=url, tts_ms=tts_ms, filler=filler, voice=v["voice"])
 
 
 def _speak_audio(call: AICall, text: str, prefix: str = "reply") -> Optional[str]:
-    """Synthesize in the call's voice (voice/accent/style/speed stored on the call record when it
-    was created — the single source of truth for the whole call); returns a public URL or None
-    (caller falls back to <Say>). Never switches to a different voice on failure: it retries once
-    with the same voice/model and only then gives up."""
-    def _run() -> str:
-        try:
-            return synthesize(text, call.voice, call.accent, call.style, speed=call.speed or 1.0,
-                              prefix=prefix, language=call.language, model=REPLY_TTS_MODEL,
-                              fallback_gtts=False)
-        except Exception:
-            time.sleep(0.3)  # transient OpenAI hiccup: retry once, still in the call's voice
-            return synthesize(text, call.voice, call.accent, call.style, speed=call.speed or 1.0,
-                              prefix=prefix, language=call.language, model=REPLY_TTS_MODEL,
-                              fallback_gtts=False)
+    """Backward-compatible wrapper around :func:`_call_audio` that returns just the audio URL."""
+    return _call_audio(call, text, prefix).url
 
-    future = _TTS_POOL.submit(_run)
-    try:
-        return _public_audio(future.result(timeout=REPLY_TTS_BUDGET))
-    except FuturesTimeout:
-        print(f"[voice-agent] TTS over {REPLY_TTS_BUDGET}s for call {call.id}; using Twilio <Say>")
-        return None
-    except Exception as e:
-        print(f"[voice-agent] TTS failed for call {call.id}: {e}")
-        return None
+
+def _prewarm_call_clips(call: AICall) -> None:
+    """Pre-generate this call's fixed lines (wait fillers, silence prompts, apology and goodbyes)
+    in the call's own voice in the background, so no turn or error path ever waits on live TTS."""
+    def _run() -> None:
+        try:
+            v = _call_voice(call)
+            texts = []
+            for key in FIXED_KEYS + FILLER_KEYS + SILENCE_KEYS:
+                text = _phrase(call, key)
+                if text:
+                    texts.append(text)
+            # Dedupe while keeping order, so translated collisions render once.
+            seen, unique = set(), []
+            for text in texts:
+                if text not in seen:
+                    seen.add(text)
+                    unique.append(text)
+            prewarm_cached(unique, voice=v["voice"], accent=v["accent"], style=v["style"],
+                           speed=v["speed"], language=v["language"], prefix="filler",
+                           timeout=CALL_TTS_TIMEOUT)
+        except Exception as e:
+            print(f"[voice-agent] filler prewarm failed for call {call.id}: {e}")
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def _phrase(call: AICall, key: str) -> str:
@@ -332,8 +490,9 @@ def _pitch_audio(pitch: VoicePitch, session: Optional[Session] = None) -> str:
             if _audio_file_exists(existing.audio_url):
                 print(f"[voice_agent] reusing pitch audio {existing.audio_url} (pitch {existing.id})")
                 return existing.audio_url
-    return synthesize(pitch.pitch_text, pitch.voice, pitch.accent, pitch.style, pitch.speed,
-                      language=pitch.language, model=REPLY_TTS_MODEL)
+    return synthesize_cached(pitch.pitch_text, voice=pitch.voice, accent=pitch.accent,
+                             style=pitch.style, speed=pitch.speed or 1.0, language=pitch.language,
+                             prefix="pitch", timeout=CALL_TTS_TIMEOUT)[0]
 
 
 def _cleanup_previews(max_age_seconds: int = 3600) -> None:
@@ -353,9 +512,12 @@ def _cleanup_previews(max_age_seconds: int = 3600) -> None:
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.get("/options")
-def get_options(session: Session = Depends(get_session)):
+def get_options(recheck: bool = False, session: Session = Depends(get_session)):
     user = _current_user(session)
-    return {**tts_options(), "twilio": va.twilio_ready(), "default_agent_phone": user.phone}
+    # ?recheck=1 forces a fresh probe of the webhook base so the UI's "Re-check now" / auto-retry
+    # loop can clear a cached failure without waiting for the cache to expire.
+    return {**tts_options(), "twilio": {**va.twilio_ready(), "webhook_problem": va.voice_base_problem(force=recheck)},
+            "default_agent_phone": user.phone}
 
 
 @router.get("/entities")
@@ -605,6 +767,12 @@ def _require_twilio() -> dict:
     ready = va.twilio_ready()
     if not ready["ready"]:
         raise HTTPException(status_code=400, detail=f"Twilio voice is not configured. Missing: {', '.join(ready['missing'])}")
+    # Fail fast with a clear message instead of dialing a call that Twilio will drop
+    # because it cannot fetch TwiML from the configured public base URL — but never block
+    # on a stale result: probe once more before refusing to dial.
+    problem = va.voice_base_problem() or va.voice_base_problem(force=True)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
     return ready
 
 
@@ -639,12 +807,16 @@ def _dial(session: Session, user: User, pitch: VoicePitch, etype: Optional[str],
     session.commit()
     session.refresh(call)
 
+    # Pre-generate this call's fixed filler lines in the background now, so if a live reply ever
+    # times out we can play an apology in the SAME voice without a live TTS call.
+    _prewarm_call_clips(call)
+
     try:
         resp = va.twilio_create_call(to_number, _hook_url(call, "answer"), _hook_url(call, "status"),
                                      _hook_url(call, "recording"))
         call.twilio_call_sid = resp.get("sid")
         call.status = resp.get("status") or "queued"
-        _append_turn(call, "system", f"Dialing {to_number}â€¦")
+        _append_turn(call, "system", f"Dialing {to_number}...")
     except Exception as e:
         print(f"[voice-agent] Twilio call to {to_number} failed: {e}")
         call.status, call.error = "failed", str(e)
@@ -711,16 +883,24 @@ def _mark_ended(call: AICall, status: str, duration: Optional[str], background: 
     if duration and str(duration).isdigit():
         call.duration_seconds = int(duration)
     call.pending_agent_message = None
+    _forget_filler_state(call.id)
     _append_turn(call, "system", f"Call ended ({status}).")
     background.add_task(_finalize_call, call.id, call.tenant_id)
 
 
 def _sync_status(session: Session, call: AICall, background: BackgroundTasks) -> None:
-    """Pull the live status from Twilio (needed when status callbacks aren't available, e.g. trial accounts)."""
+    """Pull the live status from Twilio for active calls.
+
+    Full ("paid") accounts normally receive StatusCallback events, but if one is ever lost (tunnel
+    blip, busy worker, missed "completed") the call would sit on "ringing"/"in-progress" forever.
+    We therefore poll Twilio as a safety net on every account type, slightly slower on paid accounts
+    to avoid the extra round-trips while the callbacks are doing the work.
+    """
     if call.status not in ACTIVE_STATUSES or not call.twilio_call_sid:
         return
     ctx = call.context or {}
-    if time.time() - float(ctx.get("last_status_sync") or 0) < 3:
+    throttle = 5 if va.is_paid_account() else 3
+    if time.time() - float(ctx.get("last_status_sync") or 0) < throttle:
         return
     _update_context(call, last_status_sync=time.time())
     try:
@@ -869,6 +1049,7 @@ def delete_call(call_id: int, session: Session = Depends(get_session)):
     for q in session.exec(select(CallQuestion).where(CallQuestion.call_id == call_id)).all():
         q.call_id = None
         session.add(q)
+    _forget_filler_state(call_id)
     session.delete(call)
     session.commit()
     return {"ok": True}
@@ -1125,7 +1306,10 @@ def _twilio_answer_sync(call_id: int, request: Request, form: dict, start: float
                 step("pitch audio file present -> using <Play>")
                 audio = _public_audio(pitch.audio_url)
             else:
-                step("pitch audio file NOT on disk after 3s -> falling back to <Say> with pitch text")
+                # Never switch to Twilio's <Say> voice mid-call: apologise in the same selected
+                # voice with the pre-generated filler clip, then keep listening.
+                audio = _cached_filler_url(call)
+                step(f"pitch audio file NOT on disk after 3s -> cached voice filler={audio}")
         step("pitch file lookup step finished")
 
         if (form.get("AnsweredBy") or "").startswith("machine"):
@@ -1133,8 +1317,8 @@ def _twilio_answer_sync(call_id: int, request: Request, form: dict, start: float
             _append_turn(call, "system", "Voicemail detected; left the pitch as a message.")
             session.add(call)
             session.commit()
-            step("returning <Say> hangup TwiML")
-            return _xml(va.twiml_say_hangup(audio, pitch_text, lang))
+            step("returning voice-clip hangup TwiML")
+            return _xml(va.twiml_say_hangup(audio or _cached_filler_url(call), None, lang))
 
         step("DB write: transcript append + commit")
         _append_turn(call, "ai", pitch_text, kind="pitch")
@@ -1143,26 +1327,81 @@ def _twilio_answer_sync(call_id: int, request: Request, form: dict, start: float
         session.commit()
         step("DB write committed")
         step("building TwiML (gather)")
-        twiml = _gather(call, audio=audio, text=None if audio else pitch_text)
+        twiml = _gather(call, audio=audio or _cached_filler_url(call))
         step("TwiML built")
         return _xml(twiml)
 
 
-def _answer_safe_fallback(call_id: int, request: Request, text: Optional[str] = None) -> Response:
-    """Always-valid TwiML: <Say> followed by <Gather>, so Twilio never sees a hang/500."""
-    line = text or "Sorry, I had trouble getting ready. Could you tell me a bit about your business?"
+def _safe_voice_gather(call_id: int, request: Request) -> str:
+    """Always-valid TwiML that keeps the conversation going without ever switching to Twilio's
+    ``<Say>`` voice: play the cached filler clip in the call's selected voice (or stay silent when
+    the call cannot be read), then listen again."""
+    token = request.query_params.get("t") or ""
     try:
-        token = request.query_params.get("t") or ""
         base = va.twilio_config()["public_base"]
-        action = f"{base}/voice-agent/twilio/gather/{call_id}?t={token}"
-        return _xml(va.twiml_gather(action, text=line))
     except Exception:
+        base = ""
+    action = f"{base}/voice-agent/twilio/gather/{call_id}?t={token}"
+    audio = None
+    try:
+        with Session(engine) as session:
+            call = session.exec(select(AICall).where(AICall.id == call_id)
+                                .execution_options(skip_tenant=True)).first()
+            if call:
+                _set_tenant(call.tenant_id)
+                audio = _cached_filler_url(call)
+    except Exception:
+        audio = None
+    try:
+        return va.twiml_gather(action, audio_url=audio)
+    except Exception:
+        return '<?xml version="1.0" encoding="UTF-8"?><Response><Gather/></Response>'
+
+
+def _webhook_error_twiml(call_id: int, request: Request) -> Response:
+    """Always-valid TwiML whenever a webhook raises.
+
+    On the FIRST consecutive error: a short <Gather> answered in the call's own voice. On the
+    SECOND consecutive error: a polite goodbye clip (pre-generated in the call's voice) followed
+    by <Hangup/>. The prospect never hears Twilio's default "application error" message. The
+    consecutive-error counter is reset by any webhook that completes successfully."""
+    err_no = _webhook_error_incr(call_id)
+    if err_no >= 2:
+        audio = None
         try:
-            return _xml(f'<?xml version="1.0" encoding="UTF-8"?><Response><Gather action="" method="POST"><Say>{escape(line)}</Say></Gather></Response>')
+            with Session(engine) as session:
+                call = session.exec(select(AICall).where(AICall.id == call_id)
+                                    .execution_options(skip_tenant=True)).first()
+                if call:
+                    _set_tenant(call.tenant_id)
+                    audio = _cached_phrase_url(call, "goodbye_error")
+        except Exception as e:
+            print(f"[voice-agent] goodbye-error clip lookup failed for call {call_id}: {e}")
+        print(f"[voice-agent] webhook error {err_no} for call {call_id} -> goodbye + hangup", flush=True)
+        try:
+            goodbye = f"<Play>{escape(audio)}</Play>" if audio else ""
+            return _xml(f'<?xml version="1.0" encoding="UTF-8"?><Response>{goodbye}<Hangup/></Response>')
         except Exception:
-            return Response(
-                content='<?xml version="1.0" encoding="UTF-8"?><Response><Say>Sorry, could you say that again?</Say><Gather/></Response>',
-                media_type="application/xml")
+            return Response(content='<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>',
+                            media_type="application/xml")
+    print(f"[voice-agent] webhook error {err_no} for call {call_id} -> voice gather fallback", flush=True)
+    try:
+        return _xml(_safe_voice_gather(call_id, request))
+    except Exception:
+        return Response(content='<?xml version="1.0" encoding="UTF-8"?><Response><Gather/></Response>',
+                        media_type="application/xml")
+
+
+def _answer_safe_fallback(call_id: int, request: Request, text: Optional[str] = None) -> Response:
+    """Always-valid TwiML: a voice-consistent filler clip followed by <Gather>, so Twilio never
+    sees a hang/500 and the prospect never hears a different voice."""
+    if text:
+        print(f"[voice-agent] answer fallback call={call_id}: {text}", flush=True)
+    try:
+        return _xml(_safe_voice_gather(call_id, request))
+    except Exception:
+        return Response(content='<?xml version="1.0" encoding="UTF-8"?><Response><Gather/></Response>',
+                        media_type="application/xml")
 
 
 @router.post("/twilio/answer/{call_id}")
@@ -1172,21 +1411,17 @@ async def twilio_answer(call_id: int, request: Request, form: dict = Depends(twi
     try:
         work = asyncio.to_thread(_twilio_answer_sync, call_id, request, form, start)
         resp = await asyncio.wait_for(work, timeout=10.0)
+        _webhook_error_clear(call_id)
         print(f"[voice_agent] answer call={call_id} completed (t={time.monotonic() - start:.2f}s)", flush=True)
         return resp
     except asyncio.TimeoutError:
-        print(f"[voice_agent] answer call={call_id} TIMEOUT after 10s — returning <Say>+<Gather> fallback (t={time.monotonic() - start:.2f}s)", flush=True)
-        return _answer_safe_fallback(call_id, request, "Sorry, that took too long. May I ask what best describes your business?")
+        print(f"[voice_agent] answer call={call_id} TIMEOUT after 10s — returning voice-filler+<Gather> fallback (t={time.monotonic() - start:.2f}s)", flush=True)
+        return _webhook_error_twiml(call_id, request)
     except HTTPException:
         raise
     except Exception:
         print(f"[voice_agent] answer call={call_id} failed after {time.monotonic() - start:.2f}s:\n{traceback.format_exc()}", flush=True)
-        try:
-            return _answer_safe_fallback(call_id, request, "Sorry, we ran into a problem. Could you say that again?")
-        except Exception:
-            return Response(
-                content='<?xml version="1.0" encoding="UTF-8"?><Response><Say>Sorry, we ran into a problem. Goodbye.</Say><Hangup/></Response>',
-                media_type="application/xml")
+        return _webhook_error_twiml(call_id, request)
 
 
 
@@ -1196,25 +1431,21 @@ def twilio_gather(call_id: int, request: Request,
     try:
         start = time.monotonic()
         resp = _twilio_gather_impl(call_id, request, form, session)
+        _webhook_error_clear(call_id)
         print(f"[voice_agent] /gather call {call_id} took {time.monotonic() - start:.2f}s")
         return resp
     except HTTPException:
         raise
     except Exception:
         print(f"[voice_agent] /twilio/gather failed for call {call_id} after {time.monotonic() - start:.2f}s:\n{traceback.format_exc()}")
-        token = request.query_params.get("t")
-        if token:
-            try:
-                action = f"{va.twilio_config()['public_base']}/voice-agent/twilio/gather/{call_id}?t={token}"
-                return _xml(va.twiml_gather(action, text="Sorry, could you say that again?"))
-            except Exception:
-                print(f"[voice_agent] /twilio/gather recovery failed:\n{traceback.format_exc()}")
-        return _xml(va.twiml_say_hangup(None, "Sorry, we ran into a problem. Goodbye."))
+        return _webhook_error_twiml(call_id, request)
 
 
 def _twilio_gather_impl(call_id: int, request: Request, form: dict, session: Session):
     start = time.monotonic()
+    tt = _TurnTimer(call_id, "gather")
     call, form = _webhook_call(request, session, call_id, form)
+    tt.mark("db_read")
     print(f"[voice_agent] /gather call {call_id} SpeechResult={form.get('SpeechResult')!r} Confidence={form.get('Confidence')!r}")
     speech = (form.get("SpeechResult") or "").strip()
     ctx = call.context or {}
@@ -1224,97 +1455,227 @@ def _twilio_gather_impl(call_id: int, request: Request, form: dict, session: Ses
     if not speech:
         if call.mode == "agent_typed":
             return _xml(_wait_twiml(call, 0))
-        silence = int(ctx.get("silence_count", 0)) + 1
+        silence = int(ctx.get("silence_count", 0)) + 1  # consecutive silences per CallSid, reset on speech
         _update_context(call, silence_count=silence)
+        if va.is_paid_account():
+            # Paid: on the 1st silence one gentle prompt (from 4+ varied phrases, never repeated
+            # within the call); on the 2nd consecutive silence a short polite goodbye + hangup.
+            if silence >= 2:
+                line = _phrase(call, "goodbye_silence")
+                spoken = _call_audio(call, line)
+                _append_turn(call, "ai", line)
+                session.add(call)
+                session.commit()
+                _turn_log(call_id, voice=spoken.voice, tts_ms=spoken.tts_ms, filler=spoken.filler,
+                          silence_count=silence, wait_ms=int((time.monotonic() - start) * 1000), tag="silence-goodbye")
+                if spoken.filler:
+                    # TTS failed: never hang up on a goodbye that didn't render — keep listening.
+                    _mark_ai_speaking(call, line)
+                    session.add(call)
+                    session.commit()
+                    return _xml(_gather(call, audio=spoken.url))
+                return _xml(va.twiml_say_hangup(spoken.url, None, lang))
+            line = _next_silence_prompt(call, ctx)
+            spoken = _call_audio(call, line)
+            _append_turn(call, "ai", line)
+            _mark_ai_speaking(call, line)
+            session.add(call)
+            session.commit()
+            _turn_log(call_id, voice=spoken.voice, tts_ms=spoken.tts_ms, filler=spoken.filler,
+                      silence_count=silence, wait_ms=int((time.monotonic() - start) * 1000), tag="silence-prompt")
+            return _xml(_gather(call, audio=spoken.url))
+        # Trial: unchanged behavior — "Are you still there?" / "Hello?" then goodbye on the 3rd silence.
         if silence >= 3:
             line = _phrase(call, "lost_connection")
+            spoken = _call_audio(call, line)
             _append_turn(call, "ai", line)
             session.add(call)
             session.commit()
-            return _xml(va.twiml_say_hangup(_speak_audio(call, line), line, lang))
+            _turn_log(call_id, voice=spoken.voice, tts_ms=spoken.tts_ms, filler=spoken.filler,
+                      silence_count=silence, wait_ms=int((time.monotonic() - start) * 1000), tag="silence-lost")
+            if spoken.filler:
+                # TTS failed: never hang up on an apology — keep listening.
+                _mark_ai_speaking(call, line)
+                session.add(call)
+                session.commit()
+                return _xml(_gather(call, audio=spoken.url))
+            return _xml(va.twiml_say_hangup(spoken.url, None, lang))
         line = _phrase(call, "still_there" if silence == 1 else "still_there_2")
+        spoken = _call_audio(call, line)
         _append_turn(call, "ai", line)
         _mark_ai_speaking(call, line)
         session.add(call)
         session.commit()
-        return _xml(_gather(call, audio=_speak_audio(call, line), text=line))
+        _turn_log(call_id, voice=spoken.voice, tts_ms=spoken.tts_ms, filler=spoken.filler,
+                  silence_count=silence, wait_ms=int((time.monotonic() - start) * 1000), tag="silence")
+        return _xml(_gather(call, audio=spoken.url))
 
     # â”€â”€ interruption detection: client spoke before our last utterance could finish â”€â”€
-    elapsed = time.time() - float(ctx.get("last_ai_started") or 0)
-    client_secs = va.estimate_speech_seconds(speech) + 1.5  # speech + end-of-speech timeout
-    interrupted = (elapsed - client_secs) < float(ctx.get("last_ai_secs") or 0) - 1
-    transcript = list(call.transcript or [])
-    if interrupted:
-        for turn in reversed(transcript):
-            if turn.get("role") in ("ai", "agent"):
-                turn["interrupted"] = True
-                break
-        call.transcript = transcript
-        flag_modified(call, "transcript")
-    _update_context(call, silence_count=0)
+    # Interruption detection + persisting the client turn run in the background reply thread
+    # (see _record_client_turn), so this webhook performs no database writes.
+    confidence = form.get("Confidence")
 
     # â”€â”€ agent typed mode: just record what the client said and keep listening â”€â”€
     if call.mode == "agent_typed":
-        _append_turn(call, "client", speech, confidence=form.get("Confidence"))
+        _append_turn(call, "client", speech, confidence=confidence)
         session.add(call)
         session.commit()
         return _xml(_wait_twiml(call, 0))
 
     # â”€â”€ AI mode: understand + respond â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # Record what the client said right away, then think in the background. Twilio drops webhooks that
-    # take longer than ~15s (LLM + speech synthesis can exceed that), so we answer immediately with a
-    # short hold loop that picks up the reply as soon as it's ready.
-    _append_turn(call, "client", speech, interrupted_ai=interrupted, confidence=form.get("Confidence"))
-    session.add(call)
-    session.commit()
-    seq = _begin_reply(call.id, call.webhook_token)
-    # Generate the reply right away (chat + TTS in a background thread). If it finishes
-    # within ~6-8s we hand Twilio the <Play> directly and skip the redirect polling loop.
+    # The client turn is stored and the reply generated entirely in the background thread, so no
+    # slow DB work delays Twilio. The wait loop below picks the reply up as soon as it's ready;
+    # until then a pre-rendered filler (in the call's own voice) covers the gap.
+    tt.mark("speech_logic")
+    paid = va.is_paid_account()
+    v = _call_voice(call)
+    # Both account types share the same varied hold pool; each line plays at most once per call.
+    fillers = _filler_pool(call)
+    filler_audio = [
+        _public_audio(cached_audio(f, voice=v["voice"], accent=v["accent"], style=v["style"],
+                                   speed=v["speed"], language=v["language"], prefix="filler"))
+        for f in fillers
+    ]
+    seq = _begin_reply(call.id, call.webhook_token, language=lang, fillers=fillers,
+                       filler_audio=filler_audio, voice=v["voice"])
+    # Generate the reply right away (chat + TTS in a background thread).
     threading.Thread(
         target=_prepare_reply,
-        args=(call.id, call.tenant_id, speech, interrupted, seq),
+        args=(call.id, call.tenant_id, speech, confidence, seq),
         daemon=True,
     ).start()
-    # Hard deadline: never let the webhook take longer than ~8s. Wait only for the
-    # reply for whatever time is left, then fall back to the polling path.
-    remaining = max(0.0, 8.0 - (time.monotonic() - start) - 0.5)
-    ready = _wait_for_reply(call.id, seq, min(REPLY_FAST_WAIT, remaining))
+    tt.mark("enqueue")
+    # Paid accounts: wait up to ~2s here so reply-ready turns play with NO filler. Otherwise play
+    # exactly ONE filler and redirect to the wait endpoint, which holds the request ~8s polling.
+    # Trial accounts keep the legacy immediate-filler hold loop.
+    remaining = max(0.0, (10.0 if paid else 8.0) - (time.monotonic() - start) - 0.5)
+    ready = _wait_for_reply(call.id, seq, min((REPLY_FAST_WAIT_PAID if paid else REPLY_FAST_WAIT), remaining))
+    tt.mark("wait_reply")
     if ready is not None:
+        meta = ready.get("meta") or {}
         if ready["xml"]:
-            print(f"[voice_agent] call {call.id} turn {seq} redirects=0")
+            _turn_log(call_id, voice=meta.get("voice") or v["voice"], tts_ms=meta.get("tts_ms", 0),
+                      filler=meta.get("filler", False), wait_ms=int((time.monotonic() - start) * 1000),
+                      tag="served-fast")
+            tt.done(served="fast")
             return _xml(ready["xml"])
-        # Generation failed: apologise and listen again (same recovery as the reply loop).
-        line = "Sorry, could you say that once more?"
+        # Generation failed: apologise in the same voice and listen again (same recovery as /reply).
+        line = _phrase(call, "apology")
+        spoken = _call_audio(call, line)
         _append_turn(call, "ai", line)
         _mark_ai_speaking(call, line)
         session.add(call)
         session.commit()
-        print(f"[voice_agent] call {call.id} turn {seq} redirects=0")
-        return _xml(_gather(call, audio=_speak_audio(call, line), text=line))
-    print(f"[voice_agent] call {call.id} turn {seq} redirects=0 (holding)")
+        _turn_log(call_id, voice=spoken.voice, tts_ms=spoken.tts_ms, filler=spoken.filler,
+                  wait_ms=int((time.monotonic() - start) * 1000), tag="fast-failed")
+        return _xml(_gather(call, audio=spoken.url))
+    _turn_log(call_id, voice=v["voice"], tts_ms=0, filler=True,
+              wait_ms=int((time.monotonic() - start) * 1000), tag="holding")
+    tt.done(served="filler")
+    if paid:
+        return _xml(_paid_filler_twiml(call.id, call.webhook_token, seq))
     return _xml(_hold_twiml(call.id, call.webhook_token, seq, 0))
 
 
 # ── Background reply preparation (keeps every Twilio webhook fast) ──────────────
-REPLY_POLL_MAX = 4  # trial-account safety: at most ~4 hold redirects per turn (~16s with 4s pauses)
-REPLY_FAST_WAIT = float(os.getenv("VOICE_AGENT_FAST_WAIT_SECONDS", "4"))  # wait in /gather before polling (kept low so the webhook stays under ~8s)
-REPLY_HOLD_PAUSE = int(os.getenv("VOICE_AGENT_HOLD_PAUSE_SECONDS", "4"))   # silence before each polling redirect
+REPLY_POLL_MAX = 4  # trial-account safety: at most ~4 hold redirects per turn
+# How long /gather blocks waiting for an already-finished reply before falling back to the hold
+# loop. 0 by default: the reply needs several seconds (chat + speech synthesis), so blocking here
+# is pure dead air — answer immediately with spoken filler and let the hold loop poll instead.
+# Raise via .env only if reply generation gets consistently faster than this wait.
+REPLY_FAST_WAIT = float(os.getenv("VOICE_AGENT_FAST_WAIT_SECONDS", "0"))
+# Short breath after the spoken filler, before the polling <Redirect>. This used to be a silent
+# 4s <Pause>: callers sat in silence after their answer and hung up before the AI ever spoke.
+REPLY_HOLD_PAUSE = int(os.getenv("VOICE_AGENT_HOLD_PAUSE_SECONDS", "1"))
 _PENDING_REPLIES: dict = {}  # call_id -> {"seq": int, "token": str, "xml": Optional[str], "done": bool}
 _PENDING_LOCK = threading.Lock()
 
+# ── Paid ("Full") account timings ──────────────────────────────────────────────
+# Paid accounts: a Twilio webhook can safely run about 10s, so we hold the line much longer than
+# the 3s trial budget. Env-tunable; defaults follow the redesign spec.
+REPLY_TTS_BUDGET = float(os.getenv("VOICE_AGENT_REPLY_TTS_SECONDS", str(CALL_TTS_TIMEOUT)))  # trial: 3s
+REPLY_TTS_BUDGET_PAID = float(os.getenv("VOICE_AGENT_REPLY_TTS_SECONDS_PAID", "6"))            # paid: 6s
+REPLY_FAST_WAIT_PAID = float(os.getenv("VOICE_AGENT_FAST_WAIT_SECONDS_PAID", "2"))             # ~2s for a no-filler reply
+REPLY_HOLD_SECONDS_PAID = float(os.getenv("VOICE_AGENT_HOLD_SECONDS_PAID", "8"))               # up to 8s per wait poll
+REPLY_SILENT_POLLS_PAID = int(os.getenv("VOICE_AGENT_SILENT_POLLS_PAID", "4"))                 # up to 4 silent polls (≈30s)
+_WEBHOOK_ERRORS: dict = {}   # call_id -> consecutive webhook failures (reset on any success)
 
-def _begin_reply(call_id: int, token: str) -> int:
+
+class _TurnTimer:
+    """Collects per-step durations for one call turn and prints them as a single structured line.
+
+    Use ``mark(name)`` after each interesting step and ``done(**extra)`` at the end; the deltas
+    between marks are reported in milliseconds, with the total turn time at the end.
+    """
+
+    def __init__(self, call_id: int, tag: str = "turn") -> None:
+        self.call_id = call_id
+        self.tag = tag
+        self.t0 = time.monotonic()
+        self._last = self.t0
+        self.steps: list = []
+
+    def mark(self, name: str) -> None:
+        now = time.monotonic()
+        self.steps.append((name, int((now - self._last) * 1000)))
+        self._last = now
+
+    def done(self, **extra) -> None:
+        total = int((time.monotonic() - self.t0) * 1000)
+        parts = " ".join(f"{name}={ms}ms" for name, ms in self.steps)
+        extra_txt = " ".join(f"{k}={v}" for k, v in extra.items())
+        print(f"[voice-timing] call={self.call_id} tag={self.tag} {parts} total={total}ms "
+              + extra_txt, flush=True)
+
+
+def _turn_log(call_id: int, *, voice: str = "?", tts_ms: int = 0, filler: bool = False,
+              silent_polls: int = 0, silence_count: int = 0, wait_ms: int = 0,
+              exceptions: int = 0, tag: str = "", extra: str = "") -> None:
+    """One structured log line per spoken turn: account type, filler used, silent polls, silence
+    count, tts_ms, total wait ms and exceptions caught."""
+    account = "full" if va.is_paid_account() else "trial"
+    print(
+        f"[voice-agent] turn call={call_id} account={account} filler={'yes' if filler else 'none'} "
+        f"silent_polls={silent_polls} silence_count={silence_count} tts_ms={tts_ms} "
+        f"wait_ms={wait_ms} exceptions={exceptions} voice={voice} tag={tag}"
+        + (f" {extra}" if extra else ""), flush=True,
+    )
+
+
+def _webhook_error_incr(call_id: int) -> int:
+    with _PENDING_LOCK:
+        n = _WEBHOOK_ERRORS.get(call_id, 0) + 1
+        _WEBHOOK_ERRORS[call_id] = n
+        return n
+
+
+def _webhook_error_clear(call_id: int) -> None:
+    with _PENDING_LOCK:
+        _WEBHOOK_ERRORS.pop(call_id, None)
+
+
+def _begin_reply(call_id: int, token: str, *, language: str = "en-US",
+                 fillers: Optional[list] = None, filler_audio: Optional[list] = None,
+                 voice: Optional[str] = None) -> int:
+    """Register the turn the background reply will publish. ``language``/``fillers`` and the
+    pre-generated filler audio URLs ride along in memory so the hold loop can play a filler in the
+    call's own voice without touching the DB (the /reply fast path must stay in-memory)."""
     with _PENDING_LOCK:
         seq = (_PENDING_REPLIES.get(call_id, {}).get("seq") or 0) + 1
-        _PENDING_REPLIES[call_id] = {"seq": seq, "token": token, "xml": None, "done": False}
+        _PENDING_REPLIES[call_id] = {"seq": seq, "token": token, "xml": None, "done": False,
+                                     "language": language, "voice": voice,
+                                     "fillers": list(fillers or ["One moment please."]),
+                                     "filler_audio": list(filler_audio or []),
+                                     "meta": {}}
         return seq
 
 
-def _finish_reply(call_id: int, seq: int, xml: Optional[str]) -> None:
+def _finish_reply(call_id: int, seq: int, xml: Optional[str],
+                  meta: Optional[dict] = None) -> None:
     with _PENDING_LOCK:
         entry = _PENDING_REPLIES.get(call_id)
         if entry and entry["seq"] == seq:
-            entry.update(xml=xml, done=True)
+            entry.update(xml=xml, done=True, meta=meta or {})
 
 
 def _wait_for_reply(call_id: int, seq: int, timeout: float) -> Optional[dict]:
@@ -1332,110 +1693,275 @@ def _wait_for_reply(call_id: int, seq: int, timeout: float) -> Optional[dict]:
 
 
 def _hold_twiml(call_id: int, token: str, seq: int, n: int) -> str:
+    """Hold the line while the reply is generated: play a pre-generated hold clip in the call's
+    OWN voice (never Twilio's <Say> voice, which would change the voice mid-call) plus a short
+    breath, then redirect back to poll. Each hold line is used at most once per call; once they are
+    all spent the agent takes its own time (a silent beat) instead of repeating one."""
+    with _PENDING_LOCK:
+        entry = _PENDING_REPLIES.get(call_id) or {}
+    fillers = entry.get("fillers") or ["One moment please."]
+    filler_audio = entry.get("filler_audio") or []
+    picked = _pick_filler(call_id, fillers)
+    audio = None
+    if picked is not None:
+        idx = next((i for i, f in enumerate(fillers) if f == picked), 0)
+        audio = filler_audio[idx] if idx < len(filler_audio) else None
+    # If the line has not been pre-warmed yet (or every line is spent), stay silent for a breath
+    # rather than switching voice or repeating a phrase.
+    filler = va.twiml_play(audio) if audio else f'<Pause length="{REPLY_HOLD_PAUSE or 1}"/>'
     base = va.twilio_config()["public_base"]
     url = f"{base}/voice-agent/twilio/reply/{call_id}?{urlencode({'t': token, 's': seq, 'n': n})}"
-    return (f'<?xml version="1.0" encoding="UTF-8"?><Response><Pause length="{REPLY_HOLD_PAUSE}"/>'
+    pause = f'<Pause length="{REPLY_HOLD_PAUSE}"/>' if REPLY_HOLD_PAUSE and audio else ""
+    return (f'<?xml version="1.0" encoding="UTF-8"?><Response>{filler}{pause}'
             f'<Redirect method="POST">{escape(url)}</Redirect></Response>')
 
 
-def _prepare_reply(call_id: int, tenant_id: Optional[int], speech: str, interrupted: bool, seq: int) -> None:
-    """Understand the client's words, decide the reply and synthesize it (runs after the webhook returned)."""
+def _paid_filler_twiml(call_id: int, token: str, seq: int) -> str:
+    """Paid accounts, first step of the wait flow: play EXACTLY ONE hold line for this turn (in the
+    call's own voice, and never one this call has already used), then redirect to the wait endpoint
+    which holds the request polling for the reply. Once every hold line has been used the agent
+    stays quiet for a beat instead of repeating itself. Hold lines are never looped."""
+    with _PENDING_LOCK:
+        entry = _PENDING_REPLIES.get(call_id) or {}
+    pool = entry.get("fillers") or ["One moment please."]
+    audios = entry.get("filler_audio") or []
+    base = va.twilio_config()["public_base"]
+    url = f"{base}/voice-agent/twilio/reply/{call_id}?{urlencode({'t': token, 's': seq, 'n': 0})}"
+    picked = _pick_filler(call_id, pool)
+    if picked is None:
+        # Every hold line is already spent this call: take a quiet breath, then poll for the reply.
+        return (f'<?xml version="1.0" encoding="UTF-8"?><Response><Pause length="3"/>'
+                f'<Redirect method="POST">{escape(url)}</Redirect></Response>')
+    try:
+        idx = next(i for i, f in enumerate(pool) if f == picked)
+    except StopIteration:
+        idx = 0
+    audio = audios[idx] if idx < len(audios) else None
+    filler = f'<Play>{escape(audio)}</Play>' if audio else f'<Pause length="3"/>'
+    return (f'<?xml version="1.0" encoding="UTF-8"?><Response>{filler}'
+            f'<Redirect method="POST">{escape(url)}</Redirect></Response>')
+
+
+def _paid_hold_twiml(call_id: int, token: str, seq: int, n: int) -> str:
+    """Paid accounts, silent wait poll: no speech — just a 3s <Pause> then redirect back to the
+    wait endpoint. Used at most ``REPLY_SILENT_POLLS_PAID`` times per turn (~30s total)."""
+    base = va.twilio_config()["public_base"]
+    url = f"{base}/voice-agent/twilio/reply/{call_id}?{urlencode({'t': token, 's': seq, 'n': n})}"
+    return (f'<?xml version="1.0" encoding="UTF-8"?><Response><Pause length="3"/>'
+            f'<Redirect method="POST">{escape(url)}</Redirect></Response>')
+
+
+def _record_client_turn(call: AICall, speech: str, confidence: Optional[str] = None) -> bool:
+    """Persist the client's turn and the interruption bookkeeping (caller commits).
+
+    Returns True when this utterance interrupted the AI's previous line. This runs in the
+    background reply thread so the Twilio webhook itself performs no database writes.
+    """
+    ctx = call.context or {}
+    elapsed = time.time() - float(ctx.get("last_ai_started") or 0)
+    client_secs = va.estimate_speech_seconds(speech) + 1.5  # speech + end-of-speech timeout
+    interrupted = (elapsed - client_secs) < float(ctx.get("last_ai_secs") or 0) - 1
+    transcript = list(call.transcript or [])
+    if interrupted:
+        for turn in reversed(transcript):
+            if turn.get("role") in ("ai", "agent"):
+                turn["interrupted"] = True
+                break
+        call.transcript = transcript
+        flag_modified(call, "transcript")
+    _update_context(call, silence_count=0)
+    _append_turn(call, "client", speech, interrupted_ai=interrupted, confidence=confidence)
+    return interrupted
+
+
+def _prepare_reply(call_id: int, tenant_id: Optional[int], speech: str,
+                   confidence: Optional[str], seq: int) -> None:
+    """Store the client's turn, decide the spoken reply and synthesize it (runs after the webhook
+    returned). The reply is published to the wait loop BEFORE the turn is persisted, so Twilio gets
+    the audio the moment TTS finishes; the rich analysis runs afterwards in yet another thread."""
     _set_tenant(tenant_id)
     xml = None
+    meta = {}
+    reply = ""
+    human_requested = False
+    t = _TurnTimer(call_id, "reply")
     try:
         with Session(engine) as session:
             call = session.exec(select(AICall).where(AICall.id == call_id)
                                 .execution_options(skip_tenant=True)).first()
+            t.mark("db_read")
             if not call:
                 return
-            xml = _build_reply(session, call, speech, interrupted)
+            _record_client_turn(call, speech, confidence)
+            t.mark("record_client")
+            xml, meta, reply = _build_reply(session, call, speech, t)
+            human_requested = call.current_intent == "request_human"
+            t.mark("build_reply_total")
+            # Publish before committing: the waiting /reply webhook can play the line the instant
+            # TTS finishes, without waiting on the persistence round-trip.
+            _finish_reply(call_id, seq, xml, meta)
+            t.mark("publish")
+            session.commit()
+            t.mark("db_commit")
     except Exception as e:
         print(f"[voice-agent] reply preparation failed for call {call_id}: {e}")
     finally:
-        _finish_reply(call_id, seq, xml)
+        _finish_reply(call_id, seq, xml, meta)
+        t.done(ok=bool(xml), filler=bool(meta.get("filler")), tts_ms=meta.get("tts_ms", 0))
+    # Rich, non-spoken analysis (sentiment, doubts, questions, KB usage) — never blocks the reply.
+    if not xml:
+        return
+    try:
+        threading.Thread(target=_prepare_insights,
+                         args=(call_id, tenant_id, speech, reply, human_requested), daemon=True).start()
+    except Exception as e:
+        print(f"[voice-agent] could not start insights for call {call_id}: {e}")
 
 
-def _build_reply(session: Session, call: AICall, speech: str, interrupted: bool) -> str:
+def _build_reply(session: Session, call: AICall, speech: str, timer: "Optional[_TurnTimer]" = None):
+    """Produce ONLY the spoken line plus its TwiML (latency-critical path). No commit here — the
+    caller persists after publishing. Returns ``(xml, meta, reply)``."""
+    def _mark(name: str) -> None:
+        if timer is not None:
+            timer.mark(name)
+
     ctx = call.context or {}
     lang = twilio_language(call.language, call.accent)
     transcript = list(call.transcript or [])
-    # The client's turn was already stored; keep it out of the history (it's passed as client_text).
+    interrupted = bool(transcript[-1].get("interrupted_ai")) if transcript else False
+    # The client's turn is the last one stored; keep it out of the history (passed as client_text).
     history = transcript[:-1] if transcript and transcript[-1].get("role") == "client" else transcript
 
     pitch = session.get(VoicePitch, call.pitch_id) if call.pitch_id else None
     info = _entity_info(session, call.entity_type, call.entity_id)
     knowledge = va.rank_knowledge(speech + " " + " ".join(ctx.get("doubts", [])[-3:]), _knowledge_items(session))
-    result = va.analyze_and_respond(
+    _mark("db_reads")
+    result = va.generate_reply_only(
         client_text=speech, transcript=history, pitch_text=pitch.pitch_text if pitch else "",
         entity_context=info["context"], knowledge=knowledge, state=ctx, interrupted=interrupted,
         agent_available=bool(call.agent_phone), language=language_label(call.language),
     )
+    _mark("llm")
     reply = result["reply"]
-    for turn in reversed(transcript):
-        if turn.get("role") == "client":
-            turn.update(intent=result.get("intent"), sentiment=result.get("sentiment"))
-            break
-    call.transcript = transcript
-    flag_modified(call, "transcript")
-
-    doubts = [d for d in result.get("doubts") or [] if isinstance(d, str) and d.strip()]
-    objections = list(ctx.get("objections", []))
-    obj = result.get("objection") if isinstance(result.get("objection"), dict) else None
-    if obj and obj.get("text"):
-        objections.append(f"{obj.get('type', 'other')}: {obj['text']}")
-        _add_question(session, call, obj["text"], "objection", "answered", ai_answer=reply)
-    for d in doubts:
-        _add_question(session, call, d, "doubt", "answered", ai_answer=reply)
-    unanswered = (result.get("unanswered_question") or "").strip()
-    for q in result.get("questions") or []:
-        if isinstance(q, dict) and q.get("question") and q.get("answered") and q["question"] != unanswered:
-            _add_question(session, call, q["question"], "question", "answered", ai_answer=q.get("answer") or reply)
-    if result.get("escalate"):
-        _add_question(session, call, unanswered or speech, "question", "escalated", ai_answer=reply,
-                      reason=result.get("escalate_reason") or "Escalated by AI")
-    elif unanswered:
-        _add_question(session, call, unanswered, "question", "open", ai_answer=reply,
-                      reason="AI could not answer from the knowledge base")
-
-    # usage tracking for knowledge entries the model relied on
-    used = {str(u) for u in result.get("knowledge_used") or []}
-    for item in knowledge:
-        if item["id"].startswith("kb") and (item["id"] in used or item["title"] in used):
-            kb = session.get(CallKnowledge, int(item["id"][2:]))
-            if kb:
-                kb.usage_count += 1
-                session.add(kb)
-
     call.current_intent = result.get("intent")
-    call.sentiment = result.get("sentiment")
-    if result.get("interest_score") is not None:
-        call.interest_score = result["interest_score"]
-    _update_context(
-        call, stage=result.get("stage") or ctx.get("stage"),
-        doubts=(ctx.get("doubts", []) + doubts)[-20:], objections=objections[-20:],
-        adaptation=result.get("adaptation") or ctx.get("adaptation"),
-    )
-    audio = _speak_audio(call, reply)
+    # The client asked to speak to a person / sales agent: acknowledge that the request is noted and
+    # never announce a live transfer. The request is recorded as an escalated question (see
+    # _prepare_insights) for the team to follow up. Use a fixed line (pre-warmed per call with the
+    # "filler" prefix) so we never speak "transferring" and never wait on live TTS.
+    audio_prefix = "reply"
+    if result.get("intent") == "request_human":
+        result["end_call"] = False
+        reply = _phrase(call, "connect_noted")
+        audio_prefix = "filler"
+    spoken = _call_audio(call, reply, audio_prefix)
+    _mark("tts")
+    audio = spoken.url
+    meta = {"voice": spoken.voice, "tts_ms": spoken.tts_ms, "filler": spoken.filler}
     _append_turn(call, "ai", reply)
 
-    # live transfer when the client explicitly asks for a person and an agent is reachable
-    if result.get("escalate") and result.get("intent") == "request_human" and call.agent_phone:
-        call.mode = "agent_phone"
-        _append_turn(call, "system", f"Transferring to agent {call.agent_phone}.")
-        session.add(call)
-        session.commit()
-        return va.twiml_dial(call.agent_phone, caller_id=call.from_number,
-                             action_url=_hook_url(call, "dial-complete"), audio_url=audio, text=reply, language=lang)
+    if result.get("end_call") and not spoken.filler:
+        return va.twiml_say_hangup(audio, None, lang), meta, reply
 
-    if result.get("end_call"):
-        session.add(call)
-        session.commit()
-        return va.twiml_say_hangup(audio, reply, lang)
-
+    # If TTS failed and we could only play the apology filler, never hang up on it: keep listening.
     _mark_ai_speaking(call, reply)
-    session.add(call)
-    session.commit()
-    return _gather(call, audio=audio, text=reply)
+    return _gather(call, audio=audio), meta, reply
+
+
+def _prepare_insights(call_id: int, tenant_id: Optional[int], speech: str,
+                      spoken_reply: str, human_requested: bool = False) -> None:
+    """Rich analysis of the client's message: sentiment, interest, doubts, objections, questions and
+    knowledge usage. Runs after the reply has been spoken, so it adds zero reply latency."""
+    _set_tenant(tenant_id)
+    t = _TurnTimer(call_id, "insights")
+    try:
+        with Session(engine) as session:
+            call = session.exec(select(AICall).where(AICall.id == call_id)
+                                .execution_options(skip_tenant=True)).first()
+            t.mark("db_read")
+            if not call:
+                return
+            ctx = call.context or {}
+            transcript = list(call.transcript or [])
+            # Drop the AI reply we already spoke and the client turn (passed as client_text).
+            if transcript and transcript[-1].get("role") in ("ai", "agent"):
+                transcript = transcript[:-1]
+            if transcript and transcript[-1].get("role") == "client":
+                transcript = transcript[:-1]
+            pitch = session.get(VoicePitch, call.pitch_id) if call.pitch_id else None
+            info = _entity_info(session, call.entity_type, call.entity_id)
+            knowledge = va.rank_knowledge(speech + " " + " ".join(ctx.get("doubts", [])[-3:]), _knowledge_items(session))
+            t.mark("db_reads")
+            result = va.analyze_and_respond(
+                client_text=speech, transcript=transcript, pitch_text=pitch.pitch_text if pitch else "",
+                entity_context=info["context"], knowledge=knowledge, state=ctx, interrupted=False,
+                agent_available=bool(call.agent_phone), language=language_label(call.language),
+            )
+            t.mark("llm")
+            # Re-read just before writing so a turn that started meanwhile is not clobbered.
+            # populate_existing() forces the identity-mapped instance to take fresh DB values.
+            fresh = session.exec(select(AICall).where(AICall.id == call_id)
+                                 .execution_options(skip_tenant=True, populate_existing=True)).first()
+            if fresh is not None:
+                call = fresh
+                ctx = call.context or {}
+            t.mark("db_reread")
+            doubts = [d for d in result.get("doubts") or [] if isinstance(d, str) and d.strip()]
+            objections = list(ctx.get("objections", []))
+            obj = result.get("objection") if isinstance(result.get("objection"), dict) else None
+            answer = spoken_reply or result.get("reply")
+            if obj and obj.get("text"):
+                objections.append(f"{obj.get('type', 'other')}: {obj['text']}")
+                _add_question(session, call, obj["text"], "objection", "answered", ai_answer=answer)
+            for d in doubts:
+                _add_question(session, call, d, "doubt", "answered", ai_answer=answer)
+            unanswered = (result.get("unanswered_question") or "").strip()
+            for q in result.get("questions") or []:
+                if isinstance(q, dict) and q.get("question") and q.get("answered") and q["question"] != unanswered:
+                    _add_question(session, call, q["question"], "question", "answered",
+                                  ai_answer=q.get("answer") or answer)
+            if result.get("escalate") or human_requested:
+                reason = result.get("escalate_reason") or ("Client asked for a sales representative"
+                                                          if human_requested else "Escalated by AI")
+                _add_question(session, call, unanswered or speech, "question", "escalated", ai_answer=answer,
+                              reason=reason)
+            elif unanswered:
+                _add_question(session, call, unanswered, "question", "open", ai_answer=answer,
+                              reason="AI could not answer from the knowledge base")
+
+            # usage tracking for knowledge entries the model relied on
+            used = {str(u) for u in result.get("knowledge_used") or []}
+            for item in knowledge:
+                if item["id"].startswith("kb") and (item["id"] in used or item["title"] in used):
+                    kb = session.get(CallKnowledge, int(item["id"][2:]))
+                    if kb:
+                        kb.usage_count += 1
+                        session.add(kb)
+
+            # annotate the client's turn (shown in the live transcript) with the analysis
+            turns = list(call.transcript or [])
+            for turn in reversed(turns):
+                if turn.get("role") == "client":
+                    turn["intent"] = result.get("intent")
+                    turn["sentiment"] = result.get("sentiment")
+                    break
+            call.transcript = turns
+            flag_modified(call, "transcript")
+
+            call.sentiment = result.get("sentiment")
+            if result.get("interest_score") is not None:
+                call.interest_score = result["interest_score"]
+            _update_context(
+                call, stage=result.get("stage") or ctx.get("stage"),
+                doubts=(ctx.get("doubts", []) + doubts)[-20:], objections=objections[-20:],
+                adaptation=result.get("adaptation") or ctx.get("adaptation"),
+            )
+            session.add(call)
+            session.commit()
+            t.mark("db_commit")
+    except Exception as e:
+        print(f"[voice-agent] insights preparation failed for call {call_id}: {e}")
+    finally:
+        t.done()
 
 
 @router.post("/twilio/reply/{call_id}")
@@ -1443,70 +1969,127 @@ def twilio_reply(call_id: int, request: Request, form: dict = Depends(twilio_for
     try:
         start = time.monotonic()
         resp = _twilio_reply_impl(call_id, request, form, session)
+        _webhook_error_clear(call_id)
         print(f"[voice_agent] /reply call {call_id} took {time.monotonic() - start:.2f}s")
         return resp
     except HTTPException:
         raise
     except Exception:
         print(f"[voice_agent] /twilio/reply failed for call {call_id} after {time.monotonic() - start:.2f}s:\n{traceback.format_exc()}")
-        token = request.query_params.get("t")
-        if token:
-            try:
-                action = f"{va.twilio_config()['public_base']}/voice-agent/twilio/gather/{call_id}?t={token}"
-                return _xml(va.twiml_gather(action, text="Sorry, could you say that again?"))
-            except Exception:
-                print(f"[voice_agent] /twilio/reply recovery failed:\n{traceback.format_exc()}")
-        return _xml(va.twiml_say_hangup(None, "Sorry, we ran into a problem. Goodbye."))
+        return _webhook_error_twiml(call_id, request)
 
 
 def _twilio_reply_impl(call_id: int, request: Request, form: dict, session: Session):
     start = time.monotonic()
-    """Hold loop: play the prepared reply as soon as it's ready, otherwise pause a second and check again.
+    """Hold loop: play the prepared reply as soon as it's ready.
+
+    Paid ("Full") accounts: the first call holds the request up to ~8s polling for the reply and
+    returns it the moment it's ready; otherwise it returns a silent <Pause length=\"3\"/> plus a
+    <Redirect> for the next poll (up to ``REPLY_SILENT_POLLS_PAID`` silent polls ≈ 30s), then ONE
+    apology clip + <Gather>. Trial accounts keep the legacy quick-filler redirect loop.
     The hold/ready paths are answered from memory (no DB) so they stay fast even when the server is busy."""
     seq = int(request.query_params.get("s") or 0)
     n = int(request.query_params.get("n") or 0)
     token = request.query_params.get("t")
+    paid = va.is_paid_account()
     fast = os.getenv("TWILIO_VALIDATE_WEBHOOKS", "false").lower() != "true"
     with _PENDING_LOCK:
         entry = _PENDING_REPLIES.get(call_id)
         current = entry if entry and entry["seq"] == seq and token and entry["token"] == token else None
-        if current and current["done"]:
+        if current and current.get("done") and current.get("xml"):
             _PENDING_REPLIES.pop(call_id, None)
+
+    def _log(voice, tts_ms, filler, tag, silent=0, exc=0):
+        _turn_log(call_id, voice=voice, tts_ms=tts_ms, filler=filler, silent_polls=silent,
+                  wait_ms=int((time.monotonic() - start) * 1000), exceptions=exc, tag=tag)
+
+    if current and current.get("done") and current.get("xml"):
+        m = current.get("meta") or {}
+        _log(m.get("voice") or current.get("voice"), m.get("tts_ms", 0), m.get("filler", False),
+             f"served redirects={n}", silent=n)
+        return _xml(current["xml"])
+
+    if paid:
+        if current and not current.get("done"):
+            if n >= REPLY_SILENT_POLLS_PAID:
+                # Silent polling budget used up and the reply still isn't ready: ONE apology clip
+                # (pre-generated in the call's voice) then go back to listening. Never loop fillers.
+                with _PENDING_LOCK:
+                    _PENDING_REPLIES.pop(call_id, None)
+                call, _ = _webhook_call(request, session, call_id, form)
+                line = _phrase(call, "apology")
+                spoken = _call_audio(call, line)
+                _append_turn(call, "ai", line)
+                _mark_ai_speaking(call, line)
+                session.add(call)
+                session.commit()
+                _log(spoken.voice, spoken.tts_ms, spoken.filler, f"apology polls={n}", silent=n)
+                return _xml(_gather(call, audio=spoken.url))
+            # Hold this request up to ~8s polling for the reply; return it as soon as it's ready.
+            ready = _wait_for_reply(call_id, seq, REPLY_HOLD_SECONDS_PAID)
+            if ready and ready.get("xml"):
+                m = ready.get("meta") or {}
+                _log(m.get("voice") or ready.get("voice"), m.get("tts_ms", 0), m.get("filler", False),
+                     f"served-wait polls={n}", silent=n)
+                return _xml(ready["xml"])
+            _log("?", 0, False, f"silent-poll polls={n}", silent=n)
+            return _xml(_paid_hold_twiml(call_id, token, seq, n + 1))
+        # Reply entry was lost (e.g. server restart mid-turn): recover in the call's own voice.
+        call, _ = _webhook_call(request, session, call_id, form)
+        if call.mode == "agent_typed":
+            return _xml(_wait_twiml(call, 0))
+        line = _phrase(call, "apology")
+        spoken = _call_audio(call, line)
+        _append_turn(call, "ai", line)
+        _mark_ai_speaking(call, line)
+        session.add(call)
+        session.commit()
+        _log(spoken.voice, spoken.tts_ms, spoken.filler, "failed-paid", silent=n)
+        return _xml(_gather(call, audio=spoken.url))
+
+    # ── Trial accounts: legacy hold-loop behavior, unchanged ──
     if current and fast:
         if not current["done"] and n < REPLY_POLL_MAX:
-            print(f"[voice_agent] call {call_id} turn {seq} redirects={n + 1}")
+            _log(current.get("voice"), 0, True, f"hold redirects={n + 1}")
             return _xml(_hold_twiml(call_id, token, seq, n + 1))
         if current["done"] and current["xml"]:
-            print(f"[voice_agent] call {call_id} turn {seq} redirects={n}")
+            m = current.get("meta") or {}
+            _log(m.get("voice") or current.get("voice"), m.get("tts_ms", 0), m.get("filler", False),
+                 f"served redirects={n}")
             return _xml(current["xml"])
 
     call, _ = _webhook_call(request, session, call_id, form)
     if current and not current["done"] and n < REPLY_POLL_MAX:
-        print(f"[voice_agent] call {call_id} turn {seq} redirects={n + 1}")
+        _log(current.get("voice"), 0, True, f"hold redirects={n + 1}")
         return _xml(_hold_twiml(call_id, token, seq, n + 1))
     if current and current["done"] and current["xml"]:
-        print(f"[voice_agent] call {call_id} turn {seq} redirects={n}")
+        m = current.get("meta") or {}
+        _log(m.get("voice") or current.get("voice"), m.get("tts_ms", 0), m.get("filler", False),
+             f"served redirects={n}")
         return _xml(current["xml"])
     if current and not current["done"]:
         # Polling cap reached and the AI reply is still not ready: stop looping (trial
         # accounts kill calls over the redirect limit), speak a short filler line and
         # go straight back to listening so the call keeps going.
         line = _phrase(call, "one_moment")
+        spoken = _call_audio(call, line)
         _append_turn(call, "ai", line)
         _mark_ai_speaking(call, line)
         session.add(call)
         session.commit()
-        print(f"[voice_agent] call {call_id} turn {seq} redirects={n} (capped, filler)")
-        return _xml(_gather(call, audio=_speak_audio(call, line), text=line))
+        _log(spoken.voice, spoken.tts_ms, spoken.filler, f"capped redirects={n}")
+        return _xml(_gather(call, audio=spoken.url))
     if call.mode == "agent_typed":
         return _xml(_wait_twiml(call, 0))
-    # failed, timed out, or lost (e.g. server restart): apologise and keep listening
-    line = "Sorry, could you say that once more?"
+    # failed, timed out, or lost (e.g. server restart): apologise in the same voice and keep listening
+    line = _phrase(call, "retry")
+    spoken = _call_audio(call, line)
     _append_turn(call, "ai", line)
     _mark_ai_speaking(call, line)
     session.add(call)
     session.commit()
-    return _xml(_gather(call, audio=_speak_audio(call, line), text=line))
+    _log(spoken.voice, spoken.tts_ms, spoken.filler, "failed")
+    return _xml(_gather(call, audio=spoken.url))
 
 
 def _wait_twiml(call: AICall, n: int) -> str:
@@ -1517,28 +2100,38 @@ def _wait_twiml(call: AICall, n: int) -> str:
 
 @router.post("/twilio/wait/{call_id}")
 def twilio_wait(call_id: int, request: Request, form: dict = Depends(twilio_form), session: Session = Depends(get_session)):
-    call, _ = _webhook_call(request, session, call_id, form)
-    n = int(request.query_params.get("n") or 0)
-    lang = twilio_language(call.language, call.accent)
-    if call.mode == "ai":
-        return _xml(_resume_twiml(call, session))
-    if call.pending_agent_message:
-        text = call.pending_agent_message
-        call.pending_agent_message = None
-        _append_turn(call, "agent", text)
-        _mark_ai_speaking(call, text)
-        session.add(call)
-        session.commit()
-        return _xml(va.twiml_gather(_hook_url(call, "gather"), audio_url=_speak_audio(call, text, "agent"),
-                                    text=text, language=lang, timeout=4, action_on_empty=False,
-                                    fallback_url=_hook_url(call, "wait", n=0)))
-    if n >= MAX_WAIT_LOOPS:
-        line = _phrase(call, "wait_timeout")
-        _append_turn(call, "ai", line)
-        session.add(call)
-        session.commit()
-        return _xml(va.twiml_say_hangup(_speak_audio(call, line), line, lang))
-    return _xml(_wait_twiml(call, n))
+    try:
+        call, _ = _webhook_call(request, session, call_id, form)
+        n = int(request.query_params.get("n") or 0)
+        lang = twilio_language(call.language, call.accent)
+        if call.mode == "ai":
+            _webhook_error_clear(call_id)
+            return _xml(_resume_twiml(call, session))
+        if call.pending_agent_message:
+            text = call.pending_agent_message
+            call.pending_agent_message = None
+            _append_turn(call, "agent", text)
+            _mark_ai_speaking(call, text)
+            session.add(call)
+            session.commit()
+            _webhook_error_clear(call_id)
+            return _xml(va.twiml_gather(_hook_url(call, "gather"), audio_url=_speak_audio(call, text, "agent"),
+                                        text=text, language=lang, timeout=4, action_on_empty=False,
+                                        fallback_url=_hook_url(call, "wait", n=0)))
+        if n >= MAX_WAIT_LOOPS:
+            line = _phrase(call, "wait_timeout")
+            _append_turn(call, "ai", line)
+            session.add(call)
+            session.commit()
+            _webhook_error_clear(call_id)
+            return _xml(va.twiml_say_hangup(_speak_audio(call, line), line, lang))
+        _webhook_error_clear(call_id)
+        return _xml(_wait_twiml(call, n))
+    except HTTPException:
+        raise
+    except Exception:
+        print(f"[voice_agent] /twilio/wait failed for call {call_id}:\n{traceback.format_exc()}")
+        return _webhook_error_twiml(call_id, request)
 
 
 def _resume_twiml(call: AICall, session: Session) -> str:
@@ -1552,104 +2145,168 @@ def _resume_twiml(call: AICall, session: Session) -> str:
 
 @router.post("/twilio/resume/{call_id}")
 def twilio_resume(call_id: int, request: Request, form: dict = Depends(twilio_form), session: Session = Depends(get_session)):
-    call, _ = _webhook_call(request, session, call_id, form)
-    call.mode = "ai"
-    return _xml(_resume_twiml(call, session))
+    try:
+        call, _ = _webhook_call(request, session, call_id, form)
+        call.mode = "ai"
+        _webhook_error_clear(call_id)
+        return _xml(_resume_twiml(call, session))
+    except HTTPException:
+        raise
+    except Exception:
+        print(f"[voice_agent] /twilio/resume failed for call {call_id}:\n{traceback.format_exc()}")
+        return _webhook_error_twiml(call_id, request)
 
 
 @router.post("/twilio/dial-complete/{call_id}")
 def twilio_dial_complete(call_id: int, request: Request, form: dict = Depends(twilio_form), session: Session = Depends(get_session)):
-    call, form = _webhook_call(request, session, call_id, form)
-    dial_status = form.get("DialCallStatus") or ""
-    call.mode = "ai"
-    if dial_status == "completed":
-        _append_turn(call, "system", "Agent finished the conversation; AI resumed.")
-        return _xml(_resume_twiml(call, session))
-    _append_turn(call, "system", f"Agent unavailable ({dial_status or 'no answer'}).")
-    _add_question(session, call, "Client requested to speak with a human agent", "question", "escalated",
-                  reason=f"Live transfer failed: {dial_status or 'no answer'}")
-    line = _phrase(call, "agent_unavailable")
-    _append_turn(call, "ai", line)
-    _mark_ai_speaking(call, line)
-    session.add(call)
-    session.commit()
-    return _xml(_gather(call, audio=_speak_audio(call, line), text=line))
+    try:
+        call, form = _webhook_call(request, session, call_id, form)
+        dial_status = form.get("DialCallStatus") or ""
+        call.mode = "ai"
+        if dial_status == "completed":
+            _append_turn(call, "system", "Agent finished the conversation; AI resumed.")
+            _webhook_error_clear(call_id)
+            return _xml(_resume_twiml(call, session))
+        _append_turn(call, "system", f"Agent unavailable ({dial_status or 'no answer'}).")
+        _add_question(session, call, "Client requested to speak with a human agent", "question", "escalated",
+                      reason=f"Live transfer failed: {dial_status or 'no answer'}")
+        line = _phrase(call, "agent_unavailable")
+        _append_turn(call, "ai", line)
+        _mark_ai_speaking(call, line)
+        session.add(call)
+        session.commit()
+        _webhook_error_clear(call_id)
+        return _xml(_gather(call, audio=_speak_audio(call, line), text=line))
+    except HTTPException:
+        raise
+    except Exception:
+        print(f"[voice_agent] /twilio/dial-complete failed for call {call_id}:\n{traceback.format_exc()}")
+        return _webhook_error_twiml(call_id, request)
 
 
 @router.post("/twilio/status/{call_id}")
 def twilio_status(call_id: int, request: Request, background: BackgroundTasks,
                         form: dict = Depends(twilio_form), session: Session = Depends(get_session)):
-    call, form = _webhook_call(request, session, call_id, form)
-    status = form.get("CallStatus") or call.status
-    if status == "in-progress" and call.status == "completed":
+    try:
+        call, form = _webhook_call(request, session, call_id, form)
+        status = form.get("CallStatus") or call.status
+        if status == "in-progress" and call.status == "completed":
+            return Response(status_code=204)
+        if status in TERMINAL_STATUSES:
+            if call.status not in TERMINAL_STATUSES:
+                _mark_ended(call, status, form.get("CallDuration"), background)
+            elif not call.finalized_at:
+                # Already marked ended but the summary never ran (e.g. the server restarted before
+                # the background task could execute). Retry it now, idempotently, from this
+                # "completed" status callback so summary + Important Notes always get generated.
+                background.add_task(_finalize_call, call.id, call.tenant_id)
+        else:
+            call.status = status
+            call.updated_at = va.utcnow()
+        session.add(call)
+        session.commit()
         return Response(status_code=204)
-    if status in TERMINAL_STATUSES:
-        if call.status not in TERMINAL_STATUSES:
-            _mark_ended(call, status, form.get("CallDuration"), background)
-    else:
-        call.status = status
-        call.updated_at = va.utcnow()
-    session.add(call)
-    session.commit()
-    return Response(status_code=204)
+    except Exception:
+        # Status callbacks never reach the caller; log and stay silent instead of erroring.
+        print(f"[voice_agent] /twilio/status failed for call {call_id}:\n{traceback.format_exc()}")
+        return Response(status_code=204)
 
 
 @router.post("/twilio/dial/{call_id}")
 def twilio_dial(call_id: int, request: Request, form: dict = Depends(twilio_form), session: Session = Depends(get_session)):
     """Phone takeover: announce the transfer, then bridge the client to the agent's phone."""
-    call, _ = _webhook_call(request, session, call_id, form)
-    lang = twilio_language(call.language, call.accent)
-    line = _phrase(call, "connect_agent")
-    return _xml(va.twiml_dial(call.agent_phone, caller_id=call.from_number, action_url=_hook_url(call, "dial-complete"),
-                              audio_url=_speak_audio(call, line, "agent"), text=line, language=lang))
+    try:
+        call, _ = _webhook_call(request, session, call_id, form)
+        lang = twilio_language(call.language, call.accent)
+        line = _phrase(call, "connect_agent")
+        _webhook_error_clear(call_id)
+        return _xml(va.twiml_dial(call.agent_phone, caller_id=call.from_number, action_url=_hook_url(call, "dial-complete"),
+                                  audio_url=_speak_audio(call, line, "agent"), text=line, language=lang))
+    except HTTPException:
+        raise
+    except Exception:
+        print(f"[voice_agent] /twilio/dial failed for call {call_id}:\n{traceback.format_exc()}")
+        return _webhook_error_twiml(call_id, request)
 
 
 @router.post("/twilio/hangup/{call_id}")
 def twilio_hangup(call_id: int, request: Request, form: dict = Depends(twilio_form), session: Session = Depends(get_session)):
-    _webhook_call(request, session, call_id, form)
-    return _xml(va.twiml_hangup())
+    try:
+        _webhook_call(request, session, call_id, form)
+        _webhook_error_clear(call_id)
+        return _xml(va.twiml_hangup())
+    except HTTPException:
+        raise
+    except Exception:
+        print(f"[voice_agent] /twilio/hangup failed for call {call_id}:\n{traceback.format_exc()}")
+        return _webhook_error_twiml(call_id, request)
 
 
 @router.post("/twilio/recording/{call_id}")
 def twilio_recording(call_id: int, request: Request, form: dict = Depends(twilio_form), session: Session = Depends(get_session)):
-    call, form = _webhook_call(request, session, call_id, form)
-    if form.get("RecordingUrl"):
-        call.recording_url = form["RecordingUrl"] + ".mp3"
-        session.add(call)
-        session.commit()
+    try:
+        call, form = _webhook_call(request, session, call_id, form)
+        if form.get("RecordingUrl"):
+            call.recording_url = form["RecordingUrl"] + ".mp3"
+            session.add(call)
+            session.commit()
+    except Exception:
+        # Recording callbacks never reach the caller; log and continue.
+        print(f"[voice_agent] /twilio/recording failed for call {call_id}:\n{traceback.format_exc()}")
     return Response(status_code=204)
 
 
 def _finalize_call(call_id: int, tenant_id: Optional[int]) -> None:
-    """Summarize the call, log it in the CRM Calls list and flag follow-ups."""
+    """Summarize the call into the AICall record and flag follow-ups.
+
+    Idempotent: the first caller claims the call by setting ``finalized_at`` with a conditional
+    UPDATE, so the Twilio status webhook and the status-sync poll racing each other cannot
+    summarize (or log) the same call twice. AI calls no longer create a row in the normal
+    call log — the AICall record *is* the call record.
+    """
     _set_tenant(tenant_id)
     with Session(engine) as session:
+        claimed = session.execute(
+            update(AICall)
+            .where(AICall.id == call_id, AICall.finalized_at.is_(None))
+            .values(finalized_at=va.utcnow())
+            .execution_options(synchronize_session=False)
+        )
+        session.commit()
+        if not claimed.rowcount:
+            return  # another worker already finalized this call (same Twilio call SID)
         call = session.get(AICall, call_id)
-        if not call or call.call_log_id:
+        if not call:
             return
         talk = [t for t in (call.transcript or []) if t.get("role") in ("ai", "client", "agent")]
         has_client = any(t.get("role") == "client" for t in talk)
-        result = va.summarize_call(talk, call.entity_name or "") if has_client else {
-            "summary": f"Call {call.status}; no conversation with the client.",
-            "outcome": "no_conversation" if call.status == "completed" else call.status, "next_steps": ""}
-        call.summary, call.outcome, call.next_steps = result["summary"], result["outcome"], result["next_steps"]
+        if has_client:
+            result = va.summarize_call(talk, call.entity_name or "", call.created_at)
+        else:
+            result = {
+                "summary": f"Call {call.status}; no conversation with the client.",
+                "outcome": "no_conversation" if call.status == "completed" else call.status,
+                "next_steps": "", "important_notes": "",
+            }
+
+        summary = (result.get("summary") or "").strip()
+        # Plain hyphen prefix (never the mojibake em dash) and UTF-8-safe text.
+        call.summary = (
+            f"{AI_CALL_SUMMARY_PREFIX}{call.entity_name or call.to_number}: {summary}"
+            if summary else f"{AI_CALL_SUMMARY_PREFIX}{call.entity_name or call.to_number}"
+        )
+        call.important_notes = result.get("important_notes") or None
+        call.outcome = result.get("outcome")
+        call.next_steps = result.get("next_steps") or None
 
         pending = session.exec(select(CallQuestion).where(
             CallQuestion.call_id == call.id, CallQuestion.status.in_(["open", "escalated"]))).all()
         starter = session.get(User, call.started_by) if call.started_by else None
-        lines = "\n".join(f"{ {'ai': 'AI', 'agent': 'Agent', 'client': 'Client'}[t['role']] }: {t.get('text', '')}"
-                          for t in talk)
-        log = CallLog(
-            tenant_id=call.tenant_id, phone_number=call.to_number, duration_seconds=call.duration_seconds,
-            summary=f"AI Voice Call â€” {call.entity_name or call.to_number}: {call.summary}",
-            description=lines or None, work_done=call.next_steps or None,
-            assigned_to=(starter.name or starter.email) if starter else None,
-            followup_needed=bool(pending) or call.outcome in ("interested", "callback", "needs_follow_up"),
-            client_id=call.entity_id if call.entity_type == "client" else None,
-        )
-        session.add(log)
-        session.flush()
-        call.call_log_id = log.id
+        if not call.assigned_to:
+            call.assigned_to = (starter.name or starter.email) if starter else None
+        call.followup_needed = bool(pending) or call.outcome in ("interested", "callback", "needs_follow_up")
+
+        # Audit trail only — no CallLog row is written for AI voice calls anymore.
         if call.entity_type in ("client", "lead") and call.entity_id:
             session.add(ActivityLog(
                 tenant_id=call.tenant_id, userId=call.started_by, action="AI Voice Call", method="Phone",

@@ -19,7 +19,7 @@ export interface VoiceAgentOptions {
   accents: Option[];
   styles: Option[];
   default_voice: string;
-  twilio: { ready: boolean; missing: string[]; from_number: string | null };
+  twilio: { ready: boolean; missing: string[]; from_number: string | null; webhook_base?: string | null; webhook_problem?: string | null };
   default_agent_phone: string | null;
 }
 
@@ -202,7 +202,8 @@ const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
 export const audioSrc = (url: string | null | undefined) => (url ? (url.startsWith('http') ? url : `${API_BASE_URL}${url}`) : '');
 
 export const voiceAgentApi = {
-  options: () => request<VoiceAgentOptions>('/options'),
+  /** `recheck: true` forces a fresh probe of the TwiML webhook base instead of the cached result. */
+  options: (recheck = false) => request<VoiceAgentOptions>(`/options${recheck ? '?recheck=1' : ''}`),
   stats: () => request<VoiceAgentStats>('/stats'),
   entities: (type: EntityType) => request<{ entities: Entity[] }>(`/entities?type=${type}`),
 

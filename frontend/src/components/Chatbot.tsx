@@ -101,36 +101,115 @@ export function Chatbot() {
 
     setMessages(prev => [...prev, { role: 'user', text }]);
     setIsTyping(true);
+    const payload = {
+      message: text,
+      client_id: currentClientId,
+      current_route: pathname,
+      chat_history: messages.map(m => `${m.role}: ${m.text}`).join('\n') + `\nuser: ${text}`,
+      session_id: sessionId,
+      user_role: role,
+      allowed_sections: sectionGuide,
+      current_section: currentSection?.label || 'Dashboard'
+    };
+
     try {
-      const res = await fetch(`${API_BASE_URL}/chatbot/message`, {
+      const res = await fetch(`${API_BASE_URL}/chatbot/message/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          client_id: currentClientId,
-          current_route: pathname,
-          chat_history: messages.map(m => `${m.role}: ${m.text}`).join('\n') + `\nuser: ${text}`,
-          session_id: sessionId,
-          user_role: role,
-          allowed_sections: sectionGuide,
-          current_section: currentSection?.label || 'Dashboard'
-        })
+        body: JSON.stringify(payload)
       });
-      const data = await res.json();
-      setMessages(prev => [...prev, { role: 'bot', text: data.reply || "I've processed your request.", action: data.action_taken }]);
 
-      if (data.action_taken === 'navigate' && data.route) {
-        if (routeAllowed(data.route, allowedRoutes)) {
-          setTimeout(() => router.push(data.route), 1500);
-        } else {
-          setMessages(prev => [...prev, { role: 'bot', text: "I can only take you to sections available in your sidebar. Ask me about one of those sections and I’ll guide you." }]);
+      if (!res.ok || !res.body) {
+        throw new Error(`stream failed: ${res.status}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let acc = '';
+      let botAdded = false;
+      let donePayload: any = null;
+
+      const pushBot = (fullText: string) => {
+        const isUpdate = botAdded;
+        setMessages(prev => {
+          const copy = [...prev];
+          if (isUpdate) {
+            copy[copy.length - 1] = { ...copy[copy.length - 1], text: fullText };
+          } else {
+            copy.push({ role: 'bot', text: fullText });
+          }
+          return copy;
+        });
+        botAdded = true;
+        acc = fullText;
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+          const dataLine = part.split('\n').find(l => l.startsWith('data:'));
+          if (!dataLine) continue;
+          let evt: any;
+          try { evt = JSON.parse(dataLine.slice(5).trim()); } catch { continue; }
+
+          if (evt.type === 'delta') {
+            setIsTyping(false);
+            pushBot(acc + evt.text);
+          } else if (evt.type === 'done') {
+            donePayload = evt;
+          } else if (evt.type === 'error') {
+            throw new Error(evt.message || 'stream error');
+          }
         }
-      } else if (data.action_taken && !['trigger_whatsapp', 'navigate'].includes(data.action_taken)) {
-        window.dispatchEvent(new Event('refresh-client-data'));
+      }
+
+      if (!botAdded) {
+        pushBot(donePayload?.reply || "I've processed your request.");
+      }
+      setIsTyping(false);
+
+      if (donePayload) {
+        if (donePayload.action_taken === 'navigate' && donePayload.route) {
+          if (routeAllowed(donePayload.route, allowedRoutes)) {
+            setTimeout(() => router.push(donePayload.route), 1500);
+          } else {
+            setMessages(prev => [...prev, { role: 'bot', text: "I can only take you to sections available in your sidebar. Ask me about one of those sections and I’ll guide you." }]);
+          }
+        } else if (donePayload.action_taken && !['trigger_whatsapp', 'navigate'].includes(donePayload.action_taken)) {
+          window.dispatchEvent(new Event('refresh-client-data'));
+        }
       }
     } catch (err) {
       console.error(err);
-      setMessages(prev => [...prev, { role: 'bot', text: "Sorry, I couldn't process that right now. Please try again." }]);
+      setIsTyping(false);
+      // Fallback to the non-streaming endpoint
+      try {
+        const res = await fetch(`${API_BASE_URL}/chatbot/message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        setMessages(prev => [...prev, { role: 'bot', text: data.reply || "I've processed your request.", action: data.action_taken }]);
+
+        if (data.action_taken === 'navigate' && data.route) {
+          if (routeAllowed(data.route, allowedRoutes)) {
+            setTimeout(() => router.push(data.route), 1500);
+          } else {
+            setMessages(prev => [...prev, { role: 'bot', text: "I can only take you to sections available in your sidebar. Ask me about one of those sections and I’ll guide you." }]);
+          }
+        } else if (data.action_taken && !['trigger_whatsapp', 'navigate'].includes(data.action_taken)) {
+          window.dispatchEvent(new Event('refresh-client-data'));
+        }
+      } catch (err2) {
+        console.error(err2);
+        setMessages(prev => [...prev, { role: 'bot', text: "Sorry, I couldn't process that right now. Please try again." }]);
+      }
     } finally {
       setIsTyping(false);
     }

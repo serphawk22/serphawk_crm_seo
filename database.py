@@ -43,10 +43,13 @@ if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
 engine = create_engine(
     DATABASE_URL,
     echo=False,
-    pool_pre_ping=False,          # disable: was causing 1 extra RTT per request
-    pool_size=5,
-    max_overflow=10,
-    pool_recycle=300,             # recycle connections every 5 min to keep them fresh
+    # Revalidate pooled connections before handing them out so a dropped Neon SSL connection is
+    # transparently replaced instead of surfacing as a slow/failed query. pool_recycle keeps
+    # connections warm, so the ping rarely finds anything stale.
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+    pool_recycle=280,             # recycle just under 5 min, ahead of idle SSL drops
     connect_args=connect_args
 )
 
@@ -1908,15 +1911,23 @@ class AICall(SQLModel, table=True):
     interest_score: Optional[int] = Field(default=None)
     pending_agent_message: Optional[str] = Field(default=None, sa_column=Column(Text))
     summary: Optional[str] = Field(default=None, sa_column=Column(Text))
+    # Short, deterministic note surfaced in the AI Calls list (Not interested / meeting / blank).
+    important_notes: Optional[str] = Field(default=None, sa_column=Column(Text))
     outcome: Optional[str] = Field(default=None, max_length=100)
     next_steps: Optional[str] = Field(default=None, sa_column=Column(Text))
     recording_url: Optional[str] = Field(default=None, max_length=1000)
     duration_seconds: Optional[int] = Field(default=None)
     error: Optional[str] = Field(default=None, sa_column=Column(Text))
+    # CRM call-log style follow-up fields, editable from the AI Calls detail form.
+    assigned_to: Optional[str] = Field(default=None, max_length=255)
+    followup_needed: bool = Field(default=False)
+    followup_date: Optional[str] = Field(default=None, max_length=50)
     call_log_id: Optional[int] = Field(default=None, foreign_key="call_logs.id")
     started_by: Optional[int] = Field(default=None, foreign_key="users.id")
     answered_at: Optional[datetime] = Field(default=None)
     ended_at: Optional[datetime] = Field(default=None)
+    # Set exactly once by _finalize_call (conditional claim) so a call is summarized/logged only once.
+    finalized_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 

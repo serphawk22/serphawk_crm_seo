@@ -22,6 +22,7 @@ export default function VoiceAgentPage() {
   const [callPitch, setCallPitch] = useState<VoicePitch | null>(null);
 
   const loadStats = useCallback(() => { voiceAgentApi.stats().then(setStats).catch(() => {}); }, []);
+  const recheckOptions = useCallback(() => { voiceAgentApi.options(true).then(setOptions).catch(() => {}); }, []);
 
   useEffect(() => {
     voiceAgentApi.options().then(setOptions).catch((e) => setError(errorText(e, "Failed to load the voice agent")));
@@ -29,6 +30,15 @@ export default function VoiceAgentPage() {
     const t = setInterval(loadStats, 15000);
     return () => clearInterval(t);
   }, [loadStats]);
+
+  // The TwiML webhook check can fail transiently (e.g. the ngrok tunnel restarts). While it is
+  // failing, re-check every few seconds so the warning clears itself without a page reload.
+  const webhookProblem = !!options?.twilio?.webhook_problem;
+  useEffect(() => {
+    if (!webhookProblem) return;
+    const t = setInterval(recheckOptions, 8000);
+    return () => clearInterval(t);
+  }, [webhookProblem, recheckOptions]);
 
   const startCallWith = useCallback((p: VoicePitch) => { setCallPitch(p); setTab("calls"); }, []);
   const clearCallPitch = useCallback(() => setCallPitch(null), []);
@@ -90,7 +100,7 @@ export default function VoiceAgentPage() {
         <>
           {/* Keep the studio and console mounted so in-progress work and polling survive tab switches. */}
           <div className={tab === "studio" ? "" : "hidden"}><PitchStudio options={options} notify={notify} onStartCall={startCallWith} onPitchesChanged={loadStats} /></div>
-          <div className={tab === "calls" ? "" : "hidden"}><CallConsole options={options} notify={notify} requestedPitch={callPitch} onRequestHandled={clearCallPitch} /></div>
+          <div className={tab === "calls" ? "" : "hidden"}><CallConsole options={options} notify={notify} requestedPitch={callPitch} onRequestHandled={clearCallPitch} onRecheck={recheckOptions} /></div>
           {tab === "followups" && <FollowUps notify={notify} onChanged={loadStats} />}
           {tab === "knowledge" && <KnowledgeBase notify={notify} />}
         </>

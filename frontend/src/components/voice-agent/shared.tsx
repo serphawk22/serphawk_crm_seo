@@ -103,8 +103,19 @@ const STATUS_CLS: Record<string, string> = {
   "no-answer": "bg-amber-100 text-amber-700",
   canceled: "bg-slate-100 text-slate-500",
 };
+const STATUS_LABEL: Record<string, string> = {
+  queued: "queued",
+  initiated: "calling",
+  ringing: "ringing",
+  "in-progress": "live",
+  completed: "ended",
+  failed: "failed",
+  busy: "busy",
+  "no-answer": "no answer",
+  canceled: "canceled",
+};
 export const CallStatusBadge = ({ status }: { status: string }) =>
-  <Badge className={STATUS_CLS[status] || "bg-slate-100 text-slate-600"}>{status === "in-progress" ? "live" : status}</Badge>;
+  <Badge className={STATUS_CLS[status] || "bg-slate-100 text-slate-600"}>{STATUS_LABEL[status] || status}</Badge>;
 
 const SENTIMENT_CLS: Record<string, string> = {
   positive: "bg-emerald-100 text-emerald-700",
