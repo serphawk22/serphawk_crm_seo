@@ -7192,12 +7192,6 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
             "SMTP_SERVER", "smtp.gmail.com")
         smtp_port = os.getenv("EMAIL_PORT") or os.getenv("SMTP_PORT", 587)
         imap_server = os.getenv("IMAP_SERVER")
-            outreach_subject = outreach_llm.get("subject") or OUTREACH_SUBJECT.format(company_name=company_name)
-            outreach_body_en = outreach_llm.get("english_body") or OUTREACH_BODY_EN.format(company_name=company_name, services=services)
-            outreach_body_es = outreach_llm.get("spanish_body") or OUTREACH_BODY_ES.format(company_name=company_name, services=services)
-            inbound_subject = inbound_llm.get("subject") or INBOUND_SUBJECT.format(company_name=company_name)
-            inbound_body_en = inbound_llm.get("english_body") or INBOUND_BODY_EN.format(company_name=company_name, services=services)
-            inbound_body_es = inbound_llm.get("spanish_body") or INBOUND_BODY_ES.format(company_name=company_name, services=services)
 
         integ = _get_user_email_integration(session, current_salesperson_id.get())
         password = ""

@@ -8,8 +8,7 @@ import {
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar,
   Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Edit2, GripVertical, Check,
-  Cloud, Trophy, Star, Inbox, PhoneCall
-  Cloud, Trophy, Star, Inbox, CalendarClock
+  Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRole, Role } from "@/context/RoleContext";
@@ -29,6 +28,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  type DragEndEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -40,27 +40,42 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 // Icon mapping for dynamically loaded sections
-const iconMap: Record<string, any> = {
+import type { LucideIcon } from "lucide-react";
+const iconMap: Record<string, LucideIcon> = {
   LayoutDashboard, Bell, Users, FolderOpen, CheckSquare, CheckCircle, Radar, Mail,
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar,
-  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, PhoneCall
-  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, CalendarClock
+  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock
 };
 
 // Roles that can open /inbox (routers/inbox.py enforces the same list server-side).
 const INBOX_ROLES = ["Admin", "SalesManager", "Employee", "Demo", "SuperAdmin"];
 
 // Live count shown next to a sidebar item, if any.
-function badgeCount(item: any, unreadCount: number, inboxUnread: number): number {
+function badgeCount(item: SidebarItem, unreadCount: number, inboxUnread: number): number {
   return item.id === "item-notifications" ? unreadCount : item.id === "item-inbox" ? inboxUnread : item.badge || 0;
+}
+
+interface SidebarItem {
+  id: string;
+  name: string;
+  icon: string;
+  href: string;
+  roles: Role[];
+  badge?: number;
+}
+
+interface SidebarSection {
+  id: string;
+  heading: string | null;
+  items: SidebarItem[];
 }
 
 interface SidebarProps {
   role: Role;
 }
 
-const defaultSidebarSections = [
+const defaultSidebarSections: SidebarSection[] = [
   {
     id: "section-home",
     heading: null,
@@ -155,10 +170,26 @@ function sidebarSectionKey(id: string): string {
   return String(id).replace("section-", "").replace(/-/g, "_");
 }
 
-function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection, unreadCount, inboxUnread, favourites, onToggleFavourite, searchQuery, isOpen, onToggleSection }: any) {
+interface SortableSectionProps {
+  section: SidebarSection;
+  role: Role;
+  pathname: string | null;
+  collapsed: boolean;
+  isEditMode: boolean;
+  onRenameSection: (sectionId: string, name: string) => void;
+  unreadCount: number;
+  inboxUnread: number;
+  favourites: string[];
+  onToggleFavourite: (id: string) => void;
+  searchQuery: string;
+  isOpen: boolean;
+  onToggleSection: (sectionId: string) => void;
+}
+
+function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection, unreadCount, inboxUnread, favourites, onToggleFavourite, searchQuery, isOpen, onToggleSection }: SortableSectionProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
   const { t } = useLanguage();
-  const itemLabel = (item: any) => {
+  const itemLabel = (item: SidebarItem) => {
     const k = `sidebar.${sidebarItemKey(item.id)}`;
     const v = t(k);
     return v === k ? item.name : v;
@@ -167,7 +198,7 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
-    position: "relative" as any,
+    position: "relative" as const,
     zIndex: isDragging ? 10 : 1,
   };
 
@@ -180,8 +211,8 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
   };
 
   const visibleItems = section.items
-    .filter((item: any) => (role === 'SuperAdmin' || item.roles.includes(role)) && !(item.id === 'item-reports' && !['Admin', 'SuperAdmin', 'SalesManager'].includes(role)))
-    .filter((item: any) => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    .filter((item: SidebarItem) => (role === 'SuperAdmin' || item.roles.includes(role)) && !(item.id === 'item-reports' && !['Admin', 'SuperAdmin', 'SalesManager'].includes(role)))
+    .filter((item: SidebarItem) => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   if (visibleItems.length === 0) return null;
 
@@ -248,7 +279,7 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
             className="overflow-hidden"
           >
             <div className="flex flex-col gap-[1px]">
-              {visibleItems.map((item: any) => {
+              {visibleItems.map((item: SidebarItem) => {
                 const isActive = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href));
                 const IconComp = iconMap[item.icon] || LayoutDashboard;
                 const isFav = favourites?.includes(item.id);
@@ -326,12 +357,22 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
 export function Sidebar({ role }: SidebarProps) {
   const pathname = usePathname();
   const { user } = useRole();
+  const userId = user?.id;
   const { collapsed, setCollapsed } = useSidebar();
   const { theme, toggleTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
   
-  const [sections, setSections] = useState<any[]>(defaultSidebarSections);
-  const [favourites, setFavourites] = useState<string[]>([]);
+  const [sections, setSections] = useState<SidebarSection[]>(defaultSidebarSections);
+  const [favourites, setFavourites] = useState<string[]>(() => {
+    // Restore cached favourites synchronously at first render instead of via
+    // a mount effect (which would otherwise setState during an effect).
+    if (typeof window === "undefined") return [];
+    try {
+      const cached = localStorage.getItem(`crm_favourites_${userId || 'default'}`);
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return [];
+  });
   const [isEditMode, setIsEditMode] = useState(false);
   const { unreadCount } = useNotifications();
   const [inboxUnread, setInboxUnread] = useState(0);
@@ -364,129 +405,132 @@ export function Sidebar({ role }: SidebarProps) {
     for (const sec of defaultSidebarSections) {
       if (sec.heading !== null) initial[sec.id] = true;
     }
+    // Restore saved section open state synchronously at first render instead of
+    // via a mount effect (which would otherwise setState during an effect).
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem(`crm_sections_open_${userId || 'default'}`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
     return initial;
   });
 
-  // Auto-expand the section containing the current route
-  useEffect(() => {
-    if (!pathname) return;
-    setOpenSections(prev => {
-      const next = { ...prev };
-      let changed = false;
-      for (const sec of sections) {
-        if (sec.heading === null) continue;
-        const hasActive = sec.items?.some((item: any) =>
-          pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href))
-        );
-        if (hasActive && !next[sec.id]) {
-          next[sec.id] = true;
-          changed = true;
-        }
+  // Auto-expand the section containing the current route.
+  // Adjusting state during render is the React-recommended replacement for
+  // setState-in-effect. Seeding the tracker with the initial pathname/sections
+  // means it only runs on later changes, so the saved state still wins on mount.
+  const [autoExpandState, setAutoExpandState] = useState<{
+    pathname: string | null;
+    sections: SidebarSection[];
+  }>(() => ({ pathname, sections }));
+
+  if (autoExpandState.pathname !== pathname || autoExpandState.sections !== sections) {
+    setAutoExpandState({ pathname, sections });
+    let shouldUpdate = false;
+    const next: Record<string, boolean> = {};
+    for (const sec of sections) {
+      if (sec.heading === null) continue;
+      const hasActive = sec.items?.some((item: SidebarItem) =>
+        pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href))
+      );
+      if (hasActive) {
+        next[sec.id] = true;
+        shouldUpdate = true;
       }
-      return changed ? next : prev;
-    });
-  }, [pathname, sections]);
+    }
+    if (shouldUpdate) setOpenSections(prev => ({ ...prev, ...next }));
+  }
 
   const toggleSection = (sectionId: string) => {
     setOpenSections(prev => {
       const next = { ...prev, [sectionId]: !prev[sectionId] };
-      try { localStorage.setItem(`crm_sections_open_${user?.id || 'default'}`, JSON.stringify(next)); } catch {}
+      try { localStorage.setItem(`crm_sections_open_${userId || 'default'}`, JSON.stringify(next)); } catch {}
       return next;
     });
   };
 
-  // Load saved section open state on mount
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(`crm_sections_open_${user?.id || 'default'}`);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setOpenSections(prev => ({ ...prev, ...parsed }));
-      }
-    } catch {}
-  }, [user?.id]);
+    let ignore = false;
 
-  const fetchSidebarPrefs = useCallback(async () => {
-    const localFavKey = `crm_favourites_${user?.id || 'default'}`;
-    try {
-      const cachedFavs = localStorage.getItem(localFavKey);
-      if (cachedFavs) {
-        setFavourites(JSON.parse(cachedFavs));
-      }
-    } catch {}
+    const loadSidebarPrefs = async () => {
+      const localFavKey = `crm_favourites_${userId || 'default'}`;
 
-    if (!user?.id) return;
+      if (!userId) return;
 
-    try {
-      const url = `${API_BASE_URL}/users/me/sidebar-preferences?user_id=${user.id}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.ok && data.sidebar_preferences) {
-          if (data.sidebar_preferences.sections) {
-            const savedSections = data.sidebar_preferences.sections;
-            const savedSectionIds = new Set(savedSections.map((s: any) => s.id));
-            const missingSections = defaultSidebarSections.filter(s => !savedSectionIds.has(s.id));
-            
-            // Deep merge: update existing items with latest roles/icons and add missing items
-            const mergedSections = savedSections.map((savedSec: any) => {
-              const updatedSavedItems = savedSec.items.map((savedItem: any) => {
-                let defaultItemRef = null;
-                for (const ds of defaultSidebarSections) {
-                  const found = ds.items.find(i => i.id === savedItem.id);
-                  if (found) { defaultItemRef = found; break; }
-                }
-                if (defaultItemRef) {
-                  return { ...savedItem, roles: defaultItemRef.roles, icon: defaultItemRef.icon, href: defaultItemRef.href, name: defaultItemRef.name };
-                }
-                return null;
-              }).filter(Boolean);
-
-              const defaultSec = defaultSidebarSections.find(s => s.id === savedSec.id);
-              if (!defaultSec) return { ...savedSec, items: updatedSavedItems };
+      try {
+        const url = `${API_BASE_URL}/users/me/sidebar-preferences?user_id=${userId}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok && data.sidebar_preferences) {
+            if (data.sidebar_preferences.sections) {
+              const savedSections = data.sidebar_preferences.sections as SidebarSection[];
+              const savedSectionIds = new Set<string>(savedSections.map((s: SidebarSection) => s.id));
+              const missingSections = defaultSidebarSections.filter(s => !savedSectionIds.has(s.id));
               
-              const savedItemIds = new Set(updatedSavedItems.map((i: any) => i.id));
-              const missingItems = defaultSec.items.filter(i => !savedItemIds.has(i.id));
-              
-              return { ...savedSec, items: [...updatedSavedItems, ...missingItems] };
-            });
+              const mergedSections = savedSections.map((savedSec: SidebarSection) => {
+                const updatedSavedItems = savedSec.items.map((savedItem: SidebarItem) => {
+                  let defaultItemRef: SidebarItem | null = null;
+                  for (const ds of defaultSidebarSections) {
+                    const found = ds.items.find(i => i.id === savedItem.id);
+                    if (found) { defaultItemRef = found; break; }
+                  }
+                  if (defaultItemRef) {
+                    return { ...savedItem, roles: defaultItemRef.roles, icon: defaultItemRef.icon, href: defaultItemRef.href, name: defaultItemRef.name } as SidebarItem;
+                  }
+                  return null;
+                }).filter(Boolean) as SidebarItem[];
 
-            const stripDisabled = (sec: any) => ({
-              ...sec,
-              items: (sec.items || []).filter((i: any) =>
-                !String(i.id || "").toLowerCase().includes("automation") &&
-                !String(i.href || "").toLowerCase().includes("automation")),
-            });
-            const mergedSectionsClean = mergedSections.map(stripDisabled);
-            
-            if (missingSections.length > 0) {
-              setSections([...mergedSectionsClean, ...missingSections.map(stripDisabled)]);
-            } else {
-              setSections(mergedSectionsClean);
+                const defaultSec = defaultSidebarSections.find(s => s.id === savedSec.id);
+                if (!defaultSec) return { ...savedSec, items: updatedSavedItems };
+                
+                const savedItemIds = new Set(updatedSavedItems.map((i: SidebarItem) => i.id));
+                const missingItems = defaultSec.items.filter(i => !savedItemIds.has(i.id));
+                
+                return { ...savedSec, items: [...updatedSavedItems, ...missingItems] };
+              });
+
+              const stripDisabled = (sec: SidebarSection): SidebarSection => ({
+                ...sec,
+                items: (sec.items || []).filter((i: SidebarItem) =>
+                  !String(i.id || "").toLowerCase().includes("automation") &&
+                  !String(i.href || "").toLowerCase().includes("automation")),
+              });
+              const mergedSectionsClean = mergedSections.map(stripDisabled);
+              
+              if (!ignore) {
+                if (missingSections.length > 0) {
+                  setSections([...mergedSectionsClean, ...missingSections.map(stripDisabled)]);
+                } else {
+                  setSections(mergedSectionsClean);
+                }
+              }
+            }
+            if (Array.isArray(data.sidebar_preferences.favourites)) {
+              if (!ignore) setFavourites(data.sidebar_preferences.favourites);
+              try {
+                localStorage.setItem(localFavKey, JSON.stringify(data.sidebar_preferences.favourites));
+              } catch {}
             }
           }
-          if (Array.isArray(data.sidebar_preferences.favourites)) {
-            setFavourites(data.sidebar_preferences.favourites);
-            try {
-              localStorage.setItem(localFavKey, JSON.stringify(data.sidebar_preferences.favourites));
-            } catch {}
-          }
         }
+      } catch (e) {
+        console.warn("Could not load sidebar preferences from server, using local fallback.", e);
       }
-    } catch (e) {
-      console.warn("Could not load sidebar preferences from server, using local fallback.", e);
-    }
-  }, [user?.id]);
+    };
 
-  useEffect(() => {
-    fetchSidebarPrefs();
+    loadSidebarPrefs();
+    return () => {
+      ignore = true;
+    };
     // Unread count now comes from the shared NotificationContext (already
     // polling every 15s) instead of this component running its own
     // independent 30s poll of the same endpoint — was doubling notification
     // request volume with AdminTopbar.tsx polling the identical URL.
-  }, [fetchSidebarPrefs]);
+  }, [userId]);
 
-  const saveSidebarPrefs = async (newSections: any[], newFavourites?: string[]) => {
+  const saveSidebarPrefs = async (newSections: SidebarSection[], newFavourites?: string[]) => {
     const favsToSave = newFavourites !== undefined ? newFavourites : favourites;
     const localFavKey = `crm_favourites_${user?.id || 'default'}`;
     try {
@@ -532,11 +576,14 @@ export function Sidebar({ role }: SidebarProps) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const handleDragEnd = (event: any) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    if (!over) return;
     if (active.id !== over.id) {
-      const oldIndex = sections.findIndex(sec => sec.id === active.id);
-      const newIndex = sections.findIndex(sec => sec.id === over.id);
+      const activeId = String(active.id);
+      const overId = String(over.id);
+      const oldIndex = sections.findIndex(sec => sec.id === activeId);
+      const newIndex = sections.findIndex(sec => sec.id === overId);
       const updated = arrayMove(sections, oldIndex, newIndex);
       setSections(updated);
       saveSidebarPrefs(updated);
@@ -544,27 +591,27 @@ export function Sidebar({ role }: SidebarProps) {
   };
 
   // Collect map of all items across sections and defaults
-  const allItemsMap = new Map<string, any>();
+  const allItemsMap = new Map<string, SidebarItem>();
   sections.forEach(sec => {
-    sec.items?.forEach((item: any) => {
+    sec.items?.forEach((item: SidebarItem) => {
       allItemsMap.set(item.id, item);
     });
   });
   defaultSidebarSections.forEach(sec => {
-    sec.items?.forEach((item: any) => {
+    sec.items?.forEach((item: SidebarItem) => {
       if (!allItemsMap.has(item.id)) {
         allItemsMap.set(item.id, item);
       }
     });
   });
 
-  const favouriteItems = favourites
+  const favouriteItems: SidebarItem[] = favourites
     .map(id => allItemsMap.get(id))
-    .filter(Boolean)
+    .filter((item): item is SidebarItem => Boolean(item))
     .filter(item => role === 'SuperAdmin' || item.roles?.includes(role))
     .filter(item => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const labelFor = (item: any) => {
+  const labelFor = (item: SidebarItem) => {
     const k = `sidebar.${sidebarItemKey(item.id)}`;
     const v = t(k);
     return v === k ? item.name : v;
@@ -774,7 +821,7 @@ export function Sidebar({ role }: SidebarProps) {
                 </div>
               )}
               <div className="flex flex-col gap-[1px]">
-                {favouriteItems.map((item: any) => {
+                {favouriteItems.map((item: SidebarItem) => {
                   const isActive = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href));
                   const IconComp = iconMap[item.icon] || LayoutDashboard;
                   const badge = badgeCount(item, unreadCount, inboxUnread);
