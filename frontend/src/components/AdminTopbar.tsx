@@ -47,6 +47,7 @@ const ROLE_BADGE: Record<Role, { key: string; color: string }> = {
   Supplier: { key: "topbar.role_employee", color: "bg-zinc-100 text-zinc-700 border border-zinc-200" },
   Demo: { key: "topbar.role_employee", color: "bg-rose-100 text-rose-700 border border-rose-200" },
   ProjectMember: { key: "topbar.role_employee", color: "bg-teal-100 text-teal-700 border border-teal-200" },
+  Developer: { key: "topbar.role_employee", color: "bg-cyan-100 text-cyan-700 border border-cyan-200" },
 };
 
 const NAV_MENUS_BASE = [

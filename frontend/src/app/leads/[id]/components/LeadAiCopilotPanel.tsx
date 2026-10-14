@@ -62,11 +62,11 @@ export default function LeadAiCopilotPanel({ leadId, lead }: LeadAiCopilotPanelP
   const [insights, setInsights] = useState<any>(null);
   const [error, setError] = useState('');
 
-  const analyze = async () => {
+  const analyze = async (force = false) => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/ai-insights`, { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/ai-insights${force ? '?force=true' : ''}`, { method: 'POST' });
       const data = await res.json();
       setInsights(data.insights);
     } catch {
@@ -105,7 +105,7 @@ export default function LeadAiCopilotPanel({ leadId, lead }: LeadAiCopilotPanelP
               {language === 'es' ? 'Obtenga estado de salud, riesgos y próximas acciones por IA' : 'Get AI-powered deal health, risks, and next best actions'}
             </p>
             <button
-              onClick={analyze}
+              onClick={() => analyze(true)}
               className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600
                          text-white text-sm font-bold hover:opacity-90 transition-opacity
                          shadow-lg shadow-violet-500/25"
@@ -203,7 +203,7 @@ export default function LeadAiCopilotPanel({ leadId, lead }: LeadAiCopilotPanelP
 
               {/* Re-analyze */}
               <button
-                onClick={analyze}
+                onClick={() => analyze(true)}
                 className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl
                            text-xs font-bold text-violet-600 dark:text-violet-400
                            border border-violet-200 dark:border-violet-800

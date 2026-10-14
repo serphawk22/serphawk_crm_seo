@@ -1,14 +1,41 @@
 import os
+import threading
 from openai import OpenAI
+import httpx
 import json
 
 
+# ── Shared, persistent OpenAI client ─────────────────────────────────────────
+# A fresh ``OpenAI()`` builds a fresh ``httpx.Client`` on every call, which means a
+# brand-new TCP + TLS handshake to api.openai.com for every chat/TTS request
+# (~150-400ms each, worse on mobile networks). We keep ONE client per API key so
+# the connection pool + keep-alive are reused across every request in the process.
+_OPENAI_CLIENTS: dict = {}
+_OPENAI_LOCK = threading.Lock()
 
-def get_openai_client():
+
+def _build_openai_client(api_key: str) -> OpenAI:
+    # Keep-alive pool: reuse warm TLS connections instead of re-handshaking per request.
+    limits = httpx.Limits(max_keepalive_connections=20, max_connections=100,
+                          keepalive_expiry=90.0)
+    timeout = httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=10.0)
+    http_client = httpx.Client(limits=limits, timeout=timeout)
+    return OpenAI(api_key=api_key, http_client=http_client, max_retries=2)
+
+
+def get_openai_client() -> OpenAI:
     api_key = os.getenv('OPENAI_API_KEY')
     if not api_key:
         raise ValueError("OPENAI_API_KEY not found in environment variables")
-    return OpenAI(api_key=api_key)
+    client = _OPENAI_CLIENTS.get(api_key)
+    if client is not None:
+        return client
+    with _OPENAI_LOCK:
+        client = _OPENAI_CLIENTS.get(api_key)
+        if client is None:
+            client = _build_openai_client(api_key)
+            _OPENAI_CLIENTS[api_key] = client
+    return client
 
 
 def deep_investigate_company(company_name: str, website: str, scraped_text: str = "") -> dict:
@@ -521,10 +548,13 @@ def extract_tasks_from_note(note_content):
         print(f"Error in task extraction: {e}")
         return []
 
-def process_chatbot_command(message: str, client_context: dict = None, current_route: str = None, crm_summary: str = "", user_role: str = None):
+def process_chatbot_command(message: str, client_context: dict = None, current_route: str = None, crm_summary: str = "", user_role: str = None, on_delta=None):
     """
     Analyzes user message using OpenAI Function Calling to determine one or more CRM actions.
     Role-aware: adapts capabilities, persona, and tools based on the logged-in user's role.
+
+    Pass ``on_delta`` (a callable receiving text chunks) to stream the conversational
+    reply as it is generated. Tool calls are still detected and returned normally.
     """
     import json
     try:
@@ -853,32 +883,80 @@ RESPONSE RULES:
 
         tools = TOOL_SETS.get(allowed_tools, TOOL_SETS["minimal"])
 
+        # gpt-4o-mini is dramatically faster than gpt-4o and plenty capable for
+        # routing CRM guide questions / tool calls. Allow override via env.
+        chat_model = os.getenv("CHATBOT_MODEL", "gpt-4o-mini")
+        use_stream = on_delta is not None
+
         response = client_ai.chat.completions.create(
-            model="gpt-4o",
+            model=chat_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": message}
             ],
             tools=tools,
-            tool_choice="auto"
+            tool_choice="auto",
+            stream=use_stream,
         )
 
-        msg = response.choices[0].message
         actions = []
-        reply = msg.content or ""
 
-        if msg.tool_calls:
-            for tool_call in msg.tool_calls:
-                args = json.loads(tool_call.function.arguments)
-                actions.append({
-                    "action": tool_call.function.name,
-                    "parameters": args
-                })
+        if use_stream:
+            reply_chunks = []
+            tool_calls_acc = {}
+            for chunk in response:
+                choice = chunk.choices[0] if getattr(chunk, "choices", None) else None
+                if not choice:
+                    continue
+                delta = getattr(choice, "delta", None)
+                if delta is None:
+                    continue
 
-            # Generate a dynamic reply based on the actions taken if the LLM didn't provide one
-            if not reply:
-                names = [a["action"] for a in actions]
-                reply = f"I've initiated the following actions: {', '.join(names)}."
+                content_piece = getattr(delta, "content", None)
+                if content_piece:
+                    reply_chunks.append(content_piece)
+                    try:
+                        on_delta(content_piece)
+                    except Exception:
+                        pass
+
+                for tc in (getattr(delta, "tool_calls", None) or []):
+                    idx = getattr(tc, "index", 0) or 0
+                    acc = tool_calls_acc.setdefault(
+                        idx, {"name": "", "arguments": ""})
+                    fn = getattr(tc, "function", None)
+                    if fn is not None:
+                        if fn.name:
+                            acc["name"] = fn.name
+                        if fn.arguments:
+                            acc["arguments"] += fn.arguments
+
+            reply = "".join(reply_chunks)
+            for idx in sorted(tool_calls_acc.keys()):
+                acc = tool_calls_acc[idx]
+                if not acc["name"]:
+                    continue
+                try:
+                    args = json.loads(acc["arguments"] or "{}")
+                except Exception:
+                    args = {}
+                actions.append({"action": acc["name"], "parameters": args})
+        else:
+            msg = response.choices[0].message
+            reply = msg.content or ""
+
+            if msg.tool_calls:
+                for tool_call in msg.tool_calls:
+                    args = json.loads(tool_call.function.arguments)
+                    actions.append({
+                        "action": tool_call.function.name,
+                        "parameters": args
+                    })
+
+        # Generate a dynamic reply based on the actions taken if the LLM didn't provide one
+        if not reply and actions:
+            names = [a["action"] for a in actions]
+            reply = f"I've initiated the following actions: {', '.join(names)}."
 
         return {
             "actions": actions,

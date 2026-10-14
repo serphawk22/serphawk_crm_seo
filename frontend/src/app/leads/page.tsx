@@ -89,6 +89,7 @@ export default function LeadsPage() {
   const [noteSaving, setNoteSaving] = useState(false);
   const [showSalesAssign, setShowSalesAssign] = useState(false);
   const [pendingLeadForm, setPendingLeadForm] = useState<any>(null);
+  const [convertingId, setConvertingId] = useState<number | null>(null);
 
   useEffect(() => { fetchLeads(); fetchActivities(); }, []);
 
@@ -219,11 +220,22 @@ export default function LeadsPage() {
   const handleConvert = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm(t("leads.confirm_convert"))) return;
+    if (convertingId !== null) return;
+    const original = leads.find(l => l.id === id);
+    setConvertingId(id);
+    // Optimistic update so the row reflects the conversion instantly.
+    setLeads(prev => prev.map(l => (l.id === id ? { ...l, is_converted: true, status: "Converted" } : l)));
     try {
-      await fetch(`${API_BASE_URL}/leads/${id}/convert`, { method: "POST" });
-      fetchLeads();
+      const res = await fetch(`${API_BASE_URL}/leads/${id}/convert`, { method: "POST" });
+      if (!res.ok) throw new Error(`convert failed: ${res.status}`);
+      await fetchLeads();
     } catch (err) {
       console.error(err);
+      // Revert the optimistic change and resync from the server.
+      setLeads(prev => prev.map(l => (l.id === id ? { ...l, is_converted: false, status: original?.status ?? l.status } : l)));
+      alert("Conversion failed. Please try again.");
+    } finally {
+      setConvertingId(null);
     }
   };
 
@@ -510,8 +522,8 @@ export default function LeadsPage() {
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         {!lead.is_converted && (
-                          <button onClick={e => handleConvert(lead.id, e)} title={t("leads.convert_to_client")} className="p-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600 transition-colors">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          <button onClick={e => handleConvert(lead.id, e)} disabled={convertingId === lead.id} title={t("leads.convert_to_client")} className="p-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600 transition-colors disabled:opacity-60 disabled:cursor-wait">
+                            {convertingId === lead.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                           </button>
                         )}
                         <button onClick={e => handleAddNote(lead, e)} title={t("leads.add_note")} className="p-1.5 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/30 text-slate-400 hover:text-yellow-600 transition-colors">
