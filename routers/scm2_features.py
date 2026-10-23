@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, date, timezone as _tz
 from typing import Optional, List, Dict, Any
+import uuid
 
 
 def _to_naive_dt(dt: Any) -> Optional[datetime]:
@@ -30,11 +31,12 @@ def _to_naive_dt(dt: Any) -> Optional[datetime]:
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlmodel import Session, select, SQLModel
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 from database import (
     engine, User, Lead, ClientProfile, Contact, Deal, Meeting, Invoice,
     InventoryItem, LeadSource, BusinessCost, DealNegotiation, OwnershipHistory,
+    Proposal, ProposalComment,
     StockMovement, SalespersonHistory,
 )
 from modules.api_tracker import current_salesperson_id
@@ -148,6 +150,7 @@ def ensure_scm2_schema() -> None:
         tables=[
             LeadSource.__table__, BusinessCost.__table__, DealNegotiation.__table__,
             OwnershipHistory.__table__, StockMovement.__table__, SalespersonHistory.__table__,
+            ProposalComment.__table__,
         ],
     )
     stmts = [
@@ -160,6 +163,11 @@ def ensure_scm2_schema() -> None:
         "ALTER TABLE deals ADD COLUMN IF NOT EXISTS final_value DOUBLE PRECISION;",
         "ALTER TABLE deals ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'INR';",
         "ALTER TABLE deals ADD COLUMN IF NOT EXISTS won_at TIMESTAMP;",
+        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS deal_id INTEGER;",
+        "ALTER TABLE proposals ADD COLUMN IF NOT EXISTS public_uuid VARCHAR(50);",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS proposal_id INTEGER;",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS deal_id INTEGER;",
+        "CREATE INDEX IF NOT EXISTS ix_proposals_public_uuid ON proposals (public_uuid);",
         # back-fill won_at for already-won deals so they appear in revenue history
         "UPDATE deals SET won_at = updated_at WHERE stage = 'Closed Won' AND won_at IS NULL;",
     ]
@@ -169,7 +177,37 @@ def ensure_scm2_schema() -> None:
                 conn.execute(text(s))
             except Exception as e:  # pragma: no cover
                 print(f"[scm2] migration skipped: {s} -> {e}")
+        if engine.dialect.name == "sqlite":
+            column_migrations = {
+                "proposals": {"deal_id": "INTEGER", "public_uuid": "VARCHAR(50)"},
+                "invoices": {"proposal_id": "INTEGER", "deal_id": "INTEGER"},
+            }
+            inspector = inspect(conn)
+            for table_name, columns in column_migrations.items():
+                if not inspector.has_table(table_name):
+                    continue
+                existing_columns = {
+                    column["name"] for column in inspector.get_columns(table_name)
+                }
+                for column_name, column_type in columns.items():
+                    if column_name not in existing_columns:
+                        conn.execute(text(
+                            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+                        ))
+            if inspector.has_table("proposals"):
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_proposals_public_uuid ON proposals (public_uuid)"
+                ))
         conn.commit()
+    with Session(engine) as session:
+        proposals = session.exec(
+            select(Proposal).where(Proposal.public_uuid.is_(None))
+        ).all()
+        for proposal in proposals:
+            proposal.public_uuid = uuid.uuid4().hex
+            session.add(proposal)
+        if proposals:
+            session.commit()
     print("[scm2] schema verified")
 
 

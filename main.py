@@ -98,6 +98,7 @@ from database import (
     ProjectTicket,
     ProjectTicketHistory,
     Proposal,
+    ProposalComment,
     RadarAnalysis,
     RankingTracker,
     Remark,
@@ -2032,6 +2033,8 @@ class DealCreateRequest(BaseModel):
     assigned_to: Optional[int] = None
     stage: str = "Lead"
     expected_close_date: Optional[str] = None
+    final_value: Optional[float] = None
+    currency: Optional[str] = "INR"
 
 
 class DealUpdateRequest(BaseModel):
@@ -2040,6 +2043,8 @@ class DealUpdateRequest(BaseModel):
     assigned_to: Optional[int] = None
     stage: Optional[str] = None
     expected_close_date: Optional[str] = None
+    final_value: Optional[float] = None
+    currency: Optional[str] = None
 
 
 class AssignEmployeeRequest(BaseModel):
@@ -2271,6 +2276,8 @@ class TaskSheetEntryRequest(BaseModel):
 
 class InvoiceCreateRequest(BaseModel):
     client_id: int
+    proposal_id: Optional[int] = None
+    deal_id: Optional[int] = None
     service_request_id: Optional[int] = None
     amount: float
     currency: Optional[str] = "MXN"
@@ -2282,6 +2289,9 @@ class InvoiceCreateRequest(BaseModel):
 
 class InvoiceUpdateRequest(BaseModel):
     status: Optional[str] = None
+    currency: Optional[str] = None
+    proposal_id: Optional[int] = None
+    deal_id: Optional[int] = None
     amount: Optional[float] = None
     tax: Optional[float] = None
     due_date: Optional[str] = None
@@ -2335,6 +2345,7 @@ class ProposalCreateRequest(BaseModel):
     client_id: Optional[int] = None
     lead_id: Optional[int] = None
     recipient_type: str = "client"
+    deal_id: Optional[int] = None
     service_request_id: Optional[int] = None
     content: Optional[str] = None
     status: str = "Draft"
@@ -2349,10 +2360,20 @@ class ProposalUpdateRequest(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     status: Optional[str] = None
+    deal_id: Optional[int] = None
     valid_until: Optional[str] = None
     total_value: Optional[float] = None
     line_items: Optional[List[dict]] = None
     currency: Optional[str] = None
+
+
+class PublicProposalCommentRequest(BaseModel):
+    content: str
+    author_name: Optional[str] = None
+
+
+class PublicProposalAcceptRequest(BaseModel):
+    signer_name: Optional[str] = None
 
 
 class FileUploadRequest(BaseModel):
@@ -8903,10 +8924,13 @@ def _invoice_dict(inv: Invoice, session: Session) -> dict:
         "client_id": inv.client_id,
         "client_name": u.name if u else (cp.companyName if cp else None),
         "client_email": u.email if u else None,
+        "proposal_id": inv.proposal_id,
+        "deal_id": inv.deal_id,
         "service_request_id": inv.service_request_id,
         "amount": inv.amount,
         "tax": inv.tax,
         "total": inv.total,
+        "currency": inv.currency or "MXN",
         "status": inv.status,
         "due_date": inv.due_date,
         "notes": inv.notes,
@@ -8926,6 +8950,7 @@ def _generate_invoice_number(session: Session) -> str:
 def list_invoices(
     client_id: Optional[int] = None,
     status: Optional[str] = None,
+    user_id: Optional[int] = None,
     session: Session = Depends(get_session),
 ):
     q = select(Invoice).order_by(Invoice.created_at.desc())
@@ -8933,6 +8958,12 @@ def list_invoices(
         q = q.where(Invoice.client_id == client_id)
     if status:
         q = q.where(Invoice.status == status)
+    if user_id:
+        q = q.where(Invoice.client_id.in_(
+            select(ClientProfile.id).where(
+                ClientProfile.assignedEmployeeId == user_id
+            )
+        ))
     invoices = session.exec(q).all()
     return {"invoices": [_invoice_dict(i, session) for i in invoices]}
 
@@ -8943,6 +8974,8 @@ def create_invoice(body: InvoiceCreateRequest, session: Session = Depends(get_se
     inv = Invoice(
         invoice_number=_generate_invoice_number(session),
         client_id=body.client_id,
+        proposal_id=body.proposal_id,
+        deal_id=body.deal_id,
         service_request_id=body.service_request_id,
         amount=body.amount,
         tax=body.tax,
@@ -9534,13 +9567,17 @@ def invoice_pdf(invoice_id: int, provider: Optional[str] = None, session: Sessio
 # ─────────────────────────────────────────────────────────────────────────────
 # Proposals & Contracts
 # ─────────────────────────────────────────────────────────────────────────────
-def _proposal_dict_fast(p: Proposal, clients_map: dict, users_map: dict, leads_map: dict) -> dict:
+def _proposal_dict_fast(
+    p: Proposal, clients_map: dict, users_map: dict, leads_map: dict, deals_map: dict
+) -> dict:
     """Fast proposal dict using pre-loaded maps (no N+1 queries)."""
     cp = clients_map.get(p.client_id)
     user_id = cp.userId if cp else None
     u = users_map.get(user_id)
     creator = users_map.get(p.created_by)
     lead = leads_map.get(getattr(p, 'lead_id', None))
+    deal = deals_map.get(p.deal_id)
+    salesperson = users_map.get(deal.assigned_to) if deal else None
     recipient_name = None
     if u:
         recipient_name = u.name
@@ -9554,6 +9591,12 @@ def _proposal_dict_fast(p: Proposal, clients_map: dict, users_map: dict, leads_m
         "client_id": p.client_id,
         "lead_id": getattr(p, 'lead_id', None),
         "recipient_type": getattr(p, 'recipient_type', 'client'),
+        "deal_id": getattr(p, "deal_id", None),
+        "deal_title": deal.title if deal else None,
+        "deal_stage": deal.stage if deal else None,
+        "salesperson_id": deal.assigned_to if deal else None,
+        "salesperson_name": salesperson.name if salesperson else None,
+        "public_uuid": p.public_uuid,
         "client_name": recipient_name,
         "service_request_id": p.service_request_id,
         "content": p.content,
@@ -9576,6 +9619,8 @@ def _proposal_dict(p: Proposal, session: Session) -> dict:
     creator = session.get(User, p.created_by) if p.created_by else None
     lead_id = getattr(p, 'lead_id', None)
     lead = session.get(Lead, lead_id) if lead_id else None
+    deal = session.get(Deal, p.deal_id) if p.deal_id else None
+    salesperson = session.get(User, deal.assigned_to) if deal and deal.assigned_to else None
     recipient_name = None
     if u:
         recipient_name = u.name
@@ -9589,6 +9634,12 @@ def _proposal_dict(p: Proposal, session: Session) -> dict:
         "client_id": p.client_id,
         "lead_id": lead_id,
         "recipient_type": getattr(p, 'recipient_type', 'client'),
+        "deal_id": getattr(p, "deal_id", None),
+        "deal_title": deal.title if deal else None,
+        "deal_stage": deal.stage if deal else None,
+        "salesperson_id": deal.assigned_to if deal else None,
+        "salesperson_name": salesperson.name if salesperson else None,
+        "public_uuid": p.public_uuid,
         "client_name": recipient_name,
         "service_request_id": p.service_request_id,
         "content": p.content,
@@ -9637,6 +9688,7 @@ def get_proposals_catalog(session: Session = Depends(get_session)):
 def list_proposals(
     client_id: Optional[int] = None,
     status: Optional[str] = None,
+    user_id: Optional[int] = None,
     session: Session = Depends(get_session),
 ):
     q = select(Proposal).order_by(Proposal.created_at.desc())
@@ -9644,6 +9696,21 @@ def list_proposals(
         q = q.where(Proposal.client_id == client_id)
     if status:
         q = q.where(Proposal.status == status)
+    if user_id:
+        q = q.where(or_(
+            Proposal.created_by == user_id,
+            Proposal.client_id.in_(
+                select(ClientProfile.id).where(
+                    ClientProfile.assignedEmployeeId == user_id
+                )
+            ),
+            Proposal.lead_id.in_(
+                select(Lead.id).where(Lead.owner_id == user_id)
+            ),
+            Proposal.deal_id.in_(
+                select(Deal.id).where(Deal.assigned_to == user_id)
+            ),
+        ))
     proposals = session.exec(q).all()
     if not proposals:
         return {"proposals": []}
@@ -9660,15 +9727,26 @@ def list_proposals(
 
     user_ids = list({cp.userId for cp in clients_list if cp.userId})
     creator_ids = list({p.created_by for p in proposals if p.created_by})
-    all_user_ids = list(set(user_ids + creator_ids))
+    deal_ids = list({p.deal_id for p in proposals if p.deal_id})
+    deals_list = session.exec(
+        select(Deal).where(Deal.id.in_(deal_ids))
+    ).all() if deal_ids else []
+    salesperson_ids = [deal.assigned_to for deal in deals_list if deal.assigned_to]
+    all_user_ids = list(set(user_ids + creator_ids + salesperson_ids))
     users_list = session.exec(select(User).where(
         User.id.in_(all_user_ids))).all() if all_user_ids else []
 
     clients_map = {cp.id: cp for cp in clients_list}
     users_map = {u.id: u for u in users_list}
     leads_map = {l.id: l for l in leads_list}
+    deals_map = {d.id: d for d in deals_list}
 
-    return {"proposals": [_proposal_dict_fast(p, clients_map, users_map, leads_map) for p in proposals]}
+    return {
+        "proposals": [
+            _proposal_dict_fast(p, clients_map, users_map, leads_map, deals_map)
+            for p in proposals
+        ]
+    }
 
 
 def _proposal_email_recipient(p, session):
@@ -9726,6 +9804,248 @@ def create_proposal(body: ProposalCreateRequest, session: Session = Depends(get_
     if p.status == "Sent":
         _send_proposal_email(p, session)
     return {"proposal": _proposal_dict(p, session)}
+
+
+@app.post("/proposals/{proposal_id}/convert-to-invoice")
+def convert_proposal_to_invoice(proposal_id: int, session: Session = Depends(get_session)):
+    proposal = session.get(Proposal, proposal_id)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    if not proposal.client_id:
+        raise HTTPException(
+            status_code=400,
+            detail="A proposal must be linked to a client before it can be converted to an invoice",
+        )
+
+    existing = session.exec(
+        select(Invoice).where(Invoice.proposal_id == proposal.id)
+    ).first()
+    if existing:
+        return {"invoice": _invoice_dict(existing, session)}
+
+    line_items = proposal.line_items or []
+    amount = float(proposal.total_value or sum(
+        float(item.get("quantity", 1) or 1) * float(item.get("unit_price", item.get("amount", 0)) or 0)
+        for item in line_items
+    ))
+    invoice = Invoice(
+        invoice_number=_generate_invoice_number(session),
+        client_id=proposal.client_id,
+        proposal_id=proposal.id,
+        deal_id=proposal.deal_id,
+        amount=amount,
+        tax=0.0,
+        total=amount,
+        currency=proposal.currency or "MXN",
+        status="Draft",
+        due_date=proposal.valid_until,
+        notes=proposal.content,
+        line_items=[
+            {
+                "description": item.get("product_name") or item.get("description") or "Proposal item",
+                "amount": round(
+                    float(item.get("quantity", 1) or 1)
+                    * float(item.get("unit_price", item.get("amount", 0)) or 0),
+                    2,
+                ),
+                "provider": item.get("provider") or "Internal",
+            }
+            for item in line_items
+        ],
+    )
+    session.add(invoice)
+    session.commit()
+    session.refresh(invoice)
+    session.add(ClientFileUpload(
+        client_id=invoice.client_id,
+        filename=f"Invoice_{invoice.invoice_number}.json",
+        file_url=f"/api/invoices/{invoice.id}/download",
+        mime_type="application/json",
+        description=f"Invoice {invoice.invoice_number} generated from proposal {proposal.title}.",
+    ))
+    session.commit()
+    return {"invoice": _invoice_dict(invoice, session)}
+
+
+def _find_public_proposal(uuid: str, session: Session) -> Optional[Proposal]:
+    proposal = session.exec(
+        select(Proposal).where(Proposal.public_uuid == uuid)
+    ).first()
+    if not proposal and uuid.isdigit():
+        proposal = session.get(Proposal, int(uuid))
+    return proposal
+
+
+def _public_proposal_payload(proposal: Proposal, session: Session) -> dict:
+    client = session.get(ClientProfile, proposal.client_id) if proposal.client_id else None
+    lead = session.get(Lead, proposal.lead_id) if proposal.lead_id else None
+    deal = session.get(Deal, proposal.deal_id) if proposal.deal_id else None
+    salesperson_id = (
+        client.assignedEmployeeId if client and client.assignedEmployeeId
+        else (deal.assigned_to if deal else proposal.created_by)
+    )
+    salesperson = session.get(User, salesperson_id) if salesperson_id else None
+    raw_items = proposal.line_items or []
+    items = [
+        {
+            "description": item.get("product_name") or item.get("description") or "Item",
+            "quantity": float(item.get("quantity", 1) or 1),
+            "unit_price": float(item.get("unit_price", 0) or 0),
+            "total": round(
+                float(item.get("quantity", 1) or 1) * float(item.get("unit_price", 0) or 0),
+                2,
+            ),
+        }
+        for item in raw_items
+    ]
+    comments = session.exec(
+        select(ProposalComment)
+        .where(ProposalComment.proposal_id == proposal.id)
+        .order_by(ProposalComment.created_at.asc())
+    ).all()
+    return {
+        "id": proposal.id,
+        "public_uuid": proposal.public_uuid,
+        "quote_number": f"PROP-{proposal.id:04d}",
+        "title": proposal.title,
+        "status": proposal.status,
+        "grand_total": proposal.total_value or 0.0,
+        "currency": proposal.currency or "MXN",
+        "valid_until": proposal.valid_until,
+        "notes": proposal.content,
+        "terms": "The services and deliverables described in this proposal are subject to the agreed service terms.",
+        "client_name": client.companyName if client else None,
+        "lead_name": lead.company_name if lead else None,
+        "salesperson_name": salesperson.name if salesperson else "Account Executive",
+        "deal_title": deal.title if deal else proposal.title,
+        "deal_stage": deal.stage if deal else proposal.status,
+        "signed_at": proposal.signed_at.isoformat() if proposal.signed_at else None,
+        "signed_by": proposal.signature_data,
+        "items": items,
+        "comments": [
+            {
+                "id": comment.id,
+                "author_name": comment.author_name,
+                "author_type": comment.author_type,
+                "content": comment.content,
+                "created_at": comment.created_at.isoformat(),
+            }
+            for comment in comments
+        ],
+        "is_proposal": True,
+    }
+
+
+@app.get("/public/proposals/{uuid}")
+def get_public_proposal(uuid: str, session: Session = Depends(get_session)):
+    proposal = _find_public_proposal(uuid, session)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    return _public_proposal_payload(proposal, session)
+
+
+@app.get("/public/proposals/{uuid}/pdf")
+def get_public_proposal_pdf(uuid: str, session: Session = Depends(get_session)):
+    proposal = _find_public_proposal(uuid, session)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    return proposal_pdf(proposal.id, session)
+
+
+@app.post("/public/proposals/{uuid}/comments")
+def add_public_proposal_comment(
+    uuid: str,
+    body: PublicProposalCommentRequest,
+    session: Session = Depends(get_session),
+):
+    content = body.content.strip()
+    if not content or len(content) > 4000:
+        raise HTTPException(status_code=400, detail="Comment must be between 1 and 4000 characters")
+    proposal = _find_public_proposal(uuid, session)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+
+    author_name = (body.author_name or "").strip()[:255] or "Client"
+    comment = ProposalComment(
+        tenant_id=proposal.tenant_id,
+        proposal_id=proposal.id,
+        author_name=author_name,
+        author_type="client",
+        content=content,
+    )
+    session.add(comment)
+    proposal.status = "Negotiation"
+    proposal.updated_at = datetime.now(timezone.utc)
+    session.add(proposal)
+    deal = session.get(Deal, proposal.deal_id) if proposal.deal_id else None
+    if deal and deal.stage not in ("Closed Won", "Closed Lost"):
+        deal.stage = "Negotiation"
+        deal.updated_at = datetime.now(timezone.utc)
+        session.add(deal)
+
+    client = session.get(ClientProfile, proposal.client_id) if proposal.client_id else None
+    target_ids = {
+        user.id
+        for user in session.exec(
+            select(User).where(
+                User.tenant_id == proposal.tenant_id,
+                User.role.in_(["Admin", "SuperAdmin"]),
+            )
+        ).all()
+        if user.id
+    }
+    if client and client.assignedEmployeeId:
+        target_ids.add(client.assignedEmployeeId)
+    elif deal and deal.assigned_to:
+        target_ids.add(deal.assigned_to)
+    for user_id in target_ids:
+        session.add(Notification(
+            tenant_id=proposal.tenant_id,
+            user_id=user_id,
+            title="Proposal comment received",
+            message=f"{author_name}: {content[:140]}",
+            type="info",
+            link=f"/p/{proposal.public_uuid}",
+        ))
+    session.commit()
+    return {"ok": True}
+
+
+@app.post("/public/proposals/{uuid}/accept")
+def accept_public_proposal(
+    uuid: str,
+    body: Optional[PublicProposalAcceptRequest] = None,
+    session: Session = Depends(get_session),
+):
+    proposal = _find_public_proposal(uuid, session)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    proposal.status = "Accepted"
+    proposal.signed_at = proposal.signed_at or datetime.now(timezone.utc)
+    proposal.updated_at = datetime.now(timezone.utc)
+    signer_name = (body.signer_name or "").strip() if body and body.signer_name else ""
+    if signer_name:
+        proposal.signature_data = signer_name[:255]
+    session.add(proposal)
+
+    client = session.get(ClientProfile, proposal.client_id) if proposal.client_id else None
+    if client:
+        client.status = "Won"
+        session.add(client)
+    deal = session.get(Deal, proposal.deal_id) if proposal.deal_id else None
+    if deal:
+        deal.stage = "Closed Won"
+        deal.won_at = datetime.now(timezone.utc)
+        if deal.value and not deal.final_value:
+            deal.final_value = deal.value
+        deal.updated_at = datetime.now(timezone.utc)
+        session.add(deal)
+    session.commit()
+
+    if proposal.client_id:
+        convert_proposal_to_invoice(proposal.id, session)
+
+    return {"ok": True}
 
 
 @app.get("/proposals/{proposal_id}")
@@ -10629,6 +10949,9 @@ def get_deals(user_id: Optional[int] = None, session: Session = Depends(get_sess
             "assigned_to": d.assigned_to,
             "stage": d.stage,
             "expected_close_date": d.expected_close_date,
+            "final_value": d.final_value,
+            "currency": d.currency or "INR",
+            "won_at": d.won_at.isoformat() if d.won_at else None,
             "created_at": d.created_at.isoformat()
         })
     return {"deals": results}
@@ -10642,7 +10965,9 @@ def create_deal(body: DealCreateRequest, session: Session = Depends(get_session)
         client_id=body.client_id,
         assigned_to=body.assigned_to,
         stage=body.stage,
-        expected_close_date=body.expected_close_date
+        expected_close_date=body.expected_close_date,
+        final_value=body.final_value,
+        currency=body.currency or "INR",
     )
     session.add(deal)
     session.commit()
@@ -10665,6 +10990,14 @@ def update_deal(deal_id: int, body: DealUpdateRequest, session: Session = Depend
         deal.stage = body.stage
     if body.expected_close_date is not None:
         deal.expected_close_date = body.expected_close_date
+    if body.final_value is not None:
+        deal.final_value = body.final_value
+    if body.currency is not None:
+        deal.currency = body.currency
+    if body.stage == "Closed Won" and not deal.won_at:
+        deal.won_at = datetime.now(timezone.utc)
+    elif body.stage in ("Closed Lost", "Lead", "Discovery", "Demo", "Negotiation"):
+        deal.won_at = None
     deal.updated_at = datetime.now(timezone.utc)
     session.add(deal)
     session.commit()

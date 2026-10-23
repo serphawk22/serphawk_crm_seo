@@ -1,11 +1,12 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FileText, Plus, X, Search, Loader2, Trash2, Building2,
   Download, Eye, CheckCircle
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
+import { useRole } from "@/context/RoleContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface InvoiceLineItem {
@@ -47,12 +48,27 @@ const STATUS_COLORS: Record<string, string> = {
   Cancelled: "bg-slate-100 text-slate-400",
 };
 
-function currSymbol(c: string) { return c === "INR" ? "₹" : "$"; }
+function currSymbol(c: string) {
+  if (c === "INR") return "₹";
+  if (c === "EUR") return "€";
+  if (c === "GBP") return "£";
+  return "₹";
+}
 function fmtMoney(v: number, c: string) {
   return `${currSymbol(c)}${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export default function Invoices({ embedded = false }: { embedded?: boolean }) {
+export interface InvoicesHandle {
+  openCreate: () => void;
+}
+
+const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Invoices(
+  { embedded = false },
+  ref
+) {
+  const { role, user } = useRole();
+  const isAdmin = role === "Admin" || role === "SuperAdmin";
+
   // List state
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,8 +80,6 @@ export default function Invoices({ embedded = false }: { embedded?: boolean }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [downloading, setDownloading] = useState<Invoice | null>(null);
-
   // Preview state
   const [previewInv, setPreviewInv] = useState<Invoice | null>(null);
 
@@ -74,7 +88,7 @@ export default function Invoices({ embedded = false }: { embedded?: boolean }) {
     client_id: "" as string | number,
     amount: "",
     tax: "",
-    currency: "MXN",
+    currency: "INR",
     due_date: "",
     notes: "",
   });
@@ -86,16 +100,14 @@ export default function Invoices({ embedded = false }: { embedded?: boolean }) {
   const [clients, setClients] = useState<Client[]>([]);
 
   // ── Data loading ─────────────────────────────────────────────────────────
-  const loadInvoices = () => {
-    setLoading(true);
-    fetch(`${API_BASE_URL}/invoices`)
+  useEffect(() => {
+    const url = (!isAdmin && user?.id) ? `${API_BASE_URL}/invoices?user_id=${user.id}` : `${API_BASE_URL}/invoices`;
+    fetch(url)
       .then(r => r.json())
       .then(d => setInvoices(Array.isArray(d.invoices) ? d.invoices : []))
       .catch(console.error)
       .finally(() => setLoading(false));
-  };
-
-  useEffect(loadInvoices, []);
+  }, [user?.id, role, isAdmin]);
 
   const filtered = invoices.filter(inv => {
     if (statusFilter !== "All" && inv.status !== statusFilter) return false;
@@ -133,7 +145,6 @@ export default function Invoices({ embedded = false }: { embedded?: boolean }) {
   }
 
   function handleDownloadPDF(inv: Invoice) {
-    setDownloading(null);
     fetch(`${API_BASE_URL}/invoices/${inv.id}/pdf`)
       .then(res => {
         if (!res.ok) throw new Error(`PDF download failed (${res.status})`);
@@ -154,14 +165,17 @@ export default function Invoices({ embedded = false }: { embedded?: boolean }) {
 
   // ── Create ───────────────────────────────────────────────────────────────
   function openCreate() {
-    setForm({ client_id: "", amount: "", tax: "", currency: "MXN", due_date: "", notes: "" });
+    setForm({ client_id: "", amount: "", tax: "", currency: "INR", due_date: "", notes: "" });
     setLineItems([{ description: "", amount: 0, provider: "Internal" }]);
     setError(null);
-    fetch(`${API_BASE_URL}/clients`).then(r => r.json()).then(d => {
+    const clientsUrl = (!isAdmin && user?.id) ? `${API_BASE_URL}/clients?assigned_employee_id=${user.id}` : `${API_BASE_URL}/clients`;
+    fetch(clientsUrl).then(r => r.json()).then(d => {
       setClients(Array.isArray(d.clients) ? d.clients : []);
     }).catch(() => {});
     setShowCreate(true);
   }
+
+  useImperativeHandle(ref, () => ({ openCreate }));
 
   function addLineItem() {
     setLineItems(prev => [...prev, { description: "", amount: 0, provider: "Internal" }]);
@@ -246,7 +260,7 @@ export default function Invoices({ embedded = false }: { embedded?: boolean }) {
           { label: "Total Invoices", value: invoices.length, c: "text-blue-600" },
           { label: "Pending", value: invoices.filter(i => ["Draft", "Sent"].includes(i.status)).length, c: "text-amber-600" },
           { label: "Paid", value: invoices.filter(i => i.status === "Paid").length, c: "text-emerald-600" },
-          { label: "Total Value", value: `$${filtered.reduce((s, i) => s + (i.total || 0), 0).toFixed(0)}`, c: "text-indigo-600" },
+          { label: "Total Value", value: `₹${filtered.reduce((s, i) => s + (i.total || 0), 0).toFixed(0)}`, c: "text-indigo-600" },
         ].map(s => (
           <div key={s.label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm">
             <p className={`text-2xl font-black ${s.c}`}>{loading ? "—" : s.value}</p>
@@ -367,9 +381,10 @@ export default function Invoices({ embedded = false }: { embedded?: boolean }) {
                     <label className="text-xs font-semibold text-slate-500 mb-1 block">Currency</label>
                     <select value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm">
-                      <option value="MXN">MXN ($)</option>
-                      <option value="USD">USD ($)</option>
+                                            <option value="EUR">EUR (€)</option>
+                      <option value="GBP">GBP (£)</option>
                       <option value="INR">INR (₹)</option>
+                      <option value="MXN">MXN (₹)</option>
                     </select>
                   </div>
                   <div>
@@ -534,4 +549,6 @@ export default function Invoices({ embedded = false }: { embedded?: boolean }) {
       </AnimatePresence>
     </div>
   );
-}
+});
+
+export default Invoices;
