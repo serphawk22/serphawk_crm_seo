@@ -65,6 +65,16 @@ python create_tables.py
 python seed_db.py
 ```
 
+To populate a demo/trial tenant with synthetic CRM, proposal, invoice, activity,
+and sales-reporting records, preview first and then explicitly apply:
+```bash
+python seed_demo_crm.py --tenant-id <DEMO_TENANT_ID>
+python seed_demo_crm.py --tenant-id <DEMO_TENANT_ID> --apply
+```
+The seed command rolls back by default, refuses non-demo tenants unless
+`--allow-non-demo-tenant` is explicitly supplied, and creates demo team members
+as inactive accounts with reserved `.invalid` email addresses.
+
 ### 4. Run the Backend Server
 Start the Uvicorn development server:
 ```bash
