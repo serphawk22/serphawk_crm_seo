@@ -1627,6 +1627,26 @@ class ExtractedEmail(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow)
 
 
+class DroppedClient(SQLModel, table=True):
+    """Retention history for client relationships that have ended."""
+    __tablename__ = "dropped_clients"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", index=True)
+    company_name: str = Field(max_length=255)
+    reason: Optional[str] = Field(default=None, sa_column=Column(Text))
+    reason_category: Optional[str] = Field(default="Other", max_length=100)
+    dropped_by: Optional[int] = Field(default=None)
+    last_revenue: float = Field(default=0)
+    relationship_months: int = Field(default=0)
+    reactivation_potential: str = Field(default="Low", max_length=50)
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    previous_status: Optional[str] = Field(default=None, max_length=100)
+    dropped_at: datetime = Field(default_factory=_utcnow, index=True)
+    reactivated_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
 def create_db_and_tables():
     """
     Create all database tables (drops existing tables first to ensure schema matches)

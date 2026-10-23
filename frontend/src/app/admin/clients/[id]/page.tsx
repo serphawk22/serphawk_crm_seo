@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Activity, MessageSquare, StickyNote, Building2, ChevronDown,
+  Activity, MessageSquare, StickyNote, Building2, ChevronDown, UserX,
   Target, HeartPulse, LayoutDashboard, Users,
   TrendingUp, TrendingDown, Lightbulb, ShieldAlert, DollarSign, Zap, Star, Mail, Clock, Ticket, Globe, Navigation, Store, Tag, Phone, X, FileText, Send, Search, Filter, Check, Smartphone, Calendar, AlertCircle, ArrowUpRight, Copy, Brain, Loader2, Radar, CalendarClock
 } from 'lucide-react';
@@ -904,6 +905,14 @@ export default function AdminClientDetailPage() {
       </AnimatePresence>
 
       {/* ── Sticky Header ────────────────────────────────────────────── */}
+      <div className="flex justify-end px-4 pt-3">
+        <Link
+          href={client.status === 'Dropped' ? '/dropped-clients' : `/dropped-clients?client_id=${client.id}`}
+          className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-950/60"
+        >
+          <UserX size={15} />{client.status === 'Dropped' ? 'View retention history' : 'Record client departure'}
+        </Link>
+      </div>
       <ClientHeader
         client={client}
         employees={employees}

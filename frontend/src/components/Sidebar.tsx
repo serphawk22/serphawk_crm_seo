@@ -8,7 +8,7 @@ import {
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar,
   Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Edit2, GripVertical, Check,
-  Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock
+  Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, UserX
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRole, Role } from "@/context/RoleContext";
@@ -45,7 +45,7 @@ const iconMap: Record<string, LucideIcon> = {
   LayoutDashboard, Bell, Users, FolderOpen, CheckSquare, CheckCircle, Radar, Mail,
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar,
-  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock
+  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, UserX
 };
 
 // Roles that can open /inbox (routers/inbox.py enforces the same list server-side).
@@ -84,7 +84,6 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-work-queue", name: "My Work Queue", icon: "LayoutList", href: "/work-queue", roles: ["Admin", "Demo", "SalesManager", "Employee", "ProjectMember", "Intern", "Developer"] },
       { id: "item-notifications", name: "Notifications", icon: "Bell", href: "/notifications", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
       { id: "item-inbox", name: "Inbox", icon: "Inbox", href: "/inbox", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
-      { id: "item-followups", name: "Follow-ups", icon: "CalendarClock", href: "/followups", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
     ],
   },
   {
@@ -94,16 +93,16 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-leads", name: "Leads", icon: "Radar", href: "/leads", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-contacts", name: "Contacts", icon: "Users", href: "/contacts", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-clients", name: "Clients", icon: "CheckCircle", href: "/clients", roles: ["Admin", "SalesManager", "Demo"] },
-      { id: "item-deals", name: "Deals", icon: "Briefcase", href: "/pipeline", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-dropped-clients", name: "Dropped Clients", icon: "UserX", href: "/dropped-clients", roles: ["Admin", "SalesManager", "Demo", "Employee"] },
     ],
   },
   {
     id: "section-projects",
-    heading: "PROJECTS & ACTIVITIES",
+    heading: "ACTIVITIES",
     items: [
-      { id: "item-projects", name: "Projects", icon: "FolderOpen", href: "/projects", roles: ["Admin", "Employee", "Intern", "ProjectMember", "Demo"] },
       { id: "item-task-sheet", name: "Task Sheet", icon: "FileBarChart2", href: "/task-sheet", roles: ["Admin", "Employee", "SalesManager", "ProjectMember", "Intern", "Demo"] },
       { id: "item-reports", name: "Reports", icon: "BarChart2", href: "/reports", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-followups", name: "Follow-ups", icon: "CalendarClock", href: "/followups", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
       { id: "item-meetings", name: "Meetings", icon: "Calendar", href: "/meetings", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-calls", name: "Calls", icon: "Phone", href: "/calls", roles: ["Admin", "SalesManager", "Demo"] },
     ],
@@ -157,7 +156,7 @@ const defaultSidebarSections: SidebarSection[] = [
 ];
 
 // --- Sortable Section Component ---
-const DEFAULT_HEADINGS = ["CRM", "PROJECTS & ACTIVITIES", "TEAMS", "AI AGENTS", "INVENTORY", "SUPPORT", "SYSTEM"];
+const DEFAULT_HEADINGS = ["CRM", "TEAMS", "AI AGENTS", "INVENTORY", "SUPPORT", "SYSTEM"];
 const ITEM_KEY_OVERRIDES: Record<string, string> = {
   "item-teams": "team_directory",
   "item-products": "catalog",
@@ -469,7 +468,7 @@ export function Sidebar({ role }: SidebarProps) {
               const savedSectionIds = new Set<string>(savedSections.map((s: SidebarSection) => s.id));
               const missingSections = defaultSidebarSections.filter(s => !savedSectionIds.has(s.id));
               
-              const mergedSections = savedSections.map((savedSec: SidebarSection) => {
+              let mergedSections = savedSections.map((savedSec: SidebarSection) => {
                 const updatedSavedItems = savedSec.items.map((savedItem: SidebarItem) => {
                   let defaultItemRef: SidebarItem | null = null;
                   for (const ds of defaultSidebarSections) {
@@ -488,8 +487,14 @@ export function Sidebar({ role }: SidebarProps) {
                 const savedItemIds = new Set(updatedSavedItems.map((i: SidebarItem) => i.id));
                 const missingItems = defaultSec.items.filter(i => !savedItemIds.has(i.id));
                 
-                return { ...savedSec, items: [...updatedSavedItems, ...missingItems] };
+                const heading = savedSec.heading === "PROJECTS & ACTIVITIES" ? defaultSec.heading : savedSec.heading;
+                return { ...savedSec, heading, items: [...updatedSavedItems, ...missingItems] };
               });
+
+              const homeSection = mergedSections.find(section => section.id === "section-home");
+              if (homeSection) {
+                homeSection.items = homeSection.items.filter(item => item.id !== "item-followups");
+              }
 
               const stripDisabled = (sec: SidebarSection): SidebarSection => ({
                 ...sec,
