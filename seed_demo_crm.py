@@ -48,6 +48,7 @@ STAFF = (
     ("Jordan Demo", "demo.jordan", "Employee"),
     ("Casey Demo", "demo.casey", "Employee"),
 )
+DEMO_ENTITY_COUNT = 40
 CLIENTS = (
     ("Northstar Analytics", "Technology", "northstar"),
     ("Cedar & Stone", "Retail", "cedar"),
@@ -65,6 +66,24 @@ LEADS = (
     ("Openwater Travel", "Travel", "openwater", "Website"),
 )
 DEAL_STAGES = ("Closed Won", "Closed Won", "Negotiation", "Discovery", "Closed Lost", "Demo")
+
+
+def _expand_demo_rows(rows: tuple, count: int) -> tuple:
+    expanded = list(rows)
+    while len(expanded) < count:
+        index = len(expanded)
+        base = rows[index % len(rows)]
+        expanded.append((
+            f"{base[0]} Demo {index + 1:02d}",
+            base[1],
+            f"{base[2]}-demo-{index + 1:02d}",
+            *base[3:],
+        ))
+    return tuple(expanded[:count])
+
+
+CLIENT_ROWS = _expand_demo_rows(CLIENTS, DEMO_ENTITY_COUNT)
+LEAD_ROWS = _expand_demo_rows(LEADS, DEMO_ENTITY_COUNT)
 
 
 def _month_start(months_ago: int) -> datetime:
@@ -184,12 +203,9 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
 
         clients: list[ClientProfile] = []
         accounts: list[Account] = []
-        client_source_names = (
-            "Referral", "Website", "Event", "Cold Outreach", "Referral", "Website"
-        )
-        for index, (company, industry, slug) in enumerate(CLIENTS):
+        for index, (company, industry, slug) in enumerate(CLIENT_ROWS):
             rep = reps[index % len(reps)]
-            source_name = client_source_names[index]
+            source_name = LEAD_ROWS[index][3]
             source = sources[source_name]
             client_user_email = f"client-{slug}+tenant-{tenant_id}@example.invalid"
             client_password_hash = hashlib.sha256(secrets.token_bytes(32)).hexdigest()
@@ -258,7 +274,7 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
         session.flush()
 
         leads: list[Lead] = []
-        for index, (company, industry, slug, source_name) in enumerate(LEADS):
+        for index, (company, industry, slug, source_name) in enumerate(LEAD_ROWS):
             rep = reps[index % len(reps)]
             account, created = _get_or_create(
                 session,
@@ -388,7 +404,8 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
             lead_contacts.append(contact)
         session.flush()
 
-        for index, lead in enumerate(leads[:2]):
+        conversion_count = max(2, len(leads) // 5)
+        for index, lead in enumerate(leads[:conversion_count]):
             lead.is_converted = True
             lead.status = "Converted"
             lead.converted_client_id = clients[index].id
@@ -398,7 +415,7 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
         deals: list[Deal] = []
         for index, client in enumerate(clients):
             rep = reps[index % len(reps)]
-            stage = DEAL_STAGES[index]
+            stage = DEAL_STAGES[index % len(DEAL_STAGES)]
             created_at = _month_start(index % 6)
             deal, created = _get_or_create(
                 session,
@@ -423,9 +440,7 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
         session.flush()
 
         proposals: list[Proposal] = []
-        for index in range(6):
-            client = clients[index]
-            deal = deals[index]
+        for index, (client, deal) in enumerate(zip(clients, deals)):
             line_items = [
                 {
                     "product_name": "SEO growth program",
@@ -501,9 +516,9 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
             )
             track("proposal discussion comments", created)
 
-        for index in range(6):
-            deal, proposal = deals[index], proposals[index]
-            status = ("Paid", "Paid", "Sent", "Overdue", "Partial", "Draft")[index]
+        invoice_statuses = ("Paid", "Paid", "Sent", "Overdue", "Partial", "Draft")
+        for index, (client, deal, proposal) in enumerate(zip(clients, deals, proposals)):
+            status = invoice_statuses[index % len(invoice_statuses)]
             created_at = _month_start(index % 6)
             amount = float(deal.final_value or deal.value)
             invoice, created = _get_or_create(
@@ -512,7 +527,7 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
                 tenant_id,
                 {"invoice_number": f"DEMO-{tenant_id}-INV-{index + 1:04d}"},
                 {
-                    "client_id": clients[index].id,
+                    "client_id": client.id,
                     "proposal_id": proposal.id,
                     "deal_id": deal.id,
                     "amount": amount,
