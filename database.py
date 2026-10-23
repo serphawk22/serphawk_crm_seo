@@ -118,6 +118,7 @@ class User(SQLModel, table=True):
     role: str = Field(default="Client") # Admin, Employee, Client
     is_active: bool = Field(default=True)
     status: str = Field(default="Active")
+    timezone: Optional[str] = Field(default=None, max_length=64)
     sidebar_preferences: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
     createdAt: datetime = Field(default_factory=_utcnow, sa_column=Column("created_at", DateTime))
     updatedAt: datetime = Field(default_factory=_utcnow, sa_column=Column("updated_at", DateTime))
@@ -459,6 +460,7 @@ class ClientProfile(SQLModel, table=True):
     status: str = Field(default="Active") # Active, Hold, Pending
     customFields: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
     assignedEmployeeId: Optional[int] = None
+    lead_source_id: Optional[int] = Field(default=None)
     projectName: Optional[str] = None
     gmbName: Optional[str] = None
     seoStrategy: Optional[str] = None
@@ -1367,6 +1369,7 @@ class Lead(SQLModel, table=True):
     phone: Optional[str] = Field(default=None, max_length=100)
     address: Optional[str] = Field(default=None, sa_column=Column(Text))
     source: Optional[str] = Field(default=None, max_length=100)
+    lead_source_id: Optional[int] = Field(default=None)
     owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
     status: str = Field(default="New")
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -1438,7 +1441,10 @@ class Meeting(SQLModel, table=True):
     status: str = Field(default="Scheduled", max_length=50)  # Scheduled, Completed, Cancelled, No-show
     scheduled_at: Optional[datetime] = Field(default=None)
     duration_minutes: Optional[int] = Field(default=None)
+    meeting_link: Optional[str] = Field(default=None, max_length=1000)
+    timezone: Optional[str] = Field(default=None, max_length=64)
     host_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_by: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
     lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
     contact_id: Optional[int] = Field(default=None, foreign_key="contacts.id")
@@ -2174,3 +2180,100 @@ class CallKnowledge(SQLModel, table=True):
     usage_count: int = Field(default=0)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class SalespersonHistory(SQLModel, table=True):
+    """Tracks salesperson reassignment history for clients."""
+    __tablename__ = "salesperson_history"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    client_id: int
+    from_user_id: Optional[int] = Field(default=None)
+    to_user_id: Optional[int] = Field(default=None)
+    from_user_name: Optional[str] = Field(default=None, max_length=200)
+    to_user_name: Optional[str] = Field(default=None, max_length=200)
+    reason: Optional[str] = Field(default=None, sa_column=Column(Text))
+    reassigned_by: Optional[int] = Field(default=None)
+    reassigned_at: Optional[datetime] = Field(default_factory=_utcnow)
+    created_at: Optional[datetime] = Field(default_factory=_utcnow)
+
+
+class LeadSource(SQLModel, table=True):
+    """Configurable sources for lead attribution and reporting."""
+    __tablename__ = "lead_sources"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(max_length=120)
+    channel: str = Field(default="Other", max_length=50)
+    utm_key: Optional[str] = Field(default=None, max_length=120)
+    color: Optional[str] = Field(default="#6366f1", max_length=20)
+    monthly_cost: float = Field(default=0.0)
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class BusinessCost(SQLModel, table=True):
+    """Operating costs used in owner and revenue reports."""
+    __tablename__ = "business_costs"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str = Field(max_length=255)
+    category: str = Field(default="Other", max_length=50)
+    amount: float = Field(default=0.0)
+    currency: str = Field(default="INR", max_length=10)
+    cost_date: str = Field(max_length=10, index=True)
+    is_recurring: bool = Field(default=False)
+    end_date: Optional[str] = Field(default=None, max_length=10)
+    employee_id: Optional[int] = Field(default=None)
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    created_by: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class DealNegotiation(SQLModel, table=True):
+    """Tracks negotiation rounds and pricing changes for deals."""
+    __tablename__ = "deal_negotiations"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    deal_id: int = Field(index=True)
+    round_no: int = Field(default=1)
+    party: str = Field(default="us", max_length=20)
+    price: float = Field(default=0.0)
+    discount_pct: float = Field(default=0.0)
+    status: str = Field(default="Proposed", max_length=30)
+    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    author_id: Optional[int] = Field(default=None)
+    author_name: Optional[str] = Field(default=None, max_length=200)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class OwnershipHistory(SQLModel, table=True):
+    """Tracks lead and client ownership changes."""
+    __tablename__ = "ownership_history"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    entity_type: str = Field(max_length=20, index=True)
+    entity_id: int = Field(index=True)
+    entity_name: Optional[str] = Field(default=None, max_length=255)
+    from_user_id: Optional[int] = Field(default=None)
+    to_user_id: Optional[int] = Field(default=None)
+    from_user_name: Optional[str] = Field(default=None, max_length=200)
+    to_user_name: Optional[str] = Field(default=None, max_length=200)
+    reason: Optional[str] = Field(default=None, sa_column=Column(Text))
+    changed_by: Optional[int] = Field(default=None)
+    changed_by_name: Optional[str] = Field(default=None, max_length=200)
+    changed_at: datetime = Field(default_factory=_utcnow)
+
+
+class StockMovement(SQLModel, table=True):
+    """Tracks inventory stock adjustments for CRM reporting."""
+    __tablename__ = "stock_movements"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    item_id: int = Field(index=True)
+    change: float = Field(default=0.0)
+    reason: str = Field(default="Adjustment", max_length=50)
+    reference: Optional[str] = Field(default=None, max_length=255)
+    balance_after: Optional[float] = Field(default=None)
+    author_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow)
