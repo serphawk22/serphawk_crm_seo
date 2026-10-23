@@ -30,7 +30,8 @@ import {
   Building2,
   Trash2,
   Zap,
-  X
+  X,
+  UserX
 } from 'lucide-react';
 import Link from 'next/link';
 import { API_BASE_URL } from '@/config';
@@ -519,6 +520,9 @@ export default function ClientsPage() {
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("clients.description")}</p>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/dropped-clients" className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-900/20 dark:text-rose-300 dark:hover:bg-rose-900/30 transition-colors">
+              <UserX className="w-4 h-4" /> Dropped Clients
+            </Link>
             <button 
               onClick={async () => {
                 try {
@@ -795,6 +799,9 @@ export default function ClientsPage() {
                             <button disabled={actionLoading[client.id] === 'call'} onClick={(e) => { e.stopPropagation(); handleSimulateCall(client.id); }} title="AI Call Pitch" className="p-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600 transition-colors disabled:opacity-50">
                               {actionLoading[client.id] === 'call' ? <Loader2 className="w-3.5 h-3.5 animate-spin text-green-500" /> : <Phone className="w-3.5 h-3.5" />}
                             </button>
+                            {client.status !== "Dropped" && <button onClick={(event) => { event.stopPropagation(); router.push(`/dropped-clients?client_id=${client.id}`); }} title="Record client departure" className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/30 text-slate-400 hover:text-rose-600 transition-colors">
+                              <UserX className="w-3.5 h-3.5" />
+                            </button>}
                             <button onClick={(e) => { e.stopPropagation(); window.open(`/admin/clients/${client.id}`, '_blank'); }} title="Open in New Tab" className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors">
                               <ExternalLink className="w-3.5 h-3.5" />
                             </button>

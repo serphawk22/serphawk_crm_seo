@@ -67,6 +67,7 @@ from database import (
     ClientResearch,
     ClientStatus,
     ClientTicket,
+    DroppedClient,
     CompetitorAnalysis,
     CompetitorRelationship,
     Contact,
@@ -641,6 +642,154 @@ app.include_router(followups_router)
 
 from routers.email_campaigns import router as email_campaigns_router
 app.include_router(email_campaigns_router)
+
+
+class DroppedClientCreate(BaseModel):
+    client_id: Optional[int] = None
+    company_name: str
+    reason: Optional[str] = None
+    reason_category: Optional[str] = "Other"
+    last_revenue: float = 0
+    relationship_months: int = 0
+    reactivation_potential: str = "Low"
+    notes: Optional[str] = None
+
+
+def _dropped_client_access(session: Session):
+    return _require_roles(session, {"Admin", "SalesManager", "Employee", "Demo"})
+
+
+@app.get("/dropped-clients")
+def list_dropped_clients(session: Session = Depends(get_session)):
+    user = _dropped_client_access(session)
+    statement = select(DroppedClient)
+    if user.role == "Employee":
+        statement = statement.where(or_(
+            DroppedClient.dropped_by == user.id,
+            DroppedClient.client_id.in_(
+                select(ClientProfile.id).where(ClientProfile.assignedEmployeeId == user.id)
+            ),
+        ))
+    records = session.exec(statement.order_by(DroppedClient.dropped_at.desc())).all()
+    categories: Dict[str, int] = {}
+    for record in records:
+        category = record.reason_category or "Other"
+        categories[category] = categories.get(category, 0) + 1
+    return {
+        "dropped_clients": records,
+        "total": len(records),
+        "category_breakdown": categories,
+    }
+
+
+@app.get("/dropped-clients/by-client/{client_id}")
+def get_dropped_client_for_client(client_id: int, session: Session = Depends(get_session)):
+    user = _dropped_client_access(session)
+    client = session.exec(select(ClientProfile).where(ClientProfile.id == client_id)).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found.")
+    if user.role == "Employee" and client.assignedEmployeeId != user.id:
+        raise HTTPException(status_code=403, detail="You can only view your assigned clients.")
+    record = session.exec(
+        select(DroppedClient)
+        .where(DroppedClient.client_id == client_id)
+        .order_by(DroppedClient.dropped_at.desc())
+    ).first()
+    return {"dropped_client": record}
+
+
+@app.post("/dropped-clients")
+def create_dropped_client(body: DroppedClientCreate, session: Session = Depends(get_session)):
+    user = _dropped_client_access(session)
+    if not body.company_name.strip():
+        raise HTTPException(status_code=400, detail="Company name is required.")
+
+    client = None
+    if body.client_id:
+        client = session.exec(
+            select(ClientProfile).where(ClientProfile.id == body.client_id)
+        ).first()
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found.")
+        if user.role == "Employee" and client.assignedEmployeeId != user.id:
+            raise HTTPException(status_code=403, detail="You can only update your assigned clients.")
+        existing = session.exec(
+            select(DroppedClient).where(
+                DroppedClient.client_id == body.client_id,
+                DroppedClient.reactivated_at.is_(None),
+            )
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="This client is already marked as dropped.")
+
+    tenant_id = current_tenant_id.get()
+    tenant_id = tenant_id if tenant_id and tenant_id > 0 else (client.tenant_id if client else user.tenant_id)
+    if not tenant_id or tenant_id < 1:
+        raise HTTPException(status_code=400, detail="A tenant is required to record a dropped client.")
+
+    record = DroppedClient(
+        tenant_id=tenant_id,
+        client_id=client.id if client else None,
+        company_name=body.company_name.strip(),
+        reason=body.reason,
+        reason_category=body.reason_category or "Other",
+        dropped_by=user.id,
+        last_revenue=max(body.last_revenue, 0),
+        relationship_months=max(body.relationship_months, 0),
+        reactivation_potential=body.reactivation_potential,
+        notes=body.notes,
+        previous_status=client.status if client else None,
+    )
+    if client:
+        client.status = "Dropped"
+        session.add(client)
+    session.add(record)
+    session.commit()
+    session.refresh(record)
+    return {"ok": True, "dropped_client": record}
+
+
+@app.post("/dropped-clients/by-client/{client_id}/reactivate")
+def reactivate_dropped_client(client_id: int, session: Session = Depends(get_session)):
+    user = _dropped_client_access(session)
+    record = session.exec(
+        select(DroppedClient)
+        .where(DroppedClient.client_id == client_id, DroppedClient.reactivated_at.is_(None))
+        .order_by(DroppedClient.dropped_at.desc())
+    ).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Dropped-client record not found.")
+    client = session.exec(
+        select(ClientProfile).where(ClientProfile.id == client_id)
+    ).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found.")
+    if user.role == "Employee" and client.assignedEmployeeId != user.id:
+        raise HTTPException(status_code=403, detail="You can only update your assigned clients.")
+
+    client.status = record.previous_status or "Active"
+    record.reactivated_at = datetime.now(timezone.utc)
+    session.add(client)
+    session.add(record)
+    session.commit()
+    return {"ok": True, "status": client.status, "dropped_client": record}
+
+
+@app.delete("/dropped-clients/{record_id}")
+def delete_dropped_client(record_id: int, session: Session = Depends(get_session)):
+    user = _dropped_client_access(session)
+    record = session.exec(select(DroppedClient).where(DroppedClient.id == record_id)).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Dropped-client record not found.")
+    if user.role == "Employee":
+        client = session.exec(
+            select(ClientProfile).where(ClientProfile.id == record.client_id)
+        ).first() if record.client_id else None
+        if record.dropped_by != user.id and (not client or client.assignedEmployeeId != user.id):
+            raise HTTPException(status_code=403, detail="You can only delete your own or assigned client records.")
+    session.delete(record)
+    session.commit()
+    return {"ok": True, "deleted": record_id}
 
 @app.on_event("startup")
 def on_startup():
