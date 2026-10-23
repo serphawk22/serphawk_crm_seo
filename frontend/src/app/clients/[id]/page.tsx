@@ -4,37 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Globe, 
-  User, 
-  MapPin, 
-  ShieldCheck, 
-  Hash, 
-  MessageSquare, 
-  Activity, 
-  Plus, 
-  Send,
-  Loader2,
-  Trash2,
-  CheckCircle,
-  Clock,
-  Briefcase,
-  Users,
-  Edit2,
-  Save,
-  X,
-  TrendingUp,
-  Zap,
-  ChevronRight,
-  Mail,
-  FolderKanban,
-  Target,
-  Eye,
-  TrendingDown,
-  Lightbulb,
-  ShieldAlert,
-  Brain
-} from 'lucide-react';
+import { Globe, User, MapPin, ShieldCheck, Hash, MessageSquare, Activity, Plus, Send, Loader2, Trash2, CheckCircle, Clock, Briefcase, Users, Edit2, Save, X, TrendingUp, Zap, ChevronRight, Mail, FolderKanban, Target, Eye, TrendingDown, Lightbulb, ShieldAlert, Brain } from "lucide-react";
 import { API_BASE_URL } from '@/config';
 import { useRole } from '@/context/RoleContext';
 import LinkedContacts from '@/components/LinkedContacts';
@@ -42,8 +12,10 @@ import { cn } from '@/lib/utils';
 import PageGuide from '@/components/PageGuide';
 import ClientDealsTab from './ClientDealsTab';
 import axios from 'axios';
-import { DollarSign, XCircle, Radar, Navigation } from 'lucide-react';
+import { IndianRupee, XCircle, Radar, Navigation, UserX, UserCheck } from "lucide-react";
 import { useLanguage } from '@/context/LanguageContext';
+import DropClientModal from '@/components/DropClientModal';
+import SalesAssignModal from '@/components/SalesAssignModal';
 
 // Framer Motion Variants
 const containerVariants = {
@@ -286,6 +258,8 @@ export default function ClientDetailPage() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({ companyName: '', projectName: '', websiteUrl: '' });
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
+  const [isDropModalOpen, setIsDropModalOpen] = useState(false);
+  const [dropModalMode, setDropModalMode] = useState<'drop' | 'view'>('drop');
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     await updateProfile({
@@ -642,6 +616,37 @@ const handleSaveMetrics = async () => {
     }
   };
 
+  const handleReassignSalesperson = async (empId: number | null, empName: string | null, reason?: string) => {
+    if (!empId || !client) {
+      setIsAssignModalOpen(false);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE_URL}/salesperson/reassign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: client.id,
+          to_user_id: empId,
+          reason: reason || null,
+        }),
+      });
+      if (res.ok) {
+        await fetchClientData();
+        await fetchActivities();
+        await fetchTimeline();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || 'Failed to reassign salesperson.');
+      }
+    } catch (err) {
+      console.error('Failed to reassign salesperson:', err);
+      alert('Network error while reassigning salesperson.');
+    } finally {
+      setIsAssignModalOpen(false);
+    }
+  };
+
   if (pageLoading) {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
@@ -708,9 +713,33 @@ const handleSaveMetrics = async () => {
               <p className="text-xl text-white/90 font-medium max-w-2xl mb-6">
                 {t("client_detail.your_growth_partner")}
               </p>
-              <div className="flex gap-4 mt-6">
+              <div className="flex gap-4 mt-6 flex-wrap">
                 <button onClick={() => router.push(`/clients/${client.id}/competitors`)} className="px-6 py-3 bg-white text-blue-600 font-bold rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2">
                   <Navigation className="w-5 h-5" /> {t("client_detail.radar_scan")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAssignModalOpen(true)}
+                  className="px-6 py-3 bg-violet-600/90 hover:bg-violet-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2 border border-violet-400/40"
+                >
+                  <UserCheck className="w-5 h-5" />
+                  {client.assignedEmployeeId ? 'Reassign Salesperson' : 'Assign Salesperson'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDropModalMode(client.status === 'Dropped' ? 'view' : 'drop');
+                    setIsDropModalOpen(true);
+                  }}
+                  className={cn(
+                    "px-6 py-3 font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 backdrop-blur-sm cursor-pointer",
+                    client.status === 'Dropped'
+                      ? "bg-rose-600 text-white hover:bg-rose-700 shadow-rose-600/30"
+                      : "bg-rose-500/80 hover:bg-rose-500 text-white border border-rose-400/40"
+                  )}
+                >
+                  <UserX className="w-5 h-5" />
+                  {client.status === 'Dropped' ? 'Client is Dropped (Details)' : 'Client is Dropped'}
                 </button>
                 {client?.websiteUrl && (
                   <a href={client.websiteUrl.startsWith('http') ? client.websiteUrl : `https://${client.websiteUrl}`} target="_blank" rel="noreferrer" className="px-6 py-3 bg-blue-600/50 border border-blue-400/30 text-white font-bold rounded-xl shadow-lg hover:bg-blue-600 transition-all flex items-center gap-2">
@@ -829,7 +858,7 @@ const handleSaveMetrics = async () => {
               <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-500"></div>
               <div className="relative z-10">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-3 bg-purple-100 text-purple-600 rounded-xl"><DollarSign size={24} /></div>
+                  <div className="p-3 bg-purple-100 text-purple-600 rounded-xl"><IndianRupee size={24} /></div>
                   <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100">{t("client_detail.roi_victory")}</h3>
                 </div>
                 <div>
@@ -1187,6 +1216,15 @@ const handleSaveMetrics = async () => {
                     );
                   })()}
                   <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setIsAssignModalOpen(true)}
+                    className="w-full py-3 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg hover:shadow-violet-500/30 transition-all flex items-center justify-center gap-2"
+                  >
+                    <UserCheck size={16} />
+                    {client.assignedEmployeeId ? 'Reassign Salesperson' : 'Assign Salesperson'}
+                  </motion.button>
+                  <motion.button
                     whileHover={{ scale: 1.05 }}
                     className="w-full py-3 bg-gradient-to-r from-pink-600 to-rose-600 text-white rounded-xl font-bold text-sm shadow-lg hover:shadow-pink-500/30 transition-all"
                   >
@@ -1491,9 +1529,9 @@ const handleSaveMetrics = async () => {
               ['monthly_revenue', t('client_detail.this_months_revenue')],
               ['revenue_growth_pct', 'Revenue Growth % (e.g. +28%)'],
               ['total_conversions', t('client_detail.total_conversions')],
-              ['avg_conversion_value', 'Avg Conversion Value (e.g. $27.66)'],
+              ['avg_conversion_value', 'Avg Conversion Value (e.g. ₹27.66)'],
               ['roi_multiple', 'ROI Multiple (e.g. 7.2x)'],
-              ['roi_detail', 'ROI Detail (e.g. $720 back per $100)'],
+              ['roi_detail', 'ROI Detail (e.g. ₹720 back per ₹100)'],
             ] as [string, string][]).map(([key, label]) => (
               <div key={key}>
                 <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1 block">{label}</label>
@@ -1572,6 +1610,32 @@ const handleSaveMetrics = async () => {
           </div>
         </motion.div>
       </div>
+    )}
+
+    {/* Drop Client Modal */}
+    {client && (
+      <DropClientModal
+        isOpen={isDropModalOpen}
+        onClose={() => setIsDropModalOpen(false)}
+        client={client}
+        mode={dropModalMode}
+        onSuccess={() => {
+          fetchClientData();
+          setIsDropModalOpen(false);
+        }}
+      />
+    )}
+
+    {/* Salesperson Reassign Modal */}
+    {client && (
+      <SalesAssignModal
+        isOpen={isAssignModalOpen}
+        onClose={() => setIsAssignModalOpen(false)}
+        onAssign={handleReassignSalesperson}
+        entityType="client"
+        clientId={client.id}
+        currentSalespersonName={employees.find((e: any) => e.id === client.assignedEmployeeId)?.name}
+      />
     )}
     </>
   );

@@ -42,6 +42,14 @@ from routers.leaderboard import router as leaderboard_router
 from routers.email_tracking import router as email_tracking_router
 from routers.voice_agent import router as voice_agent_router
 from modules.api_intelligence import router as api_intelligence_router
+from routers.scm2_features import router as scm2_router, ensure_scm2_schema, reassign_owner
+from routers.command_center import router as command_center_router
+from routers.ai_reports import router as ai_reports_router
+from routers.follow_ups import (
+    router as follow_ups_router,
+    ensure_followup_schema,
+    start_reminder_worker,
+)
 import traceback
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -642,6 +650,31 @@ app.include_router(followups_router)
 
 from routers.email_campaigns import router as email_campaigns_router
 app.include_router(email_campaigns_router)
+
+app.include_router(scm2_router)
+app.include_router(scm2_router, prefix="/scm2")
+app.include_router(command_center_router)
+app.include_router(ai_reports_router)
+app.include_router(follow_ups_router)
+
+
+@app.on_event("startup")
+def initialize_scm_bpo_modules():
+    try:
+        ensure_scm2_schema()
+    except Exception as exc:
+        print(f"[scm2] schema bootstrap failed: {exc}")
+
+    try:
+        ensure_followup_schema()
+        from modules.background import jobs_enabled
+
+        if jobs_enabled():
+            start_reminder_worker(60)
+        else:
+            print("[followups] BACKGROUND_JOBS=0: reminder worker NOT started.")
+    except Exception as exc:
+        print(f"[followups] startup failed: {exc}")
 
 
 class DroppedClientCreate(BaseModel):
@@ -2663,6 +2696,8 @@ def _client_dict(cp: ClientProfile, session: Session) -> dict:
         "lastActivityDate": last_act_log.createdAt.isoformat() if last_act_log else cp.lastActivityDate,
         "assignedEmployeeId": cp.assignedEmployeeId,
         "assignedEmployeeName": employee.name if employee else None,
+        "lead_source": cp.lead_source,
+        "lead_source_id": cp.lead_source_id,
         "projectId": cp.projectId,
         "projectName": cp.projectName,
         "payment_status": cp.payment_status,
@@ -4966,6 +5001,85 @@ def update_client(
     session.commit()
     session.refresh(cp)
     return {"client": _client_dict(cp, session)}
+
+
+@app.patch("/clients/{client_id}/status")
+def patch_client_status(client_id: int, body: Dict[str, Any], session: Session = Depends(get_session)):
+    cp = session.get(ClientProfile, client_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    status = body.get("status")
+    if status:
+        cp.status = status
+        deal_stage_map = {
+            "Proposal Sent": "Proposal Sent",
+            "Negotiation": "Negotiation",
+            "Won": "Closed Won",
+            "Lost": "Closed Lost",
+        }
+        proposal_status_map = {
+            "Proposal Sent": "Sent",
+            "Negotiation": "Negotiation",
+            "Won": "Accepted",
+            "Lost": "Rejected",
+        }
+        if status in deal_stage_map:
+            for deal in session.exec(select(Deal).where(Deal.client_id == client_id)).all():
+                deal.stage = deal_stage_map[status]
+                if hasattr(deal, "won_at"):
+                    deal.won_at = utc_now() if status == "Won" else None
+                if status == "Won" and getattr(deal, "value", None) and not getattr(deal, "final_value", None):
+                    deal.final_value = deal.value
+                deal.updated_at = utc_now()
+                session.add(deal)
+        if status in proposal_status_map:
+            for proposal in session.exec(select(Proposal).where(Proposal.client_id == client_id)).all():
+                proposal.status = proposal_status_map[status]
+                if status == "Won" and hasattr(proposal, "signed_at"):
+                    proposal.signed_at = utc_now()
+                proposal.updated_at = utc_now()
+                session.add(proposal)
+
+    for key, value in body.items():
+        if key in ("assignedEmployeeId", "assigned_employee_id", "employee_id"):
+            cp.assignedEmployeeId = value
+        elif key not in ("id", "status") and hasattr(cp, key):
+            setattr(cp, key, value)
+
+    session.add(cp)
+    session.commit()
+    session.refresh(cp)
+    return {"client": _client_dict(cp, session)}
+
+
+class ReassignRequest(BaseModel):
+    client_id: int
+    to_user_id: int
+    reason: Optional[str] = None
+
+
+@app.post("/salesperson/reassign")
+def reassign_salesperson(body: ReassignRequest, session: Session = Depends(get_session)):
+    history = reassign_owner(session, "client", body.client_id, body.to_user_id, body.reason)
+    return {"message": f"Client reassigned to {history.to_user_name}", "history_id": history.id}
+
+
+@app.get("/salesperson/history/{client_id}")
+def get_salesperson_history(client_id: int, session: Session = Depends(get_session)):
+    from database import SalespersonHistory
+
+    rows = session.exec(
+        select(SalespersonHistory)
+        .where(SalespersonHistory.client_id == client_id)
+        .order_by(SalespersonHistory.reassigned_at.desc())
+    ).all()
+    history = []
+    for row in rows:
+        item = row.model_dump()
+        item["reassigned_at"] = row.reassigned_at.isoformat() if row.reassigned_at else None
+        history.append(item)
+    return {"history": history}
 
 
 @app.post("/clients/{client_id}/swot")
@@ -12159,7 +12273,21 @@ def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_ses
     if tenant_id and tenant_id != 1:
         query = query.where(Lead.tenant_id == tenant_id)
     leads = session.exec(query.order_by(Lead.created_at.desc())).all()
-    return {"leads": leads}
+    owner_ids = {lead.owner_id for lead in leads if lead.owner_id}
+    owners = {
+        user.id: user.name
+        for user in session.exec(select(User).where(User.id.in_(owner_ids))).all()
+    } if owner_ids else {}
+    return {
+        "leads": [
+            {
+                **lead.model_dump(),
+                "owner_name": owners.get(lead.owner_id),
+                "salesperson_name": owners.get(lead.owner_id),
+            }
+            for lead in leads
+        ]
+    }
 
 
 @app.get("/leads/export-csv")
@@ -12594,6 +12722,123 @@ def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depend
     session.commit()
     session.refresh(lead)
     return lead
+
+
+@app.patch("/leads/{lead_id}/status")
+def patch_lead_status(lead_id: int, body: Dict[str, Any], session: Session = Depends(get_session)):
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    status = body.get("status")
+    if status is not None:
+        lead.status = status
+        if str(status).lower() == "converted":
+            lead.is_converted = True
+            if not lead.converted_client_id:
+                client = session.exec(
+                    select(ClientProfile).where(ClientProfile.companyName == lead.company_name)
+                ).first()
+                if not client:
+                    user = None
+                    if lead.email:
+                        user = session.exec(select(User).where(User.email == lead.email)).first()
+                    client = ClientProfile(
+                        companyName=lead.company_name,
+                        projectName=lead.company_name,
+                        userId=user.id if user else None,
+                        assignedEmployeeId=lead.owner_id,
+                        industry=lead.industry,
+                        phone=lead.phone,
+                        websiteUrl=lead.website,
+                        status="Product Demo Scheduled",
+                        tenant_id=lead.tenant_id or current_tenant_id.get() or 1,
+                        contact_person=lead.company_name,
+                    )
+                    session.add(client)
+                    session.commit()
+                    session.refresh(client)
+                elif lead.owner_id and not client.assignedEmployeeId:
+                    client.assignedEmployeeId = lead.owner_id
+                    session.add(client)
+                lead.converted_client_id = client.id
+
+    if "owner_id" in body:
+        lead.owner_id = body["owner_id"] or None
+    for key, value in body.items():
+        if key not in ("id", "status", "owner_id") and hasattr(lead, key):
+            setattr(lead, key, value)
+
+    session.add(lead)
+    session.commit()
+    session.refresh(lead)
+    return lead
+
+
+@app.post("/leads/auto-assign")
+def auto_assign_unassigned_leads(session: Session = Depends(get_session)):
+    caller_id = current_salesperson_id.get()
+    if caller_id:
+        caller = session.get(User, caller_id)
+        if caller and caller.role not in ("Admin", "SuperAdmin"):
+            raise HTTPException(status_code=403, detail="Only Admins can assign leads automatically.")
+
+    tenant_id = current_tenant_id.get()
+    rep_query = select(User).where(
+        User.role.in_(["SalesManager", "Sales"]),
+        User.is_active == True,
+        User.email.not_in(["admin@example.com", "superadmin@serphawk.in", "admin@serphawk.com"]),
+    )
+    if tenant_id and tenant_id != 1:
+        rep_query = rep_query.where(User.tenant_id == tenant_id)
+    reps = list(session.exec(rep_query).all())
+    if not reps:
+        fallback_query = select(User).where(
+            User.role == "Employee",
+            User.is_active == True,
+            User.email.not_in(["admin@example.com", "superadmin@serphawk.in", "admin@serphawk.com"]),
+        )
+        if tenant_id and tenant_id != 1:
+            fallback_query = fallback_query.where(User.tenant_id == tenant_id)
+        reps = list(session.exec(fallback_query).all())
+    if not reps:
+        raise HTTPException(status_code=400, detail="No active salespeople found to assign leads.")
+
+    stats = []
+    for rep in reps:
+        assigned = session.exec(select(Lead).where(Lead.owner_id == rep.id)).all()
+        converted = sum(1 for item in assigned if item.is_converted or str(item.status).lower() in ("converted", "won"))
+        stats.append({
+            "rep": rep,
+            "total": len(assigned),
+            "conversion_rate": converted / len(assigned) if assigned else 0.5,
+            "new_assignments": 0,
+        })
+
+    unassigned_query = select(Lead).where(or_(Lead.owner_id.is_(None), Lead.owner_id == 0))
+    if tenant_id and tenant_id != 1:
+        unassigned_query = unassigned_query.where(Lead.tenant_id == tenant_id)
+    unassigned = session.exec(unassigned_query.order_by(Lead.created_at.asc())).all()
+    assignments = []
+    for lead in unassigned:
+        stats.sort(key=lambda item: (item["total"] + item["new_assignments"], -item["conversion_rate"]))
+        chosen = stats[0]
+        lead.owner_id = chosen["rep"].id
+        chosen["new_assignments"] += 1
+        session.add(lead)
+        assignments.append({
+            "lead_id": lead.id,
+            "company_name": lead.company_name,
+            "assigned_to": chosen["rep"].id,
+            "assigned_name": chosen["rep"].name,
+        })
+
+    session.commit()
+    return {
+        "assigned_count": len(assignments),
+        "message": f"Successfully assigned {len(assignments)} leads across {len(reps)} salespeople.",
+        "assignments": assignments,
+    }
 
 
 @app.post("/leads/{lead_id}/generate-outbound-draft")
@@ -13552,6 +13797,8 @@ class MeetingCreateRequest(BaseModel):
     contact_id: Optional[int] = None
     attendees: Optional[List[str]] = []
     notes: Optional[str] = None
+    meeting_link: Optional[str] = None
+    timezone: Optional[str] = None
 
 
 class MeetingUpdateRequest(BaseModel):
@@ -13565,21 +13812,81 @@ class MeetingUpdateRequest(BaseModel):
     attendees: Optional[List[str]] = None
     notes: Optional[str] = None
     outcome: Optional[str] = None
+    host_id: Optional[int] = None
+    lead_id: Optional[int] = None
+    client_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    meeting_link: Optional[str] = None
+    timezone: Optional[str] = None
+
+
+def _meeting_to_utc(value: Optional[str], tz_name: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    from zoneinfo import ZoneInfo
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid meeting date/time.")
+    if parsed.tzinfo is None and tz_name:
+        try:
+            parsed = parsed.replace(tzinfo=ZoneInfo(tz_name))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Unknown timezone.")
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed
+
+
+def _meeting_local_datetime(meeting: Meeting) -> Optional[datetime]:
+    if not meeting.scheduled_at:
+        return None
+    if not meeting.timezone:
+        return meeting.scheduled_at
+    from zoneinfo import ZoneInfo
+
+    value = meeting.scheduled_at
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    try:
+        return value.astimezone(ZoneInfo(meeting.timezone))
+    except Exception:
+        return meeting.scheduled_at
+
+
+def _meeting_time_label(meeting: Meeting, fmt: str = "%Y-%m-%d %H:%M") -> str:
+    local = _meeting_local_datetime(meeting)
+    if not local:
+        return "TBD"
+    label = local.strftime(fmt)
+    if meeting.timezone:
+        label += f" {local.tzname() or ''} ({meeting.timezone})".rstrip()
+    return label
 
 
 def _meeting_dict(m: Meeting, session: Session) -> dict:
     host = session.get(User, m.host_id) if m.host_id else None
     lead = session.get(Lead, m.lead_id) if m.lead_id else None
     client = session.get(ClientProfile, m.client_id) if m.client_id else None
+    contact = session.get(Contact, m.contact_id) if m.contact_id else None
+    local = _meeting_local_datetime(m)
+    scheduled_at = m.scheduled_at.isoformat() if m.scheduled_at else None
+    if scheduled_at and m.timezone and not scheduled_at.endswith(("Z", "+00:00")):
+        scheduled_at += "Z"
     return {
         "id": m.id, "title": m.title, "description": m.description,
         "location": m.location, "meeting_type": m.meeting_type,
         "status": m.status,
-        "scheduled_at": m.scheduled_at.isoformat() if m.scheduled_at else None,
+        "scheduled_at": scheduled_at,
+        "scheduled_at_local": local.strftime("%Y-%m-%dT%H:%M") if local else None,
+        "timezone": m.timezone,
+        "meeting_link": m.meeting_link,
         "duration_minutes": m.duration_minutes,
         "host_id": m.host_id, "host_name": host.name if host else None,
+        "created_by": m.created_by,
         "lead_id": m.lead_id, "lead_name": lead.company_name if lead else None,
         "client_id": m.client_id, "client_name": client.companyName if client else None,
+        "contact_id": m.contact_id,
+        "contact_name": f"{contact.first_name} {contact.last_name or ''}".strip() if contact else None,
         "attendees": m.attendees or [],
         "notes": m.notes, "outcome": m.outcome,
         "created_at": m.created_at.isoformat(),
@@ -13605,29 +13912,53 @@ def list_meetings(
         q = q.where(Meeting.lead_id == lead_id)
     if client_id:
         q = q.where(Meeting.client_id == client_id)
+    viewer_id = current_salesperson_id.get()
+    viewer = session.get(User, viewer_id) if viewer_id else None
+    if viewer and viewer.role not in ("Admin", "SuperAdmin", "Demo"):
+        q = q.where(or_(Meeting.host_id == viewer.id, Meeting.created_by == viewer.id))
     meetings = session.exec(q).all()
     return {"meetings": [_meeting_dict(m, session) for m in meetings]}
+
+
+def _get_visible_meeting(meeting_id: int, session: Session) -> Meeting:
+    query = select(Meeting).where(Meeting.id == meeting_id)
+    tenant_id = current_tenant_id.get()
+    if tenant_id:
+        query = query.where(Meeting.tenant_id == tenant_id)
+    viewer_id = current_salesperson_id.get()
+    viewer = session.get(User, viewer_id) if viewer_id else None
+    if viewer and viewer.role not in ("Admin", "SuperAdmin", "Demo"):
+        query = query.where(or_(Meeting.host_id == viewer.id, Meeting.created_by == viewer.id))
+    meeting = session.exec(query).first()
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    return meeting
 
 
 @app.post("/meetings")
 def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_session)):
     data = body.model_dump()
-    if data.get("scheduled_at"):
+    if data.get("timezone"):
+        from zoneinfo import ZoneInfo
         try:
-            data["scheduled_at"] = datetime.fromisoformat(data["scheduled_at"])
+            ZoneInfo(data["timezone"])
         except Exception:
-            data["scheduled_at"] = None
-    else:
-        data["scheduled_at"] = None
+            raise HTTPException(status_code=400, detail="Unknown timezone.")
+    elif current_salesperson_id.get():
+        organizer = session.get(User, current_salesperson_id.get())
+        data["timezone"] = getattr(organizer, "timezone", None)
+    data["scheduled_at"] = _meeting_to_utc(data.get("scheduled_at"), data.get("timezone"))
+    if not data.get("host_id"):
+        data["host_id"] = current_salesperson_id.get()
     m = Meeting(**data)
     m.tenant_id = current_tenant_id.get()
+    m.created_by = current_salesperson_id.get()
     session.add(m)
     session.commit()
     session.refresh(m)
 
     try:
-        dt_str = m.scheduled_at.strftime(
-            "%b %d, %I:%M %p") if m.scheduled_at else "TBD"
+        dt_str = _meeting_time_label(m, "%b %d, %I:%M %p")
         _notify_admins(
             session, current_tenant_id.get(),
             title=f"📅 Meeting Scheduled: {m.title}",
@@ -13639,8 +13970,7 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
         pass
 
     # ── EMAIL NOTIFICATION TO ATTENDEES ──
-    dt_str = m.scheduled_at.strftime(
-        "%Y-%m-%d %H:%M") if m.scheduled_at else "TBD"
+    dt_str = _meeting_time_label(m)
     subject = f"Meeting Scheduled: {m.title}"
     notes = (m.notes or "").strip()
     recips = [a.strip() for a in (m.attendees or []) if a and a.strip()]
@@ -13671,6 +14001,7 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
             f"  Date/Time : {dt_str}\n"
             f"  Type      : {m.meeting_type}\n"
             f"  Location  : {m.location or 'TBD'}\n"
+            f"  Join link : {m.meeting_link or '—'}\n"
             f"  Duration  : {m.duration_minutes or 'TBD'} min\n"
             f"  Attendees : {', '.join(recips) or '—'}"
         )
@@ -13684,6 +14015,10 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
         mtype = esc(m.meeting_type or "Meeting")
         location = esc(m.location or "TBD")
         duration = f"{int(m.duration_minutes)} min" if m.duration_minutes else "TBD"
+        join_link = (
+            f'<a href="{_html.escape(m.meeting_link, quote=True)}">{_html.escape(m.meeting_link)}</a>'
+            if m.meeting_link else "—"
+        )
         attendees = esc(", ".join(recips) or "—")
         notes_html = esc(notes)
 
@@ -13692,6 +14027,7 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
             ("Date/Time", date_time),
             ("Type", mtype),
             ("Location", location),
+            ("Join link", join_link),
             ("Duration", duration),
             ("Attendees", attendees),
         ]
@@ -13782,27 +14118,23 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
 
 @app.get("/meetings/{meeting_id}")
 def get_meeting(meeting_id: int, session: Session = Depends(get_session)):
-    m = session.get(Meeting, meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+    m = _get_visible_meeting(meeting_id, session)
     return {"meeting": _meeting_dict(m, session)}
 
 
 @app.put("/meetings/{meeting_id}")
 def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session = Depends(get_session)):
-    m = session.get(Meeting, meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+    m = _get_visible_meeting(meeting_id, session)
     updates = body.model_dump(exclude_unset=True)
+    timezone_name = updates.get("timezone", m.timezone)
+    if "timezone" in updates and updates["timezone"]:
+        from zoneinfo import ZoneInfo
+        try:
+            ZoneInfo(updates["timezone"])
+        except Exception:
+            raise HTTPException(status_code=400, detail="Unknown timezone.")
     if "scheduled_at" in updates:
-        if updates["scheduled_at"]:
-            try:
-                updates["scheduled_at"] = datetime.fromisoformat(
-                    updates["scheduled_at"])
-            except Exception:
-                updates["scheduled_at"] = None
-        else:
-            updates["scheduled_at"] = None
+        updates["scheduled_at"] = _meeting_to_utc(updates["scheduled_at"], timezone_name)
     for k, v in updates.items():
         setattr(m, k, v)
     m.updated_at = datetime.now(timezone.utc)
@@ -13824,9 +14156,7 @@ def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session
 
 @app.delete("/meetings/{meeting_id}")
 def delete_meeting(meeting_id: int, session: Session = Depends(get_session)):
-    m = session.get(Meeting, meeting_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+    m = _get_visible_meeting(meeting_id, session)
     session.delete(m)
     session.commit()
     return {"ok": True}

@@ -1,12 +1,15 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, Plus, X, Clock, Users, MapPin, CheckCircle2, Filter, Search, Loader2, Video, Phone, Coffee, BarChart2, Trash2, Edit2, Upload, FileText } from "lucide-react";
+import { Calendar, Plus, X, Clock, Users, MapPin, CheckCircle2, Filter, Search, Loader2, Video, Phone, Coffee, BarChart2, Trash2, Edit2, Upload, FileText, LayoutGrid, List, ExternalLink } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
+import TimezonePicker from "@/components/TimezonePicker";
+import { detectTimeZone } from "@/lib/timezone";
 
 interface Meeting {
   id: number; title: string; description?: string; location?: string;
+  meeting_link?: string; timezone?: string;
   meeting_type: string; status: string;
   scheduled_at?: string; duration_minutes?: number;
   host_name?: string; lead_name?: string; client_name?: string; contact_name?: string;
@@ -23,9 +26,11 @@ const STATUS_COLORS: Record<string, string> = {
   Completed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
   Cancelled: "bg-red-500/10 text-red-400 border-red-500/20",
   "No-show": "bg-amber-500/10 text-amber-500 border-amber-500/20",
+  Missed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
 };
 const TYPES = ["Meeting", "Demo", "Follow-up", "Discovery", "Call"];
-const STATUSES = ["Scheduled", "Completed", "Cancelled", "No-show"];
+const STATUSES = ["Scheduled", "Completed", "Cancelled", "No-show", "Missed"];
+const FILTER_TABS = ["All", "Today", "Tomorrow", "Missed", "Scheduled", "Completed", "Cancelled", "No-show"];
 
 export default function MeetingsPage() {
   const { t } = useLanguage();
@@ -33,6 +38,7 @@ export default function MeetingsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [viewMode, setViewMode] = useState<"cards" | "list">("cards");
   const [showModal, setShowModal] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editMeeting, setEditMeeting] = useState<Meeting | null>(null);
@@ -43,9 +49,10 @@ export default function MeetingsPage() {
   const [leads, setLeads] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [attendeeTab, setAttendeeTab] = useState<"clients" | "leads" | "contacts">("clients");
+  const userTz = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" : "UTC";
   const [form, setForm] = useState({
-    title: "", description: "", location: "", meeting_type: "Meeting",
-    status: "Scheduled", scheduled_at: "", duration_minutes: "",
+    title: "", description: "", location: "", meeting_link: "", timezone: userTz,
+    meeting_type: "Meeting", status: "Scheduled", scheduled_at: "", duration_minutes: "60",
     attendees: "", notes: "", linked: "",
   });
 
@@ -74,29 +81,69 @@ export default function MeetingsPage() {
   }, []);
 
   const filtered = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const todayEnd = todayStart + 86400000;
+    const tomorrowEnd = todayEnd + 86400000;
+
     return meetings.filter(m => {
       const q = search.toLowerCase();
       const matchSearch = !q || m.title.toLowerCase().includes(q) ||
         (m.client_name || "").toLowerCase().includes(q) ||
         (m.lead_name || "").toLowerCase().includes(q) ||
-        (m.location || "").toLowerCase().includes(q);
-      const matchStatus = statusFilter === "All" || m.status === statusFilter;
-      return matchSearch && matchStatus;
+        (m.location || "").toLowerCase().includes(q) ||
+        (m.meeting_link || "").toLowerCase().includes(q);
+
+      if (!matchSearch) return false;
+
+      if (statusFilter === "All") return true;
+
+      const mTime = m.scheduled_at ? new Date(m.scheduled_at).getTime() : 0;
+
+      if (statusFilter === "Today") {
+        return mTime >= todayStart && mTime < todayEnd;
+      }
+      if (statusFilter === "Tomorrow") {
+        return mTime >= todayEnd && mTime < tomorrowEnd;
+      }
+      if (statusFilter === "Missed") {
+        return m.status === "Missed" || (m.status === "Scheduled" && mTime > 0 && mTime < now.getTime());
+      }
+      return m.status === statusFilter;
     });
   }, [meetings, search, statusFilter]);
 
+  const handleStatusChange = async (meetingId: number, newStatus: string) => {
+    setMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, status: newStatus } : m));
+    try {
+      await fetch(`${API_BASE_URL}/meetings/${meetingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+    } catch (e) {
+      console.error("Failed to update meeting status", e);
+      load();
+    }
+  };
+
   const openCreate = () => {
     setEditMeeting(null);
-    setForm({ title: "", description: "", location: "", meeting_type: "Meeting", status: "Scheduled", scheduled_at: "", duration_minutes: "", attendees: "", notes: "", linked: "" });
+    setForm({
+      title: "", description: "", location: "", meeting_link: "", timezone: userTz,
+      meeting_type: "Meeting", status: "Scheduled", scheduled_at: "", duration_minutes: "60",
+      attendees: "", notes: "", linked: "",
+    });
     setShowModal(true);
   };
   const openEdit = (m: Meeting) => {
     setEditMeeting(m);
     setForm({
       title: m.title, description: m.description || "", location: m.location || "",
+      meeting_link: m.meeting_link || "", timezone: m.timezone || userTz,
       meeting_type: m.meeting_type, status: m.status,
       scheduled_at: m.scheduled_at ? m.scheduled_at.slice(0, 16) : "",
-      duration_minutes: m.duration_minutes?.toString() || "",
+      duration_minutes: m.duration_minutes?.toString() || "60",
       attendees: (m.attendees || []).join(", "), notes: m.notes || "",
       linked: m.client_id ? `client:${m.client_id}` : m.lead_id ? `lead:${m.lead_id}` : m.contact_id ? `contact:${m.contact_id}` : "",
     });
@@ -110,6 +157,7 @@ export default function MeetingsPage() {
     const linkIdNum = linkId ? parseInt(linkId) : null;
     const payload = {
       title: form.title, description: form.description || null, location: form.location || null,
+      meeting_link: form.meeting_link || null, timezone: form.timezone || userTz,
       meeting_type: form.meeting_type, status: form.status,
       scheduled_at: form.scheduled_at || null,
       duration_minutes: form.duration_minutes ? parseInt(form.duration_minutes) : null,
@@ -211,36 +259,179 @@ export default function MeetingsPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm flex flex-wrap gap-3 items-center">
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-3 sm:p-4 shadow-sm flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("meetings.search_placeholder")}
             className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500" />
         </div>
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-slate-400" />
-          {["All", ...STATUSES].map(s => (
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1 sm:pb-0">
+          <Filter className="w-4 h-4 text-slate-400 shrink-0 mr-1" />
+          {FILTER_TABS.map(s => (
             <button key={s} onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === s ? "bg-violet-600 text-white" : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700"}`}>
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === s ? "bg-violet-600 text-white shadow-sm" : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700"}`}>
               {s}
             </button>
           ))}
         </div>
+        <div className="flex items-center rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 p-0.5 sm:ml-auto">
+          <button
+            onClick={() => setViewMode("cards")}
+            className={`p-1.5 rounded-lg transition-all ${viewMode === "cards" ? "bg-white dark:bg-zinc-700 text-violet-600 dark:text-violet-400 shadow-sm" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"}`}
+            title="Cards View"
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setViewMode("list")}
+            className={`p-1.5 rounded-lg transition-all ${viewMode === "list" ? "bg-white dark:bg-zinc-700 text-violet-600 dark:text-violet-400 shadow-sm" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"}`}
+            title="List View"
+          >
+            <List className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      {/* List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {loading ? (
-          <div className="col-span-3 flex justify-center py-20"><Loader2 className="animate-spin text-violet-500 w-8 h-8" /></div>
-        ) : filtered.length === 0 ? (
-          <div className="col-span-3 flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-violet-500/10 flex items-center justify-center mb-4">
-              <Calendar className="w-8 h-8 text-violet-500 opacity-60" />
+      {/* Meetings Content: Cards or List View */}
+      {viewMode === "list" ? (
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl shadow-sm overflow-hidden">
+          {loading ? (
+            <div className="flex justify-center py-20"><Loader2 className="animate-spin text-violet-500 w-8 h-8" /></div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-violet-500/10 flex items-center justify-center mb-4">
+                <Calendar className="w-8 h-8 text-violet-500 opacity-60" />
+              </div>
+              <p className="text-base font-bold text-slate-700 dark:text-zinc-200">{t("meetings.no_meetings")}</p>
+              <p className="text-sm text-slate-400 mt-1">{t("meetings.click_schedule")}</p>
             </div>
-            <p className="text-base font-bold text-slate-700 dark:text-zinc-200">{t("meetings.no_meetings")}</p>
-            <p className="text-sm text-slate-400 mt-1">{t("meetings.click_schedule")}</p>
-          </div>
-        ) : filtered.map((m, i) => {
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 dark:bg-zinc-950/50 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-200 dark:border-zinc-800">
+                  <tr>
+                    <th className="px-5 py-3.5">Meeting / Title</th>
+                    <th className="px-5 py-3.5">Client / Lead</th>
+                    <th className="px-5 py-3.5">Scheduled Date & Time</th>
+                    <th className="px-5 py-3.5">Host / Attendees</th>
+                    <th className="px-5 py-3.5">Location / Link</th>
+                    <th className="px-5 py-3.5">Status</th>
+                    <th className="px-5 py-3.5 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/60">
+                  {filtered.map(m => {
+                    const Icon = TYPE_ICONS[m.meeting_type] || TYPE_ICONS.default;
+                    const statusCls = STATUS_COLORS[m.status] || "bg-slate-100 text-slate-500";
+                    return (
+                      <tr key={m.id} className="hover:bg-violet-50/30 dark:hover:bg-zinc-800/30 transition-colors">
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-800 dark:text-zinc-100">{m.title}</p>
+                              <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400">{m.meeting_type}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <span className="text-xs font-bold text-slate-700 dark:text-zinc-300">
+                            {m.client_name || m.lead_name || m.contact_name || "—"}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-zinc-300">
+                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{m.scheduled_at ? new Date(m.scheduled_at).toLocaleString() : "Date not set"}</span>
+                          </div>
+                          {m.duration_minutes && (
+                            <span className="text-[10px] text-slate-400 mt-0.5 block">{m.duration_minutes} mins</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap text-xs text-slate-600 dark:text-zinc-400 font-medium">
+                          <div className="flex items-center gap-1">
+                            <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span>{m.host_name || "Host"}</span>
+                            {m.attendees && m.attendees.length > 0 && (
+                              <span className="text-[10px] bg-slate-100 dark:bg-zinc-800 px-1.5 py-0.2 rounded-md font-bold text-slate-500">
+                                +{m.attendees.length}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          {m.meeting_link ? (
+                            <a
+                              href={m.meeting_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 text-xs font-bold hover:bg-violet-200 transition-colors"
+                            >
+                              <Video className="w-3.5 h-3.5" />
+                              <span>Join</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          ) : m.location ? (
+                            <span className="text-xs text-slate-500 dark:text-zinc-400 flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                              <span className="truncate max-w-[120px]">{m.location}</span>
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <select
+                            value={m.status}
+                            onChange={e => handleStatusChange(m.id, e.target.value)}
+                            className={`text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-xl border cursor-pointer focus:outline-none transition-all shadow-sm ${statusCls}`}
+                          >
+                            {STATUSES.map(s => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-5 py-4 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => openEdit(m)}
+                              className="p-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+                              title="Edit"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(m.id)}
+                              className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 dark:bg-red-950/40 dark:text-red-400 transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {loading ? (
+            <div className="col-span-3 flex justify-center py-20"><Loader2 className="animate-spin text-violet-500 w-8 h-8" /></div>
+          ) : filtered.length === 0 ? (
+            <div className="col-span-3 flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-violet-500/10 flex items-center justify-center mb-4">
+                <Calendar className="w-8 h-8 text-violet-500 opacity-60" />
+              </div>
+              <p className="text-base font-bold text-slate-700 dark:text-zinc-200">{t("meetings.no_meetings")}</p>
+              <p className="text-sm text-slate-400 mt-1">{t("meetings.click_schedule")}</p>
+            </div>
+          ) : filtered.map((m, i) => {
           const Icon = TYPE_ICONS[m.meeting_type] || TYPE_ICONS.default;
           const statusCls = STATUS_COLORS[m.status] || "bg-slate-100 text-slate-500";
           return (
@@ -256,15 +447,50 @@ export default function MeetingsPage() {
                     <p className="text-xs text-slate-500 dark:text-zinc-400">{m.meeting_type}</p>
                   </div>
                 </div>
-                <span className={`text-[10px] font-black uppercase tracking-wide px-2 py-1 rounded-lg border ${statusCls}`}>{m.status}</span>
+                <div className="relative" onClick={e => e.stopPropagation()}>
+                  <select
+                    value={m.status}
+                    onChange={e => handleStatusChange(m.id, e.target.value)}
+                    className={`text-[10px] font-black uppercase tracking-wide px-2 py-1 rounded-lg border cursor-pointer focus:outline-none transition-all shadow-sm ${statusCls}`}
+                    title="Click to change meeting status"
+                  >
+                    <option value="Scheduled" className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100">Scheduled</option>
+                    <option value="Completed" className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100">Completed</option>
+                    <option value="Cancelled" className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100">Cancelled</option>
+                    <option value="No-show" className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100">No-show</option>
+                    <option value="Missed" className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100">Missed</option>
+                  </select>
+                </div>
               </div>
-              {m.scheduled_at && (
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="text-xs text-slate-600 dark:text-zinc-300">
-                    {new Date(m.scheduled_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                    {m.duration_minutes && ` • ${m.duration_minutes} min`}
-                  </span>
+              {m.scheduled_at && (() => {
+                const start = new Date(m.scheduled_at);
+                const end = m.duration_minutes ? new Date(start.getTime() + m.duration_minutes * 60000) : null;
+                return (
+                  <div className="flex flex-col gap-0.5 mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-xs text-slate-600 dark:text-zinc-300">
+                        {start.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        {end && ` – ${end.toLocaleString("en-US", { hour: "2-digit", minute: "2-digit" })}`}
+                        {m.duration_minutes && ` (${m.duration_minutes}m)`}
+                      </span>
+                    </div>
+                    {m.timezone && (
+                      <span className="text-[10px] text-slate-400 pl-5">TZ: {m.timezone}</span>
+                    )}
+                  </div>
+                );
+              })()}
+              {m.meeting_link && (
+                <div className="mb-2">
+                  <a
+                    href={m.meeting_link.startsWith("http") ? m.meeting_link : `https://${m.meeting_link}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all shadow-sm"
+                  >
+                    <Video className="w-3.5 h-3.5" /> Join Meeting
+                  </a>
                 </div>
               )}
               {m.location && (
@@ -285,18 +511,19 @@ export default function MeetingsPage() {
                   <span className="text-xs text-slate-500 dark:text-zinc-400">{m.client_name || m.lead_name || m.contact_name}</span>
                 </div>
               )}
-              <div className="flex gap-2 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => openEdit(m)} className="flex-1 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-xs font-bold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all flex items-center justify-center gap-1">
+              <div className="flex gap-2 mt-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                <button onClick={() => openEdit(m)} className="flex-1 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-xs font-bold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all flex items-center justify-center gap-1 active:scale-95">
                   <Edit2 className="w-3 h-3" /> {t("meetings.edit")}
                 </button>
-                <button onClick={() => handleDelete(m.id)} className="flex-1 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-bold hover:bg-red-500/20 transition-all flex items-center justify-center gap-1">
+                <button onClick={() => handleDelete(m.id)} className="flex-1 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-bold hover:bg-red-500/20 transition-all flex items-center justify-center gap-1 active:scale-95">
                   <Trash2 className="w-3 h-3" /> {t("meetings.delete")}
                 </button>
               </div>
             </motion.div>
           );
         })}
-      </div>
+        </div>
+      )}
 
       {/* Create/Edit Modal */}
       <AnimatePresence>
@@ -310,57 +537,64 @@ export default function MeetingsPage() {
                 <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800"><X className="w-4 h-4" /></button>
               </div>
               <div className="p-6 space-y-4">
-                {[
-                  { label: t("meetings.title_label"), key: "title", placeholder: t("meetings.title_placeholder") },
-                  { label: t("meetings.location_label"), key: "location", placeholder: t("meetings.location_placeholder") },
-                ].map(({ label, key, placeholder }) => (
-                  <div key={key}>
-                    <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{label}</label>
-                    <input value={(form as any)[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} placeholder={placeholder}
-                      className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500" />
-                  </div>
-                ))}
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">{t("meetings.linked_party")}</label>
-                  <select value={form.linked} onChange={e => setForm(f => ({ ...f, linked: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500">
-                    <option value="">{t("meetings.none")}</option>
-                    <optgroup label="Clients">
-                      {clients.map(c => (
-                        <option key={`client-${c.id}`} value={`client:${c.id}`}>{c.companyName || c.projectName || c.contact_person || `Client #${c.id}`}</option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Leads">
-                      {leads.map(l => (
-                        <option key={`lead-${l.id}`} value={`lead:${l.id}`}>{l.company_name || `Lead #${l.id}`}</option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Contacts">
-                      {contacts.map(c => (
-                        <option key={`contact-${c.id}`} value={`contact:${c.id}`}>{`${c.first_name || ""} ${c.last_name || ""}`.trim() || `Contact #${c.id}`}</option>
-                      ))}
-                    </optgroup>
-                  </select>
+                  <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("meetings.title_label")} *</label>
+                  <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder={t("meetings.title_placeholder")}
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest block">Meeting Link</label>
+                    <div className="flex gap-1.5">
+                      <button type="button" onClick={() => setForm(f => ({ ...f, meeting_link: "https://meet.google.com/new" }))}
+                        className="text-[10px] font-bold px-2 py-0.5 rounded bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 hover:bg-violet-200 transition-colors">
+                        + Google Meet
+                      </button>
+                      <button type="button" onClick={() => setForm(f => ({ ...f, meeting_link: "https://zoom.us/start/videomeeting" }))}
+                        className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:bg-blue-200 transition-colors">
+                        + Zoom
+                      </button>
+                    </div>
+                  </div>
+                  <input value={form.meeting_link} onChange={e => setForm(f => ({ ...f, meeting_link: e.target.value }))} placeholder="https://meet.google.com/... or https://zoom.us/..."
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">{t("meetings.type")}</label>
+                    <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">Type</label>
                     <select value={form.meeting_type} onChange={e => setForm(f => ({ ...f, meeting_type: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500">
-                      {TYPES.map(t => <option key={t}>{t}</option>)}
+                      {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">{t("meetings.status")}</label>
+                    <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">Status</label>
                     <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500">
-                      {STATUSES.map(s => <option key={s}>{s}</option>)}
+                      {STATUSES.map(st => <option key={st} value={st}>{st}</option>)}
                     </select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+
+                <div>
+                  <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">{t("meetings.location_label")}</label>
+                  <input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder={t("meetings.location_placeholder")}
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                </div>
+
+                {/* Timezone Handling with Automatic Confirmation */}
+                <TimezonePicker
+                  value={form.timezone}
+                  onChange={tz => setForm(f => ({ ...f, timezone: tz }))}
+                  localTime={form.scheduled_at}
+                  label="Meeting Timezone"
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">{t("meetings.date_time")}</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">{t("meetings.date_time")} *</label>
                     <input type="datetime-local" value={form.scheduled_at} onChange={e => setForm(f => ({ ...f, scheduled_at: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500" />
                   </div>
@@ -368,6 +602,14 @@ export default function MeetingsPage() {
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">{t("meetings.duration_min")}</label>
                     <input type="number" value={form.duration_minutes} onChange={e => setForm(f => ({ ...f, duration_minutes: e.target.value }))} placeholder="60"
                       className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {[15, 30, 45, 60, 90].map(dur => (
+                        <button key={dur} type="button" onClick={() => setForm(f => ({ ...f, duration_minutes: String(dur) }))}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md transition-colors ${form.duration_minutes === String(dur) ? "bg-violet-600 text-white" : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700"}`}>
+                          {dur}m
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
                 <div>
