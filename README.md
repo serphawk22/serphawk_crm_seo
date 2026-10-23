@@ -65,11 +65,11 @@ python create_tables.py
 python seed_db.py
 ```
 
-To populate a demo/trial tenant with connected synthetic accounts, client portal
-profiles, clients, leads, client/lead contacts and notes, lead sources, deals,
-proposals and comments, invoices, meetings, follow-ups, tasks, calls, activity,
-and six months of sales, email, worklog, salary, marketing, and revenue-reporting
-records, preview first and then explicitly apply:
+To populate a demo/trial tenant with 40 connected synthetic clients and 40
+leads, plus client portal profiles, client/lead contacts and notes, lead sources,
+deals, proposals and comments, invoices, 40 meetings, 40 follow-ups, tasks,
+calls, activity, and six months of sales, email, worklog, salary, marketing,
+and revenue-reporting records, preview first and then explicitly apply:
 ```bash
 python seed_demo_crm.py --tenant-id <DEMO_TENANT_ID>
 python seed_demo_crm.py --tenant-id <DEMO_TENANT_ID> --apply
@@ -78,7 +78,8 @@ The seed command rolls back by default, refuses non-demo tenants unless
 `--allow-non-demo-tenant` is explicitly supplied, and creates demo team members
 and client portal users as inactive accounts with reserved `.invalid` email
 addresses. Email and call rows are synthetic reporting fixtures only; nothing
-is actually sent or called.
+is actually sent or called. The command adds demo-prefixed rows in the selected
+tenant and does not remove or replace existing records.
 
 ### 4. Run the Backend Server
 Start the Uvicorn development server:
