@@ -19,6 +19,8 @@ from database import (
     Account,
     ActivityLog,
     BusinessCost,
+    CallLog,
+    ClientNote,
     ClientProfile,
     Contact,
     ConversationLog,
@@ -26,11 +28,15 @@ from database import (
     FollowUp,
     Invoice,
     Lead,
+    LeadNote,
     LeadSource,
     Meeting,
     Proposal,
     ProposalComment,
     SalespersonHistory,
+    SentEmail,
+    Task,
+    TaskSheetEntry,
     Tenant,
     User,
     engine,
@@ -38,9 +44,9 @@ from database import (
 
 
 STAFF = (
-    ("Avery Demo", "demo.avery", "bg-blue-500"),
-    ("Jordan Demo", "demo.jordan", "bg-violet-500"),
-    ("Casey Demo", "demo.casey", "bg-emerald-500"),
+    ("Avery Demo", "demo.avery", "SalesManager"),
+    ("Jordan Demo", "demo.jordan", "Employee"),
+    ("Casey Demo", "demo.casey", "Employee"),
 )
 CLIENTS = (
     ("Northstar Analytics", "Technology", "northstar"),
@@ -99,7 +105,8 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
         "tenants", "users", "client_profiles", "accounts", "contacts", "leads",
         "deals", "proposals", "invoices", "meetings", "follow_ups",
         "conversation_logs", "activity_logs", "lead_sources", "business_costs",
-        "salesperson_history",
+        "salesperson_history", "sent_emails", "call_logs", "tasks",
+        "task_sheet_entries", "client_notes", "lead_notes",
     )
     missing_tables = [
         name for name in required_tables if not inspect(engine).has_table(name)
@@ -126,8 +133,9 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
             added[label] = added.get(label, 0) + int(created)
 
         reps: list[User] = []
-        for name, slug, _color in STAFF:
+        for name, slug, role in STAFF:
             email = f"{slug}+tenant-{tenant_id}@example.invalid"
+            random_password_hash = hashlib.sha256(secrets.token_bytes(32)).hexdigest()
             user, created = _get_or_create(
                 session,
                 User,
@@ -135,15 +143,19 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
                 {"email": email},
                 {
                     "name": name,
-                    "password": hashlib.sha256(secrets.token_bytes(32)).hexdigest(),
-                    "hashed_password": hashlib.sha256(secrets.token_bytes(32)).hexdigest(),
-                    "role": "Employee",
+                    "password": random_password_hash,
+                    "hashed_password": random_password_hash,
+                    "role": role,
                     "is_active": False,
                     "status": "APPROVED",
                     "timezone": "UTC",
                 },
             )
             track("inactive synthetic team members", created)
+            if user.role != role or user.is_active:
+                user.role = role
+                user.is_active = False
+                session.add(user)
             reps.append(user)
         session.flush()
 
@@ -172,8 +184,31 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
 
         clients: list[ClientProfile] = []
         accounts: list[Account] = []
+        client_source_names = (
+            "Referral", "Website", "Event", "Cold Outreach", "Referral", "Website"
+        )
         for index, (company, industry, slug) in enumerate(CLIENTS):
             rep = reps[index % len(reps)]
+            source_name = client_source_names[index]
+            source = sources[source_name]
+            client_user_email = f"client-{slug}+tenant-{tenant_id}@example.invalid"
+            client_password_hash = hashlib.sha256(secrets.token_bytes(32)).hexdigest()
+            client_user, created = _get_or_create(
+                session,
+                User,
+                tenant_id,
+                {"email": client_user_email},
+                {
+                    "name": f"Demo Client {index + 1}",
+                    "password": client_password_hash,
+                    "hashed_password": client_password_hash,
+                    "role": "Client",
+                    "is_active": False,
+                    "status": "APPROVED",
+                    "createdAt": _month_start(index % 6),
+                },
+            )
+            track("inactive synthetic client portal users", created)
             account, created = _get_or_create(
                 session,
                 Account,
@@ -193,9 +228,11 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
                 tenant_id,
                 {"companyName": f"Demo | {company}"},
                 {
+                    "userId": client_user.id,
                     "status": "Active",
                     "assignedEmployeeId": rep.id,
-                    "lead_source": "Demo Referral",
+                    "lead_source": source.name,
+                    "lead_source_id": source.id,
                     "lead_score": 70 + index * 4,
                     "deal_value": 12000 + index * 3500,
                     "industry": industry,
@@ -210,6 +247,12 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
                 },
             )
             track("clients", created)
+            if client.userId != client_user.id:
+                client.userId = client_user.id
+                session.add(client)
+            client.lead_source = source.name
+            client.lead_source_id = source.id
+            session.add(client)
             clients.append(client)
             accounts.append(account)
         session.flush()
@@ -246,13 +289,54 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
                     "status": ("Qualified", "Contacted", "New")[index % 3],
                     "notes": "Synthetic demonstration lead; no real person or business.",
                     "account_id": account.id,
+                    "created_at": _month_start(index % 6),
                 },
             )
             track("leads", created)
+            lead.created_at = _month_start(index % 6)
+            lead.owner_id = rep.id
+            lead.lead_source_id = sources[source_name].id
+            lead.source = f"Demo {source_name}"
+            session.add(lead)
             leads.append(lead)
         session.flush()
 
-        contacts: list[Contact] = []
+        for index, client in enumerate(clients):
+            note, created = _get_or_create(
+                session,
+                ClientNote,
+                tenant_id,
+                {
+                    "client_id": client.id,
+                    "content": f"DEMO-SEED-v1: client account health review {index + 1:02d}",
+                },
+                {
+                    "tags": ["demo", "account-review"],
+                    "is_pinned": index == 0,
+                    "author_id": reps[index % len(reps)].id,
+                    "author_name": reps[index % len(reps)].name,
+                },
+            )
+            track("client notes", created)
+
+        for index, lead in enumerate(leads):
+            note, created = _get_or_create(
+                session,
+                LeadNote,
+                tenant_id,
+                {
+                    "lead_id": lead.id,
+                    "content": f"DEMO-SEED-v1: qualification notes and next steps {index + 1:02d}",
+                },
+                {
+                    "author_id": reps[index % len(reps)].id,
+                    "author_name": reps[index % len(reps)].name,
+                    "created_at": _month_start(index % 6),
+                },
+            )
+            track("lead notes", created)
+
+        client_contacts: list[Contact] = []
         for index, client in enumerate(clients):
             first_name = f"DemoContact{index + 1}"
             contact, created = _get_or_create(
@@ -275,8 +359,41 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
                 },
             )
             track("contacts", created)
-            contacts.append(contact)
+            client_contacts.append(contact)
         session.flush()
+
+        lead_contacts: list[Contact] = []
+        for index, lead in enumerate(leads):
+            first_name = f"LeadContact{index + 1}"
+            contact, created = _get_or_create(
+                session,
+                Contact,
+                tenant_id,
+                {"email": f"leadcontact{index + 1}@lead-{tenant_id}.example.invalid"},
+                {
+                    "first_name": first_name,
+                    "last_name": "Example",
+                    "full_name": f"{first_name} Example",
+                    "designation": ("Founder", "Marketing Manager", "Operations Director")[index % 3],
+                    "department": ("Leadership", "Marketing", "Operations")[index % 3],
+                    "mobile_number": f"+1-555-012-{index + 10:02d}",
+                    "lead_id": lead.id,
+                    "account_id": lead.account_id,
+                    "owner_id": reps[index % len(reps)].id,
+                    "notes": "Synthetic demo lead contact.",
+                    "tags": ["demo", "lead", "seed-v1"],
+                },
+            )
+            track("lead contacts", created)
+            lead_contacts.append(contact)
+        session.flush()
+
+        for index, lead in enumerate(leads[:2]):
+            lead.is_converted = True
+            lead.status = "Converted"
+            lead.converted_client_id = clients[index].id
+            lead.account_id = accounts[index].id
+            session.add(lead)
 
         deals: list[Deal] = []
         for index, client in enumerate(clients):
@@ -291,7 +408,7 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
                 {
                     "value": 18000.0 + index * 4200,
                     "final_value": 16500.0 + index * 3900 if stage == "Closed Won" else None,
-                    "currency": "USD",
+                    "currency": "INR",
                     "client_id": client.id,
                     "assigned_to": rep.id,
                     "stage": stage,
@@ -315,7 +432,7 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
                     "description": "Synthetic demo service",
                     "quantity": 1,
                     "unit_price": deal.final_value or deal.value,
-                    "currency": "USD",
+                    "currency": "INR",
                 }
             ]
             proposal, created = _get_or_create(
@@ -329,7 +446,7 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
                     "recipient_type": "client",
                     "content": "Synthetic demonstration proposal.",
                     "line_items": line_items,
-                    "currency": "USD",
+                    "currency": "INR",
                     "status": ("Accepted", "Sent", "Draft")[index % 3],
                     "valid_until": (datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat(),
                     "total_value": deal.final_value or deal.value,
@@ -353,9 +470,9 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
                         "description": "Synthetic demo service",
                         "quantity": 1,
                         "unit_price": 9500.0 + index * 1500,
-                        "currency": "USD",
+                        "currency": "INR",
                     }],
-                    "currency": "USD",
+                    "currency": "INR",
                     "status": "Sent" if index == 0 else "Draft",
                     "valid_until": (datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat(),
                     "total_value": 9500.0 + index * 1500,
@@ -401,7 +518,7 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
                     "amount": amount,
                     "tax": round(amount * 0.08, 2),
                     "total": round(amount * 1.08, 2),
-                    "currency": "USD",
+                    "currency": "INR",
                     "status": status,
                     "due_date": (created_at + timedelta(days=30)).date().isoformat(),
                     "notes": "Synthetic demonstration invoice.",
@@ -414,7 +531,7 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
             track("invoices", created)
 
         for index, lead in enumerate(leads):
-            contact = contacts[index]
+            contact = lead_contacts[index]
             rep = reps[index % len(reps)]
             when = _month_start(index % 6)
             meeting, created = _get_or_create(
@@ -509,25 +626,160 @@ def seed(tenant_id: int, apply: bool, allow_non_demo_tenant: bool) -> None:
             )
             track("sales assignment history entries", created)
 
-        for index in range(6):
-            cost_date = _month_start(index).date().isoformat()
+        for month_index in range(6):
+            work_datetime = _month_start(month_index)
+            work_date = work_datetime.date().isoformat()
+            for rep_index, rep in enumerate(reps):
+                record_index = (month_index * len(reps) + rep_index) % len(leads)
+                lead = leads[record_index]
+                client = clients[record_index]
+                sent_email, created = _get_or_create(
+                    session,
+                    SentEmail,
+                    tenant_id,
+                    {
+                        "to_email": lead.email,
+                        "subject": f"DEMO-{tenant_id}-Outreach-{month_index + 1:02d}-{rep_index + 1:02d}",
+                    },
+                    {
+                        "client_id": client.id,
+                        "lead_id": lead.id,
+                        "english_body": "Synthetic demo outreach record; no email was sent.",
+                        "recommended_services": "SEO growth program",
+                        "manual": True,
+                        "status": ("Opened", "Replied", "Sent")[rep_index],
+                        "sent_at": work_datetime,
+                        "opened_at": work_datetime + timedelta(hours=2) if rep_index == 0 else None,
+                        "last_opened_at": work_datetime + timedelta(hours=3) if rep_index == 0 else None,
+                        "open_count": 2 if rep_index == 0 else 0,
+                        "replied_at": work_datetime + timedelta(days=1) if rep_index == 1 else None,
+                        "reply_from": lead.email if rep_index == 1 else None,
+                        "reply_subject": "Re: Demo outreach" if rep_index == 1 else None,
+                        "reply_body": "Please send the proposal." if rep_index == 1 else None,
+                    },
+                )
+                track("synthetic sent-email report records (not actually sent)", created)
+
+                call, created = _get_or_create(
+                    session,
+                    CallLog,
+                    tenant_id,
+                    {
+                        "phone_number": lead.phone,
+                        "summary": f"DEMO-{tenant_id}-Call-{month_index + 1:02d}-{rep_index + 1:02d}",
+                        "createdAt": work_datetime,
+                    },
+                    {
+                        "received_at": work_datetime,
+                        "duration_seconds": 180 + rep_index * 90,
+                        "description": "Synthetic demo sales call record; no call was placed.",
+                        "work_done": "Discussed goals, qualification and next steps.",
+                        "assigned_to": rep.name,
+                        "followup_needed": rep_index != 2,
+                        "followup_date": (work_datetime + timedelta(days=7)).date().isoformat(),
+                        "client_id": client.id,
+                    },
+                )
+                track("synthetic call-report records (no calls placed)", created)
+
+                task, created = _get_or_create(
+                    session,
+                    Task,
+                    tenant_id,
+                    {"title": f"DEMO-{tenant_id}-Task-{month_index + 1:02d}-{rep_index + 1:02d}"},
+                    {
+                        "description": "Synthetic sales follow-up task.",
+                        "status": ("Done", "InProgress", "Todo")[rep_index],
+                        "priority": ("High", "Medium", "Low")[rep_index],
+                        "due_date": (work_datetime + timedelta(days=10)).date().isoformat(),
+                        "client_id": client.id,
+                        "lead_id": lead.id,
+                        "assigned_to": rep.id,
+                        "created_by": rep.id,
+                        "created_at": work_datetime,
+                        "updated_at": work_datetime,
+                    },
+                )
+                track("sales tasks", created)
+
+                task_entry, created = _get_or_create(
+                    session,
+                    TaskSheetEntry,
+                    tenant_id,
+                    {
+                        "user_id": rep.id,
+                        "work_date": work_date,
+                    },
+                    {
+                        "area": "Sales",
+                        "summary": f"DEMO-{tenant_id}-Worklog-{month_index + 1:02d}-{rep_index + 1:02d}: CRM outreach, qualification and follow-up.",
+                        "status": "Done" if rep_index != 1 else "InProgress",
+                        "time_spent_minutes": 45 + rep_index * 15,
+                        "follow_up_date": (work_datetime + timedelta(days=7)).date().isoformat(),
+                        "completion_date": work_date if rep_index != 1 else None,
+                        "created_at": work_datetime,
+                        "updated_at": work_datetime,
+                    },
+                )
+                track("sales report worklog entries", created)
+
+                activity, created = _get_or_create(
+                    session,
+                    ActivityLog,
+                    tenant_id,
+                    {
+                        "action": f"DEMO-SEED-v1: monthly activity {month_index + 1:02d}-{rep_index + 1:02d}",
+                        "lead_id": lead.id,
+                    },
+                    {
+                        "userId": rep.id,
+                        "clientId": client.id,
+                        "method": ("Email", "Phone", "In-person")[rep_index],
+                        "content": "Synthetic monthly sales activity for performance reports.",
+                        "createdAt": work_datetime,
+                    },
+                )
+                track("monthly sales activities", created)
+
+        for month_index in range(6):
+            cost_date = _month_start(month_index).date().isoformat()
             cost, created = _get_or_create(
                 session,
                 BusinessCost,
                 tenant_id,
-                {"title": f"DEMO-{tenant_id}-Marketing-{index + 1:02d}"},
+                {"title": f"DEMO-{tenant_id}-Marketing-{month_index + 1:02d}"},
                 {
                     "category": "Marketing",
-                    "amount": 400.0 + index * 75,
-                    "currency": "USD",
+                    "amount": 400.0 + month_index * 75,
+                    "currency": "INR",
                     "cost_date": cost_date,
                     "is_recurring": False,
-                    "employee_id": reps[index % len(reps)].id,
+                    "employee_id": reps[month_index % len(reps)].id,
                     "notes": "Synthetic demonstration reporting cost.",
-                    "created_by": reps[index % len(reps)].id,
+                    "created_by": reps[month_index % len(reps)].id,
                 },
             )
             track("business cost entries", created)
+            for rep_index, rep in enumerate(reps):
+                salary, created = _get_or_create(
+                    session,
+                    BusinessCost,
+                    tenant_id,
+                    {
+                        "title": f"DEMO-{tenant_id}-Salary-{month_index + 1:02d}-{rep_index + 1:02d}",
+                    },
+                    {
+                        "category": "Salary",
+                        "amount": 1200.0 + rep_index * 150,
+                        "currency": "INR",
+                        "cost_date": cost_date,
+                        "is_recurring": False,
+                        "employee_id": rep.id,
+                        "notes": "Synthetic demo staffing cost for sales performance reporting.",
+                        "created_by": rep.id,
+                    },
+                )
+                track("sales salary cost entries", created)
 
         print(f"Tenant: {tenant.name} (id={tenant.id})")
         print(f"Mode: {'APPLY' if apply else 'DRY RUN — rollback'}")
