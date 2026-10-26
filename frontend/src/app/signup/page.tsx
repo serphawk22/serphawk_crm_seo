@@ -192,6 +192,7 @@ export default function SignupPage() {
         if (!res.ok) throw new Error(data.detail || "Google login failed");
         
         localStorage.setItem("crm_user", JSON.stringify(data.user));
+        if (data.token) localStorage.setItem("crm_token", data.token);
         
         if (data.is_new_user) {
           window.location.href = "/onboarding";

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { API_BASE_URL } from "@/config";
-import Image from "next/image";
-import { FileText, Send, CheckCircle, Download, Building2, Loader2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { FileText, Send, CheckCircle, Download, Building2, User2, Loader2, ArrowRight } from "lucide-react";
 
 interface QuoteItem {
   description: string;
@@ -22,6 +22,7 @@ interface ProposalComment {
 }
 
 interface Proposal {
+  brand?: { name: string; email?: string; phone?: string; website?: string };
   id?: number;
   quote_number: string;
   title: string;
@@ -53,10 +54,10 @@ export default function PublicProposalPage() {
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+  
   const [commentText, setCommentText] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
-
+  
   const [authorName, setAuthorName] = useState("");
   const [downloading, setDownloading] = useState(false);
 
@@ -82,31 +83,33 @@ export default function PublicProposalPage() {
       setDownloading(false);
     }
   };
-
-  const fetchProposal = useCallback(async () => {
+  
+  const fetchProposal = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/public/proposals/${uuid}`);
       if (!res.ok) throw new Error("Proposal not found or expired.");
-      const data = await res.json() as Proposal;
+      const data = await res.json();
       setProposal(data);
-      setAuthorName(current => current || data.client_name || data.lead_name || "Client");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load proposal.");
+      if (!authorName) {
+         setAuthorName(data.client_name || data.lead_name || "Client");
+      }
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [uuid]);
+  };
 
   useEffect(() => {
-    if (uuid) void fetchProposal();
-  }, [fetchProposal, uuid]);
+    if(uuid) fetchProposal();
+  }, [uuid]);
 
   const handleSendComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentText.trim()) return;
     setSendingComment(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/public/proposals/${uuid}/comments`, {
+      await fetch(`${API_BASE_URL}/public/proposals/${uuid}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -115,12 +118,10 @@ export default function PublicProposalPage() {
           content: commentText
         })
       });
-      if (!response.ok) throw new Error("Could not send your comment.");
       setCommentText("");
-      await fetchProposal();
+      fetchProposal();
     } catch (err) {
       console.error(err);
-      alert("Could not send your comment. Please try again.");
     } finally {
       setSendingComment(false);
     }
@@ -129,20 +130,18 @@ export default function PublicProposalPage() {
   const handleAccept = async () => {
     if (!confirm("Are you sure you want to digitally sign and accept this proposal?")) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/public/proposals/${uuid}/accept`, { method: "POST" });
-      if (!response.ok) throw new Error("Proposal acceptance failed.");
+      await fetch(`${API_BASE_URL}/public/proposals/${uuid}/accept`, { method: "POST" });
       alert("Proposal accepted! Thank you for your business.");
-      await fetchProposal();
+      fetchProposal();
     } catch (err) {
       console.error(err);
-      alert("Could not accept the proposal. Please try again.");
     }
   };
 
   if (loading) {
     return <div className="flex h-screen items-center justify-center bg-slate-50"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>;
   }
-
+  
   if (error || !proposal) {
     return <div className="flex h-screen items-center justify-center bg-slate-50 text-red-500 font-bold">{error || "Not found"}</div>;
   }
@@ -152,13 +151,13 @@ export default function PublicProposalPage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 font-sans text-slate-900 dark:text-zinc-100 flex justify-center p-4 sm:p-8">
       <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-8 items-start">
-
+        
         {/* PROPOSAL DOCUMENT */}
         <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl overflow-hidden border border-slate-200 dark:border-zinc-800">
           <div className="p-8 md:p-12">
             <div className="flex flex-wrap items-start justify-between gap-6 border-b border-slate-100 dark:border-zinc-800 pb-8">
               <div>
-                <Image src="/logo.png" alt="SCM BPO" width={180} height={48} className="h-12 w-auto mb-4 object-contain" />
+                <p className="mb-4 text-2xl font-black tracking-tight text-slate-900 dark:text-white">{proposal.brand?.name}</p>
                 <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">{proposal.title}</h1>
                 <p className="text-slate-500 font-mono mt-2">{proposal.quote_number}</p>
               </div>
@@ -185,14 +184,15 @@ export default function PublicProposalPage() {
               </div>
               <div>
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Prepared By</p>
-                <p className="text-base font-semibold text-slate-800 dark:text-zinc-200">SCM BPO Solutions</p>
-                <p className="text-sm text-slate-500 mt-1">contact@scmbpo.com</p>
+                <p className="text-base font-semibold text-slate-800 dark:text-zinc-200">{proposal.brand?.name}</p>
+                {proposal.brand?.email && <p className="text-sm text-slate-500 mt-1">{proposal.brand.email}</p>}
+                {proposal.brand?.phone && <p className="text-sm text-slate-500">{proposal.brand.phone}</p>}
               </div>
             </div>
 
             <div className="py-8">
               <h3 className="text-lg font-bold mb-6 flex items-center gap-2"><FileText className="w-5 h-5 text-indigo-500"/> Pricing Breakdown</h3>
-
+              
               <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-2xl border border-slate-100 dark:border-zinc-800 overflow-hidden">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-slate-100 dark:bg-zinc-800 border-b border-slate-200 dark:border-zinc-700">
@@ -250,7 +250,7 @@ export default function PublicProposalPage() {
           <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl p-6 border border-slate-200 dark:border-zinc-800">
             <h3 className="text-lg font-bold mb-4">Actions</h3>
             {!isAccepted ? (
-              <button
+              <button 
                 onClick={handleAccept}
                 className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-emerald-500/25 transition-all active:scale-95"
               >
@@ -261,7 +261,7 @@ export default function PublicProposalPage() {
                 <CheckCircle className="w-5 h-5" /> Proposal Accepted
               </div>
             )}
-
+            
             <button
               onClick={handleDownloadPDF}
               disabled={downloading || !proposal?.id}
@@ -277,7 +277,7 @@ export default function PublicProposalPage() {
                 💬 Negotiation & Comments
               </h3>
             </div>
-
+            
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {proposal.comments.length === 0 ? (
                 <div className="text-center text-slate-400 text-sm mt-10">
@@ -291,8 +291,8 @@ export default function PublicProposalPage() {
                       {c.author_name}
                     </span>
                     <div className={`px-4 py-2.5 rounded-2xl max-w-[90%] text-sm ${
-                      c.author_type === 'client'
-                        ? 'bg-indigo-600 text-white rounded-br-sm'
+                      c.author_type === 'client' 
+                        ? 'bg-indigo-600 text-white rounded-br-sm' 
                         : 'bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 rounded-bl-sm'
                     }`}>
                       {c.content}
@@ -301,17 +301,17 @@ export default function PublicProposalPage() {
                 ))
               )}
             </div>
-
+            
             <form onSubmit={handleSendComment} className="p-4 border-t border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 rounded-b-2xl">
               <div className="flex gap-2 relative">
-                <input
-                  type="text"
+                <input 
+                  type="text" 
                   value={commentText}
                   onChange={e => setCommentText(e.target.value)}
                   placeholder="Ask for a revision..."
                   className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 pr-12"
                 />
-                <button
+                <button 
                   type="submit"
                   disabled={sendingComment || !commentText.trim()}
                   className="absolute right-1.5 top-1.5 bottom-1.5 bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-lg transition-colors disabled:opacity-50"

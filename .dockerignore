@@ -1,0 +1,13 @@
+.git
+.env
+.env.*
+venv
+__pycache__
+*.pyc
+frontend
+showcase
+static/uploads
+docs
+*.log
+*.sqlite3
+*.db

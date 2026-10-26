@@ -8,7 +8,7 @@ import {
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar,
   Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Edit2, GripVertical, Check,
-  Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, UserX
+  Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, BookOpen as BookOpenIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRole, Role } from "@/context/RoleContext";
@@ -19,6 +19,7 @@ import { API_BASE_URL } from "@/config";
 import { useTranslation } from "react-i18next";
 import { useLanguage, Language } from "@/context/LanguageContext";
 import { useNotifications } from "@/context/NotificationContext";
+import { useTenantConfig } from "@/context/TenantConfigContext";
 
 // --- DND Kit Imports ---
 import {
@@ -41,15 +42,38 @@ import { CSS } from "@dnd-kit/utilities";
 
 // Icon mapping for dynamically loaded sections
 import type { LucideIcon } from "lucide-react";
+import BrandMark from "./BrandMark";
 const iconMap: Record<string, LucideIcon> = {
   LayoutDashboard, Bell, Users, FolderOpen, CheckSquare, CheckCircle, Radar, Mail,
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
   Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar,
-  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, UserX
+  Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb
 };
 
 // Roles that can open /inbox (routers/inbox.py enforces the same list server-side).
 const INBOX_ROLES = ["Admin", "SalesManager", "Employee", "Demo", "SuperAdmin"];
+
+// Sidebar item -> feature (module) a tenant can switch off. Items not listed are always shown.
+const ITEM_FEATURE: Record<string, string> = {
+  "item-work-queue": "work_queue", "item-inbox": "inbox", "item-followups": "followups",
+  "item-contacts": "contacts", "item-clients": "clients", "item-deals": "deals",
+  "item-projects": "projects", "item-task-sheet": "task_sheet", "item-reports": "reports",
+  "item-meetings": "meetings", "item-calls": "calls", "item-teams": "teams", "item-leaderboard": "leaderboard",
+  "item-email-agent": "email_agent", "item-voice-agent": "voice_agent",
+  "item-inventory": "inventory", "item-orders": "inventory", "item-products": "products",
+  "item-billing": "billing", "item-proposals": "proposals", "item-marketplace": "marketplace",
+  "item-cases": "support", "item-solutions": "support", "item-scmhub-cases": "scmhub_cases",
+  "item-import": "import_data", "item-api-intelligence": "api_intelligence", "item-demo-accounts": "demo_accounts",
+};
+
+// Add-on modules (off unless the tenant has them): shown only once the tenant config says they are on.
+const ITEM_ADDON: Record<string, string> = {
+  "item-command-center": "command_center", "item-revenue": "finance_suite", "item-business-costs": "finance_suite",
+  "item-lead-sources": "lead_sources", "item-lead-source-analytics": "lead_sources", "item-ownership": "ownership",
+  "item-dropped-clients": "dropped_clients",
+  "item-students": "institute", "item-courses": "institute", "item-batches": "institute", "item-instructors": "institute",
+  "item-enrollments": "institute", "item-schedule": "institute", "item-institute-analytics": "institute",
+};
 
 // Live count shown next to a sidebar item, if any.
 function badgeCount(item: SidebarItem, unreadCount: number, inboxUnread: number): number {
@@ -84,6 +108,7 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-work-queue", name: "My Work Queue", icon: "LayoutList", href: "/work-queue", roles: ["Admin", "Demo", "SalesManager", "Employee", "ProjectMember", "Intern", "Developer"] },
       { id: "item-notifications", name: "Notifications", icon: "Bell", href: "/notifications", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
       { id: "item-inbox", name: "Inbox", icon: "Inbox", href: "/inbox", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
+      { id: "item-followups", name: "Follow-ups", icon: "CalendarClock", href: "/followups", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
     ],
   },
   {
@@ -93,16 +118,16 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-leads", name: "Leads", icon: "Radar", href: "/leads", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-contacts", name: "Contacts", icon: "Users", href: "/contacts", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-clients", name: "Clients", icon: "CheckCircle", href: "/clients", roles: ["Admin", "SalesManager", "Demo"] },
-      { id: "item-dropped-clients", name: "Dropped Clients", icon: "UserX", href: "/dropped-clients", roles: ["Admin", "SalesManager", "Demo", "Employee"] },
+      { id: "item-deals", name: "Deals", icon: "Briefcase", href: "/pipeline", roles: ["Admin", "SalesManager", "Demo"] },
     ],
   },
   {
     id: "section-projects",
-    heading: "ACTIVITIES",
+    heading: "PROJECTS & ACTIVITIES",
     items: [
+      { id: "item-projects", name: "Projects", icon: "FolderOpen", href: "/projects", roles: ["Admin", "Employee", "Intern", "ProjectMember", "Demo"] },
       { id: "item-task-sheet", name: "Task Sheet", icon: "FileBarChart2", href: "/task-sheet", roles: ["Admin", "Employee", "SalesManager", "ProjectMember", "Intern", "Demo"] },
       { id: "item-reports", name: "Reports", icon: "BarChart2", href: "/reports", roles: ["Admin", "SalesManager", "Demo"] },
-      { id: "item-followups", name: "Follow-ups", icon: "CalendarClock", href: "/followups", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
       { id: "item-meetings", name: "Meetings", icon: "Calendar", href: "/meetings", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-calls", name: "Calls", icon: "Phone", href: "/calls", roles: ["Admin", "SalesManager", "Demo"] },
     ],
@@ -113,6 +138,32 @@ const defaultSidebarSections: SidebarSection[] = [
     items: [
       { id: "item-teams", name: "Team Directory", icon: "Users", href: "/teams", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-leaderboard", name: "Leaderboard", icon: "Trophy", href: "/admin/leaderboard", roles: ["Admin", "SalesManager", "Demo"] },
+    ],
+  },
+  {
+    id: "section-institute",
+    heading: "INSTITUTE",
+    items: [
+      { id: "item-students", name: "Students", icon: "GraduationCap", href: "/students", roles: ["Admin", "Employee", "SalesManager", "Sales", "Demo"] },
+      { id: "item-courses", name: "Courses", icon: "BookOpen", href: "/courses", roles: ["Admin", "Employee", "SalesManager", "Sales", "Demo"] },
+      { id: "item-batches", name: "Batches", icon: "Users", href: "/batches", roles: ["Admin", "Employee", "Instructor", "SalesManager", "Demo"] },
+      { id: "item-instructors", name: "Instructors", icon: "Users", href: "/instructors", roles: ["Admin", "Employee", "Demo"] },
+      { id: "item-enrollments", name: "Enrollments & Fees", icon: "FileText", href: "/enrollments", roles: ["Admin", "Employee", "SalesManager", "Demo"] },
+      { id: "item-schedule", name: "Important Dates", icon: "CalendarClock", href: "/schedule", roles: ["Admin", "Employee", "SalesManager", "Sales", "Demo"] },
+      { id: "item-institute-analytics", name: "Institute Analytics", icon: "BarChart2", href: "/institute-analytics", roles: ["Admin", "Employee", "SalesManager", "Demo"] },
+    ],
+  },
+  {
+    id: "section-business-suite",
+    heading: "BUSINESS SUITE",
+    items: [
+      { id: "item-command-center", name: "Command Center", icon: "LayoutDashboard", href: "/command-center", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-revenue", name: "Revenue Dashboard", icon: "TrendingUp", href: "/revenue", roles: ["Admin"] },
+      { id: "item-business-costs", name: "Business Costs", icon: "IndianRupee", href: "/business-costs", roles: ["Admin"] },
+      { id: "item-lead-sources", name: "Lead Sources", icon: "Zap", href: "/lead-sources", roles: ["Admin"] },
+      { id: "item-lead-source-analytics", name: "Lead Source Analytics", icon: "BarChart2", href: "/lead-source-analytics", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-ownership", name: "Ownership", icon: "Users", href: "/ownership", roles: ["Admin"] },
+      { id: "item-dropped-clients", name: "Dropped Clients", icon: "Users", href: "/dropped-clients", roles: ["Admin", "SalesManager", "Demo"] },
     ],
   },
   {
@@ -151,12 +202,16 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-import", name: "Import Data", icon: "FileBarChart2", href: "/import", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-api-intelligence", name: "API Intelligence", icon: "Activity", href: "/admin/api-intelligence", roles: ["Admin", "SuperAdmin"] },
       { id: "item-demo-accounts", name: "Demo Account Data", icon: "Users", href: "/admin/telemetry", roles: ["Admin", "SuperAdmin"] },
+      { id: "item-client-management", name: "Client Management", icon: "Building2", href: "/superadmin/clients", roles: ["SuperAdmin"] },
+      { id: "item-client-requests", name: "Client Requests", icon: "Inbox", href: "/superadmin/requests", roles: ["SuperAdmin"] },
+      { id: "item-branding", name: "Branding & Settings", icon: "Settings", href: "/admin/branding", roles: ["Admin"] },
+      { id: "item-customization-requests", name: "Customization Requests", icon: "Lightbulb", href: "/requests", roles: ["Admin"] },
     ],
   },
 ];
 
 // --- Sortable Section Component ---
-const DEFAULT_HEADINGS = ["CRM", "TEAMS", "AI AGENTS", "INVENTORY", "SUPPORT", "SYSTEM"];
+const DEFAULT_HEADINGS = ["CRM", "PROJECTS & ACTIVITIES", "TEAMS", "INSTITUTE", "BUSINESS SUITE", "AI AGENTS", "INVENTORY", "SUPPORT", "SYSTEM"];
 const ITEM_KEY_OVERRIDES: Record<string, string> = {
   "item-teams": "team_directory",
   "item-products": "catalog",
@@ -188,6 +243,7 @@ interface SortableSectionProps {
 function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection, unreadCount, inboxUnread, favourites, onToggleFavourite, searchQuery, isOpen, onToggleSection }: SortableSectionProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
   const { t } = useLanguage();
+  const { hasFeature, isOn } = useTenantConfig();
   const itemLabel = (item: SidebarItem) => {
     const k = `sidebar.${sidebarItemKey(item.id)}`;
     const v = t(k);
@@ -211,7 +267,11 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
 
   const visibleItems = section.items
     .filter((item: SidebarItem) => (role === 'SuperAdmin' || item.roles.includes(role)) && !(item.id === 'item-reports' && !['Admin', 'SuperAdmin', 'SalesManager'].includes(role)))
-    .filter((item: SidebarItem) => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    .filter((item: SidebarItem) => hasFeature(ITEM_FEATURE[item.id]))
+    .filter((item: SidebarItem) => !ITEM_ADDON[item.id] || isOn(ITEM_ADDON[item.id]))
+    .filter((item: SidebarItem) => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    // a company with the follow-up board gets the board (which has the email follow-ups as a tab) behind the same menu entry
+    .map((item: SidebarItem) => (item.id === "item-followups" && isOn("followup_board") ? { ...item, href: "/follow-ups" } : item));
 
   if (visibleItems.length === 0) return null;
 
@@ -356,6 +416,8 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
 export function Sidebar({ role }: SidebarProps) {
   const pathname = usePathname();
   const { user } = useRole();
+  const { hasFeature, brandName } = useTenantConfig();
+  const inboxEnabled = hasFeature("inbox");
   const userId = user?.id;
   const { collapsed, setCollapsed } = useSidebar();
   const { theme, toggleTheme } = useTheme();
@@ -378,7 +440,7 @@ export function Sidebar({ role }: SidebarProps) {
 
   // Inbox unread badge: light poll, plus an immediate refresh whenever the Inbox page changes read state.
   useEffect(() => {
-    if (!user?.id || !INBOX_ROLES.includes(role)) return;
+    if (!user?.id || !INBOX_ROLES.includes(role) || !inboxEnabled) return;
     let alive = true;
     const load = async () => {
       try {
@@ -397,7 +459,7 @@ export function Sidebar({ role }: SidebarProps) {
       clearInterval(timer);
       window.removeEventListener("inbox-unread-changed", load);
     };
-  }, [user?.id, role]);
+  }, [user?.id, role, inboxEnabled]);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
     // Default: all sections with headings start open
     const initial: Record<string, boolean> = {};
@@ -468,7 +530,7 @@ export function Sidebar({ role }: SidebarProps) {
               const savedSectionIds = new Set<string>(savedSections.map((s: SidebarSection) => s.id));
               const missingSections = defaultSidebarSections.filter(s => !savedSectionIds.has(s.id));
               
-              let mergedSections = savedSections.map((savedSec: SidebarSection) => {
+              const mergedSections = savedSections.map((savedSec: SidebarSection) => {
                 const updatedSavedItems = savedSec.items.map((savedItem: SidebarItem) => {
                   let defaultItemRef: SidebarItem | null = null;
                   for (const ds of defaultSidebarSections) {
@@ -487,14 +549,8 @@ export function Sidebar({ role }: SidebarProps) {
                 const savedItemIds = new Set(updatedSavedItems.map((i: SidebarItem) => i.id));
                 const missingItems = defaultSec.items.filter(i => !savedItemIds.has(i.id));
                 
-                const heading = savedSec.heading === "PROJECTS & ACTIVITIES" ? defaultSec.heading : savedSec.heading;
-                return { ...savedSec, heading, items: [...updatedSavedItems, ...missingItems] };
+                return { ...savedSec, items: [...updatedSavedItems, ...missingItems] };
               });
-
-              const homeSection = mergedSections.find(section => section.id === "section-home");
-              if (homeSection) {
-                homeSection.items = homeSection.items.filter(item => item.id !== "item-followups");
-              }
 
               const stripDisabled = (sec: SidebarSection): SidebarSection => ({
                 ...sec,
@@ -676,13 +732,15 @@ export function Sidebar({ role }: SidebarProps) {
       >
         {/* ── TOP BRANDING ── */}
         <div className={cn("shrink-0 flex items-center py-2.5", collapsed ? "justify-center px-2" : "px-4 gap-3")}>
-          <div className="shrink-0 w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md">
-            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4">
-              <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
-              <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.5" />
-              <circle cx="12" cy="12" r="2" fill="white" />
-            </svg>
-          </div>
+          <BrandMark size={32} fallback={
+            <div className="shrink-0 w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md">
+              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4">
+                <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
+                <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.5" />
+                <circle cx="12" cy="12" r="2" fill="white" />
+              </svg>
+            </div>
+          } />
 
           <AnimatePresence>
             {!collapsed && (
@@ -694,7 +752,7 @@ export function Sidebar({ role }: SidebarProps) {
                 className="flex-1 min-w-0 overflow-hidden flex items-center justify-between"
               >
                 <div>
-                  <span className="block font-bold text-[14px] leading-tight tracking-tight truncate" style={{ color: "var(--text-primary)" }}>SERP Hawk</span>
+                  <span className="block font-bold text-[14px] leading-tight tracking-tight truncate" style={{ color: "var(--text-primary)" }}>{brandName}</span>
                   <span className="block text-[10px] font-medium truncate" style={{ color: "var(--text-secondary)" }}>{t("sidebar.corporate_hq")}</span>
                 </div>
                 <div className="flex items-center gap-1">

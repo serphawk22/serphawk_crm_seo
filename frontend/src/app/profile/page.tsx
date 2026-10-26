@@ -9,6 +9,8 @@ import { Sidebar } from "@/components/Sidebar";
 import { Save, User as UserIcon, Phone, Mail, Loader2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageGuide from '@/components/PageGuide';
+import PhoneInput from "@/components/PhoneInput";
+import { isPlausiblePhone } from "@/lib/phone";
 import { useLanguage } from "@/context/LanguageContext";
 
 export default function ProfilePage() {
@@ -53,9 +55,13 @@ export default function ProfilePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true);
     setSuccessMsg("");
     setErrorMsg("");
+    if (!isPlausiblePhone(formData.phone)) {
+      setErrorMsg("Please enter a valid phone number (digits, spaces, dashes or brackets).");
+      return;
+    }
+    setSaving(true);
 
     try {
       const res = await fetch(`${API_BASE_URL}/users/me`, {
@@ -75,7 +81,7 @@ export default function ProfilePage() {
       setFormData(prev => ({
         ...prev,
         name: data.user?.name || prev.name,
-        phone: data.user?.phone || prev.phone
+        phone: data.user ? (data.user.phone ?? "") : prev.phone   // an emptied number stays empty
       }));
       setSuccessMsg("Profile updated successfully!");
       
@@ -193,18 +199,12 @@ export default function ProfilePage() {
                       <label htmlFor="phone" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                         {t("profile.field_phone")}
                       </label>
-                      <div className="mt-2 relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <Phone className="h-5 w-5 text-slate-400" />
-                        </div>
-                        <input
-                          type="text"
-                          name="phone"
+                      <div className="mt-2">
+                        <PhoneInput
                           id="phone"
+                          name="phone"
                           value={formData.phone}
-                          onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                          className="pl-10 block w-full rounded-xl border-0 py-2.5 text-slate-900 dark:text-white dark:bg-slate-900/50 shadow-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-600 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                          placeholder="+1 234 567 8900"
+                          onChange={(v) => setFormData((prev) => ({ ...prev, phone: v }))}
                         />
                       </div>
                       <p className="mt-1 text-xs text-slate-500">{t("profile.phone_hint")}</p>

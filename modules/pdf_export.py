@@ -12,27 +12,49 @@ from reportlab.platypus import (
 )
 
 
+from xml.sax.saxutils import escape
+from modules.branding import current_brand, current_logo, document_style, uses_default_identity
+
+_STATIC_LOGO = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "serphawk_logo.png")
+
+
+def _logo_flowable(box_mm=20, h_align="CENTER"):
+    """
+    The logo for a document header, fitted into a square box without distortion, or None.
+    A tenant's own upload wins; the default (SerpHawk) identity keeps the SerpHawk logo; a tenant with its own brand
+    name and no upload gets no logo, never another company's.
+    """
+    try:
+        data = current_logo()
+        if data:
+            from PIL import Image as PILImage
+            with PILImage.open(io.BytesIO(data)) as im:
+                w, h = im.size
+            scale = min(box_mm * mm / w, box_mm * mm / h)
+            return Image(io.BytesIO(data), width=w * scale, height=h * scale, hAlign=h_align)
+        if uses_default_identity() and os.path.exists(_STATIC_LOGO):
+            return Image(_STATIC_LOGO, width=box_mm * mm, height=box_mm * mm, hAlign=h_align)
+    except Exception:
+        pass
+    return None
+
+
 def _brand_header(doc, brand_title):
     """Premium SerpHawk branded header block with logo, gradient bar, and contact info."""
     from reportlab.platypus import Table as T
     from reportlab.lib.units import mm
-    logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "serphawk_logo.png")
 
     # Logo
-    logo_cell = None
-    if os.path.exists(logo_path):
-        try:
-            logo_cell = Image(logo_path, width=22 * mm, height=22 * mm, hAlign="LEFT")
-        except Exception:
-            logo_cell = None
+    logo_cell = _logo_flowable(22, "LEFT")
 
     # Brand name + tagline
+    brand = current_brand()
     brand_parts = [
-        Paragraph("SerpHawk", ParagraphStyle(
+        Paragraph(escape(brand.name), ParagraphStyle(
             "bhBrand", fontName="Helvetica-Bold", fontSize=20, leading=24,
             textColor=colors.HexColor("#0f172a")
         )),
-        Paragraph("Digital Marketing Agency", ParagraphStyle(
+        Paragraph(escape(brand.tagline), ParagraphStyle(
             "bhTagline", fontName="Helvetica", fontSize=9, leading=12,
             textColor=colors.HexColor("#64748b"), spaceBefore=1
         )),
@@ -50,8 +72,8 @@ def _brand_header(doc, brand_title):
         Paragraph(f"<b>{brand_title}</b>", ParagraphStyle(
             "bhTitle", fontName="Helvetica-Bold", fontSize=10, leading=13,
             textColor=colors.HexColor("#0f172a"), alignment=TA_RIGHT)),
-        Paragraph("crm@serphawk.in  |  +91 9502901416", contact_style),
-        Paragraph("BTM Layout, Bengaluru, India", contact_style),
+        Paragraph(escape(brand.contact_line()), contact_style),
+        Paragraph(escape(brand.address), contact_style),
     ]
     contact_cell = T([[p] for p in contact_parts], colWidths=[None])
     contact_cell.setStyle(TableStyle([
@@ -88,7 +110,7 @@ def _footer(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(colors.HexColor("#94a3b8"))
-    canvas.drawString(10 * mm, 8 * mm, "SerpHawk | crm@serphawk.in | +91 9502901416 | Bengaluru, India")
+    canvas.drawString(10 * mm, 8 * mm, current_brand().footer_line())
     canvas.drawRightString(A4[0] - 10 * mm, 8 * mm, f"Page {doc.page}")
     canvas.restoreState()
 
@@ -241,7 +263,7 @@ def _inventory_table(title, items):
         ("Low Stock", str(low_count)),
         ("Out of Stock", str(out_count)),
     ]
-    return _catalog_table_template(title, headers, widths, data, summary=summary, footer_label="SerpHawk · Inventory")
+    return _catalog_table_template(title, headers, widths, data, summary=summary, footer_label=f"{current_brand().name} · Inventory")
 
 
 def inventory_pdf(items):
@@ -389,7 +411,7 @@ def catalog_pdf(products, currency="MXN"):
     meta = [("Export:", "Product Catalog"), ("Currency:", str(currency).upper())]
     return _catalog_table_template("Product Catalog", headers, widths, data,
                                    meta_left=meta, summary=summary,
-                                   footer_label="SerpHawk · Products")
+                                   footer_label=f"{current_brand().name} · Products")
 
 
 def send_pdf_email(to_email, subject, body, pdf_bytes, filename):
@@ -540,28 +562,23 @@ def single_sales_order_pdf(order, client_name=None, lead_name=None, party=None):
         buf, pagesize=A4,
         leftMargin=15 * mm, rightMargin=15 * mm,
         topMargin=16 * mm, bottomMargin=20 * mm,
-        title=f"SERPHAWK — Sales Order {qn}", author="SerpHawk",
+        title=f"{current_brand().name} — Sales Order {qn}", author=current_brand().name,
     )
     story = []
 
     # ── 1) Header ────────────────────────────────────────────────────────
     # Load SerpHawk logo for sales order
-    _so_logo = None
-    try:
-        _so_logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "serphawk_logo.png")
-        if os.path.exists(_so_logo_path):
-            _so_logo = Image(_so_logo_path, width=20 * mm, height=20 * mm)
-    except Exception:
-        _so_logo = None
+    _so_logo = _logo_flowable(20)
 
+    _so_brand = current_brand()
     so_brand_parts = [
-        Paragraph("SerpHawk", ParagraphStyle(
+        Paragraph(escape(_so_brand.name), ParagraphStyle(
             "soBrand", fontName="Helvetica-Bold", fontSize=17, leading=20,
             textColor=_RECEIPT_INK, wordWrap="CJK")),
-        Paragraph("Digital Marketing Agency", ParagraphStyle(
+        Paragraph(escape(_so_brand.tagline), ParagraphStyle(
             "soTagline", fontName="Helvetica", fontSize=8, leading=11,
             textColor=_RECEIPT_SUBTLE, wordWrap="CJK", spaceBefore=1)),
-        Paragraph("crm@serphawk.in  |  +91 9502901416", ParagraphStyle(
+        Paragraph(escape(_so_brand.contact_line()), ParagraphStyle(
             "soContact", fontName="Helvetica", fontSize=7.5, leading=10,
             textColor=_RECEIPT_SUBTLE, wordWrap="CJK")),
         Paragraph("Sales Order", ParagraphStyle(
@@ -886,7 +903,7 @@ def _catalog_table_template(title, headers, widths, data, meta_left=None, summar
         buf, pagesize=A4,
         leftMargin=15 * mm, rightMargin=15 * mm,
         topMargin=14 * mm, bottomMargin=16 * mm,
-        title=title, author="SerpHawk",
+        title=title, author=current_brand().name,
     )
 
     def cell(fs=9, ls=12, color=_RECEIPT_INK, align=TA_LEFT, bold=False, wrap=True):
@@ -902,7 +919,7 @@ def _catalog_table_template(title, headers, widths, data, meta_left=None, summar
 
     story = []
     story += _serphawk_header(
-        "SerpHawk", meta_lines, subtitle=title,
+        current_brand().name, meta_lines, subtitle=title,
     )
 
     table_data = [[Paragraph(h, cell(7.5, 10, _CATALOG_MUTED, align=TA_LEFT, bold=True)) for h in headers]]
@@ -984,27 +1001,26 @@ def _english_datetime(dt):
     return dt.strftime("%b %d, %Y at %I:%M %p").replace(" 0", " ")
 
 
-def _serphawk_header(title_text, meta_lines=None, subtitle=None):
-    """Premium SerpHawk branded document header with logo, contact info, and divider."""
+def _serphawk_header(title_text, meta_lines=None, subtitle=None, accent=None, logo_position="left"):
+    """
+    Branded document header with logo, contact info, and divider.
+    ``accent`` (a #RRGGBB colour) tints the brand name and the divider; ``logo_position`` is "left" or "right".
+    """
     from reportlab.platypus import HRFlowable as _HR
+    _accent = colors.HexColor(accent) if accent else None
 
     # Load logo
-    _logo_img = None
-    try:
-        _logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "serphawk_logo.png")
-        if os.path.exists(_logo_path):
-            _logo_img = Image(_logo_path, width=20 * mm, height=20 * mm)
-    except Exception:
-        _logo_img = None
+    _logo_img = _logo_flowable(20)
 
     # Left: logo + brand name
     left_parts = []
-    if _logo_img:
+    if _logo_img and logo_position != "right":
         left_parts.append(_logo_img)
-    left_parts.append(Paragraph("SerpHawk", ParagraphStyle(
+    _hdr_brand = current_brand()
+    left_parts.append(Paragraph(escape(_hdr_brand.name), ParagraphStyle(
         "shBrand", fontName="Helvetica-Bold", fontSize=16, leading=19,
-        textColor=_RECEIPT_INK, wordWrap="CJK")))
-    left_parts.append(Paragraph("Digital Marketing Agency  |  crm@serphawk.in  |  +91 9502901416", ParagraphStyle(
+        textColor=_accent or _RECEIPT_INK, wordWrap="CJK")))
+    left_parts.append(Paragraph(escape("  |  ".join(x for x in (_hdr_brand.tagline, _hdr_brand.email, _hdr_brand.phone) if x)), ParagraphStyle(
         "shContact", fontName="Helvetica", fontSize=7.5, leading=10,
         textColor=_RECEIPT_SUBTLE, wordWrap="CJK")))
     if subtitle:
@@ -1013,13 +1029,16 @@ def _serphawk_header(title_text, meta_lines=None, subtitle=None):
             textColor=_RECEIPT_SUBTLE, wordWrap="CJK", spaceBefore=2)))
 
     right_cell = None
-    if meta_lines:
-        meta_paras = [
-            Paragraph(f"<b>{label}</b> {value}", ParagraphStyle(
-                "shMeta", fontName="Helvetica", fontSize=9, leading=12,
-                textColor=_RECEIPT_INK, alignment=TA_RIGHT, wordWrap="CJK"))
-            for label, value in meta_lines
-        ]
+    meta_paras = [
+        Paragraph(f"<b>{label}</b> {value}", ParagraphStyle(
+            "shMeta", fontName="Helvetica", fontSize=9, leading=12,
+            textColor=_RECEIPT_INK, alignment=TA_RIGHT, wordWrap="CJK"))
+        for label, value in (meta_lines or [])
+    ]
+    if _logo_img and logo_position == "right":
+        _logo_img.hAlign = "RIGHT"
+        meta_paras.insert(0, _logo_img)
+    if meta_paras:
         right_cell = Table([[p] for p in meta_paras], colWidths=[None])
         right_cell.setStyle(TableStyle([
             ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
@@ -1049,7 +1068,8 @@ def _serphawk_header(title_text, meta_lines=None, subtitle=None):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
     flow = [header_table, Spacer(1, 5 * mm)]
-    flow.append(_HR(width="100%", thickness=0.6, color=_RECEIPT_LINE, spaceBefore=0, spaceAfter=0))
+    flow.append(_HR(width="100%", thickness=1.2 if _accent else 0.6, color=_accent or _RECEIPT_LINE,
+                    spaceBefore=0, spaceAfter=0))
     flow.append(Spacer(1, 5 * mm))
     return flow
 
@@ -1078,7 +1098,7 @@ def pos_receipt_pdf(data):
 
     Returns raw PDF bytes.
     """
-    company_name = str(data.get("companyName") or "SerpHawk")
+    company_name = str(data.get("companyName") or current_brand().name)
     ticket = data.get("ticketNumber")
     ticket_str = f"#{ticket}" if ticket is not None and str(ticket) != "" else ""
     date_str = str(data.get("date") or "")
@@ -1329,7 +1349,7 @@ class _QuoteCanvas:
         c.line(15 * mm, 14 * mm, A4[0] - 15 * mm, 14 * mm)
         c.setFont("Helvetica", 7.5)
         c.setFillColor(_RECEIPT_FAINT)
-        c.drawString(15 * mm, 9 * mm, "SerpHawk · crm@serphawk.in · +91 9502901416")
+        c.drawString(15 * mm, 9 * mm, current_brand().footer_line(" · "))
         c.setFont("Helvetica", 8)
         c.drawRightString(A4[0] - 15 * mm, 9 * mm, f"Page {page_num} of {total_pages}")
         c.restoreState()
@@ -1347,7 +1367,7 @@ def quote_pdf(data):
     """
     from datetime import datetime as _dt
 
-    company = "SerpHawk"
+    company = current_brand().name
     currency = str(data.get("currency") or "$")
     subtitle = "Proforma Quotation"
     qn = data.get("quote_number") or str(data.get("id") or "")
@@ -1383,22 +1403,17 @@ def quote_pdf(data):
 
     # ── 1) Header ────────────────────────────────────────────────────────
     # Load SerpHawk logo for PDF header
-    _q_logo = None
-    try:
-        _q_logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "serphawk_logo.png")
-        if os.path.exists(_q_logo_path):
-            _q_logo = Image(_q_logo_path, width=20 * mm, height=20 * mm)
-    except Exception:
-        _q_logo = None
+    _q_logo = _logo_flowable(20)
 
+    _q_brand = current_brand()
     left_brand = [
-        Paragraph("SerpHawk", ParagraphStyle(
+        Paragraph(escape(_q_brand.name), ParagraphStyle(
             "qBrand", fontName="Helvetica-Bold", fontSize=17, leading=20,
             textColor=_RECEIPT_INK, wordWrap="CJK")),
-        Paragraph("Digital Marketing Agency", ParagraphStyle(
+        Paragraph(escape(_q_brand.tagline), ParagraphStyle(
             "qTagline", fontName="Helvetica", fontSize=8, leading=11,
             textColor=_RECEIPT_SUBTLE, wordWrap="CJK", spaceBefore=1)),
-        Paragraph("crm@serphawk.in  |  +91 9502901416", ParagraphStyle(
+        Paragraph(escape(_q_brand.contact_line()), ParagraphStyle(
             "qContact", fontName="Helvetica", fontSize=7.5, leading=10,
             textColor=_RECEIPT_SUBTLE, wordWrap="CJK")),
         Paragraph(subtitle, ParagraphStyle(
@@ -1722,7 +1737,7 @@ def invoice_pdf(data):
     """
     from datetime import datetime as _dt
 
-    company = "SerpHawk"
+    company = current_brand().name
     currency = str(data.get("currency") or "$")
     subtitle = "Invoice"
     inv_num = data.get("invoice_number") or str(data.get("id") or "")
@@ -1764,7 +1779,10 @@ def invoice_pdf(data):
         meta_lines.append(("Due:", data["due_date"]))
     if data.get("client_name"):
         meta_lines.append(("Bill To:", data["client_name"]))
-    story += _serphawk_header(company, meta_lines if meta_lines else None, subtitle=subtitle)
+    style = document_style()
+    accent = colors.HexColor(style["accent"]) if style["accent"] else None
+    story += _serphawk_header(company, meta_lines if meta_lines else None, subtitle=subtitle,
+                              accent=style["accent"], logo_position=style["logo_position"])
 
     # ── Client / status info ─────────────────────────────────────────────
     info_rows = []
@@ -1828,7 +1846,7 @@ def invoice_pdf(data):
         ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
         ("TOPPADDING", (0, 1), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.6, _RECEIPT_LINE),
+        ("LINEBELOW", (0, 0), (-1, 0), 1.2 if accent else 0.6, accent or _RECEIPT_LINE),
     ]
     for idx in range(1, len(data_rows)):
         item_style.append(("LINEBELOW", (0, idx), (-1, idx), 0.5, _RECEIPT_LINE))
@@ -1880,6 +1898,17 @@ def invoice_pdf(data):
         story.append(Paragraph("Notes", cell(9, 12, _RECEIPT_INK, bold=True)))
         story.append(Spacer(1, 2 * mm))
         story.append(Paragraph(notes, cell(8.5, 11, _RECEIPT_SUBTLE)))
+
+    # ── Tenant-defined blocks: how to pay, terms, closing line ───────────
+    for heading, text in (("Payment details", style["payment_details"]), ("Terms", style["terms"])):
+        if text:
+            story.append(Spacer(1, 6 * mm))
+            story.append(Paragraph(heading, cell(9, 12, _RECEIPT_INK, bold=True)))
+            story.append(Spacer(1, 1.5 * mm))
+            story.append(Paragraph(escape(text).replace(chr(10), "<br/>"), cell(8.5, 11, _RECEIPT_SUBTLE)))
+    if style["footer_note"]:
+        story.append(Spacer(1, 8 * mm))
+        story.append(Paragraph(escape(style["footer_note"]), cell(9, 12, accent or _RECEIPT_SUBTLE, TA_CENTER)))
 
     # ── Footer (later pages only) ────────────────────────────────────────
     def _i_footer(canvas, _doc):

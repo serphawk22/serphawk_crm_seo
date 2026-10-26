@@ -312,6 +312,48 @@ def analyze_content(text):
         }
 
 
+from modules.branding import DEFAULT as DEFAULT_BRAND, current_brand
+from modules import tenant_settings
+from modules.tenant_scope import current_tenant_id
+
+
+class _SafeFormat(dict):
+    def __missing__(self, key):
+        return "{" + key + "}"
+
+
+def fallback_draft(company_name, services="", contact=None, owner_name="", error=None):
+    """Template outreach draft used when the AI is unavailable (so no error text is ever sent to a prospect).
+    A tenant can provide its own bilingual templates in settings (outreach_fallback_*); otherwise a short
+    neutral one in the tenant's brand is used."""
+    brand = current_brand()
+    tid = current_tenant_id.get()
+    cfg = tenant_settings.get_settings(tid)
+    company = (company_name or "your company").strip()
+    contact_name = (contact.get("name") if isinstance(contact, dict) else "") or ""
+    values = _SafeFormat(
+        company=company, brand=brand.name, owner=(owner_name or brand.name).strip(),
+        services=(services or "").strip() or "our services",
+        salutation=f"Hi {contact_name}," if contact_name else "Hello,")
+    values_es = _SafeFormat(values, salutation=f"Hola {contact_name}," if contact_name else "Hola,")
+    sign = brand.contact_line() if brand is not DEFAULT_BRAND else "crm@serphawk.in"
+    default_en = ("{salutation}\n\nI came across {company} and think {brand} could help with {services}. "
+                  "Would you be open to a short call next week?\n\nBest regards,\n{owner}\n{brand}"
+                  + (f"\n{sign}" if sign else ""))
+    default_es = ("{salutation}\n\nConocí {company} y creo que {brand} podría ayudar con {services}. "
+                  "¿Tendrías unos minutos esta semana para una breve llamada?\n\nSaludos cordiales,\n{owner}\n{brand}"
+                  + (f"\n{sign}" if sign else ""))
+    subject = (cfg.get("outreach_fallback_subject") or "Quick introduction from {brand}").format_map(values)
+    english = (cfg.get("outreach_fallback_en") or default_en).format_map(values)
+    spanish = (cfg.get("outreach_fallback_es") or default_es).format_map(values_es)
+    out = {"subject": subject, "english_body": english, "spanish_body": spanish,
+           "whatsapp_draft": f"Hi! This is {values['owner']} from {brand.name}. Could we have a quick chat about {company}?",
+           "body": english + "\n\n" + spanish, "fallback": True}
+    if error:
+        out["error"] = error
+    return out
+
+
 def generate_email(analysis, contact=None, recommended_services=None, owner_name="Varshith"):
     """
     Generates a personalized bilingual cold email using OpenAI.
@@ -341,13 +383,15 @@ def generate_email(analysis, contact=None, recommended_services=None, owner_name
 
         services_list_str = ', '.join(services_to_mention) if services_to_mention else 'SEO, digital marketing, and automation'
 
-        prompt = f"""
-        You are an expert B2B outreach copywriter writing on behalf of SerpHawk. Use ONLY the provided company info below. Do not invent details.
-
-        ABOUT US — SERPHAWK:
+        # Who we write as. The default (no tenant brand) is the original SerpHawk text; a tenant with its own
+        # brand supplies its description in settings (ai_company_description) and gets its own contacts/sign-off.
+        brand = current_brand()
+        if brand is DEFAULT_BRAND:
+            writer = "SerpHawk"
+            about_us_block = """ABOUT US — SERPHAWK:
         SerpHawk is a results-driven digital marketing agency based in Bengaluru (BTM Layout), India.
         We help businesses of all sizes grow their online presence and revenue through data-backed strategies.
-        
+
         Our Services:
         • Organic SEO — Rank higher on Google and drive qualified organic traffic
         • Local SEO — Dominate Google Maps & local search results
@@ -358,21 +402,12 @@ def generate_email(analysis, contact=None, recommended_services=None, owner_name
         • Web Development — Fast, modern, conversion-optimized websites
         • App Development — Custom mobile & web applications
         • Automation & Consulting — Smart workflows & strategy
-        
+
         Contact:
         Email: crm@serphawk.in
         Phone: +91 9502901416
-        Location: BTM Layout, Bengaluru, India
-        
-        PROSPECT INFO:
-        Company: {company_name}
-        Website: {website}
-        What they do: {what_they_do}
-        {recipient_info}
-
-        SERVICES TO HIGHLIGHT: {services_list_str}
-
-        OUR FULL SERVICE CATALOG (for context):
+        Location: BTM Layout, Bengaluru, India"""
+            catalog_block = """OUR FULL SERVICE CATALOG (for context):
         • Organic SEO — higher Google rankings, more organic traffic
         • Local SEO — dominate Google Maps & local search
         • Google Ads — targeted PPC with measurable ROI
@@ -381,7 +416,34 @@ def generate_email(analysis, contact=None, recommended_services=None, owner_name
         • Content Marketing — SEO blogs, landing pages, conversion copy
         • Web Development — fast, modern, conversion-optimized sites
         • App Development — custom mobile & web applications
-        • Automation & Consulting — smart workflows & strategy
+        • Automation & Consulting — smart workflows & strategy"""
+            signoff_line = "Relation Manager- SerpHawk\\ncrm@serphawk.in"
+        else:
+            writer = brand.name
+            description = tenant_settings.get_setting(current_tenant_id.get(), "ai_company_description",
+                                                      brand.name + (f" — {brand.tagline}" if brand.tagline else ""))
+            contact_lines = "\n        ".join(x for x in (
+                f"Email: {brand.email}" if brand.email else "", f"Phone: {brand.phone}" if brand.phone else "",
+                f"Location: {brand.address}" if brand.address else "") if x)
+            about_us_block = f"ABOUT US — {brand.name.upper()}:\n        {description}" + (
+                f"\n\n        Contact:\n        {contact_lines}" if contact_lines else "")
+            catalog_block = "(Our services are described in the ABOUT US section above; mention only those.)"
+            signoff_line = "\\n".join(x for x in (f"{brand.name} team", brand.email) if x)
+
+        prompt = f"""
+        You are an expert B2B outreach copywriter writing on behalf of {writer}. Use ONLY the provided company info below. Do not invent details.
+
+        {about_us_block}
+
+        PROSPECT INFO:
+        Company: {company_name}
+        Website: {website}
+        What they do: {what_they_do}
+        {recipient_info}
+
+        SERVICES TO HIGHLIGHT: {services_list_str}
+
+        {catalog_block}
 
         EMAIL STRUCTURE (English):
         1. Hook (1-2 sentences) — A specific observation about {company_name}'s online presence or an opportunity you spotted. Make it personal.
@@ -389,11 +451,11 @@ def generate_email(analysis, contact=None, recommended_services=None, owner_name
         3. Service Spotlight (3-5 sentences) — For EACH service in [{services_list_str}], write one clear sentence: what it does + the measurable result for them. Use concrete outcomes like "rank on page 1", "2x local visibility", "cut ad spend waste by 30%".
         4. Social proof (1 sentence) — Mention working with similar businesses to build trust.
         5. CTA (1 sentence) — Invite them to a free 15-minute strategy call. Make it effortless.
-        6. Sign-off: "Best regards,\\nRelation Manager- SerpHawk\\ncrm@serphawk.in"
+        6. Sign-off: "Best regards,\\n{signoff_line}"
 
         STYLE: 120-180 words total. Short paragraphs (2-3 sentences each), separated by blank lines. Conversational, confident, zero fluff. Services are the STAR — the reader should finish knowing exactly what you offer and why it matters for them.
 
-        Then provide the FULL Spanish translation with identical structure, signed as "Saludos cordiales,\\nRelation Manager- SerpHawk\\ncrm@serphawk.in".
+        Then provide the FULL Spanish translation with identical structure, signed as "Saludos cordiales,\\n{signoff_line}".
 
         Then provide a short, punchy WhatsApp message (English only) to send to them. Keep it under 50 words. It should be casual but professional, mention the opportunity, and ask for a quick chat.
 
@@ -415,11 +477,15 @@ def generate_email(analysis, contact=None, recommended_services=None, owner_name
         )
 
         result = json.loads(response.choices[0].message.content)
+        if not result.get("english_body") and not result.get("spanish_body"):
+            return fallback_draft(company_name, services_list_str, contact, owner_name, error="empty AI response")
         # Ensure backward compatibility with 'body' key
         result["body"] = result.get("english_body", "") + "\n\n" + result.get("spanish_body", "")
         return result
     except Exception as e:
-        return {"subject": "Error", "english_body": str(e), "spanish_body": "", "body": str(e)}
+        print(f"[generate_email] AI unavailable, using the template draft: {e}")
+        return fallback_draft(analysis.get("company_name", "") if isinstance(analysis, dict) else "",
+                              "", contact, owner_name, error=str(e))
 
 def analyze_document(image_bytes):
     """
@@ -732,6 +798,9 @@ RESPONSE RULES:
 4. Be concise but thorough — use bullet points and numbered steps for clarity
 5. At the end of EVERY response, add: "💡 **Need help with:** [list 3 quick things you can help with]"
 """
+        _assistant_brand = current_brand()
+        if _assistant_brand is not DEFAULT_BRAND:
+            system_prompt = system_prompt.replace("SERP Hawk CRM", f"{_assistant_brand.name} CRM")
 
 
         # ── Build tool list based on role ────────────────────────────────────

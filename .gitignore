@@ -43,6 +43,15 @@ schema_inspect.txt
 health.json
 tmp_check_version.py
 test_*.py
+!tests/test_*.py
 *.pyc
 .myvenv/
 .local/
+
+# Local artefacts (never commit)
+*.log
+*.sqlite3
+all_users.json
+debug_out.*
+_backup_*.json
+ngrok.*.log

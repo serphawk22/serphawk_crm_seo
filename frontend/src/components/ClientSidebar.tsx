@@ -19,11 +19,13 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
+import { useTenantConfig } from "@/context/TenantConfigContext";
 import { useSidebar } from "@/context/SidebarContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { Sun, Moon } from "lucide-react";
+import BrandMark from "./BrandMark";
 
 const NAV_ITEMS = [
   { icon: Grid3x3, href: "/", labelKey: "navigation.home" },
@@ -43,6 +45,7 @@ export function ClientSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useRole();
+  const { brandName } = useTenantConfig();
   const { collapsed, setCollapsed } = useSidebar();
   const { theme, toggleTheme } = useTheme();
   const { t } = useTranslation();
@@ -69,7 +72,7 @@ export function ClientSidebar() {
             className="w-11 h-11 bg-amber-600 rounded-lg flex items-center justify-center text-white font-black text-lg hover:bg-amber-500 transition-colors shadow-lg shrink-0"
             style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }}
           >
-            {initial}
+            <BrandMark size={44} fallback={<>{initial}</>} />
           </Link>
           <AnimatePresence>
             {!collapsed && (
@@ -81,7 +84,7 @@ export function ClientSidebar() {
                 className="flex flex-col overflow-hidden flex-1"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-black text-base leading-tight tracking-tight" style={{ color: "var(--text-primary)" }}>SERP Hawk</span>
+                  <span className="font-black text-base leading-tight tracking-tight" style={{ color: "var(--text-primary)" }}>{brandName}</span>
                   <button
                     onClick={toggleTheme}
                     className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"

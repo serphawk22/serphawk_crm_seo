@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 
 from sqlmodel import Session, select
 
+from modules import tenant_settings
+
 TRIAGE_MODEL = os.getenv("INBOX_AI_MODEL", "gpt-4o-mini")
 DRAFT_MODEL = os.getenv("EMAIL_DRAFT_MODEL", "gpt-4o")
 
@@ -114,13 +116,15 @@ def _key_items(value, valid_keys: set, text_field: str, limit: int = 8) -> list:
 
 
 # ── Triage ───────────────────────────────────────────────────────────────────
-def classify_batch(items: list) -> dict:
+def classify_batch(items: list, tenant_id=None) -> dict:
     """items: [{key, from, subject, linked_record, received_at, body}] -> {key: triage dict}."""
     if not items:
         return {}
     categories = "\n".join(f"- {k}: {v}" for k, v in CATEGORIES.items())
+    business = tenant_settings.get_setting(tenant_id, "ai_business_type", "a digital marketing agency")
+    notes = tenant_settings.get_setting(tenant_id, "ai_triage_notes", "")
     system = (
-        "You triage inbound emails for the sales team of a digital marketing agency's CRM.\n"
+        f"You triage inbound emails for the sales team of {business}'s CRM" + (f" ({notes})" if notes else "") + ".\n"
         f"{UNTRUSTED}\n\nCategories:\n{categories}\n\n"
         "For every email return: category (one key above), priority (high = revenue at stake, an unhappy "
         "customer, or a time-sensitive request; low = automated / promotional / FYI), sentiment "
@@ -185,12 +189,19 @@ def classify_pending(engine=None, limit: int = 30, batch_size: int = 10) -> int:
                 "linked_record": linked,
                 "received_at": r.received_at.isoformat() if r.received_at else "",
                 "body": r.body_text or r.body_text_full or r.snippet,
+                "tenant_id": r.tenant_id,
             })
 
+    # One persona per tenant: never mix two tenants' mail in the same prompt.
+    by_tenant: dict = {}
+    for it in items:
+        by_tenant.setdefault(it.get("tenant_id"), []).append(it)
+    batches = [(tid, group[i:i + batch_size]) for tid, group in by_tenant.items()
+               for i in range(0, len(group), batch_size)]
+
     done = 0
-    for i in range(0, len(items), batch_size):
-        batch = items[i:i + batch_size]
-        results = classify_batch(batch)  # EmailAIError propagates: stop this pass, retry next cycle
+    for tid, batch in batches:
+        results = classify_batch(batch, tenant_id=tid)  # EmailAIError propagates: stop this pass, retry next cycle
         now = datetime.now(timezone.utc)
         with Session(engine) as session:
             session._is_auditing = True  # background system activity, same as the sync itself

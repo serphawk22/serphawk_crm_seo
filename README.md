@@ -71,8 +71,8 @@ deals, proposals and comments, invoices, 40 meetings, 40 follow-ups, tasks,
 calls, activity, and six months of sales, email, worklog, salary, marketing,
 and revenue-reporting records, preview first and then explicitly apply:
 ```bash
-python seed_demo_crm.py --tenant-id <DEMO_TENANT_ID>
-python seed_demo_crm.py --tenant-id <DEMO_TENANT_ID> --apply
+python -m scripts.seed_demo_crm --tenant-id <DEMO_TENANT_ID>
+python -m scripts.seed_demo_crm --tenant-id <DEMO_TENANT_ID> --apply
 ```
 The seed command rolls back by default, refuses non-demo tenants unless
 `--allow-non-demo-tenant` is explicitly supplied, and creates demo team members

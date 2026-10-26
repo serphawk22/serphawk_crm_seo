@@ -35,9 +35,11 @@ from database import (
 )
 
 OPEN = "Pending"
+IN_PROGRESS = "In Progress"          # only the follow-up board sets this
 DONE = "Completed"
 CANCELLED = "Cancelled"
-STATUSES = (OPEN, DONE, CANCELLED)
+OPEN_STATES = (OPEN, IN_PROGRESS)    # a follow-up in either state still needs doing
+STATUSES = (OPEN, IN_PROGRESS, DONE, CANCELLED)
 
 
 def utcnow() -> datetime:
@@ -137,7 +139,7 @@ def find_duplicate(session: Session, *, tenant_id, lead_id, client_id, contact_e
     if not (lead_id or client_id or contact_email):
         return None
     stmt = select(FollowUp).where(
-        FollowUp.status == OPEN,
+        FollowUp.status.in_(OPEN_STATES),
         FollowUp.due_at >= due_at - timedelta(days=window_days),
         FollowUp.due_at <= due_at + timedelta(days=window_days),
     ).execution_options(skip_tenant=True)
@@ -192,7 +194,7 @@ def mark_email_sent(session: Session, fu: FollowUp, sent: SentEmail, *, actor_id
 def _claim(session: Session, fu_id: int, column, now: datetime) -> bool:
     """Atomically set a NULL timestamp column; True only for the one caller that wins."""
     result = session.execute(
-        update(FollowUp).where(FollowUp.id == fu_id, column.is_(None), FollowUp.status == OPEN)
+        update(FollowUp).where(FollowUp.id == fu_id, column.is_(None), FollowUp.status.in_(OPEN_STATES))
         .values({column.key: now}).execution_options(skip_tenant=True)
     )
     session.commit()
@@ -232,7 +234,7 @@ def process_due_reminders(engine=None, now: Optional[datetime] = None, limit: in
     with Session(engine) as session:
         due = session.exec(
             select(FollowUp).where(
-                FollowUp.status == OPEN, FollowUp.reminder_sent_at.is_(None),
+                FollowUp.status.in_(OPEN_STATES), FollowUp.reminder_sent_at.is_(None),
                 or_(FollowUp.remind_at <= now, and_(FollowUp.remind_at.is_(None), FollowUp.due_at <= now)),
             ).order_by(FollowUp.due_at).limit(limit).execution_options(skip_tenant=True)
         ).all()
@@ -259,6 +261,50 @@ def process_due_reminders(engine=None, now: Optional[datetime] = None, limit: in
     return reminded
 
 
+def process_overdue_notices(engine=None, now: Optional[datetime] = None, limit: int = 50, send_email=None) -> int:
+    """
+    Tell the assignee, once, that an open follow-up has passed its due time. Only for tenants with the follow-up board
+    (the SCM BPO screens), so every other tenant keeps exactly the reminders it had. Returns how many were noticed.
+    """
+    from modules import company_mailer, features
+    engine = engine or database.engine
+    now = now or utcnow()
+    send_email = send_email or company_mailer.send_via
+    emails_on = os.getenv("FOLLOWUP_REMINDER_EMAILS", "1") != "0"
+    noticed = 0
+    with Session(engine) as session:
+        due = session.exec(
+            select(FollowUp).where(FollowUp.status.in_(OPEN_STATES), FollowUp.overdue_notified_at.is_(None),
+                                   FollowUp.due_at < now).order_by(FollowUp.due_at).limit(limit)
+            .execution_options(skip_tenant=True)
+        ).all()
+        for fu in due:
+            if not features.is_enabled(fu.tenant_id, "followup_board"):
+                continue
+            if not _claim(session, fu.id, FollowUp.overdue_notified_at, now):
+                continue
+            session.refresh(fu)
+            user_id = fu.assigned_to or fu.created_by
+            user = session.get(User, user_id) if user_id else None
+            info = record_info(session, fu.lead_id, fu.client_id)
+            who = fu.contact_name or fu.company_name or info.get("label") or fu.contact_email or "a contact"
+            notify(session, user_id, fu.tenant_id, f"Overdue follow-up: {fu.title}",
+                   f"Your follow-up with {who} was due {_fmt_local(fu.due_at)}.", record_path(fu.lead_id, fu.client_id))
+            session.commit()
+            noticed += 1
+            if emails_on and user and user.email:
+                try:
+                    account = company_mailer.resolve_account(session, user.id, fu.tenant_id, allow_server_fallback=True)
+                    body = (f"Hi {(user.name or '').split()[0] if user.name else 'there'},\n\n"
+                            f"This follow-up is overdue: {fu.title}\nWith: {who}\nWas due: {_fmt_local(fu.due_at)}\n\n"
+                            f"Open in the CRM: {frontend_url()}{record_path(fu.lead_id, fu.client_id)}")
+                    session.commit()
+                    send_email(account, to=user.email, subject=f"Overdue follow-up: {fu.title}"[:300], body=body)
+                except Exception as e:
+                    print(f"[Follow-ups] overdue email for follow-up {fu.id} failed: {company_mailer.friendly_smtp_error(e)}")
+    return noticed
+
+
 # ── 2. Auto-send ─────────────────────────────────────────────────────────────
 def process_auto_sends(engine=None, now: Optional[datetime] = None, limit: int = 20, sender=None) -> int:
     """Send prepared follow-up emails whose follow-up is due. Returns how many were sent."""
@@ -269,7 +315,7 @@ def process_auto_sends(engine=None, now: Optional[datetime] = None, limit: int =
     with Session(engine) as session:
         due = session.exec(
             select(FollowUp).where(
-                FollowUp.status == OPEN, FollowUp.auto_send.is_(True), FollowUp.email_sent_at.is_(None),
+                FollowUp.status.in_(OPEN_STATES), FollowUp.auto_send.is_(True), FollowUp.email_sent_at.is_(None),
                 FollowUp.due_at <= now, FollowUp.contact_email.is_not(None), FollowUp.email_body.is_not(None),
             ).order_by(FollowUp.due_at).limit(limit).execution_options(skip_tenant=True)
         ).all()
@@ -502,7 +548,8 @@ _thread_lock = threading.Lock()
 
 def run_cycle(engine=None) -> dict:
     out = {}
-    for name, step in (("reminders", process_due_reminders), ("auto_sent", process_auto_sends)):
+    for name, step in (("reminders", process_due_reminders), ("overdue", process_overdue_notices),
+                       ("auto_sent", process_auto_sends)):
         try:
             out[name] = step(engine)
         except Exception as e:

@@ -8,6 +8,10 @@ import QuickAddFab from "@/components/QuickAddFab";
 import OmniSearch from "@/components/OmniSearch";
 import { SidebarProvider, useSidebar } from "@/context/SidebarContext";
 import { RoleProvider, useRole } from "@/context/RoleContext";
+import { TenantConfigProvider } from "@/context/TenantConfigContext";
+import ModuleNotice from "@/components/ModuleNotice";
+import ModuleGate from "@/components/ModuleGate";
+import InstitutionPortalShell from "@/components/InstitutionPortalShell";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import I18nProvider from "@/i18n/I18nProvider";
@@ -61,7 +65,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isClient = role === "Client";
   const isDeveloper = role === "ProjectMember";
-  const isAdminOrEmployee = role === "Admin" || role === "Employee" || role === "Intern" || role === "SalesManager" || role === "Demo";
+  const isAdminOrEmployee = role === "SuperAdmin" || role === "Admin" || role === "Employee" || role === "Intern" || role === "SalesManager" || role === "Demo";
   const showChatbot = !!role && role !== "Client"; // Show for ALL roles except unauthenticated Client
 
   useEffect(() => {
@@ -111,15 +115,23 @@ function AppContent({ children }: { children: React.ReactNode }) {
     return <GlobalLoader />;
   }
 
-  if (pathname === "/login" || pathname === "/signup" || pathname === "/demo_showcase" || pathname === "/reset-password" || pathname?.startsWith("/demo_showcase")) {
+  if (pathname === "/login" || pathname === "/signup" || pathname === "/register" || pathname === "/demo_showcase" || pathname === "/reset-password" || pathname?.startsWith("/demo_showcase") || pathname?.startsWith("/p/")) {
     return <main className="h-screen w-full">{children}</main>;
+  }
+
+  // A page whose module the company does not have is closed, whatever address it was opened from.
+  const gated = <ModuleGate>{children}</ModuleGate>;
+
+  // ── Institute add-on: students and instructors get their own portal shell ──
+  if (role === "Student" || role === "Instructor") {
+    return <InstitutionPortalShell role={role}>{gated}</InstitutionPortalShell>;
   }
 
   // ── Client layout ──
   if (isClient) {
     return (
       <SidebarProvider>
-        <ClientLayout>{children}</ClientLayout>
+        <ClientLayout>{gated}</ClientLayout>
       </SidebarProvider>
     );
   }
@@ -135,12 +147,12 @@ function AppContent({ children }: { children: React.ReactNode }) {
             </div>
             <span className="font-bold text-slate-800 dark:text-white text-sm">Supplier Portal</span>
           </div>
-          <a href="/" onClick={() => { localStorage.removeItem("crm_user"); }}
+          <a href="/" onClick={() => { localStorage.removeItem("crm_user"); localStorage.removeItem("crm_token"); }}
             className="text-xs font-semibold text-slate-500 hover:text-red-500 transition-colors">
             Sign Out
           </a>
         </nav>
-        <main>{children}</main>
+        <main>{gated}</main>
         <Chatbot />
       </div>
     );
@@ -154,7 +166,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
         <div className="admin-shell min-h-screen" style={{ background: "var(--background)" }}>
           <Sidebar role={role} />
           <AdminMainContent>
-            {children}
+            {gated}
           </AdminMainContent>
           {showChatbot && <Chatbot />}
         </div>
@@ -169,7 +181,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
       <div className="developer-shell min-h-screen bg-slate-50 dark:bg-zinc-950 flex flex-col">
         <DeveloperHeader />
         <main className="flex-1 p-6 md:p-8 max-w-[1600px] mx-auto w-full h-full">
-          {children}
+          {gated}
         </main>
         {showChatbot && <Chatbot />}
       </div>
@@ -179,7 +191,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
   // Fallback
   return (
     <div className="min-h-screen" style={{ background: "var(--bg-secondary)" }}>
-      <main className="p-6">{children}</main>
+      <main className="p-6">{gated}</main>
     </div>
   );
 }
@@ -191,9 +203,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
+      {/* Browser extensions and Google Translate edit <head> and the inline tags below before React hydrates;
+          suppressHydrationWarning keeps that from showing up as a "Hydration failed" error in development. */}
+      <head suppressHydrationWarning>
         {/* Suppress Google Translate native toolbar */}
-        <style>{`
+        <style suppressHydrationWarning>{`
           .goog-te-banner-frame, .goog-te-balloon-frame { display: none !important; }
           .goog-te-gadget { display: none !important; }
           body { top: 0 !important; }
@@ -206,7 +220,7 @@ export default function RootLayout({
           so Google Translate sees it and skips the page entirely.
           This is the ONLY reliable way to prevent GT re-applying Spanish.
         */}
-        <script dangerouslySetInnerHTML={{ __html: `
+        <script suppressHydrationWarning dangerouslySetInnerHTML={{ __html: `
           (function() {
             if (sessionStorage.getItem('crm_gt_restore_en') === '1') {
               sessionStorage.removeItem('crm_gt_restore_en');
@@ -220,6 +234,7 @@ export default function RootLayout({
       </head>
       <body className={inter.className} suppressHydrationWarning>
         <script
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator) {
@@ -243,6 +258,7 @@ export default function RootLayout({
             <I18nProvider>
               <LanguageProvider>
                 <RoleProvider>
+                  <TenantConfigProvider>
                   <NotificationProvider>
                     <TelemetryTracker />
                     <SpaceAtmosphere />
@@ -251,7 +267,9 @@ export default function RootLayout({
                     <OmniSearch />
                     <QuickAddFab />
                     <GlobalLimitModal />
+                    <ModuleNotice />
                   </NotificationProvider>
+                  </TenantConfigProvider>
                 </RoleProvider>
               </LanguageProvider>
             </I18nProvider>

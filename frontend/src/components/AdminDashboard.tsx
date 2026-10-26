@@ -616,7 +616,7 @@ export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any)
   );
 }
 
-function CallPitchWidget() {
+export function CallPitchWidget() {
   const { user } = useRole();
   const [pitchData, setPitchData] = useState<any>(null);
   const [loading, setLoading] = useState(true);

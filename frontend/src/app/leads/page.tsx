@@ -15,7 +15,7 @@ import AddFollowUpModal, { FollowUpTarget } from "@/components/AddFollowUpModal"
 interface Lead {
   id: number;
   company_name: string;
-  ai_analysis_results?: { website_form?: { form_name?: string } } | null;
+  ai_analysis_results?: { website_form?: { form_name?: string; page_url?: string } } | null;
   website?: string | null;
   industry?: string | null;
   email?: string | null;
@@ -47,15 +47,8 @@ const INDUSTRIES = [
   "Consulting", "Media", "Hospitality", "Construction", "Other"
 ];
 const SOURCES = ["Website", "Email", "Referral", "LinkedIn", "Cold Call", "Event", "Radar", "Import", "Other"];
-const STATUSES = [
-  "New",
-  "Contacted",
-  "Not Responded",
-  "Neutral",
-  "Positive",
-  "Negative",
-  "Converted"
-];
+// The standard pipeline; a company can name its own stages in Company profile -> Lead statuses.
+const DEFAULT_STATUSES = ["New", "Contacted", "Qualified", "Proposal Sent", "Negotiation", "Won", "Lost"];
 
 const STATUS_STYLE: Record<string, string> = {
   New: "bg-blue-500/10 text-blue-600 border-blue-500/20",
@@ -65,6 +58,12 @@ const STATUS_STYLE: Record<string, string> = {
   Positive: "bg-teal-500/10 text-teal-600 border-teal-500/20",
   Negative: "bg-rose-500/10 text-rose-600 border-rose-500/20",
   Converted: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+  // the standard pipeline (companies that have not named their own stages)
+  Qualified: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+  "Proposal Sent": "bg-orange-500/10 text-orange-600 border-orange-500/20",
+  Negotiation: "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",
+  Won: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+  Lost: "bg-red-500/10 text-red-500 border-red-500/20",
 };
 
 const emptyForm = {
@@ -72,10 +71,13 @@ const emptyForm = {
   phone: "", address: "", source: "Website", status: "New", notes: ""
 };
 import { useRole } from "@/context/RoleContext";
+import { useTenantConfig } from "@/context/TenantConfigContext";
 
 export default function LeadsPage() {
   const { t } = useLanguage();
   const { role, user } = useRole();
+  const { settings: tenantSettings, isOn } = useTenantConfig();
+  const sourcesOn = isOn('lead_sources');
   const router = useRouter();
   const isAdmin = role === 'Admin' || role === 'SuperAdmin';
 
@@ -86,6 +88,13 @@ export default function LeadsPage() {
   }, [role, router]);
 
   const [leads, setLeads] = useState<Lead[]>([]);
+  const STATUSES = useMemo(() => {
+    const custom = tenantSettings.lead_statuses;
+    if (!custom || custom.length === 0) return DEFAULT_STATUSES;
+    // a lead whose status was removed from the list must not vanish from the board
+    const extra = Array.from(new Set(leads.map((l) => l.status))).filter((st) => st && st !== "Converted" && !custom.includes(st));
+    return [...custom, ...extra];
+  }, [tenantSettings.lead_statuses, leads]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -161,6 +170,11 @@ export default function LeadsPage() {
     fetchLeads();
     fetchActivities();
     fetchEmployees();
+  }, []);
+
+  // configured lead sources (module "Lead sources"); other companies keep the built-in list
+  useEffect(() => {
+    if (!sourcesOn) return;
     fetch(`${API_BASE_URL}/lead-sources`)
       .then(r => r.json())
       .then(d => {
@@ -170,7 +184,7 @@ export default function LeadsPage() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [sourcesOn]);
 
   const searchParams = useSearchParams();
   useEffect(() => {
@@ -706,7 +720,7 @@ export default function LeadsPage() {
                       {lead.source?.toLowerCase().includes("website") ? (
                         <div className="flex flex-col gap-0.5">
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40">
-                            <Globe className="w-3 h-3 text-emerald-600" /> scmbpo.com
+                            <Globe className="w-3 h-3 text-emerald-600" /> {(() => { try { return new URL(String(lead.ai_analysis_results?.website_form?.page_url || lead.website || '')).hostname.replace(/^www\./, ''); } catch { return ''; } })() || 'Website'}
                           </span>
                           {lead.ai_analysis_results?.website_form?.form_name && (
                             <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-semibold truncate max-w-[140px]" title={lead.ai_analysis_results.website_form.form_name}>

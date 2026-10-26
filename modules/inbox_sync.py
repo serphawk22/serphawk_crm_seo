@@ -272,14 +272,16 @@ def get_mailbox_configs(session: Session) -> list:
         if (cfg.address, cfg.imap_host) not in seen:
             seen.add((cfg.address, cfg.imap_host))
             configs.append(cfg)
+    from modules import tenant_mailbox
     settings_rows = session.exec(select(EmailSettings).execution_options(skip_tenant=True)).all()
     for es in settings_rows:
         address = (es.from_email or es.smtp_user or "").strip().lower()
         host = _imap_host_for(es.smtp_host)
-        if not (address and es.smtp_pass and host) or (address, host) in seen:
+        password = tenant_mailbox.reveal(es.smtp_pass)
+        if not (address and password and host) or (address, host) in seen:
             continue
         seen.add((address, host))
-        configs.append(MailboxConfig(address, (es.smtp_user or es.from_email).strip(), es.smtp_pass, host, es.tenant_id, True))
+        configs.append(MailboxConfig(address, (es.smtp_user or es.from_email).strip(), password, host, es.tenant_id, True))
 
     sender, password, imap_host = _get_email_settings()
     if sender and password and imap_host and (sender.strip().lower(), imap_host) not in seen:

@@ -43,6 +43,7 @@ import { API_BASE_URL } from '@/config';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/context/LanguageContext';
 import DropClientModal from '@/components/DropClientModal';
+import { useTenantConfig } from '@/context/TenantConfigContext';
 import { useRole } from '@/context/RoleContext';
 import PageGuide from '@/components/PageGuide';
 import SalesAssignModal from '@/components/SalesAssignModal';
@@ -183,6 +184,8 @@ export default function ClientsPage() {
   // Dropped Clients State & Dropdown
   const [droppedClients, setDroppedClients] = useState<any[]>([]);
   const [droppedCount, setDroppedCount] = useState(0);
+  const { isOn } = useTenantConfig();
+  const dropOn = isOn('dropped_clients');   // dropped clients + salesperson reassignment history
   const [isDroppedDropdownOpen, setIsDroppedDropdownOpen] = useState(false);
   const [dropClientTarget, setDropClientTarget] = useState<any>(null);
   const [isDropModalOpen, setIsDropModalOpen] = useState(false);
@@ -334,6 +337,7 @@ export default function ClientsPage() {
   };
 
   const fetchDroppedClients = async () => {
+    if (!dropOn) return;
     try {
       const res = await fetch(`${API_BASE_URL}/dropped-clients`);
       if (res.ok) {
@@ -349,9 +353,10 @@ export default function ClientsPage() {
   useEffect(() => {
     fetchStatuses();
     fetchActivities();
-    fetchDroppedClients();
     fetchEmployees();
   }, [role, user]);
+
+  useEffect(() => { fetchDroppedClients(); }, [dropOn]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -614,12 +619,14 @@ export default function ClientsPage() {
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("clients.description")}</p>
           </div>
           <div className="flex items-center gap-2">
+            {dropOn && (
             <Link
               href="/dropped-clients"
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors shadow-sm"
             >
               <UserX className="w-4 h-4" /> Dropped Clients
             </Link>
+            )}
             <button
               onClick={async () => {
                 try {
@@ -714,6 +721,7 @@ export default function ClientsPage() {
           ))}
 
           {/* Dropped Clients Dropdown Menu */}
+          {dropOn && (
           <div className="relative" ref={droppedDropdownRef}>
             <button
               type="button"
@@ -870,6 +878,7 @@ export default function ClientsPage() {
               )}
             </AnimatePresence>
           </div>
+          )}
         </div>
       </div>
 

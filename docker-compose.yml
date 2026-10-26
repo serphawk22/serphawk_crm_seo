@@ -1,0 +1,78 @@
+# Local backend + Postgres. Frontend runs separately: cd frontend && npm run dev
+#
+#   docker compose up -d db api                 # API on http://localhost:8000
+#   docker compose run --rm test                # unit tests (in-memory SQLite, no network)
+#
+# The `api` service may read your local .env for API keys / mailbox, but its DATABASE_URL is always the throwaway
+# local Postgres below (never the one in .env). The `test` service never reads .env. Background pollers (inbox sync,
+# reply checker, follow-up scheduler) are off.
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  environment: &backend-env
+    DATABASE_URL: postgresql://crm:crm@db:5432/crm_dev
+    BACKGROUND_JOBS: "0"
+    PYTHON_DOTENV_DISABLED: "1"
+    PUBLIC_BASE_URL: http://localhost:8000
+    FRONTEND_URL: http://localhost:3000
+    # Local development only: a known operator login for the throwaway database. Never use this value anywhere real.
+    SUPERADMIN_PASSWORD: password123
+    # Local development only: a fixed signing key so a login survives the API reloading on every code change.
+    # (Without it a random key is made per process and every reload signs everyone out.)
+    SESSION_SECRET: local-dev-session-key-not-for-production
+    # Local development only: lets /email-otp/send return the code in its response when no mailbox can send it.
+    ALLOW_DEBUG_OTP: "1"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: crm
+      POSTGRES_DB: crm_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d crm_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    <<: *backend
+    # Optional: your local .env supplies the API keys and mailbox (OpenAI, SMTP, Firecrawl, Google ...) so those features
+    # can be tested. DATABASE_URL in that file is IGNORED on purpose: `environment:` above always wins over env_file,
+    # so this service only ever talks to the throwaway Postgres below. Background pollers stay off (BACKGROUND_JOBS=0).
+    env_file:
+      - path: .env
+        required: false
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+
+  test:
+    <<: *backend
+    profiles: ["test"]
+    environment:
+      <<: *backend-env
+      # Placeholder only: the tests swap in their own in-memory engine after import.
+      DATABASE_URL: sqlite:////tmp/unused.db
+      # Superuser URL of the throwaway local Postgres; tests that need real Postgres create their own database.
+      TEST_POSTGRES_URL: postgresql://crm:crm@db:5432/postgres
+    command: python -m unittest discover -s tests -t . -v
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

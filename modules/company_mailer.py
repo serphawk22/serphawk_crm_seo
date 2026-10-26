@@ -27,6 +27,9 @@ from typing import Optional
 from sqlmodel import Session, select
 
 from database import EmailAgentProfile, EmailSettings, SentEmail, User, UserEmailIntegration
+from modules import tenant_settings
+from modules.branding import DEFAULT as DEFAULT_BRAND, current_brand, _UNSET as _UNSET_TENANT
+from modules.tenant_scope import current_tenant_id
 
 SOURCE_LABELS = {
     "user_integration": "Your Email Integration",
@@ -91,10 +94,12 @@ def _tenant_settings(session: Session, tenant_id: Optional[int]) -> Optional[Mai
     es = session.exec(
         select(EmailSettings).where(EmailSettings.tenant_id == tenant_id).execution_options(skip_tenant=True)
     ).first()
-    if not es or not es.from_email or not es.smtp_pass or not es.smtp_host:
+    from modules import tenant_mailbox
+    password = tenant_mailbox.reveal(es.smtp_pass) if es else None
+    if not es or not es.from_email or not password or not es.smtp_host:
         return None
     return MailAccount(
-        email=es.from_email, password=es.smtp_pass, smtp_host=es.smtp_host, smtp_port=int(es.smtp_port or 587),
+        email=es.from_email, password=password, smtp_host=es.smtp_host, smtp_port=int(es.smtp_port or 587),
         source="tenant_settings", auth_user=es.smtp_user or es.from_email, from_name=es.from_name or None,
     )
 
@@ -142,11 +147,29 @@ def account_status(session: Session, user_id: Optional[int], tenant_id: Optional
 # ── Signature (main._apply_signature's rules, plus closing-line dedupe; kept here to avoid importing main) ──
 _SIGNOFF_GREETING_RE = re.compile(
     r"^\s*(?:Best regards|Kind regards|Warm regards|Best wishes|Many thanks|Thanks|Thank you|Sincerely|Cheers|"
-    r"Saludos cordiales|Saludos|Best|Regards)\s*[,.!]?\s*$", re.IGNORECASE)
-_SIGNOFF_SHAPE_RE = re.compile(r"serphawk|(?:^|\s)[^@\s]+@[^@\s]+\.[^@\s]+|^(?:Email|Phone):\s", re.IGNORECASE | re.MULTILINE)
+    r"Saludos cordiales|Saludos|Atentamente|Best|Regards)\s*[,.!]?\s*$", re.IGNORECASE)
+_SIGNOFF_SHAPE_BASE = r"(?:^|\s)[^@\s]+@[^@\s]+\.[^@\s]+|^(?:Email|Phone):\s"
+_SIGNOFF_SHAPE_RE = re.compile(r"serphawk|" + _SIGNOFF_SHAPE_BASE, re.IGNORECASE | re.MULTILINE)
+_shape_cache: dict = {}
 
 
-def apply_signature(body: str, signature: Optional[str]) -> str:
+def signoff_shape_re(tenant_id=_UNSET_TENANT):
+    """Regex for "this trailing block is a signature": the original SerpHawk words, plus the tenant's brand
+    name and its own ``signoff_keywords`` setting."""
+    words = ["serphawk"]
+    brand = current_brand(tenant_id)
+    if brand is not DEFAULT_BRAND:
+        words.append(brand.name)
+    tid = current_tenant_id.get() if tenant_id is _UNSET_TENANT else tenant_id
+    words += tenant_settings.get_setting(tid, "signoff_keywords", []) or []
+    key = tuple(w.lower() for w in words)
+    if key not in _shape_cache:
+        _shape_cache[key] = re.compile("|".join(re.escape(w) for w in words) + "|" + _SIGNOFF_SHAPE_BASE,
+                                       re.IGNORECASE | re.MULTILINE)
+    return _shape_cache[key]
+
+
+def apply_signature(body: str, signature: Optional[str], tenant_id=_UNSET_TENANT) -> str:
     """Append the saved signature once, replacing a trailing sign-off already in the body.
 
     A trailing closing ("Best regards," + up to 4 short lines such as a name or company) is
@@ -157,12 +180,13 @@ def apply_signature(body: str, signature: Optional[str]) -> str:
     if not body or not signature or not signature.strip() or signature.strip() in body:
         return body
     sig_has_closing = bool(_SIGNOFF_GREETING_RE.match(signature.strip().split("\n")[0]))
+    shape_re = signoff_shape_re(tenant_id)
     lines = body.rstrip().split("\n")
     for i in range(len(lines) - 1, max(len(lines) - 7, 0) - 1, -1):
         if _SIGNOFF_GREETING_RE.match(lines[i]):
             block = [ln for ln in lines[i + 1:] if ln.strip()]
             short = len(block) <= 4 and all(len(ln.strip()) <= 60 for ln in block)
-            if (block and _SIGNOFF_SHAPE_RE.search("\n".join(block))) or (sig_has_closing and short):
+            if (block and shape_re.search("\n".join(block))) or (sig_has_closing and short):
                 lines = lines[:i]
                 break
     return "\n".join(lines).rstrip() + "\n\n" + signature.rstrip()
