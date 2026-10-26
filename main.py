@@ -42,14 +42,6 @@ from routers.leaderboard import router as leaderboard_router
 from routers.email_tracking import router as email_tracking_router
 from routers.voice_agent import router as voice_agent_router
 from modules.api_intelligence import router as api_intelligence_router
-from routers.scm2_features import router as scm2_router, ensure_scm2_schema, reassign_owner
-from routers.command_center import router as command_center_router
-from routers.ai_reports import router as ai_reports_router
-from routers.follow_ups import (
-    router as follow_ups_router,
-    ensure_followup_schema,
-    start_reminder_worker,
-)
 import traceback
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -58,6 +50,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.sql.selectable import Select
 from sqlalchemy.orm import Session as SASession
 from sqlalchemy import event
+from modules import tenant_scope, auth_tokens, features
 import contextvars
 from database import (
     Account,
@@ -75,7 +68,6 @@ from database import (
     ClientResearch,
     ClientStatus,
     ClientTicket,
-    DroppedClient,
     CompetitorAnalysis,
     CompetitorRelationship,
     Contact,
@@ -98,7 +90,6 @@ from database import (
     ProjectTicket,
     ProjectTicketHistory,
     Proposal,
-    ProposalComment,
     RadarAnalysis,
     RankingTracker,
     Remark,
@@ -324,7 +315,7 @@ from database import (
 # ─────────────────────────────────────────────────────────────────────────────
 # App + CORS
 # ─────────────────────────────────────────────────────────────────────────────
-current_tenant_id = contextvars.ContextVar("current_tenant_id", default=None)
+current_tenant_id = tenant_scope.current_tenant_id  # defined in modules/tenant_scope.py
 
 
 @event.listens_for(SASession, "do_orm_execute")
@@ -336,28 +327,12 @@ def _add_tenant_filter(execute_state):
     if execute_state.execution_options.get("skip_tenant"):
         return
 
-    # Global tables that don't have tenant_id, or where we must never add a tenant filter
-    global_tables = [
-        "tenants", "client_statuses", "service_catalog",
-        "audit_logs",      # telemetry must always be cross-tenant for admin view
-        # users table is queried cross-tenant (e.g. login, notifications)
-        "users",
-        "notifications",   # user-scoped not tenant-scoped
-    ]
-
+    # Scope every use of every tenant-owned entity (selects, joins, column-only selects, aggregates,
+    # relationship loads, bulk UPDATE / DELETE). See modules/tenant_scope.py for what is and is not covered.
     if execute_state.is_select or execute_state.is_update or execute_state.is_delete:
-        # We need to add a filter to the statement if it hits a table with tenant_id
-        stmt = execute_state.statement
-
-        # A simple check: if it's a Select, we can filter.
-        # For simplicity and safety without breaking complex joins, we can traverse the entities
-        if execute_state.is_select:
-            for entity in execute_state.statement.column_descriptions:
-                model = entity.get("type") or entity.get("entity")
-                if hasattr(model, "__tablename__") and model.__tablename__ not in global_tables:
-                    if hasattr(model, "tenant_id"):
-                        stmt = stmt.where(model.tenant_id == tenant_id)
-            execute_state.statement = stmt
+        from modules.api_tracker import current_salesperson_id as _who
+        execute_state.statement = execute_state.statement.options(
+            *tenant_scope.criteria_options(tenant_id), tenant_scope.user_option(tenant_id, _who.get()))
 
 
 @event.listens_for(SASession, "before_flush")
@@ -555,31 +530,26 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         current_salesperson_id.set(None)
         current_tenant_id.set(None)
         current_endpoint.set(request.url.path)
-        # Try to infer user from X-User-ID header, query parameter, or JWT token
-        user_header = request.headers.get("X-User-ID")
-        if user_header and user_header.isdigit():
-            current_salesperson_id.set(int(user_header))
-        elif request.query_params.get("user_id") and request.query_params.get("user_id").isdigit():
-            current_salesperson_id.set(
-                int(request.query_params.get("user_id")))
-        else:
-            auth_header = request.headers.get("Authorization")
-            if auth_header and auth_header.startswith("Bearer "):
-                token = auth_header.split(" ")[1]
-                try:
-                    import jwt
-                    from config import SECRET_KEY, ALGORITHM
-                    payload = jwt.decode(
-                        token, SECRET_KEY, algorithms=[ALGORITHM])
-                    user_id = payload.get("sub")
-                    if user_id:
-                        current_salesperson_id.set(int(user_id))
-                except:
-                    pass
+        # Identity. A signed session token (Authorization: Bearer ...) is the real credential. The legacy
+        # unsigned X-User-ID header / ?user_id= query parameter is only honoured when NO Authorization header
+        # is sent and LEGACY_USER_HEADER is not "0": a bad or expired token never falls back to the header.
+        claimed_uid = None
+        claimed_pv = None
+        auth_header = request.headers.get("Authorization") or ""
+        if auth_header.lower().startswith("bearer "):
+            payload = auth_tokens.verify_token(auth_header[7:].strip())
+            if payload:
+                claimed_uid, claimed_pv = payload["uid"], payload.get("pv")
+        elif auth_tokens.legacy_header_allowed():
+            user_header = request.headers.get("X-User-ID")
+            query_uid = request.query_params.get("user_id")
+            if user_header and user_header.isdigit():
+                claimed_uid = int(user_header)
+            elif query_uid and query_uid.isdigit():
+                claimed_uid = int(query_uid)
 
         # Now securely resolve tenant_id based on the authenticated user.
         # This prevents malicious spoofing of X-Tenant-ID and fixes legacy missing headers.
-        user_id_val = current_salesperson_id.get()
         tenant_header = request.headers.get("X-Tenant-ID")
         path = request.url.path
 
@@ -587,29 +557,45 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         # (Twilio drops a call after ~15s), so they skip the user lookup entirely.
         if path.startswith(("/voice-agent/twilio/", "/static/")):
             current_tenant_id.set(-1)
-        elif user_id_val:
-            def _resolve_tenant(uid: int):
+        elif claimed_uid:
+            def _resolve_identity(uid: int, pv: Optional[str]):
+                """-> (user id or None, tenant id). Unknown users and stale tokens are anonymous (-1),
+                never unscoped."""
                 with Session(engine) as session:
                     user_obj = session.get(User, uid)
-                    if user_obj and user_obj.role != "SuperAdmin":
-                        # Force tenant_id to be the user's actual tenant in the DB
-                        return user_obj.tenant_id
-                    if user_obj and user_obj.role == "SuperAdmin":
+                    if not user_obj:
+                        return None, -1
+                    if pv is not None and auth_tokens.password_fingerprint(user_obj.password) != pv:
+                        return None, -1  # password changed since the token was issued
+                    if user_obj.role == "SuperAdmin":
                         # SuperAdmins can optionally impersonate a tenant via header
-                        return int(tenant_header) if tenant_header and tenant_header.isdigit() else None
-                    return None
+                        return uid, (int(tenant_header) if tenant_header and tenant_header.isdigit() else None)
+                    # Force tenant_id to be the user's actual tenant in the DB
+                    return uid, user_obj.tenant_id
 
             # Blocking DB call: run it in the threadpool so it doesn't stall the event loop
             # (which delayed every other request, including Twilio webhooks).
             from starlette.concurrency import run_in_threadpool
-            current_tenant_id.set(await run_in_threadpool(_resolve_tenant, user_id_val))
+            resolved_uid, resolved_tenant = await run_in_threadpool(_resolve_identity, claimed_uid, claimed_pv)
+            current_salesperson_id.set(resolved_uid)
+            current_tenant_id.set(resolved_tenant)
         else:
-            # Unauthenticated requests CANNOT be given SuperAdmin access (None).
-            # Force to an invalid tenant ID so they see nothing instead of everything.
-            if tenant_header and tenant_header.isdigit():
-                current_tenant_id.set(int(tenant_header))
-            else:
-                current_tenant_id.set(-1)
+            # Unauthenticated requests CANNOT be given SuperAdmin access (None), and must not pick a
+            # tenant with a client-supplied X-Tenant-ID either. Force an invalid tenant ID so they see
+            # nothing; public endpoints that need data use skip_tenant or resolve the tenant themselves.
+            current_tenant_id.set(-1)
+
+        # Feature entitlements: a tenant that has a module switched off gets 403 for that module's routes.
+        # Anonymous requests (-1: webhooks, public store) and unscoped SuperAdmins (None) are never gated.
+        gated_tenant = current_tenant_id.get()
+        if gated_tenant is not None and gated_tenant >= 1:
+            feature_key = features.feature_for_path(path)
+            if feature_key:
+                from starlette.concurrency import run_in_threadpool
+                if not await run_in_threadpool(features.is_enabled, gated_tenant, feature_key):
+                    return JSONResponse(status_code=403, content={
+                        "detail": f"The '{features.FEATURES[feature_key].label}' module is not enabled for your account.",
+                        "feature": feature_key})
 
         # Try to infer client_id from path parameters
         # Example paths: /clients/123/something or /projects/456 where we might need to lookup client
@@ -644,6 +630,21 @@ app.include_router(leaderboard_router)
 
 app.include_router(inbox_router)
 
+from routers.tenant_config import router as tenant_config_router
+app.include_router(tenant_config_router)
+
+from routers.registration import router as registration_router
+app.include_router(registration_router)
+
+from routers.workspace import router as workspace_router
+app.include_router(workspace_router)
+
+from routers.customization_requests import router as customization_requests_router
+app.include_router(customization_requests_router)
+
+import addons
+addons.register(app)
+
 app.include_router(voice_agent_router)
 
 from routers.followups import router as followups_router
@@ -651,179 +652,6 @@ app.include_router(followups_router)
 
 from routers.email_campaigns import router as email_campaigns_router
 app.include_router(email_campaigns_router)
-
-app.include_router(scm2_router)
-app.include_router(scm2_router, prefix="/scm2")
-app.include_router(command_center_router)
-app.include_router(ai_reports_router)
-app.include_router(follow_ups_router)
-
-
-@app.on_event("startup")
-def initialize_scm_bpo_modules():
-    try:
-        ensure_scm2_schema()
-    except Exception as exc:
-        print(f"[scm2] schema bootstrap failed: {exc}")
-
-    try:
-        ensure_followup_schema()
-        from modules.background import jobs_enabled
-
-        if jobs_enabled():
-            start_reminder_worker(60)
-        else:
-            print("[followups] BACKGROUND_JOBS=0: reminder worker NOT started.")
-    except Exception as exc:
-        print(f"[followups] startup failed: {exc}")
-
-
-class DroppedClientCreate(BaseModel):
-    client_id: Optional[int] = None
-    company_name: str
-    reason: Optional[str] = None
-    reason_category: Optional[str] = "Other"
-    last_revenue: float = 0
-    relationship_months: int = 0
-    reactivation_potential: str = "Low"
-    notes: Optional[str] = None
-
-
-def _dropped_client_access(session: Session):
-    return _require_roles(session, {"Admin", "SalesManager", "Employee", "Demo"})
-
-
-@app.get("/dropped-clients")
-def list_dropped_clients(session: Session = Depends(get_session)):
-    user = _dropped_client_access(session)
-    statement = select(DroppedClient)
-    if user.role == "Employee":
-        statement = statement.where(or_(
-            DroppedClient.dropped_by == user.id,
-            DroppedClient.client_id.in_(
-                select(ClientProfile.id).where(ClientProfile.assignedEmployeeId == user.id)
-            ),
-        ))
-    records = session.exec(statement.order_by(DroppedClient.dropped_at.desc())).all()
-    categories: Dict[str, int] = {}
-    for record in records:
-        category = record.reason_category or "Other"
-        categories[category] = categories.get(category, 0) + 1
-    return {
-        "dropped_clients": records,
-        "total": len(records),
-        "category_breakdown": categories,
-    }
-
-
-@app.get("/dropped-clients/by-client/{client_id}")
-def get_dropped_client_for_client(client_id: int, session: Session = Depends(get_session)):
-    user = _dropped_client_access(session)
-    client = session.exec(select(ClientProfile).where(ClientProfile.id == client_id)).first()
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found.")
-    if user.role == "Employee" and client.assignedEmployeeId != user.id:
-        raise HTTPException(status_code=403, detail="You can only view your assigned clients.")
-    record = session.exec(
-        select(DroppedClient)
-        .where(DroppedClient.client_id == client_id)
-        .order_by(DroppedClient.dropped_at.desc())
-    ).first()
-    return {"dropped_client": record}
-
-
-@app.post("/dropped-clients")
-def create_dropped_client(body: DroppedClientCreate, session: Session = Depends(get_session)):
-    user = _dropped_client_access(session)
-    if not body.company_name.strip():
-        raise HTTPException(status_code=400, detail="Company name is required.")
-
-    client = None
-    if body.client_id:
-        client = session.exec(
-            select(ClientProfile).where(ClientProfile.id == body.client_id)
-        ).first()
-        if not client:
-            raise HTTPException(status_code=404, detail="Client not found.")
-        if user.role == "Employee" and client.assignedEmployeeId != user.id:
-            raise HTTPException(status_code=403, detail="You can only update your assigned clients.")
-        existing = session.exec(
-            select(DroppedClient).where(
-                DroppedClient.client_id == body.client_id,
-                DroppedClient.reactivated_at.is_(None),
-            )
-        ).first()
-        if existing:
-            raise HTTPException(status_code=409, detail="This client is already marked as dropped.")
-
-    tenant_id = current_tenant_id.get()
-    tenant_id = tenant_id if tenant_id and tenant_id > 0 else (client.tenant_id if client else user.tenant_id)
-    if not tenant_id or tenant_id < 1:
-        raise HTTPException(status_code=400, detail="A tenant is required to record a dropped client.")
-
-    record = DroppedClient(
-        tenant_id=tenant_id,
-        client_id=client.id if client else None,
-        company_name=body.company_name.strip(),
-        reason=body.reason,
-        reason_category=body.reason_category or "Other",
-        dropped_by=user.id,
-        last_revenue=max(body.last_revenue, 0),
-        relationship_months=max(body.relationship_months, 0),
-        reactivation_potential=body.reactivation_potential,
-        notes=body.notes,
-        previous_status=client.status if client else None,
-    )
-    if client:
-        client.status = "Dropped"
-        session.add(client)
-    session.add(record)
-    session.commit()
-    session.refresh(record)
-    return {"ok": True, "dropped_client": record}
-
-
-@app.post("/dropped-clients/by-client/{client_id}/reactivate")
-def reactivate_dropped_client(client_id: int, session: Session = Depends(get_session)):
-    user = _dropped_client_access(session)
-    record = session.exec(
-        select(DroppedClient)
-        .where(DroppedClient.client_id == client_id, DroppedClient.reactivated_at.is_(None))
-        .order_by(DroppedClient.dropped_at.desc())
-    ).first()
-    if not record:
-        raise HTTPException(status_code=404, detail="Dropped-client record not found.")
-    client = session.exec(
-        select(ClientProfile).where(ClientProfile.id == client_id)
-    ).first()
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found.")
-    if user.role == "Employee" and client.assignedEmployeeId != user.id:
-        raise HTTPException(status_code=403, detail="You can only update your assigned clients.")
-
-    client.status = record.previous_status or "Active"
-    record.reactivated_at = datetime.now(timezone.utc)
-    session.add(client)
-    session.add(record)
-    session.commit()
-    return {"ok": True, "status": client.status, "dropped_client": record}
-
-
-@app.delete("/dropped-clients/{record_id}")
-def delete_dropped_client(record_id: int, session: Session = Depends(get_session)):
-    user = _dropped_client_access(session)
-    record = session.exec(select(DroppedClient).where(DroppedClient.id == record_id)).first()
-    if not record:
-        raise HTTPException(status_code=404, detail="Dropped-client record not found.")
-    if user.role == "Employee":
-        client = session.exec(
-            select(ClientProfile).where(ClientProfile.id == record.client_id)
-        ).first() if record.client_id else None
-        if record.dropped_by != user.id and (not client or client.assignedEmployeeId != user.id):
-            raise HTTPException(status_code=403, detail="You can only delete your own or assigned client records.")
-    session.delete(record)
-    session.commit()
-    return {"ok": True, "deleted": record_id}
 
 @app.on_event("startup")
 def on_startup():
@@ -842,11 +670,17 @@ def on_startup():
             users = session.exec(select(User).where(
                 User.role == 'SuperAdmin')).all()
             if not users:
-                su = User(name='Super Admin', email='superadmin@serphawk.in',
-                          password='password123', role='SuperAdmin', tenant_id=None)
+                # The platform operator account. The password comes from SUPERADMIN_PASSWORD, or is generated once
+                # and printed (never a published default), and is stored hashed.
+                import secrets as _secrets
+                boot_pw = os.getenv("SUPERADMIN_PASSWORD") or _secrets.token_urlsafe(14)
+                su = User(name='Super Admin', email=os.getenv("SUPERADMIN_EMAIL") or 'superadmin@serphawk.in',
+                          password=_hash_password(boot_pw), role='SuperAdmin', tenant_id=None)
                 session.add(su)
                 session.commit()
-                print("Provisioned default SuperAdmin user.")
+                print(f"Provisioned the SuperAdmin user {su.email}.")
+                if not os.getenv("SUPERADMIN_PASSWORD"):
+                    print(f"  One-time password (change it, or set SUPERADMIN_PASSWORD before first boot): {boot_pw}")
     except Exception as e:
         print("Error provisioning SuperAdmin:", e)
 
@@ -947,6 +781,21 @@ def on_startup():
     except Exception:
         pass
 
+    # Optional Postgres Row-Level Security backstop (modules/rls.py). Off unless RLS_MODE=enforce.
+    if os.getenv("RLS_MODE", "off").strip().lower() == "enforce":
+        try:
+            from modules import rls
+            rls.install(lambda: current_tenant_id.get())     # tells Postgres which tenant each transaction is for
+            try:
+                print(f"[startup] RLS policies ensured on {len(rls.enable_rls(engine))} tables")
+            except Exception as e:
+                # An ordinary app role cannot create policies; the owner creates them once with
+                # `python -m modules.rls enable`, and existing policies stay in force.
+                print(f"[startup] RLS hooks installed; policies not (re)created by this role "
+                      f"({type(e).__name__}). Run `python -m modules.rls enable` as the table owner.")
+        except Exception as e:
+            print(f"[startup] RLS_MODE=enforce could not start, ORM scoping only: {type(e).__name__}: {e}")
+
     # Background pollers: reply checker, inbox sync, follow-up scheduler. BACKGROUND_JOBS=0 turns all
     # three off (modules/background.py): only one environment per database should run them.
     from modules.background import jobs_enabled
@@ -1004,25 +853,25 @@ def on_startup():
         # Ensure varshithh@gmail.com is an Admin and reset admin@serphawk.com password
         session = Session(engine)
         harshith = session.exec(select(User).where(
-            User.email == "varshithh@gmail.com")).first()
+            User.email == "varshithh@gmail.com").execution_options(skip_tenant=True)).first()
         if harshith:
             harshith.role = "Admin"
             session.add(harshith)
 
         admin = session.exec(select(User).where(
-            User.email == "admin@serphawk.com")).first()
+            User.email == "admin@serphawk.com").execution_options(skip_tenant=True)).first()
         if admin:
             admin.password = _hash_password("Admin123!")
             session.add(admin)
 
         sm = session.exec(select(User).where(
-            User.email == "varsh@gmail.com")).first()
+            User.email == "varsh@gmail.com").execution_options(skip_tenant=True)).first()
         if sm:
             sm.password = _hash_password("Admin123!")
             session.add(sm)
 
         emp = session.exec(select(User).where(
-            User.email == "varshit@gmail.com")).first()
+            User.email == "varshit@gmail.com").execution_options(skip_tenant=True)).first()
         if emp:
             emp.password = _hash_password("Admin123!")
             session.add(emp)
@@ -1030,7 +879,7 @@ def on_startup():
         # Dedicated Demo-role account used by the frontend demo login button.
         # Reset its password on startup so the demo always works.
         demo = session.exec(select(User).where(
-            User.email == "demo@serphawk.com")).first()
+            User.email == "demo@serphawk.com").execution_options(skip_tenant=True)).first()
         if demo:
             demo.password = _hash_password("DemoPass123!")
             session.add(demo)
@@ -1164,9 +1013,13 @@ def on_startup():
                 except Exception as _e:
                     print("Keepalive ping failed:", _e)
 
-        _threading.Thread(target=_db_keepalive_loop,
-                          daemon=True, name="db-keepalive").start()
-        print("DB keepalive started (pings every 60s).")
+        if os.getenv("DB_KEEPALIVE", "1") == "0":
+            # Tests start the app's startup hook many times; each ping thread would share (and roll back) their one connection.
+            print("DB keepalive disabled (DB_KEEPALIVE=0).")
+        else:
+            _threading.Thread(target=_db_keepalive_loop,
+                              daemon=True, name="db-keepalive").start()
+            print("DB keepalive started (pings every 60s).")
     except Exception as e:
         print("Could not start DB keepalive:", e)
 
@@ -2272,6 +2125,15 @@ class TaskSheetEntryRequest(BaseModel):
     blocker: Optional[str] = None
     follow_up_date: Optional[str] = None
     completion_date: Optional[str] = None
+    # sales sheet (SCM BPO) and the institute's proof of work (SCM HB); all optional
+    outreaches_count: Optional[int] = 0
+    positives_count: Optional[int] = 0
+    negatives_count: Optional[int] = 0
+    followups_scheduled: Optional[int] = 0
+    meetings_scheduled: Optional[int] = 0
+    key_focus: Optional[str] = None
+    proof_of_work: Optional[str] = None
+    expected_date: Optional[str] = None
 
 
 class InvoiceCreateRequest(BaseModel):
@@ -2365,15 +2227,6 @@ class ProposalUpdateRequest(BaseModel):
     total_value: Optional[float] = None
     line_items: Optional[List[dict]] = None
     currency: Optional[str] = None
-
-
-class PublicProposalCommentRequest(BaseModel):
-    content: str
-    author_name: Optional[str] = None
-
-
-class PublicProposalAcceptRequest(BaseModel):
-    signer_name: Optional[str] = None
 
 
 class FileUploadRequest(BaseModel):
@@ -2488,17 +2341,35 @@ def _normalize_role(role: Optional[str]) -> str:
         return "Client"
     mapping = {
         "admin": "Admin",
+        "superadmin": "SuperAdmin",
         "employee": "Employee",
         "client": "Client",
         "intern": "Intern",
+        "student": "Student",
+        "instructor": "Instructor",
+        "salesmanager": "SalesManager",
+        "sales": "Sales",
+        "demo": "Demo",
+        "projectmember": "ProjectMember",
     }
-    return mapping.get(role.lower(), role)
+    # "Sales Manager", "sales_manager" and "salesmanager" are the same role
+    role_key = re.sub(r"[\s_-]+", "", role).lower()
+    return mapping.get(role_key, role)
+
+
+_SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _verify_password(plain: str, user: User) -> bool:
-    """Support SHA256 (password column) and bcrypt (hashed_password column)."""
+    """Support SHA256 (password column) and bcrypt (hashed_password column).
+
+    Legacy accounts whose column holds the password in plaintext still log in, but a stored SHA-256 hash is
+    never accepted as the password itself (otherwise anyone who learns the hash could sign in with it).
+    """
     if user.password:
-        if _check_password(plain, user.password) or plain == user.password:
+        if _check_password(plain, user.password):
+            return True
+        if not _SHA256_HEX_RE.match(user.password) and plain == user.password:
             return True
     stored = (user.hashed_password or "").strip()
     if not stored:
@@ -2509,7 +2380,7 @@ def _verify_password(plain: str, user: User) -> bool:
             return bcrypt.checkpw(plain.encode("utf-8"), stored.encode("utf-8"))
         except Exception:
             return False
-    return _check_password(plain, stored) or plain == stored
+    return _check_password(plain, stored) or (not _SHA256_HEX_RE.match(stored) and plain == stored)
 
 
 def _user_dict(u: User) -> dict:
@@ -2541,6 +2412,12 @@ def _get_agent_profile(session: Session, user: User) -> Optional[EmailAgentProfi
     return session.exec(select(EmailAgentProfile).where(EmailAgentProfile.user_id == user.id)).first()
 
 
+def _same_phone(a: Optional[str], b: Optional[str]) -> bool:
+    """Two phone numbers are the same when their digits are (formatting does not matter)."""
+    da, db = re.sub(r"\D", "", a or ""), re.sub(r"\D", "", b or "")
+    return bool(da) and da == db
+
+
 def _agent_profile_dict(prof: Optional[EmailAgentProfile], user: Optional[User], integ: Optional[UserEmailIntegration] = None) -> dict:
     """Serialize the agent profile, falling back to the configured SMTP email or login record READ-ONLY
     for display defaults when no agent profile email is set."""
@@ -2565,13 +2442,20 @@ def _email_agent_sender(session: Session) -> dict:
     fallback — it is never written from this path. SMTP credentials always stay
     on the configured mailbox.
     """
+    from modules.branding import DEFAULT as _DEFAULT_BRAND, current_brand as _current_brand
+    brand = _current_brand()
+    # A tenant with its own brand falls back to its own name / phone, never SerpHawk's.
+    fb_name = "Relation Manager- SerpHawk" if brand is _DEFAULT_BRAND else brand.name
+    fb_email = (os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL")
+                or ("crm@serphawk.in" if brand is _DEFAULT_BRAND else brand.email))
+    fb_phone = brand.phone
     user_id = current_salesperson_id.get()
     user = session.get(User, user_id) if user_id else None
     if not user:
         return {
-            "name": "Relation Manager- SerpHawk",
-            "email": os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in"),
-            "phone": "+91 9502901416",
+            "name": fb_name,
+            "email": fb_email,
+            "phone": fb_phone,
             "signature": "",
             "auto_append": False,
         }
@@ -2579,9 +2463,9 @@ def _email_agent_sender(session: Session) -> dict:
     prof = _get_agent_profile(session, user)
     d = _agent_profile_dict(prof, user, integ)
     return {
-        "name": (d["agent_name"] or "").strip() or "Relation Manager- SerpHawk",
-        "email": (d["agent_email"] or "").strip() or os.getenv("EMAIL_SENDER") or os.getenv("OUTLOOK_EMAIL", "crm@serphawk.in"),
-        "phone": (d["agent_phone"] or "").strip() or "+91 9502901416",
+        "name": (d["agent_name"] or "").strip() or (fb_name if brand is _DEFAULT_BRAND else ((user.name or "").strip() or fb_name)),
+        "email": (d["agent_email"] or "").strip() or fb_email,
+        "phone": (d["agent_phone"] or "").strip() or fb_phone,
         "signature": d["signature"] or "",
         "auto_append": d["auto_append_signature"],
     }
@@ -2616,7 +2500,7 @@ def _email_integration_safe_dict(row: Optional[UserEmailIntegration]) -> dict:
 
 
 _DEFAULT_SIGNOFF_GREETING_RE = re.compile(
-    r"^\s*(?:Best regards,?|Saludos cordiales,?|Saludos,?|Warm regards,?|Best,?|Regards,?)\s*$",
+    r"^\s*(?:Best regards,?|Saludos cordiales,?|Saludos,?|Atentamente,?|Warm regards,?|Best,?|Regards,?)\s*$",
     re.IGNORECASE,
 )
 
@@ -2624,6 +2508,11 @@ _SIGNOFF_SHAPE_RE = re.compile(
     r"serphawk|(?:^|\s)[^@\s]+@[^@\s]+\.[^@\s]+|^(?:Email|Phone):\s",
     re.IGNORECASE | re.MULTILINE,
 )
+
+
+def _signoff_shape_re():
+    from modules.company_mailer import signoff_shape_re
+    return signoff_shape_re()
 
 
 def _apply_signature(body: str, signature: str) -> str:
@@ -2645,7 +2534,7 @@ def _apply_signature(body: str, signature: str) -> str:
     for i in range(len(lines) - 1, max(len(lines) - 6, 0) - 1, -1):
         if _DEFAULT_SIGNOFF_GREETING_RE.match(lines[i]):
             block = lines[i + 1:]
-            if block and _SIGNOFF_SHAPE_RE.search("\n".join(block)):
+            if block and _signoff_shape_re().search("\n".join(block)):
                 lines = lines[:i]
                 break
     return "\n".join(lines).rstrip() + "\n\n" + signature.rstrip()
@@ -2754,57 +2643,12 @@ class SignupRequest(BaseModel):
 
 
 @app.post("/signup")
-def signup(body: SignupRequest, session: Session = Depends(get_session)):
-    # 1. Check if user already exists
-    existing_user = session.exec(
-        select(User).where(User.email == body.email)).first()
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already exists")
-
-    # 2. Create new Tenant (Trial)
-    tenant = Tenant(
-        name=f"{body.business_name} - {body.name}",
-        business_name=body.business_name,
-        email=body.email,
-        phone=body.phone,
-        is_trial=True,
-        limit_clients=15,
-        limit_emails=5,
-        limit_searches=2
-    )
-    session.add(tenant)
-    session.commit()
-    session.refresh(tenant)
-
-    # 3. Create Admin User for this Tenant
-    hashed = _hash_password(body.password)
-    new_user = User(
-        email=body.email,
-        password=hashed,
-        name=body.name,
-        role="Admin",
-        tenant_id=tenant.id
-    )
-    session.add(new_user)
-
-    # 4. Create Lead in Master Admin CRM
-    master = session.exec(select(Tenant).where(
-        Tenant.name == "Master Admin")).first()
-    if master:
-        lead = Lead(
-            name=body.name,
-            email=body.email,
-            phone=body.phone,
-            company=body.business_name,
-            source="Trial Signup",
-            status="New",
-            tenant_id=master.id
-        )
-        session.add(lead)
-
-    session.commit()
-
-    return {"message": "Trial account created successfully", "tenant_id": tenant.id}
+def signup(body: SignupRequest, request: Request, session: Session = Depends(get_session)):
+    """Kept for older callers; same as POST /register (the e-mail must be verified with a one-time code first)."""
+    from routers.registration import RegisterRequest, register
+    out = register(RegisterRequest(company_name=body.business_name, admin_name=body.name, email=body.email,
+                                   password=body.password, phone=body.phone), request, session)
+    return {"message": "Trial account created successfully", **out}
 
 
 @app.get("/omnisearch")
@@ -2868,8 +2712,8 @@ def global_activities(session: Session = Depends(get_session)):
     from database import ActivityLog
     from sqlalchemy import select
 
-    activities = session.exec(select(ActivityLog).where(
-        ActivityLog.tenant_id == tenant_id).order_by(ActivityLog.createdAt.desc()).limit(30)).all()
+    activities = session.execute(select(ActivityLog).where(
+        ActivityLog.tenant_id == tenant_id).order_by(ActivityLog.createdAt.desc()).limit(30)).scalars().all()
     return {"activities": activities}
 
 
@@ -3335,7 +3179,7 @@ def debug_user(email: str = "", session: Session = Depends(get_session)):
 
 @app.post("/login")
 def login(body: LoginRequest, session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.email == body.email)).first()
+    user = session.exec(select(User).where(User.email == body.email).execution_options(skip_tenant=True)).first()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not _verify_password(body.password, user):
@@ -3346,7 +3190,7 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
             ClientProfile.userId == user.id)).first()
         if cp:
             result["client_id"] = cp.id
-    return {"user": result}
+    return {"user": result, "token": auth_tokens.issue_token(user.id, user.password)}
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -3367,7 +3211,7 @@ def forgot_password(body: ForgotPasswordRequest, session: Session = Depends(get_
     import secrets
     from database import PasswordResetToken
 
-    user = session.exec(select(User).where(User.email == body.email)).first()
+    user = session.exec(select(User).where(User.email == body.email).execution_options(skip_tenant=True)).first()
 
     # Generate + persist a token even for unknown emails so timing doesn't leak existence
     token = secrets.token_urlsafe(48)
@@ -3393,7 +3237,7 @@ def forgot_password(body: ForgotPasswordRequest, session: Session = Depends(get_
 
     reset_url = f"{frontend_base}/reset-password?email={user.email if user else ''}&token={token}"
     from modules.email_sender import send_password_reset_email
-    sent = send_password_reset_email(body.email, reset_url)
+    sent = send_password_reset_email(body.email, reset_url, tenant_id=user.tenant_id if user else None)
 
     result = {"message": "If that email is registered, a password reset link has been sent.",
               "delivered": sent if user else False}
@@ -3417,7 +3261,7 @@ def reset_password(body: ResetPasswordRequest, session: Session = Depends(get_se
     from datetime import datetime as _dt
     from database import PasswordResetToken
 
-    user = session.exec(select(User).where(User.email == body.email)).first()
+    user = session.exec(select(User).where(User.email == body.email).execution_options(skip_tenant=True)).first()
     if not user:
         raise HTTPException(
             status_code=400, detail="Invalid or expired reset token")
@@ -3467,7 +3311,7 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
         raise HTTPException(
             status_code=400, detail="No email found from Google")
 
-    user = session.exec(select(User).where(User.email == email)).first()
+    user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
     is_new_user = False
 
     if not user:
@@ -3506,6 +3350,7 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
     return {
         "success": True,
         "user": result,
+        "token": auth_tokens.issue_token(user.id, user.password),
         "is_new_user": is_new_user
     }
 
@@ -3515,23 +3360,41 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
 # ─────────────────────────────────────────────────────────────────────────────
 @app.post("/users")
 def create_user(body: CreateUserRequest, session: Session = Depends(get_session)):
+    # Who may create whom. Without this any signed-in user (even a Client) could mint an Admin for their tenant.
+    actor = _require_roles(session, ["Admin", "SalesManager"])
+    actor_role = _normalize_role(actor.role)
+    new_role = _normalize_role(body.role)
+    known_roles = {"SuperAdmin", "Admin", "SalesManager", "Employee", "Intern", "Client", "Supplier", "Demo",
+                   "ProjectMember", "Developer", "Student", "Instructor", "Sales"}
+    if new_role not in known_roles:
+        raise HTTPException(status_code=422, detail=f"Unknown role '{body.role}'")
+    creatable = {
+        "SuperAdmin": known_roles,
+        "Admin": known_roles - {"SuperAdmin"},
+        "SalesManager": {"Client", "Employee", "Intern", "Sales"},
+    }.get(actor_role, set())
+    if new_role not in creatable:
+        raise HTTPException(status_code=403, detail=f"Your role cannot create a {new_role} account")
+    caller_tenant_id = current_tenant_id.get()
+    if new_role != "SuperAdmin" and (caller_tenant_id is None or caller_tenant_id < 1):
+        # A user without a tenant is unscoped (sees every client's data): never create one by accident.
+        raise HTTPException(status_code=400, detail="Pick a tenant first (X-Tenant-ID)")
     existing = session.exec(select(User).where(
-        User.email == body.email)).first()
+        User.email == body.email).execution_options(skip_tenant=True)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already exists")
-    caller_tenant_id = current_tenant_id.get()
     user = User(
         email=body.email,
         password=_hash_password(body.password),
         name=body.name,
-        role=body.role,
+        role=new_role,
         # Assign to same tenant as the caller so team members are visible in demo accounts
-        tenant_id=caller_tenant_id,
+        tenant_id=None if new_role == "SuperAdmin" else caller_tenant_id,
     )
     session.add(user)
     session.commit()
     session.refresh(user)
-    if body.role == "Client":
+    if new_role == "Client":
         cp = ClientProfile(userId=user.id, tenant_id=caller_tenant_id)
         session.add(cp)
         session.commit()
@@ -3564,10 +3427,21 @@ def update_current_user(body: UserUpdateMe, session: Session = Depends(get_sessi
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    old_phone = getattr(user, "phone", None)
     if body.name is not None:
         user.name = body.name
     if body.phone is not None:
         user.phone = body.phone
+
+    # The Email Agent signature uses this number unless a different one was set on purpose. If the signature is still
+    # the auto-generated one, regenerate it so the new number appears without entering it a second time.
+    if body.phone is not None and (old_phone or "") != (user.phone or ""):
+        prof = _get_agent_profile(session, user)
+        if prof is not None and not (prof.agent_phone or "").strip():
+            name = (prof.agent_name or "").strip() or (user.name or "")
+            email = (prof.agent_email or "").strip() or (user.email or "")
+            if (prof.signature or "").strip() == _generate_signature(name, email, old_phone or "").strip():
+                prof.signature = _generate_signature(name, email, user.phone or "")
 
     session.commit()
     session.refresh(user)
@@ -3621,7 +3495,7 @@ def update_email_agent_profile(body: AgentProfileUpdate, session: Session = Depe
             user_id=user.id,
             agent_name=user.name,
             agent_email=fallback_email,
-            agent_phone=getattr(user, "phone", None),
+            agent_phone=None,                # follows the account profile phone until set on purpose
             signature=getattr(user, "signature", None),
             auto_append_signature=bool(getattr(user, "auto_append_signature", True)),
         )
@@ -3637,7 +3511,11 @@ def update_email_agent_profile(body: AgentProfileUpdate, session: Session = Depe
     if body.agent_name is not None:
         prof.agent_name = body.agent_name
     if body.agent_phone is not None:
-        prof.agent_phone = body.agent_phone
+        new_phone = body.agent_phone.strip()
+        if not new_phone or _same_phone(new_phone, getattr(user, "phone", None)):
+            prof.agent_phone = None          # no separate number: follow the account profile phone
+        else:
+            prof.agent_phone = new_phone
 
     if profile_touched:
         name = (prof.agent_name or "").strip() or (user.name or "")
@@ -3678,7 +3556,7 @@ def update_current_user_signature(body: SignatureUpdate, session: Session = Depe
             user_id=user.id,
             agent_name=user.name,
             agent_email=user.email,
-            agent_phone=getattr(user, "phone", None),
+            agent_phone=None,
             signature=getattr(user, "signature", None),
             auto_append_signature=bool(getattr(user, "auto_append_signature", True)),
         )
@@ -3993,9 +3871,12 @@ def get_user_stats(user_id: int, session: Session = Depends(get_session)):
 
 @app.delete("/users/{user_id}")
 def delete_user(user_id: int, session: Session = Depends(get_session)):
+    actor = _require_roles(session, ["Admin"])
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if _normalize_role(user.role) == "SuperAdmin" and _normalize_role(actor.role) != "SuperAdmin":
+        raise HTTPException(status_code=403, detail="Only a SuperAdmin can remove a SuperAdmin")
     session.delete(user)
     session.commit()
     return {"ok": True}
@@ -4157,7 +4038,7 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     user = None
     if body.email:
         user = session.exec(select(User).where(
-            User.email == body.email)).first()
+            User.email == body.email).execution_options(skip_tenant=True)).first()
         if not user:
             try:
                 user = User(
@@ -4173,7 +4054,7 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
                 # Email already exists (race condition) — roll back and fetch existing user
                 session.rollback()
                 user = session.exec(select(User).where(
-                    User.email == body.email)).first()
+                    User.email == body.email).execution_options(skip_tenant=True)).first()
 
     cp = ClientProfile(
         tenant_id=current_tenant_id.get(),
@@ -5022,85 +4903,6 @@ def update_client(
     session.commit()
     session.refresh(cp)
     return {"client": _client_dict(cp, session)}
-
-
-@app.patch("/clients/{client_id}/status")
-def patch_client_status(client_id: int, body: Dict[str, Any], session: Session = Depends(get_session)):
-    cp = session.get(ClientProfile, client_id)
-    if not cp:
-        raise HTTPException(status_code=404, detail="Client not found")
-
-    status = body.get("status")
-    if status:
-        cp.status = status
-        deal_stage_map = {
-            "Proposal Sent": "Proposal Sent",
-            "Negotiation": "Negotiation",
-            "Won": "Closed Won",
-            "Lost": "Closed Lost",
-        }
-        proposal_status_map = {
-            "Proposal Sent": "Sent",
-            "Negotiation": "Negotiation",
-            "Won": "Accepted",
-            "Lost": "Rejected",
-        }
-        if status in deal_stage_map:
-            for deal in session.exec(select(Deal).where(Deal.client_id == client_id)).all():
-                deal.stage = deal_stage_map[status]
-                if hasattr(deal, "won_at"):
-                    deal.won_at = utc_now() if status == "Won" else None
-                if status == "Won" and getattr(deal, "value", None) and not getattr(deal, "final_value", None):
-                    deal.final_value = deal.value
-                deal.updated_at = utc_now()
-                session.add(deal)
-        if status in proposal_status_map:
-            for proposal in session.exec(select(Proposal).where(Proposal.client_id == client_id)).all():
-                proposal.status = proposal_status_map[status]
-                if status == "Won" and hasattr(proposal, "signed_at"):
-                    proposal.signed_at = utc_now()
-                proposal.updated_at = utc_now()
-                session.add(proposal)
-
-    for key, value in body.items():
-        if key in ("assignedEmployeeId", "assigned_employee_id", "employee_id"):
-            cp.assignedEmployeeId = value
-        elif key not in ("id", "status") and hasattr(cp, key):
-            setattr(cp, key, value)
-
-    session.add(cp)
-    session.commit()
-    session.refresh(cp)
-    return {"client": _client_dict(cp, session)}
-
-
-class ReassignRequest(BaseModel):
-    client_id: int
-    to_user_id: int
-    reason: Optional[str] = None
-
-
-@app.post("/salesperson/reassign")
-def reassign_salesperson(body: ReassignRequest, session: Session = Depends(get_session)):
-    history = reassign_owner(session, "client", body.client_id, body.to_user_id, body.reason)
-    return {"message": f"Client reassigned to {history.to_user_name}", "history_id": history.id}
-
-
-@app.get("/salesperson/history/{client_id}")
-def get_salesperson_history(client_id: int, session: Session = Depends(get_session)):
-    from database import SalespersonHistory
-
-    rows = session.exec(
-        select(SalespersonHistory)
-        .where(SalespersonHistory.client_id == client_id)
-        .order_by(SalespersonHistory.reassigned_at.desc())
-    ).all()
-    history = []
-    for row in rows:
-        item = row.model_dump()
-        item["reassigned_at"] = row.reassigned_at.isoformat() if row.reassigned_at else None
-        history.append(item)
-    return {"history": history}
 
 
 @app.post("/clients/{client_id}/swot")
@@ -6642,7 +6444,7 @@ def create_service(body: ServiceCreateRequest, session: Session = Depends(get_se
 @app.post("/services/request")
 def request_service(body: ServiceRequestCreate, session: Session = Depends(get_session)):
     user = session.exec(select(User).where(
-        User.email == body.client_email)).first()
+        User.email == body.client_email).execution_options(skip_tenant=True)).first()
     if not user:
         raise HTTPException(status_code=404, detail="Client user not found")
     cp = session.exec(select(ClientProfile).where(
@@ -6668,7 +6470,7 @@ def request_service(body: ServiceRequestCreate, session: Session = Depends(get_s
 
 @app.get("/services/my-requests")
 def my_requests(client_email: str = Query(...), session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.email == client_email)).first()
+    user = session.exec(select(User).where(User.email == client_email).execution_options(skip_tenant=True)).first()
     if not user:
         return {"requests": []}
     cp = session.exec(select(ClientProfile).where(
@@ -6782,6 +6584,11 @@ def admin_services_overview(session: Session = Depends(get_session)):
 def get_message_threads(user_id: int, session: Session = Depends(get_session)):
     from collections import defaultdict
 
+    caller = session.get(User, current_salesperson_id.get()) if current_salesperson_id.get() else None
+    if not caller:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if caller.id != user_id and _normalize_role(caller.role) not in ("SuperAdmin", "Admin"):
+        raise HTTPException(status_code=403, detail="You can only read your own messages")
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -6892,12 +6699,17 @@ def get_message_threads(user_id: int, session: Session = Depends(get_session)):
 
 @app.post("/messages/send")
 def send_message(body: SendMessageRequest, session: Session = Depends(get_session)):
+    caller = session.get(User, current_salesperson_id.get()) if current_salesperson_id.get() else None
+    if not caller:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     thread = session.get(MessageThread, body.thread_id)
-    if not thread:
+    if not thread or not _chat_user_can_access(session, caller, thread):
         raise HTTPException(status_code=404, detail="Thread not found")
+    if body.sender_id != caller.id:
+        raise HTTPException(status_code=403, detail="You can only send messages as yourself")
     msg = ChatMessage(
         thread_id=body.thread_id,
-        sender_id=body.sender_id,
+        sender_id=caller.id,
         content=body.content,
     )
     session.add(msg)
@@ -7549,7 +7361,7 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
             "recommended_services": draft_obj.get("services") or "",
             "manual": body.manual,
             "draft_json": json.dumps(draft_obj),
-            "sent_at": draft_obj["sent_at"],
+            "sent_at": datetime.now(timezone.utc),  # a datetime, not draft_obj's ISO string (rejected by sqlmodel 0.0.47)
             "client_id": client_id
         }
         sent_email = SentEmail(**email_db_obj)
@@ -7703,7 +7515,7 @@ def dashboard_stats(
     session: Session = Depends(get_session),
 ):
     if role == "SalesManager":
-        user = session.exec(select(User).where(User.email == email)).first()
+        user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
         if not user:
             return {"error": "User not found"}
 
@@ -7777,7 +7589,7 @@ def dashboard_stats(
         }
 
     if role == "Demo":
-        user = session.exec(select(User).where(User.email == email)).first()
+        user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
         if not user:
             return {"error": "User not found"}
 
@@ -7808,7 +7620,7 @@ def dashboard_stats(
         }
 
     if role in ["Client", "ProjectMember", "Intern"]:
-        user = session.exec(select(User).where(User.email == email)).first()
+        user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
         if not user:
             return {"isClient": True}
         cp = session.exec(select(ClientProfile).where(
@@ -8360,8 +8172,8 @@ def monitor_stats(session: Session = Depends(get_session)):
     # Weekly activity counts (last 10 weeks)
     weekly_activity = []
     for i in range(9, -1, -1):
-        start = datetime.utcnow() - timedelta(weeks=i + 1)
-        end = datetime.utcnow() - timedelta(weeks=i)
+        start = datetime.now(timezone.utc) - timedelta(weeks=i + 1)
+        end = datetime.now(timezone.utc) - timedelta(weeks=i)
         count = len(session.exec(
             select(ActivityLog).where(ActivityLog.createdAt >=
                                       start, ActivityLog.createdAt < end)
@@ -8401,7 +8213,7 @@ def trigger_audit(body: dict = {}, session: Session = Depends(get_session)):
     domain = body.get("domain") or body.get("email", "")
     # Try to resolve a client domain from email
     if "@" in domain:
-        user = session.exec(select(User).where(User.email == domain)).first()
+        user = session.exec(select(User).where(User.email == domain).execution_options(skip_tenant=True)).first()
         if user:
             cp = session.exec(select(ClientProfile).where(
                 ClientProfile.userId == user.id)).first()
@@ -8663,6 +8475,12 @@ def _task_dict(t: Task, session: Session) -> dict:
     client = session.get(ClientProfile, t.client_id) if t.client_id else None
     client_user = session.get(
         User, client.userId) if client and client.userId else None
+    # Institute add-on: tasks can belong to a student / batch and carry a submission.
+    student = batch = None
+    if t.student_id or t.batch_id:
+        from addons.institute.models import Batch, Student
+        student = session.get(Student, t.student_id) if t.student_id else None
+        batch = session.get(Batch, t.batch_id) if t.batch_id else None
     return {
         "id": t.id,
         "title": t.title,
@@ -8680,6 +8498,15 @@ def _task_dict(t: Task, session: Session) -> dict:
         "creator_name": creator.name if creator else None,
         "created_at": t.created_at.isoformat(),
         "updated_at": t.updated_at.isoformat(),
+        "student_id": t.student_id,
+        "student_name": student.name if student else None,
+        "batch_id": t.batch_id,
+        "batch_name": batch.batch_name if batch else None,
+        "submission_url": t.submission_url,
+        "submission_file": t.submission_file,
+        "submission_notes": t.submission_notes,
+        "submitted_at": t.submitted_at.isoformat() if t.submitted_at else None,
+        "is_submitted": bool(t.submission_url or t.submission_file or t.status == "Done"),
     }
 
 
@@ -8823,30 +8650,56 @@ def _task_sheet_dict(entry: TaskSheetEntry, session: Session) -> dict:
     }
 
 
+def _task_sheet_period(q, period: Optional[str]):
+    """Narrow a task-sheet query to today / yesterday / this_week / this_month."""
+    today_d = datetime.utcnow().date()
+    if period == "today":
+        q = q.where(TaskSheetEntry.work_date == today_d.isoformat())
+    elif period == "yesterday":
+        q = q.where(TaskSheetEntry.work_date == (today_d - timedelta(days=1)).isoformat())
+    elif period == "this_week":
+        q = q.where(TaskSheetEntry.work_date >= (today_d - timedelta(days=today_d.weekday())).isoformat())
+    elif period == "this_month":
+        q = q.where(TaskSheetEntry.work_date >= today_d.replace(day=1).isoformat())
+    return q
+
+
 @app.get("/task-sheet")
 def list_task_sheet_entries(
     user_id: Optional[int] = None,
     work_date: Optional[str] = None,
+    period: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
+    if _sales_scoping_on():
+        _require_admin_user(session, "Only admins can view task-sheet entries")     # everyone else just gets the form
     q = select(TaskSheetEntry).order_by(
         TaskSheetEntry.work_date.desc(), TaskSheetEntry.updated_at.desc())
     if user_id:
         q = q.where(TaskSheetEntry.user_id == user_id)
     if work_date:
         q = q.where(TaskSheetEntry.work_date == work_date)
+    elif period:
+        q = _task_sheet_period(q, period)
     entries = session.exec(q).all()
     return {"entries": [_task_sheet_dict(entry, session) for entry in entries]}
 
 
 @app.post("/task-sheet")
 def create_task_sheet_entry(body: TaskSheetEntryRequest, session: Session = Depends(get_session)):
-    today = datetime.utcnow().date().isoformat()
-    if body.work_date != today:
-        raise HTTPException(
-            status_code=400, detail="New task-sheet entries can only be added for today")
-    entry = TaskSheetEntry(**body.model_dump(),
-                           tenant_id=current_tenant_id.get())
+    data = body.model_dump()
+    if _sales_scoping_on():
+        me = _current_user(session)
+        if not me:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        if not _is_admin_user(me):
+            data["user_id"] = me.id                  # a salesperson can only ever submit their own sheet
+    else:
+        today = datetime.utcnow().date().isoformat()
+        if body.work_date != today:
+            raise HTTPException(
+                status_code=400, detail="New task-sheet entries can only be added for today")
+    entry = TaskSheetEntry(**data, tenant_id=current_tenant_id.get())
     session.add(entry)
     session.commit()
     session.refresh(entry)
@@ -8855,18 +8708,94 @@ def create_task_sheet_entry(body: TaskSheetEntryRequest, session: Session = Depe
 
 @app.put("/task-sheet/{entry_id}")
 def update_task_sheet_entry(entry_id: int, body: TaskSheetEntryRequest, session: Session = Depends(get_session)):
+    scoped = _sales_scoping_on()
+    if scoped:
+        _require_admin_user(session, "Only admins can edit task-sheet entries")
     entry = session.get(TaskSheetEntry, entry_id)
     if not entry:
         raise HTTPException(
             status_code=404, detail="Task-sheet entry not found")
     for field, value in body.model_dump().items():
-        if field != "work_date":
+        if field != "work_date" or scoped:
             setattr(entry, field, value)
-    entry.updated_at = datetime.utcnow()
+    entry.updated_at = datetime.now(timezone.utc)
     session.add(entry)
     session.commit()
     session.refresh(entry)
     return {"entry": _task_sheet_dict(entry, session)}
+
+
+@app.delete("/task-sheet/{entry_id}")
+def delete_task_sheet_entry(entry_id: int, session: Session = Depends(get_session)):
+    _require_admin_user(session, "Only admins can delete task-sheet entries")
+    entry = session.get(TaskSheetEntry, entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Task-sheet entry not found")
+    session.delete(entry)
+    session.commit()
+    return {"ok": True, "message": "Entry deleted"}
+
+
+@app.post("/task-sheet/ai-summary")
+def generate_task_sheet_ai_summary(body: Dict[str, Any] = Body(...), session: Session = Depends(get_session)):
+    """Per-salesperson comparison of the sales task sheet for a period, with an AI (or rule-based) evaluation. Admins only."""
+    _require_admin_user(session, "Only admins can view task-sheet summaries")
+    period = str(body.get("period", "today"))
+    user_id = body.get("user_id")
+    q = select(TaskSheetEntry)
+    if user_id:
+        q = q.where(TaskSheetEntry.user_id == user_id)
+    q = _task_sheet_period(q, period)
+    entries = session.exec(q.order_by(TaskSheetEntry.work_date.desc())).all()
+    user_ids = {e.user_id for e in entries}
+    users_map = {u.id: u for u in session.exec(select(User).where(User.id.in_(user_ids))).all()} if user_ids else {}
+
+    per_person: Dict[str, dict] = {}
+    totals = {"outreaches": 0, "positives": 0, "negatives": 0, "followups": 0, "meetings": 0}
+    for e in entries:
+        u = users_map.get(e.user_id)
+        name = (u.name if u else None) or f"Staff #{e.user_id}"
+        row = per_person.setdefault(name, {"outreaches": 0, "positives": 0, "negatives": 0, "followups": 0, "meetings": 0, "focus": []})
+        for key, col in (("outreaches", "outreaches_count"), ("positives", "positives_count"), ("negatives", "negatives_count"),
+                         ("followups", "followups_scheduled"), ("meetings", "meetings_scheduled")):
+            n = getattr(e, col, 0) or 0
+            row[key] += n
+            totals[key] += n
+        if getattr(e, "key_focus", None):
+            row["focus"].append(e.key_focus)
+
+    table = []
+    for name, d in per_person.items():
+        rate = round(d["positives"] / d["outreaches"] * 100, 1) if d["outreaches"] > 0 else 0
+        if rate >= 25 or d["meetings"] >= 2:
+            rating, advice = "High momentum", "Strong qualification and demo velocity. Accelerate proposal sign-offs."
+        elif rate >= 15 or d["followups"] >= 2:
+            rating, advice = "Steady progress", "Good volume. Follow up promptly on open queries to prevent drop-off."
+        else:
+            rating, advice = "Needs support", "Optimise the outreach script and target higher-intent decision makers."
+        table.append({"salesperson": name, "outreaches": d["outreaches"], "positives": d["positives"], "positive_rate": f"{rate}%",
+                      "negatives": d["negatives"], "followups": d["followups"], "meetings": d["meetings"],
+                      "key_focus": d["focus"][0] if d["focus"] else "Pipeline outreach and follow-up", "rating": rating,
+                      "strategic_advice": advice})
+
+    overall = round(totals["positives"] / totals["outreaches"] * 100, 1) if totals["outreaches"] > 0 else 0
+    summary = (f"For {period.replace('_', ' ')}, the team recorded {totals['outreaches']} outreaches across {len(per_person)} "
+               f"salespeople: {totals['positives']} positive ({overall}%) and {totals['negatives']} negative, with "
+               f"{totals['followups']} follow-ups and {totals['meetings']} meetings scheduled.")
+    if entries and os.getenv("OPENAI_API_KEY"):
+        try:
+            from modules.llm_engine import get_openai_client
+            resp = get_openai_client().chat.completions.create(
+                model="gpt-4o-mini", temperature=0.3, max_tokens=250,
+                messages=[{"role": "user", "content": (
+                    f"Summarize sales team task-sheet performance for '{period}': {totals}. Per salesperson: {table}. "
+                    "Give a concise 3-sentence executive evaluation naming the top performers and the priorities.")}])
+            summary = resp.choices[0].message.content.strip() or summary
+        except Exception:
+            pass
+    return {"period": period, "total_outreaches": totals["outreaches"], "total_positives": totals["positives"],
+            "positive_rate": f"{overall}%", "total_negatives": totals["negatives"], "total_followups": totals["followups"],
+            "total_meetings": totals["meetings"], "executive_summary": summary, "comparison_table": table}
 
 
 @app.delete("/notifications/clear-all/{user_id}")
@@ -9369,7 +9298,7 @@ def add_project_team(project_id: int, body: ProjectTeamRequest, session: Session
     current_members = p.projectMemberIds or []
 
     for email, role in zip(body.emails, body.roles):
-        user = session.exec(select(User).where(User.email == email)).first()
+        user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
         if not user:
             # Create user
             user = User(
@@ -9804,248 +9733,6 @@ def create_proposal(body: ProposalCreateRequest, session: Session = Depends(get_
     if p.status == "Sent":
         _send_proposal_email(p, session)
     return {"proposal": _proposal_dict(p, session)}
-
-
-@app.post("/proposals/{proposal_id}/convert-to-invoice")
-def convert_proposal_to_invoice(proposal_id: int, session: Session = Depends(get_session)):
-    proposal = session.get(Proposal, proposal_id)
-    if not proposal:
-        raise HTTPException(status_code=404, detail="Proposal not found")
-    if not proposal.client_id:
-        raise HTTPException(
-            status_code=400,
-            detail="A proposal must be linked to a client before it can be converted to an invoice",
-        )
-
-    existing = session.exec(
-        select(Invoice).where(Invoice.proposal_id == proposal.id)
-    ).first()
-    if existing:
-        return {"invoice": _invoice_dict(existing, session)}
-
-    line_items = proposal.line_items or []
-    amount = float(proposal.total_value or sum(
-        float(item.get("quantity", 1) or 1) * float(item.get("unit_price", item.get("amount", 0)) or 0)
-        for item in line_items
-    ))
-    invoice = Invoice(
-        invoice_number=_generate_invoice_number(session),
-        client_id=proposal.client_id,
-        proposal_id=proposal.id,
-        deal_id=proposal.deal_id,
-        amount=amount,
-        tax=0.0,
-        total=amount,
-        currency=proposal.currency or "MXN",
-        status="Draft",
-        due_date=proposal.valid_until,
-        notes=proposal.content,
-        line_items=[
-            {
-                "description": item.get("product_name") or item.get("description") or "Proposal item",
-                "amount": round(
-                    float(item.get("quantity", 1) or 1)
-                    * float(item.get("unit_price", item.get("amount", 0)) or 0),
-                    2,
-                ),
-                "provider": item.get("provider") or "Internal",
-            }
-            for item in line_items
-        ],
-    )
-    session.add(invoice)
-    session.commit()
-    session.refresh(invoice)
-    session.add(ClientFileUpload(
-        client_id=invoice.client_id,
-        filename=f"Invoice_{invoice.invoice_number}.json",
-        file_url=f"/api/invoices/{invoice.id}/download",
-        mime_type="application/json",
-        description=f"Invoice {invoice.invoice_number} generated from proposal {proposal.title}.",
-    ))
-    session.commit()
-    return {"invoice": _invoice_dict(invoice, session)}
-
-
-def _find_public_proposal(uuid: str, session: Session) -> Optional[Proposal]:
-    proposal = session.exec(
-        select(Proposal).where(Proposal.public_uuid == uuid)
-    ).first()
-    if not proposal and uuid.isdigit():
-        proposal = session.get(Proposal, int(uuid))
-    return proposal
-
-
-def _public_proposal_payload(proposal: Proposal, session: Session) -> dict:
-    client = session.get(ClientProfile, proposal.client_id) if proposal.client_id else None
-    lead = session.get(Lead, proposal.lead_id) if proposal.lead_id else None
-    deal = session.get(Deal, proposal.deal_id) if proposal.deal_id else None
-    salesperson_id = (
-        client.assignedEmployeeId if client and client.assignedEmployeeId
-        else (deal.assigned_to if deal else proposal.created_by)
-    )
-    salesperson = session.get(User, salesperson_id) if salesperson_id else None
-    raw_items = proposal.line_items or []
-    items = [
-        {
-            "description": item.get("product_name") or item.get("description") or "Item",
-            "quantity": float(item.get("quantity", 1) or 1),
-            "unit_price": float(item.get("unit_price", 0) or 0),
-            "total": round(
-                float(item.get("quantity", 1) or 1) * float(item.get("unit_price", 0) or 0),
-                2,
-            ),
-        }
-        for item in raw_items
-    ]
-    comments = session.exec(
-        select(ProposalComment)
-        .where(ProposalComment.proposal_id == proposal.id)
-        .order_by(ProposalComment.created_at.asc())
-    ).all()
-    return {
-        "id": proposal.id,
-        "public_uuid": proposal.public_uuid,
-        "quote_number": f"PROP-{proposal.id:04d}",
-        "title": proposal.title,
-        "status": proposal.status,
-        "grand_total": proposal.total_value or 0.0,
-        "currency": proposal.currency or "MXN",
-        "valid_until": proposal.valid_until,
-        "notes": proposal.content,
-        "terms": "The services and deliverables described in this proposal are subject to the agreed service terms.",
-        "client_name": client.companyName if client else None,
-        "lead_name": lead.company_name if lead else None,
-        "salesperson_name": salesperson.name if salesperson else "Account Executive",
-        "deal_title": deal.title if deal else proposal.title,
-        "deal_stage": deal.stage if deal else proposal.status,
-        "signed_at": proposal.signed_at.isoformat() if proposal.signed_at else None,
-        "signed_by": proposal.signature_data,
-        "items": items,
-        "comments": [
-            {
-                "id": comment.id,
-                "author_name": comment.author_name,
-                "author_type": comment.author_type,
-                "content": comment.content,
-                "created_at": comment.created_at.isoformat(),
-            }
-            for comment in comments
-        ],
-        "is_proposal": True,
-    }
-
-
-@app.get("/public/proposals/{uuid}")
-def get_public_proposal(uuid: str, session: Session = Depends(get_session)):
-    proposal = _find_public_proposal(uuid, session)
-    if not proposal:
-        raise HTTPException(status_code=404, detail="Proposal not found")
-    return _public_proposal_payload(proposal, session)
-
-
-@app.get("/public/proposals/{uuid}/pdf")
-def get_public_proposal_pdf(uuid: str, session: Session = Depends(get_session)):
-    proposal = _find_public_proposal(uuid, session)
-    if not proposal:
-        raise HTTPException(status_code=404, detail="Proposal not found")
-    return proposal_pdf(proposal.id, session)
-
-
-@app.post("/public/proposals/{uuid}/comments")
-def add_public_proposal_comment(
-    uuid: str,
-    body: PublicProposalCommentRequest,
-    session: Session = Depends(get_session),
-):
-    content = body.content.strip()
-    if not content or len(content) > 4000:
-        raise HTTPException(status_code=400, detail="Comment must be between 1 and 4000 characters")
-    proposal = _find_public_proposal(uuid, session)
-    if not proposal:
-        raise HTTPException(status_code=404, detail="Proposal not found")
-
-    author_name = (body.author_name or "").strip()[:255] or "Client"
-    comment = ProposalComment(
-        tenant_id=proposal.tenant_id,
-        proposal_id=proposal.id,
-        author_name=author_name,
-        author_type="client",
-        content=content,
-    )
-    session.add(comment)
-    proposal.status = "Negotiation"
-    proposal.updated_at = datetime.now(timezone.utc)
-    session.add(proposal)
-    deal = session.get(Deal, proposal.deal_id) if proposal.deal_id else None
-    if deal and deal.stage not in ("Closed Won", "Closed Lost"):
-        deal.stage = "Negotiation"
-        deal.updated_at = datetime.now(timezone.utc)
-        session.add(deal)
-
-    client = session.get(ClientProfile, proposal.client_id) if proposal.client_id else None
-    target_ids = {
-        user.id
-        for user in session.exec(
-            select(User).where(
-                User.tenant_id == proposal.tenant_id,
-                User.role.in_(["Admin", "SuperAdmin"]),
-            )
-        ).all()
-        if user.id
-    }
-    if client and client.assignedEmployeeId:
-        target_ids.add(client.assignedEmployeeId)
-    elif deal and deal.assigned_to:
-        target_ids.add(deal.assigned_to)
-    for user_id in target_ids:
-        session.add(Notification(
-            tenant_id=proposal.tenant_id,
-            user_id=user_id,
-            title="Proposal comment received",
-            message=f"{author_name}: {content[:140]}",
-            type="info",
-            link=f"/p/{proposal.public_uuid}",
-        ))
-    session.commit()
-    return {"ok": True}
-
-
-@app.post("/public/proposals/{uuid}/accept")
-def accept_public_proposal(
-    uuid: str,
-    body: Optional[PublicProposalAcceptRequest] = None,
-    session: Session = Depends(get_session),
-):
-    proposal = _find_public_proposal(uuid, session)
-    if not proposal:
-        raise HTTPException(status_code=404, detail="Proposal not found")
-    proposal.status = "Accepted"
-    proposal.signed_at = proposal.signed_at or datetime.now(timezone.utc)
-    proposal.updated_at = datetime.now(timezone.utc)
-    signer_name = (body.signer_name or "").strip() if body and body.signer_name else ""
-    if signer_name:
-        proposal.signature_data = signer_name[:255]
-    session.add(proposal)
-
-    client = session.get(ClientProfile, proposal.client_id) if proposal.client_id else None
-    if client:
-        client.status = "Won"
-        session.add(client)
-    deal = session.get(Deal, proposal.deal_id) if proposal.deal_id else None
-    if deal:
-        deal.stage = "Closed Won"
-        deal.won_at = datetime.now(timezone.utc)
-        if deal.value and not deal.final_value:
-            deal.final_value = deal.value
-        deal.updated_at = datetime.now(timezone.utc)
-        session.add(deal)
-    session.commit()
-
-    if proposal.client_id:
-        convert_proposal_to_invoice(proposal.id, session)
-
-    return {"ok": True}
 
 
 @app.get("/proposals/{proposal_id}")
@@ -10587,8 +10274,49 @@ class ConnectionManager:
 ws_manager = ConnectionManager()
 
 
+def _chat_user_can_access(session: Session, user: User, thread: MessageThread) -> bool:
+    """Staff of the tenant see every thread (the same rule as GET /messages/{user_id}); a client sees its own."""
+    if _normalize_role(user.role) in ("SuperAdmin", "Admin", "Employee"):
+        return True
+    cp = session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).first()
+    return bool(cp and cp.id == thread.client_id)
+
+
+def _ws_authenticate(websocket: WebSocket) -> Optional[tuple]:
+    """(user id, tenant id) for a WebSocket, from ?token= (signed) or, while allowed, the legacy ?user_id=.
+    Browsers cannot set headers on a WebSocket, so the credential travels in the query string."""
+    token = websocket.query_params.get("token")
+    claimed, pv = None, None
+    if token:
+        payload = auth_tokens.verify_token(token)
+        if payload:
+            claimed, pv = payload["uid"], payload.get("pv")
+    elif auth_tokens.legacy_header_allowed():
+        raw = websocket.query_params.get("user_id")
+        claimed = int(raw) if raw and raw.isdigit() else None
+    if not claimed:
+        return None
+    with Session(engine) as session:
+        user = session.get(User, claimed)
+        if not user or (pv is not None and auth_tokens.password_fingerprint(user.password) != pv):
+            return None
+        return user.id, user.tenant_id
+
+
 @app.websocket("/ws/chat/{thread_id}")
 async def ws_chat(websocket: WebSocket, thread_id: int):
+    identity = _ws_authenticate(websocket)
+    if not identity:
+        await websocket.close(code=4401)          # not signed in
+        return
+    chat_user_id, chat_tenant_id = identity
+    current_tenant_id.set(chat_tenant_id)         # everything below is scoped to the caller's tenant
+    with Session(engine) as session:
+        chat_user = session.get(User, chat_user_id)
+        chat_thread = session.get(MessageThread, thread_id)
+        if not chat_user or not chat_thread or not _chat_user_can_access(session, chat_user, chat_thread):
+            await websocket.close(code=4403)      # not a participant / other tenant's thread
+            return
     await ws_manager.connect(thread_id, websocket)
     try:
         while True:
@@ -10597,12 +10325,12 @@ async def ws_chat(websocket: WebSocket, thread_id: int):
             action = data.get("action")
 
             if action == "message":
-                # Save message to DB
+                # Save message to DB (the sender is the authenticated user, whatever the client claims)
                 with Session(engine) as session:
                     msg = ChatMessage(
                         thread_id=thread_id,
-                        sender_id=data["sender_id"],
-                        content=data["content"],
+                        sender_id=chat_user_id,
+                        content=str(data["content"])[:5000],
                     )
                     session.add(msg)
                     session.commit()
@@ -10624,15 +10352,14 @@ async def ws_chat(websocket: WebSocket, thread_id: int):
             elif action == "typing":
                 await ws_manager.broadcast(
                     thread_id,
-                    {"type": "typing", "user_id": data.get(
-                        "user_id"), "user_name": data.get("user_name")},
+                    {"type": "typing", "user_id": chat_user_id, "user_name": data.get("user_name")},
                     exclude=websocket,
                 )
 
             elif action == "stop_typing":
                 await ws_manager.broadcast(
                     thread_id,
-                    {"type": "stop_typing", "user_id": data.get("user_id")},
+                    {"type": "stop_typing", "user_id": chat_user_id},
                     exclude=websocket,
                 )
 
@@ -10642,7 +10369,7 @@ async def ws_chat(websocket: WebSocket, thread_id: int):
                     with Session(engine) as session:
                         for mid in msg_ids:
                             m = session.get(ChatMessage, mid)
-                            if m and not m.is_read and m.sender_id != data.get("user_id"):
+                            if m and m.thread_id == thread_id and not m.is_read and m.sender_id != chat_user_id:
                                 m.is_read = True
                                 m.read_at = datetime.now(timezone.utc)
                                 session.add(m)
@@ -10650,7 +10377,7 @@ async def ws_chat(websocket: WebSocket, thread_id: int):
                     await ws_manager.broadcast(
                         thread_id,
                         {"type": "read_receipt", "message_ids": msg_ids,
-                            "read_by": data.get("user_id")},
+                            "read_by": chat_user_id},
                         exclude=websocket,
                     )
 
@@ -11399,7 +11126,7 @@ def _execute_chatbot_actions(session, actions, request, client_context, result, 
                 email = params.get(
                     "email") or f"bot_{datetime.utcnow().timestamp()}@placeholder.com"
                 existing_user = session.exec(select(User).where(
-                    User.email == email)).first() if hasattr(User, 'email') else None
+                    User.email == email).execution_options(skip_tenant=True)).first() if hasattr(User, 'email') else None
                 user = existing_user
                 if not user:
                     user = User(
@@ -12734,6 +12461,13 @@ def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)
                     status_code=403, detail=f"Lead limit reached. Maximum allowed: {tenant.limit_clients}")
     lead = Lead(**body.dict())
     lead.tenant_id = current_tenant_id.get()
+    if not lead.owner_id and lead.tenant_id:
+        try:
+            from modules import lead_assignment            # companies that turned on automatic assignment
+            if lead_assignment.auto_assign_on_create(lead.tenant_id):
+                lead_assignment.assign_lead(session, lead, lead.tenant_id)
+        except Exception as e:
+            print("Auto-assign error on lead creation:", e)
     session.add(lead)
     session.commit()
     session.refresh(lead)
@@ -13055,123 +12789,6 @@ def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depend
     session.commit()
     session.refresh(lead)
     return lead
-
-
-@app.patch("/leads/{lead_id}/status")
-def patch_lead_status(lead_id: int, body: Dict[str, Any], session: Session = Depends(get_session)):
-    lead = session.get(Lead, lead_id)
-    if not lead:
-        raise HTTPException(status_code=404, detail="Lead not found")
-
-    status = body.get("status")
-    if status is not None:
-        lead.status = status
-        if str(status).lower() == "converted":
-            lead.is_converted = True
-            if not lead.converted_client_id:
-                client = session.exec(
-                    select(ClientProfile).where(ClientProfile.companyName == lead.company_name)
-                ).first()
-                if not client:
-                    user = None
-                    if lead.email:
-                        user = session.exec(select(User).where(User.email == lead.email)).first()
-                    client = ClientProfile(
-                        companyName=lead.company_name,
-                        projectName=lead.company_name,
-                        userId=user.id if user else None,
-                        assignedEmployeeId=lead.owner_id,
-                        industry=lead.industry,
-                        phone=lead.phone,
-                        websiteUrl=lead.website,
-                        status="Product Demo Scheduled",
-                        tenant_id=lead.tenant_id or current_tenant_id.get() or 1,
-                        contact_person=lead.company_name,
-                    )
-                    session.add(client)
-                    session.commit()
-                    session.refresh(client)
-                elif lead.owner_id and not client.assignedEmployeeId:
-                    client.assignedEmployeeId = lead.owner_id
-                    session.add(client)
-                lead.converted_client_id = client.id
-
-    if "owner_id" in body:
-        lead.owner_id = body["owner_id"] or None
-    for key, value in body.items():
-        if key not in ("id", "status", "owner_id") and hasattr(lead, key):
-            setattr(lead, key, value)
-
-    session.add(lead)
-    session.commit()
-    session.refresh(lead)
-    return lead
-
-
-@app.post("/leads/auto-assign")
-def auto_assign_unassigned_leads(session: Session = Depends(get_session)):
-    caller_id = current_salesperson_id.get()
-    if caller_id:
-        caller = session.get(User, caller_id)
-        if caller and caller.role not in ("Admin", "SuperAdmin"):
-            raise HTTPException(status_code=403, detail="Only Admins can assign leads automatically.")
-
-    tenant_id = current_tenant_id.get()
-    rep_query = select(User).where(
-        User.role.in_(["SalesManager", "Sales"]),
-        User.is_active == True,
-        User.email.not_in(["admin@example.com", "superadmin@serphawk.in", "admin@serphawk.com"]),
-    )
-    if tenant_id and tenant_id != 1:
-        rep_query = rep_query.where(User.tenant_id == tenant_id)
-    reps = list(session.exec(rep_query).all())
-    if not reps:
-        fallback_query = select(User).where(
-            User.role == "Employee",
-            User.is_active == True,
-            User.email.not_in(["admin@example.com", "superadmin@serphawk.in", "admin@serphawk.com"]),
-        )
-        if tenant_id and tenant_id != 1:
-            fallback_query = fallback_query.where(User.tenant_id == tenant_id)
-        reps = list(session.exec(fallback_query).all())
-    if not reps:
-        raise HTTPException(status_code=400, detail="No active salespeople found to assign leads.")
-
-    stats = []
-    for rep in reps:
-        assigned = session.exec(select(Lead).where(Lead.owner_id == rep.id)).all()
-        converted = sum(1 for item in assigned if item.is_converted or str(item.status).lower() in ("converted", "won"))
-        stats.append({
-            "rep": rep,
-            "total": len(assigned),
-            "conversion_rate": converted / len(assigned) if assigned else 0.5,
-            "new_assignments": 0,
-        })
-
-    unassigned_query = select(Lead).where(or_(Lead.owner_id.is_(None), Lead.owner_id == 0))
-    if tenant_id and tenant_id != 1:
-        unassigned_query = unassigned_query.where(Lead.tenant_id == tenant_id)
-    unassigned = session.exec(unassigned_query.order_by(Lead.created_at.asc())).all()
-    assignments = []
-    for lead in unassigned:
-        stats.sort(key=lambda item: (item["total"] + item["new_assignments"], -item["conversion_rate"]))
-        chosen = stats[0]
-        lead.owner_id = chosen["rep"].id
-        chosen["new_assignments"] += 1
-        session.add(lead)
-        assignments.append({
-            "lead_id": lead.id,
-            "company_name": lead.company_name,
-            "assigned_to": chosen["rep"].id,
-            "assigned_name": chosen["rep"].name,
-        })
-
-    session.commit()
-    return {
-        "assigned_count": len(assignments),
-        "message": f"Successfully assigned {len(assignments)} leads across {len(reps)} salespeople.",
-        "assignments": assignments,
-    }
 
 
 @app.post("/leads/{lead_id}/generate-outbound-draft")
@@ -14130,8 +13747,8 @@ class MeetingCreateRequest(BaseModel):
     contact_id: Optional[int] = None
     attendees: Optional[List[str]] = []
     notes: Optional[str] = None
-    meeting_link: Optional[str] = None
-    timezone: Optional[str] = None
+    meeting_link: Optional[str] = None   # video call address
+    timezone: Optional[str] = None       # IANA zone of the wall-clock time in scheduled_at
 
 
 class MeetingUpdateRequest(BaseModel):
@@ -14142,80 +13759,145 @@ class MeetingUpdateRequest(BaseModel):
     status: Optional[str] = None
     scheduled_at: Optional[str] = None
     duration_minutes: Optional[int] = None
-    attendees: Optional[List[str]] = None
-    notes: Optional[str] = None
-    outcome: Optional[str] = None
     host_id: Optional[int] = None
     lead_id: Optional[int] = None
     client_id: Optional[int] = None
     contact_id: Optional[int] = None
+    attendees: Optional[List[str]] = None
+    notes: Optional[str] = None
+    outcome: Optional[str] = None
     meeting_link: Optional[str] = None
     timezone: Optional[str] = None
 
 
 def _meeting_to_utc(value: Optional[str], tz_name: Optional[str]) -> Optional[datetime]:
+    """Parse a date-time string to aware UTC. An explicit offset / Z wins; a bare wall-clock time is read in
+    ``tz_name`` (the organiser's zone), or as UTC when no zone is known."""
     if not value:
         return None
-    from zoneinfo import ZoneInfo
-
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid meeting date/time.")
-    if parsed.tzinfo is None and tz_name:
-        try:
-            parsed = parsed.replace(tzinfo=ZoneInfo(tz_name))
-        except Exception:
-            raise HTTPException(status_code=400, detail="Unknown timezone.")
-    return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed
-
-
-def _meeting_local_datetime(meeting: Meeting) -> Optional[datetime]:
-    if not meeting.scheduled_at:
-        return None
-    if not meeting.timezone:
-        return meeting.scheduled_at
-    from zoneinfo import ZoneInfo
-
-    value = meeting.scheduled_at
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    try:
-        return value.astimezone(ZoneInfo(meeting.timezone))
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except Exception:
-        return meeting.scheduled_at
+        return None
+    if dt.tzinfo is None and tz_name:
+        try:
+            from zoneinfo import ZoneInfo
+            dt = dt.replace(tzinfo=ZoneInfo(tz_name))
+        except Exception:
+            pass
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
 
 
-def _meeting_time_label(meeting: Meeting, fmt: str = "%Y-%m-%d %H:%M") -> str:
-    local = _meeting_local_datetime(meeting)
+def _meeting_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
+
+def _meeting_local(m: Meeting) -> Optional[datetime]:
+    """The meeting start in its organiser's zone (the stored value for rows that have no zone)."""
+    if not m.scheduled_at:
+        return None
+    if not m.timezone:
+        return m.scheduled_at
+    try:
+        from zoneinfo import ZoneInfo
+        return _meeting_utc(m.scheduled_at).astimezone(ZoneInfo(m.timezone))
+    except Exception:
+        return m.scheduled_at
+
+
+def _meeting_time_label(m: Meeting, fmt: str = "%Y-%m-%d %H:%M") -> str:
+    local = _meeting_local(m)
     if not local:
         return "TBD"
     label = local.strftime(fmt)
-    if meeting.timezone:
-        label += f" {local.tzname() or ''} ({meeting.timezone})".rstrip()
+    if m.timezone:
+        label += f" {local.tzname() or ''} ({m.timezone})".rstrip()
     return label
+
+
+def _meeting_iso(dt: Optional[datetime], zoned: bool) -> Optional[str]:
+    """Rows with a zone are UTC: say so with a 'Z' so browsers convert to the viewer's zone. Legacy rows keep the old shape."""
+    if dt is None:
+        return None
+    if not zoned:
+        return dt.isoformat()
+    return _meeting_utc(dt).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+
+
+def _current_user(session: Session) -> Optional[User]:
+    """The signed-in User of this request, or None."""
+    uid = current_salesperson_id.get()
+    return session.get(User, uid) if uid else None
+
+
+def _is_admin_user(user: Optional[User]) -> bool:
+    if not user:
+        return False
+    return (user.role or "").strip().lower() in {"admin", "superadmin"} or (user.email or "").lower() == "admin@serphawk.com"
+
+
+def _require_admin_user(session: Session, detail: str = "Admins only") -> User:
+    user = _current_user(session)
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not _is_admin_user(user):
+        raise HTTPException(status_code=403, detail=detail)
+    return user
+
+
+def _sales_scoping_on(tenant_id: Optional[int] = None) -> bool:
+    """Companies with ``sales_scoping`` keep salespeople to their own meetings and out of the task-sheet entries."""
+    from modules import tenant_settings
+    tid = current_tenant_id.get() if tenant_id is None else tenant_id
+    return bool(tid and tid > 0 and tenant_settings.get_setting(tid, "sales_scoping", False))
+
+
+def _meeting_visible_to(m: Meeting, user: Optional[User]) -> bool:
+    if not _sales_scoping_on(m.tenant_id):
+        return True
+    if not user:
+        return False
+    if _is_admin_user(user) or (user.role or "").strip().lower() == "demo":
+        return True
+    return user.id is not None and user.id in (m.host_id, m.created_by)
+
+
+def _get_visible_meeting(session: Session, meeting_id: int) -> Meeting:
+    m = session.get(Meeting, meeting_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    if _sales_scoping_on(m.tenant_id):
+        me = _current_user(session)
+        if not me:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        if not _meeting_visible_to(m, me):
+            raise HTTPException(status_code=403, detail="You can only access meetings you are assigned to or created")
+    return m
 
 
 def _meeting_dict(m: Meeting, session: Session) -> dict:
     host = session.get(User, m.host_id) if m.host_id else None
+    creator = session.get(User, m.created_by) if m.created_by else None
     lead = session.get(Lead, m.lead_id) if m.lead_id else None
     client = session.get(ClientProfile, m.client_id) if m.client_id else None
     contact = session.get(Contact, m.contact_id) if m.contact_id else None
-    local = _meeting_local_datetime(m)
-    scheduled_at = m.scheduled_at.isoformat() if m.scheduled_at else None
-    if scheduled_at and m.timezone and not scheduled_at.endswith(("Z", "+00:00")):
-        scheduled_at += "Z"
+    local = _meeting_local(m)
+    zoned = bool(m.timezone)
+    end_utc = (_meeting_utc(m.scheduled_at) + timedelta(minutes=m.duration_minutes)) if (m.scheduled_at and m.duration_minutes) else None
     return {
         "id": m.id, "title": m.title, "description": m.description,
         "location": m.location, "meeting_type": m.meeting_type,
         "status": m.status,
-        "scheduled_at": scheduled_at,
+        "scheduled_at": _meeting_iso(m.scheduled_at, zoned),
+        "end_at": _meeting_iso(end_utc, zoned),
         "scheduled_at_local": local.strftime("%Y-%m-%dT%H:%M") if local else None,
         "timezone": m.timezone,
         "meeting_link": m.meeting_link,
         "duration_minutes": m.duration_minutes,
         "host_id": m.host_id, "host_name": host.name if host else None,
-        "created_by": m.created_by,
+        "created_by": m.created_by, "created_by_name": creator.name if creator else None,
         "lead_id": m.lead_id, "lead_name": lead.company_name if lead else None,
         "client_id": m.client_id, "client_name": client.companyName if client else None,
         "contact_id": m.contact_id,
@@ -14225,6 +13907,14 @@ def _meeting_dict(m: Meeting, session: Session) -> dict:
         "created_at": m.created_at.isoformat(),
         "updated_at": m.updated_at.isoformat(),
     }
+
+
+def _check_meeting_links(session: Session, data: dict) -> None:
+    """A meeting may only point at a host, lead, client or contact of the same company."""
+    for key, model, label in (("host_id", User, "host"), ("lead_id", Lead, "lead"), ("client_id", ClientProfile, "client"),
+                              ("contact_id", Contact, "contact")):
+        if data.get(key) and session.get(model, data[key]) is None:
+            raise HTTPException(status_code=400, detail=f"Unknown {label}")
 
 
 @app.get("/meetings")
@@ -14238,6 +13928,13 @@ def list_meetings(
     tenant_id = current_tenant_id.get()
     if tenant_id:
         q = q.where(Meeting.tenant_id == tenant_id)
+    if _sales_scoping_on(tenant_id):
+        # salespeople see only the meetings assigned to them or created by them, never the whole company
+        me = _current_user(session)
+        if not me:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        if not (_is_admin_user(me) or (me.role or "").strip().lower() == "demo"):
+            q = q.where(or_(Meeting.host_id == me.id, Meeting.created_by == me.id))
 
     if status:
         q = q.where(Meeting.status == status)
@@ -14245,43 +13942,25 @@ def list_meetings(
         q = q.where(Meeting.lead_id == lead_id)
     if client_id:
         q = q.where(Meeting.client_id == client_id)
-    viewer_id = current_salesperson_id.get()
-    viewer = session.get(User, viewer_id) if viewer_id else None
-    if viewer and viewer.role not in ("Admin", "SuperAdmin", "Demo"):
-        q = q.where(or_(Meeting.host_id == viewer.id, Meeting.created_by == viewer.id))
     meetings = session.exec(q).all()
     return {"meetings": [_meeting_dict(m, session) for m in meetings]}
-
-
-def _get_visible_meeting(meeting_id: int, session: Session) -> Meeting:
-    query = select(Meeting).where(Meeting.id == meeting_id)
-    tenant_id = current_tenant_id.get()
-    if tenant_id:
-        query = query.where(Meeting.tenant_id == tenant_id)
-    viewer_id = current_salesperson_id.get()
-    viewer = session.get(User, viewer_id) if viewer_id else None
-    if viewer and viewer.role not in ("Admin", "SuperAdmin", "Demo"):
-        query = query.where(or_(Meeting.host_id == viewer.id, Meeting.created_by == viewer.id))
-    meeting = session.exec(query).first()
-    if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
-    return meeting
 
 
 @app.post("/meetings")
 def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_session)):
     data = body.model_dump()
     if data.get("timezone"):
-        from zoneinfo import ZoneInfo
         try:
+            from zoneinfo import ZoneInfo
             ZoneInfo(data["timezone"])
         except Exception:
-            raise HTTPException(status_code=400, detail="Unknown timezone.")
-    elif current_salesperson_id.get():
-        organizer = session.get(User, current_salesperson_id.get())
-        data["timezone"] = getattr(organizer, "timezone", None)
+            raise HTTPException(status_code=400, detail="Unknown timezone")
+    else:
+        me = _current_user(session)           # fall back to the organiser's saved time zone
+        data["timezone"] = getattr(me, "timezone", None) if me else None
     data["scheduled_at"] = _meeting_to_utc(data.get("scheduled_at"), data.get("timezone"))
-    if not data.get("host_id"):
+    _check_meeting_links(session, data)
+    if not data.get("host_id") and _sales_scoping_on():
         data["host_id"] = current_salesperson_id.get()
     m = Meeting(**data)
     m.tenant_id = current_tenant_id.get()
@@ -14334,7 +14013,6 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
             f"  Date/Time : {dt_str}\n"
             f"  Type      : {m.meeting_type}\n"
             f"  Location  : {m.location or 'TBD'}\n"
-            f"  Join link : {m.meeting_link or '—'}\n"
             f"  Duration  : {m.duration_minutes or 'TBD'} min\n"
             f"  Attendees : {', '.join(recips) or '—'}"
         )
@@ -14348,10 +14026,6 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
         mtype = esc(m.meeting_type or "Meeting")
         location = esc(m.location or "TBD")
         duration = f"{int(m.duration_minutes)} min" if m.duration_minutes else "TBD"
-        join_link = (
-            f'<a href="{_html.escape(m.meeting_link, quote=True)}">{_html.escape(m.meeting_link)}</a>'
-            if m.meeting_link else "—"
-        )
         attendees = esc(", ".join(recips) or "—")
         notes_html = esc(notes)
 
@@ -14360,7 +14034,6 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
             ("Date/Time", date_time),
             ("Type", mtype),
             ("Location", location),
-            ("Join link", join_link),
             ("Duration", duration),
             ("Attendees", attendees),
         ]
@@ -14451,23 +14124,25 @@ def create_meeting(body: MeetingCreateRequest, session: Session = Depends(get_se
 
 @app.get("/meetings/{meeting_id}")
 def get_meeting(meeting_id: int, session: Session = Depends(get_session)):
-    m = _get_visible_meeting(meeting_id, session)
+    m = _get_visible_meeting(session, meeting_id)
     return {"meeting": _meeting_dict(m, session)}
 
 
 @app.put("/meetings/{meeting_id}")
+@app.patch("/meetings/{meeting_id}")
+@app.patch("/meetings/{meeting_id}/status")
 def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session = Depends(get_session)):
-    m = _get_visible_meeting(meeting_id, session)
+    m = _get_visible_meeting(session, meeting_id)
     updates = body.model_dump(exclude_unset=True)
-    timezone_name = updates.get("timezone", m.timezone)
-    if "timezone" in updates and updates["timezone"]:
-        from zoneinfo import ZoneInfo
+    if updates.get("timezone"):
         try:
+            from zoneinfo import ZoneInfo
             ZoneInfo(updates["timezone"])
         except Exception:
-            raise HTTPException(status_code=400, detail="Unknown timezone.")
+            raise HTTPException(status_code=400, detail="Unknown timezone")
     if "scheduled_at" in updates:
-        updates["scheduled_at"] = _meeting_to_utc(updates["scheduled_at"], timezone_name)
+        updates["scheduled_at"] = _meeting_to_utc(updates["scheduled_at"], updates.get("timezone", m.timezone))
+    _check_meeting_links(session, updates)
     for k, v in updates.items():
         setattr(m, k, v)
     m.updated_at = datetime.now(timezone.utc)
@@ -14489,7 +14164,7 @@ def update_meeting(meeting_id: int, body: MeetingUpdateRequest, session: Session
 
 @app.delete("/meetings/{meeting_id}")
 def delete_meeting(meeting_id: int, session: Session = Depends(get_session)):
-    m = _get_visible_meeting(meeting_id, session)
+    m = _get_visible_meeting(session, meeting_id)
     session.delete(m)
     session.commit()
     return {"ok": True}
@@ -14954,8 +14629,9 @@ def _quote_smtp_sender(session: Session):
         es = session.exec(select(EmailSettings).where(
             EmailSettings.tenant_id == tenant_id)).first()
         if es:
+            from modules import tenant_mailbox
             sender = es.from_email
-            password = es.smtp_pass
+            password = tenant_mailbox.reveal(es.smtp_pass)
             smtp_server = es.smtp_host
             smtp_port = es.smtp_port
 
@@ -18383,7 +18059,7 @@ def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session =
         generated_password = _generate_unique_password()
         hashed = _hash_password(generated_password)
         existing_user = session.exec(select(User).where(
-            User.email == data.supplier_email)).first()
+            User.email == data.supplier_email).execution_options(skip_tenant=True)).first()
         if existing_user:
             # Update role + reset password so we always have fresh credentials to show
             existing_user.role = "Supplier"
@@ -18601,7 +18277,7 @@ def get_supplier_inventory(email: str, session: Session = Depends(get_session)):
 
     if not supplier_records:
         # also try by user_id
-        user = session.exec(select(User).where(User.email == email)).first()
+        user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
         if user:
             supplier_records = session.exec(
                 select(InventorySupplier).where(
@@ -18728,7 +18404,8 @@ def respond_to_rfq(rfq_id: int, data: RFQResponseCreate, token: str = None, sess
     rfq = session.get(RFQRequest, rfq_id)
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
-    response = RFQResponse(rfq_id=rfq_id, **data.dict())
+    # The responder may be a supplier user from another tenant: the response belongs to the RFQ's tenant.
+    response = RFQResponse(rfq_id=rfq_id, tenant_id=rfq.tenant_id, **data.dict())
     session.add(response)
     rfq.status = "Responded"
     session.add(rfq)
@@ -18970,22 +18647,13 @@ def get_telemetry_audit_logs(
 @app.post("/demo/signup")
 def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_session)):
     existing = session.exec(select(User).where(
-        User.email == body.email)).first()
+        User.email == body.email).execution_options(skip_tenant=True)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already exists")
 
     # Require a verified signup OTP for this email before creating the account
-    from database import EmailOTP
-    otp_rec = session.exec(
-        select(EmailOTP).where(
-            EmailOTP.email == body.email,
-            EmailOTP.purpose == "signup",
-            EmailOTP.verified == True,
-        )
-    ).first()
-    if not otp_rec:
-        raise HTTPException(
-            status_code=400, detail="Please verify your email before creating the account.")
+    from modules import otp as _otp
+    _otp.require_verified(session, body.email, "signup")
 
     tenant = Tenant(
         name=f"Demo Tenant {body.email}",
@@ -19009,6 +18677,7 @@ def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_
     session.add(user)
     session.commit()
     session.refresh(user)
+    _otp.consume(session, body.email, "signup")
 
     # Notify Admin of new signup (wrapped in try-except so it doesn't block signup if it fails)
     admin = session.exec(select(User).where(User.role == "Admin")).first()
@@ -19028,7 +18697,7 @@ def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_
             session.rollback()
             print(f"Failed to create admin notification for demo signup: {e}")
 
-    return {"success": True, "user": _user_dict(user)}
+    return {"success": True, "user": _user_dict(user), "token": auth_tokens.issue_token(user.id, user.password)}
 
 
 @app.get("/dev/diagnostic")
@@ -19363,7 +19032,7 @@ def request_upgrade(
     email: str = Body(embed=True),
     session: Session = Depends(get_session)
 ):
-    user = session.exec(select(User).where(User.email == email)).first()
+    user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -19386,56 +19055,104 @@ class EmailSettingsRequest(BaseModel):
     smtp_host: str
     smtp_port: int
     smtp_user: str
-    smtp_pass: str
+    smtp_pass: str = ""          # empty on an update means "keep the saved password"
     from_name: str
     from_email: str
 
 
+def _mailbox_view(es: Optional[EmailSettings]) -> dict:
+    """The company mailbox as the settings page sees it: never the password, only whether one is saved."""
+    from modules import tenant_mailbox
+    if not es:
+        return {}
+    return {"smtp_host": es.smtp_host, "smtp_port": es.smtp_port, "smtp_user": es.smtp_user, "smtp_pass": "",
+            "from_name": es.from_name, "from_email": es.from_email, "has_password": bool(es.smtp_pass),
+            "encrypted": tenant_mailbox.is_encrypted(es.smtp_pass)}
+
+
 @app.get("/settings/email")
 def get_email_settings(session: Session = Depends(get_session)):
+    _require_roles(session, ["Admin"])
     tenant_id = current_tenant_id.get()
     if not tenant_id:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    settings = session.exec(select(EmailSettings).where(
-        EmailSettings.tenant_id == tenant_id)).first()
-    return settings or {}
+        # signed in, but not inside a client workspace (the platform operator): nothing to show. Never 401 here:
+        # the app treats any 401 as "session expired" and logs the user out.
+        return {"no_tenant": True}
+    return _mailbox_view(session.exec(select(EmailSettings).where(EmailSettings.tenant_id == tenant_id)).first())
 
 
 @app.post("/settings/email")
-def save_email_settings(body: EmailSettingsRequest, otp_verified: bool = False, session: Session = Depends(get_session)):
+def save_email_settings(body: EmailSettingsRequest, session: Session = Depends(get_session)):
+    from modules import otp as _otp, tenant_mailbox
+    _require_roles(session, ["Admin"])
     tenant_id = current_tenant_id.get()
     uid = current_salesperson_id.get()
-    if not tenant_id or not uid:
+    if not uid:
         raise HTTPException(status_code=401, detail="Unauthorized")
-
-    # Check OTP verification for the from_email address
-    if not otp_verified:
-        from database import EmailOTP
-        verified = session.exec(
-            select(EmailOTP).where(
-                EmailOTP.user_id == uid,
-                EmailOTP.email == body.from_email,
-                EmailOTP.purpose == "smtp_settings",
-                EmailOTP.verified == True,
-            )
-        ).first()
-        if not verified:
-            raise HTTPException(
-                status_code=400, detail="Email address not verified. Please complete OTP verification first.")
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="This account is not inside a client workspace. Sign in as that client's admin.")
 
     settings = session.exec(select(EmailSettings).where(
         EmailSettings.tenant_id == tenant_id)).first()
+    # The sending address must be proven with a one-time code, unless the admin is only changing details of the
+    # address already saved. (The old ``otp_verified`` query flag, which let a caller skip this, is gone.)
+    if not (settings and (settings.from_email or "").strip().lower() == body.from_email.strip().lower()):
+        from database import EmailOTP
+        from sqlalchemy import func as _func
+        rows = session.exec(select(EmailOTP).where(
+            EmailOTP.user_id == uid, _func.lower(EmailOTP.email) == body.from_email.strip().lower(),
+            EmailOTP.purpose == "smtp_settings", EmailOTP.verified == True)).all()   # noqa: E712
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=_otp.VERIFIED_VALID_MINUTES)
+        if not any(_otp.as_utc(r.created_at) >= cutoff for r in rows):
+            raise HTTPException(
+                status_code=400, detail="Email address not verified. Please complete OTP verification first.")
+    if not body.smtp_pass and not (settings and settings.smtp_pass):
+        raise HTTPException(status_code=422, detail="Enter the mailbox password or app password.")
+
+    data = body.dict()
+    password = data.pop("smtp_pass")
+    if password:
+        data["smtp_pass"] = tenant_mailbox.protect(password)
     if not settings:
-        settings = EmailSettings(tenant_id=tenant_id, **body.dict())
-        session.add(settings)
+        settings = EmailSettings(tenant_id=tenant_id, **data)
     else:
-        for k, v in body.dict().items():
+        for k, v in data.items():
             setattr(settings, k, v)
         settings.updated_at = datetime.now(timezone.utc)
-        session.add(settings)
-
+    session.add(settings)
     session.commit()
-    return {"success": True}
+    return {"success": True, **_mailbox_view(settings)}
+
+
+class EmailSettingsTest(BaseModel):
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
+    smtp_pass: Optional[str] = None
+    security: str = "starttls"
+
+
+@app.post("/settings/email/test")
+def test_email_settings(body: EmailSettingsTest, session: Session = Depends(get_session)):
+    """Try to log in with the given details (or the saved ones, for any detail left out). Nothing is saved or sent."""
+    from modules import tenant_mailbox
+    from modules.email_integration import test_smtp_connection
+    from modules import ratelimit
+    _require_roles(session, ["Admin"])
+    tenant_id = current_tenant_id.get()
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="This account is not inside a client workspace. Sign in as that client's admin.")
+    ratelimit.hit(f"mailbox-test:{tenant_id}", 10, 300, "Too many connection tests. Try again in a few minutes.")
+    saved = session.exec(select(EmailSettings).where(EmailSettings.tenant_id == tenant_id)).first()
+    host = body.smtp_host or (saved.smtp_host if saved else None)
+    port = body.smtp_port or (saved.smtp_port if saved else 587)
+    user = body.smtp_user or (saved.smtp_user if saved else None)
+    password = body.smtp_pass or (tenant_mailbox.reveal(saved.smtp_pass) if saved else None)
+    if not (host and user and password):
+        raise HTTPException(status_code=422, detail="Enter the server, user and password first.")
+    ok, message = test_smtp_connection(user, password, host, int(port), body.security)
+    return {"ok": ok, "message": message}
+
 
 # ──────────────────────────────────────────────────────
 # EMAIL OTP: Send & Verify OTP for mail account setup
@@ -19454,16 +19171,21 @@ class VerifyEmailOTPRequest(BaseModel):
 
 
 @app.post("/email-otp/send")
-def send_email_otp(body: SendEmailOTPRequest, session: Session = Depends(get_session)):
+def send_email_otp(body: SendEmailOTPRequest, request: Request, session: Session = Depends(get_session)):
     """Generate a 6-digit OTP, persist it, and email it to the given address."""
     import secrets
     from database import EmailOTP
+    from modules import ratelimit
+
+    # A code costs an e-mail: limit per address and per caller so this cannot be used to spam a mailbox
+    ratelimit.hit(f"otp-send:{body.email.strip().lower()}", 5, 3600, "Too many codes requested for this address. Try again later.")
+    ratelimit.hit(f"otp-send-ip:{ratelimit.client_ip(request)}", 30, 3600)
 
     # Signup OTPs are not tied to a logged-in user (account doesn't exist yet)
     if body.purpose == "signup":
         uid = None
         existing_user = session.exec(
-            select(User).where(User.email == body.email)).first()
+            select(User).where(User.email == body.email).execution_options(skip_tenant=True)).first()
         if existing_user:
             raise HTTPException(
                 status_code=400, detail="Email already registered. Please sign in instead.")
@@ -19496,19 +19218,21 @@ def send_email_otp(body: SendEmailOTPRequest, session: Session = Depends(get_ses
     sent = send_otp_email(body.email, otp_code,
                           purpose=body.purpose.replace("_", " "))
 
+    # The code is only ever returned to the caller on a local development setup (ALLOW_DEBUG_OTP=1): handing it
+    # back whenever the mail failed would let anyone "verify" an address they do not own.
+    expose = (not sent) and os.getenv("ALLOW_DEBUG_OTP", "").strip().lower() in ("1", "true", "yes")
     return {
         "success": True,
         "delivered": sent,
         "message": "OTP sent to the email address.",
-        "debug_otp": otp_code if not sent else None,
+        "debug_otp": otp_code if expose else None,
     }
 
 
 @app.post("/email-otp/verify")
-def verify_email_otp(body: VerifyEmailOTPRequest, session: Session = Depends(get_session)):
-    """Verify the OTP code. Returns { verified: true } on success."""
-    from database import EmailOTP
-    from datetime import datetime as _dt
+def verify_email_otp(body: VerifyEmailOTPRequest, request: Request, session: Session = Depends(get_session)):
+    """Verify the OTP code. Returns { verified: true } on success. Five wrong guesses kill the code."""
+    from modules import otp, ratelimit
 
     # Signup OTPs are not tied to a logged-in user
     if body.purpose == "signup":
@@ -19517,23 +19241,8 @@ def verify_email_otp(body: VerifyEmailOTPRequest, session: Session = Depends(get
         uid = current_salesperson_id.get()
         if not uid:
             raise HTTPException(status_code=401, detail="Unauthorized")
-
-    rec = session.exec(
-        select(EmailOTP).where(
-            EmailOTP.user_id == uid,
-            EmailOTP.email == body.email,
-            EmailOTP.otp_code == body.otp_code,
-            EmailOTP.purpose == body.purpose,
-        )
-    ).first()
-
-    if not rec or rec.verified or rec.expires_at < _dt.utcnow():
-        raise HTTPException(
-            status_code=400, detail="Invalid or expired OTP code.")
-
-    rec.verified = True
-    session.commit()
-
+    ratelimit.hit(f"otp-verify-ip:{ratelimit.client_ip(request)}", 60, 3600)
+    otp.check_code(session, user_id=uid, email=body.email, purpose=body.purpose, code=body.otp_code)
     return {"success": True, "verified": True, "message": "Email verified successfully."}
 
 

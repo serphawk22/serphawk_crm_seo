@@ -1,5 +1,6 @@
 "use client";
 
+import PhoneInput from "@/components/PhoneInput";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/config";
@@ -90,18 +91,7 @@ export default function OnboardingPage() {
 
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-zinc-300 mb-1.5">{t("onboarding.phone_optional")}</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Phone className="w-5 h-5" />
-                </div>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-800 dark:text-zinc-100"
-                  placeholder="+1 (555) 000-0000"
-                />
-              </div>
+              <PhoneInput value={phone} onChange={setPhone} />
             </div>
 
             {error && (

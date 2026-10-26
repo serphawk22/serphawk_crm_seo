@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useRole, Role } from "@/context/RoleContext";
 import { useLanguage } from "@/context/LanguageContext";
+import { useTenantConfig } from "@/context/TenantConfigContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { usePathname, useRouter } from "next/navigation";
@@ -18,6 +19,7 @@ import { API_BASE_URL } from "@/config";
 import { cn } from "@/lib/utils";
 import LanguageSelector from "./LanguageSelector";
 import GlobalActivityFeed from "./GlobalActivityFeed";
+import BrandMark from "./BrandMark";
 
 const PAGE_TITLES: Record<string, string> = {
   "/": "Dashboard", "/clients": "Clients", "/projects": "Projects", "/tasks": "Task Board",
@@ -48,6 +50,9 @@ const ROLE_BADGE: Record<Role, { key: string; color: string }> = {
   Demo: { key: "topbar.role_employee", color: "bg-rose-100 text-rose-700 border border-rose-200" },
   ProjectMember: { key: "topbar.role_employee", color: "bg-teal-100 text-teal-700 border border-teal-200" },
   Developer: { key: "topbar.role_employee", color: "bg-cyan-100 text-cyan-700 border border-cyan-200" },
+  Student: { key: "topbar.role_employee", color: "bg-lime-100 text-lime-700 border border-lime-200" },
+  Instructor: { key: "topbar.role_employee", color: "bg-orange-100 text-orange-700 border border-orange-200" },
+  Sales: { key: "topbar.role_sales_manager", color: "bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200" },
 };
 
 const NAV_MENUS_BASE = [
@@ -113,6 +118,7 @@ function getTranslatedNavMenus(t: (key: string) => string) {
 
 export function AdminTopbar() {
   const { role, email, logout, user } = useRole();
+  const { brandName } = useTenantConfig();
   const { t, language } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const pathname = usePathname();
@@ -214,11 +220,13 @@ export function AdminTopbar() {
         
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 group">
-          <div className="btn-glow-indigo w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-xs shrink-0">
-            SH
-          </div>
+          <BrandMark size={36} fallback={
+            <div className="btn-glow-indigo w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-xs shrink-0">
+              SH
+            </div>
+          } />
           <div className="hidden md:flex flex-col">
-            <span className="font-black text-slate-800 dark:text-zinc-100 text-sm leading-tight tracking-tight group-hover:text-indigo-600 transition-colors">SERP Hawk</span>
+            <span className="font-black text-slate-800 dark:text-zinc-100 text-sm leading-tight tracking-tight group-hover:text-indigo-600 transition-colors">{brandName}</span>
             <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest flex items-center gap-1">
               CRM
             </span>

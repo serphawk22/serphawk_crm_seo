@@ -345,6 +345,8 @@
     "section_inventory": "INVENTORY",
     "section_support": "SUPPORT",
     "section_system": "SYSTEM",
+    "section_institute": "INSTITUTE",
+    "section_business_suite": "BUSINESS SUITE",
     "dashboard": "Dashboard",
     "work_queue": "My Work Queue",
     "notifications": "Notifications",
@@ -2135,7 +2137,7 @@
     "field_email": "Email Address",
     "email_readonly": "Email cannot be changed.",
     "field_phone": "Phone Number",
-    "phone_hint": "Required for WhatsApp integration.",
+    "phone_hint": "Your main contact number. Used for WhatsApp and as the default number in your Email Agent signature. You can change the country or the number at any time.",
     "save_changes": "Save Changes"
   },
   "survey": {

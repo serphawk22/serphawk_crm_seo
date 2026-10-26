@@ -13,6 +13,10 @@ interface SMTPSettings {
   smtp_pass: string;
   from_name: string;
   from_email: string;
+  /** Sent by the server: whether a password is already saved (the password itself is never sent back). */
+  has_password?: boolean;
+  /** False when the saved password is stored without encryption. */
+  encrypted?: boolean;
 }
 
 export default function SMTPSettingsTab() {
@@ -31,6 +35,8 @@ export default function SMTPSettingsTab() {
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpVerified, setOtpVerified] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     fetchSettings();
@@ -43,8 +49,9 @@ export default function SMTPSettingsTab() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
+      if (!res.ok) return;
       if (data.smtp_host) {
-        setSettings(data);
+        setSettings({ ...data, smtp_pass: "" });
         // If settings already exist, consider email as pre-verified
         setOtpVerified(true);
       }
@@ -70,7 +77,7 @@ export default function SMTPSettingsTab() {
     setError("");
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE_URL}/settings/email?otp_verified=true`, {
+      const res = await fetch(`${API_BASE_URL}/settings/email`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -83,12 +90,36 @@ export default function SMTPSettingsTab() {
         setError(data.detail || "Failed to save settings");
         return;
       }
+      setSettings({ ...settings, smtp_pass: "", has_password: true, encrypted: data.encrypted });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
       setError("Network error. Please try again.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const testConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/settings/email/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          smtp_host: settings.smtp_host,
+          smtp_port: settings.smtp_port,
+          smtp_user: settings.smtp_user,
+          smtp_pass: settings.smtp_pass || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setTestResult(res.ok ? data : { ok: false, message: typeof data.detail === "string" ? data.detail : "The test could not be run." });
+    } catch {
+      setTestResult({ ok: false, message: "Network error. Please try again." });
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -231,7 +262,7 @@ export default function SMTPSettingsTab() {
                 type={showPassword ? "text" : "password"}
                 value={settings.smtp_pass}
                 onChange={(e) => setSettings({ ...settings, smtp_pass: e.target.value })}
-                placeholder="Enter app password"
+                placeholder={settings.has_password ? "Saved. Leave blank to keep it" : "Enter app password"}
                 className="flex-1 bg-transparent text-[13.5px] outline-none text-slate-800 dark:text-zinc-100"
               />
               <button
@@ -282,6 +313,18 @@ export default function SMTPSettingsTab() {
           </div>
         </div>
 
+        {settings.has_password && settings.encrypted === false && (
+          <p className="mt-4 text-xs text-amber-600">
+            The saved password is stored without encryption. Enter it again and save to store it encrypted.
+          </p>
+        )}
+        {testResult && (
+          <div className={`mt-4 flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm border ${testResult.ok ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-600"}`}>
+            {testResult.ok ? <Check className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+            {testResult.message}
+          </div>
+        )}
+
         {/* Error */}
         <AnimatePresence>
           {error && (
@@ -308,6 +351,14 @@ export default function SMTPSettingsTab() {
               Send OTP to Verify
             </button>
           )}
+          <button
+            onClick={testConnection}
+            disabled={testing || !settings.smtp_host || !settings.smtp_user || (!settings.smtp_pass && !settings.has_password)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm border border-slate-300 dark:border-zinc-600 text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
+          >
+            {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Server size={16} />}
+            Test connection
+          </button>
           <button
             onClick={handleSave}
             disabled={saving || (!otpVerified && !!settings.from_email)}

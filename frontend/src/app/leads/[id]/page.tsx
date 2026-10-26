@@ -1,5 +1,8 @@
 'use client';
 
+import BackgroundDetailsEditor from '@/components/BackgroundDetailsEditor';
+import LeadDemoTracker from './components/LeadDemoTracker';
+import { useTenantConfig } from '@/context/TenantConfigContext';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -102,6 +105,7 @@ function CollapsibleSection({ title, icon: Icon, count, defaultOpen = false, acc
 // ─── Overview Tab — premium light ──────────────────────────────────────────
 function OverviewTab({ lead, employees, serviceRequests, activities, timeline, research, notes, conversations, leadId, onNotesRefresh, onConversationsRefresh, emails, handleGenerateAnalysis, isGeneratingResearch, onRefresh, onActivitySelect }: any) {
   const { t, language } = useLanguage();
+  const { isOn } = useTenantConfig();
   const recentActivities = (activities || []).slice(0, 8);
 
   // ── Add Note ────────────────────────────────────────────────────────────
@@ -176,8 +180,9 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
         if (!isWebsiteSource && !wf) return null;
 
         const formName = wf?.form_name || (lead?.notes?.match(/Form(?: Filled)?: ([^\n]+)/)?.[1]) || 'Website Contact Form';
-        const pageUrl = wf?.page_url || (lead?.notes?.match(/Page: ([^\n]+)/)?.[1]) || lead?.website || 'https://scmbpo.com';
-        const serviceReq = wf?.service_requested || lead?.industry || 'BPO Services';
+        const pageUrl = wf?.page_url || (lead?.notes?.match(/Page: ([^\n]+)/)?.[1]) || lead?.website || '';
+        const formHost = (() => { try { return new URL(pageUrl.startsWith('http') ? pageUrl : `https://${pageUrl}`).hostname.replace(/^www\./, ''); } catch { return ''; } })();
+        const serviceReq = wf?.service_requested || lead?.industry || '';
         const clientMsg = wf?.message || (lead?.notes?.match(/Message \/ Pitch Request:\n([\s\S]+?)(?=\n📝|\n•|$)/)?.[1]?.trim());
         const customFields = wf?.custom_fields || {};
         const assignedRep = employees?.find((e: any) => e.id === lead?.owner_id)?.name || 'Auto-Assigned';
@@ -195,9 +200,11 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
                       Inbound Website Lead
                     </span>
                     <span className="text-xs text-slate-300 dark:text-zinc-700">•</span>
-                    <span className="text-xs font-bold text-slate-500 dark:text-zinc-400">
-                      scmbpo.com
-                    </span>
+                    {formHost && (
+                      <span className="text-xs font-bold text-slate-500 dark:text-zinc-400">
+                        {formHost}
+                      </span>
+                    )}
                   </div>
                   <h4 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2 mt-0.5">
                     Form Filled: <span className="text-indigo-600 dark:text-indigo-400">{formName}</span>
@@ -236,7 +243,7 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
                   )}
                 </div>
                 <p className="text-sm font-semibold text-slate-800 dark:text-zinc-100 leading-relaxed whitespace-pre-wrap">
-                  {clientMsg || "Prospect filled the form requesting call / consultation from scmbpo.com."}
+                  {clientMsg || `Prospect filled the form requesting a call / consultation${formHost ? ` from ${formHost}` : ""}.`}
                 </p>
               </div>
 
@@ -258,6 +265,13 @@ function OverviewTab({ lead, employees, serviceRequests, activities, timeline, r
           </div>
         );
       })()}
+      {/* Institute add-on: admissions background and demo / walk-in / webinar tracking */}
+      {isOn('institute') && (
+        <>
+          <BackgroundDetailsEditor resource="leads" profileId={leadId} details={lead?.background_details} />
+          <LeadDemoTracker leadId={leadId} />
+        </>
+      )}
 
       {/* Company Overview */}
       {research?.company_overview && (

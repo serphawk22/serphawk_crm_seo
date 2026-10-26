@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useRouter, usePathname } from 'next/navigation';
 import { API_BASE_URL } from '@/config';
 
-export type Role = 'SuperAdmin' | 'Admin' | 'Employee' | 'Client' | 'Intern' | 'SalesManager' | 'Supplier' | 'Demo' | 'ProjectMember' | 'Developer';
+export type Role = 'SuperAdmin' | 'Admin' | 'Employee' | 'Client' | 'Intern' | 'SalesManager' | 'Supplier' | 'Demo' | 'ProjectMember' | 'Developer' | 'Student' | 'Instructor' | 'Sales';
 
 interface User {
   id: number;
@@ -33,6 +33,7 @@ if (typeof window !== 'undefined' && !(window as any)._fetchPatched) {
   window.fetch = async (...args) => {
     let [resource, config] = args;
     const saved = localStorage.getItem('crm_user');
+    const token = localStorage.getItem('crm_token');
     
     // Only inject tenant_id for internal API calls, not external ones like docs.google.com
     const isInternalApi = typeof resource === 'string' && (resource.startsWith(API_BASE_URL) || resource.startsWith('/'));
@@ -41,6 +42,14 @@ if (typeof window !== 'undefined' && !(window as any)._fetchPatched) {
       try {
         const parsed = JSON.parse(saved);
         config = config || {};
+        // Signed session token (the real credential). X-User-ID below stays for backends that have not
+        // been upgraded yet; an upgraded backend ignores it whenever a token is present.
+        if (token) {
+          config.headers = {
+            ...config.headers,
+            'Authorization': `Bearer ${token}`
+          };
+        }
         if (parsed.id) {
           config.headers = {
             ...config.headers,
@@ -102,12 +111,22 @@ if (typeof window !== 'undefined' && !(window as any)._fetchPatched) {
     if (response.status === 401 && isInternalApi && typeof resource === 'string' && !resource.endsWith('/login')) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('crm_user');
+        localStorage.removeItem('crm_token');
         if (window.location.pathname !== '/login') {
             window.location.href = '/login';
         }
       }
     }
     
+    // The API refuses a module the company has not got with 403 + {feature}: tell the user once instead of failing silently.
+    if (response.status === 403 && isInternalApi && typeof window !== 'undefined') {
+      response.clone().json().then((body) => {
+        if (body && body.feature) {
+          window.dispatchEvent(new CustomEvent('module-not-enabled', { detail: { feature: body.feature, message: body.detail } }));
+        }
+      }).catch(() => undefined);
+    }
+
     return response;
   };
 }
@@ -130,13 +149,17 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!loading) {
-      if (!isAuthenticated && pathname !== '/login' && pathname !== '/signup' && pathname !== '/' && !pathname?.startsWith('/demo_showcase') && pathname !== '/reset-password') {
+      if (!isAuthenticated && pathname !== '/login' && pathname !== '/signup' && pathname !== '/register' && pathname !== '/' && !pathname?.startsWith('/demo_showcase') && pathname !== '/reset-password' && !pathname?.startsWith('/p/')) {
         router.replace('/login');
-      } else if (isAuthenticated && (pathname === '/login' || pathname === '/signup')) {
+      } else if (isAuthenticated && (pathname === '/login' || pathname === '/signup' || pathname === '/register')) {
         if (user?.role === 'Supplier') {
           router.replace('/supplier');
         } else if (user?.role === 'SalesManager') {
           router.replace('/clients');
+        } else if (user?.role === 'Student') {
+          router.replace('/learning');
+        } else if (user?.role === 'Instructor') {
+          router.replace('/teaching');
         } else {
           router.replace('/');
         }
@@ -156,6 +179,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         setUser(data.user);
         setIsAuthenticated(true);
         localStorage.setItem('crm_user', JSON.stringify(data.user));
+        if (data.token) localStorage.setItem('crm_token', data.token);
+        else localStorage.removeItem('crm_token');
         return { success: true };
       }
       if (res.status === 503 && (data.status === 'network_error' || data.ok === false)) {
@@ -175,6 +200,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setIsAuthenticated(false);
     localStorage.removeItem('crm_user');
+    localStorage.removeItem('crm_token');
     router.replace('/login');
   };
 

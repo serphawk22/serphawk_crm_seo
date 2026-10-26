@@ -132,6 +132,16 @@ export function emailTriggerInfo(
     to = nim(body.to);
     subject = nim(body.subject);
     note = "Send this follow-up email to the contact.";
+  } else if (method === "POST" && path === "/follow-ups/send-email") {
+    to = nim(body.to_email);
+    subject = nim(body.subject);
+    note = "Send this follow-up email to the contact.";
+  } else if (method === "POST" && path === "/follow-ups" && body.send_notification) {
+    to = nim(body.notify_email);
+    subject = nim(body.title) ? `Follow-up Scheduled: ${nim(body.title)}` : null;
+    note = to
+      ? "Email the follow-up schedule to this address and to the assigned salesperson. Cancel to save the follow-up without the email."
+      : "Email the follow-up schedule to the lead/client and the assigned salesperson. Cancel to save the follow-up without the email.";
   } else {
     return null;
   }

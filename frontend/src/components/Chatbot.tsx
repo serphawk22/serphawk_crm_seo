@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { MessageSquare, X, Users, UserPlus, Mail, ChevronRight, Send, Loader2, Mic, MicOff, Bot, LayoutDashboard, TrendingUp, Briefcase, Phone, FolderOpen, ShoppingBag } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useRole } from '@/context/RoleContext';
+import { useTenantConfig } from '@/context/TenantConfigContext';
 import { API_BASE_URL } from '@/config';
 
 interface QuickAction {
@@ -60,6 +61,7 @@ export function Chatbot() {
   const router = useRouter();
   const pathname = usePathname();
   const { role } = useRole();
+  const { brandName } = useTenantConfig();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [sessionId, setSessionId] = useState<string>('');
   const [isListening, setIsListening] = useState(false);
@@ -254,7 +256,7 @@ export function Chatbot() {
                 <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-indigo-600 bg-emerald-400" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-base leading-tight">SERP Hawk Assistant</h3>
+                <h3 className="font-bold text-white text-base leading-tight">{brandName} Assistant</h3>
                 <p className="text-[11px] font-medium text-indigo-200 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   CRM Guide · Online

@@ -63,7 +63,7 @@ from database import (
     UserEmailIntegration,
     engine,
 )
-from modules import company_mailer, email_ai, inbox_sync
+from modules import company_mailer, email_ai, inbox_sync, tenant_settings
 from modules.api_tracker import current_salesperson_id
 
 router = APIRouter(tags=["inbox"])
@@ -100,20 +100,24 @@ def get_viewer(request: Request, session: Session = Depends(get_session)) -> Vie
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
     role = _role_of(user)
-    # Same rule as main._require_roles: admin@serphawk.com is always a superuser.
-    if role == "SuperAdmin" or (user.email or "").lower() == "admin@serphawk.com":
-        full_access = True
-    elif role in FULL_ACCESS_ROLES:
-        full_access = True
-    elif role in SCOPED_ROLES:
-        full_access = False
-    else:
-        raise HTTPException(status_code=403, detail="Your role does not have access to the Inbox.")
     if role == "SuperAdmin":
         header = request.headers.get("X-Tenant-ID", "")
         tenant_id = int(header) if header.isdigit() else None
     else:
         tenant_id = user.tenant_id
+    # Which roles get tenant-wide vs own-records-only access is a per-tenant setting
+    # (role_policy.inbox.*, modules/tenant_settings.py); the defaults are the constants above.
+    full_roles = tenant_settings.role_list(tenant_id, "inbox", "full_access", FULL_ACCESS_ROLES)
+    scoped_roles = tenant_settings.role_list(tenant_id, "inbox", "scoped", SCOPED_ROLES)
+    # Same rule as main._require_roles: admin@serphawk.com is always a superuser.
+    if role == "SuperAdmin" or (user.email or "").lower() == "admin@serphawk.com":
+        full_access = True
+    elif role in full_roles:
+        full_access = True
+    elif role in scoped_roles:
+        full_access = False
+    else:
+        raise HTTPException(status_code=403, detail="Your role does not have access to the Inbox.")
     return Viewer(user=user, role=role, tenant_id=tenant_id, full_access=full_access)
 
 
@@ -983,6 +987,13 @@ def _send_and_record(session: Session, v: Viewer, *, tenant_id: Optional[int], t
     except company_mailer.MailAccountError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
+    # Tenants that turn on ``append_signature_on_replies`` get the signature saved in the sender's Email
+    # Agent profile (when auto-append is on) added once: a trailing sign-off already in the text (e.g. the
+    # AI draft's) is replaced, and an exact copy is kept.
+    if tenant_settings.get_setting(tenant_id if tenant_id is not None else v.tenant_id,
+                                   "append_signature_on_replies", False):
+        body = company_mailer.apply_signature(body, company_mailer.user_signature(session, v.user.id), tenant_id)
+
     message_id = make_msgid(domain=account.email.split("@")[-1] if "@" in account.email else None)
     actor = v.user.name or v.user.email
     meta = {
@@ -1447,7 +1458,9 @@ def composer_context(kind: RecordKind, record_id: int, v: Viewer = Depends(get_v
         "record": {"type": "lead" if kind == "leads" else "client", "id": rec.id, "name": _record_label(kind, rec),
                    "status": rec.status, "owner": {"id": owner.id, "name": owner.name or owner.email} if owner else None},
         "recipients": _recipients(session, kind, rec),
-        "sender": {**sender_status(session, v.user.id, rec.tenant_id), "user_name": v.user.name or v.user.email},
+        "sender": {**sender_status(session, v.user.id, rec.tenant_id), "user_name": v.user.name or v.user.email,
+                   "signature": company_mailer.user_signature(session, v.user.id),
+                   "append_signature": bool(tenant_settings.get_setting(rec.tenant_id, "append_signature_on_replies", False))},
         "context": {**ctx, "emails": emails},
         "suggested_purpose": _suggested_purpose(ctx, emails),
         "purposes": list(email_ai.PURPOSES),

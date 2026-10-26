@@ -10,7 +10,7 @@ def _utcnow():
 
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship, create_engine, Session, JSON
-from sqlalchemy import Column, String, Index, DateTime, select, func, Text, UniqueConstraint
+from sqlalchemy import Column, String, Index, DateTime, select, func, Text, UniqueConstraint, LargeBinary
 from sqlalchemy.dialects.postgresql import JSONB
 import os
 from dotenv import load_dotenv
@@ -78,6 +78,9 @@ class Tenant(SQLModel, table=True):
     usage_projects: int = Field(default=0)
     usage_calls: int = Field(default=0)
 
+    # Set on a demo workspace created for an organization (see modules/onboarding.py): the tenant it demonstrates.
+    demo_of_tenant_id: Optional[int] = Field(default=None, index=True)
+
 class EmailSettings(SQLModel, table=True):
     __tablename__ = "email_settings"
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -107,6 +110,7 @@ class User(SQLModel, table=True):
     User model for authentication and role management
     """
     __tablename__ = "users"
+    timezone: Optional[str] = Field(default=None, max_length=64)  # IANA tz, e.g. Asia/Kolkata
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -118,7 +122,6 @@ class User(SQLModel, table=True):
     role: str = Field(default="Client") # Admin, Employee, Client
     is_active: bool = Field(default=True)
     status: str = Field(default="Active")
-    timezone: Optional[str] = Field(default=None, max_length=64)
     sidebar_preferences: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
     createdAt: datetime = Field(default_factory=_utcnow, sa_column=Column("created_at", DateTime))
     updatedAt: datetime = Field(default_factory=_utcnow, sa_column=Column("updated_at", DateTime))
@@ -211,6 +214,7 @@ class EmailOTP(SQLModel, table=True):
     purpose: str = Field(max_length=50, default="smtp_settings")  # smtp_settings | integration | signup
     expires_at: datetime = Field(index=True)
     verified: bool = Field(default=False)
+    attempts: int = Field(default=0)     # wrong guesses; the code is dead after MAX_OTP_ATTEMPTS
     created_at: datetime = Field(default_factory=_utcnow)
 
     user: Optional["User"] = Relationship()
@@ -449,6 +453,7 @@ class ClientProfile(SQLModel, table=True):
     Detailed profile for clients
     """
     __tablename__ = "client_profiles"
+    lead_source_id: Optional[int] = Field(default=None)  # link to lead_sources.id (business_suite add-on)
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -460,7 +465,6 @@ class ClientProfile(SQLModel, table=True):
     status: str = Field(default="Active") # Active, Hold, Pending
     customFields: Optional[dict] = Field(default_factory=dict, sa_column=Column(JSON))
     assignedEmployeeId: Optional[int] = None
-    lead_source_id: Optional[int] = Field(default=None)
     projectName: Optional[str] = None
     gmbName: Optional[str] = None
     seoStrategy: Optional[str] = None
@@ -931,6 +935,12 @@ class FollowUp(SQLModel, table=True):
     completed_by: Optional[int] = Field(default=None)
     outcome: Optional[str] = Field(default=None, sa_column=Column(Text))
 
+    # Used by the follow-up board (addons/business_suite/follow_up_board.py, the SCM BPO screens); nullable for everyone else
+    timezone: Optional[str] = Field(default=None, max_length=64)       # IANA zone the creator scheduled it in
+    overdue_notified_at: Optional[datetime] = Field(default=None)       # the one "overdue" notice was sent
+    contact_id: Optional[int] = Field(default=None, index=True)         # contacts.id (plain integer, no FK)
+    last_email_at: Optional[datetime] = Field(default=None)
+
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
@@ -1095,6 +1105,12 @@ class AnalyticsData(SQLModel, table=True):
 class Task(SQLModel, table=True):
     """Task/Kanban item for tracking work"""
     __tablename__ = "tasks"
+    student_id: Optional[int] = Field(default=None, index=True)  # students.id (institute add-on)
+    batch_id: Optional[int] = Field(default=None, index=True)    # batches.id (institute add-on)
+    submission_url: Optional[str] = Field(default=None, max_length=1000)
+    submission_file: Optional[str] = Field(default=None, max_length=1000)
+    submission_notes: Optional[str] = Field(default=None, sa_column=Column(Text))
+    submitted_at: Optional[datetime] = None
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str = Field(max_length=500)
@@ -1127,12 +1143,13 @@ class TaskComment(SQLModel, table=True):
 class Invoice(SQLModel, table=True):
     """Invoice for billing clients"""
     __tablename__ = "invoices"
+    quote_id: Optional[int] = Field(default=None, foreign_key="quotes.id")
+    proposal_id: Optional[int] = Field(default=None, foreign_key="proposals.id", index=True)
+    deal_id: Optional[int] = Field(default=None, foreign_key="deals.id")
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     invoice_number: str = Field(max_length=50, index=True)
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
-    proposal_id: Optional[int] = Field(default=None, foreign_key="proposals.id", index=True)
-    deal_id: Optional[int] = Field(default=None, foreign_key="deals.id")
     service_request_id: Optional[int] = Field(default=None, foreign_key="service_requests.id")
     amount: float = Field(default=0.0)
     tax: float = Field(default=0.0)
@@ -1195,14 +1212,14 @@ class NPSSurvey(SQLModel, table=True):
 class Proposal(SQLModel, table=True):
     """Proposals and contracts"""
     __tablename__ = "proposals"
+    deal_id: Optional[int] = Field(default=None, foreign_key="deals.id")
+    public_uuid: str = Field(default_factory=lambda: str(uuid.uuid4()), index=True, max_length=50)
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str = Field(max_length=500)
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
     lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     recipient_type: str = Field(default="client")  # "client" or "lead"
-    deal_id: Optional[int] = Field(default=None, foreign_key="deals.id")
-    public_uuid: str = Field(default_factory=lambda: str(uuid.uuid4()), index=True, max_length=50)
     service_request_id: Optional[int] = Field(default=None, foreign_key="service_requests.id")
     content: Optional[str] = Field(default=None, sa_column=Column(Text))
     line_items: Optional[List] = Field(default_factory=list, sa_column=Column(JSON))
@@ -1217,18 +1234,6 @@ class Proposal(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
     client: Optional[ClientProfile] = Relationship(back_populates="proposals")
-
-
-class ProposalComment(SQLModel, table=True):
-    """Client-facing discussion attached to a shared proposal."""
-    __tablename__ = "proposal_comments"
-    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
-    id: Optional[int] = Field(default=None, primary_key=True)
-    proposal_id: int = Field(foreign_key="proposals.id", index=True)
-    author_name: str = Field(max_length=255)
-    author_type: str = Field(default="client", max_length=50)
-    content: str = Field(sa_column=Column(Text))
-    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class ClientFileUpload(SQLModel, table=True):
@@ -1282,6 +1287,9 @@ class ClientNote(SQLModel, table=True):
 class Deal(SQLModel, table=True):
     """Sales Pipeline Deal / Opportunity"""
     __tablename__ = "deals"
+    final_value: Optional[float] = Field(default=None)   # agreed price after negotiation
+    currency: Optional[str] = Field(default="INR", max_length=10)
+    won_at: Optional[datetime] = Field(default=None)
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str = Field(max_length=500)
@@ -1290,9 +1298,6 @@ class Deal(SQLModel, table=True):
     assigned_to: Optional[int] = Field(default=None, foreign_key="users.id")
     stage: str = Field(default="Lead") # Lead, Discovery, Demo, Negotiation, Closed Won, Closed Lost
     expected_close_date: Optional[str] = Field(default=None, max_length=50)
-    final_value: Optional[float] = Field(default=None)
-    currency: Optional[str] = Field(default="INR", max_length=10)
-    won_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
@@ -1379,6 +1384,15 @@ class Account(SQLModel, table=True):
 
 class Lead(SQLModel, table=True):
     __tablename__ = "leads"
+    course_interest_id: Optional[int] = Field(default=None, index=True)  # courses.id (institute add-on)
+    gpa: Optional[float] = Field(default=None)
+    education_level: Optional[str] = Field(default=None, max_length=120)
+    academic_background: Optional[str] = Field(default=None, sa_column=Column(Text))
+    background_details: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    career_goal: Optional[str] = Field(default=None, sa_column=Column(Text))
+    course_plan: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    converted_student_id: Optional[int] = Field(default=None, index=True)  # students.id (institute add-on)
+    lead_source_id: Optional[int] = Field(default=None)  # link to lead_sources.id (business_suite add-on)
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     company_name: str = Field(max_length=255, index=True)
@@ -1388,7 +1402,6 @@ class Lead(SQLModel, table=True):
     phone: Optional[str] = Field(default=None, max_length=100)
     address: Optional[str] = Field(default=None, sa_column=Column(Text))
     source: Optional[str] = Field(default=None, max_length=100)
-    lead_source_id: Optional[int] = Field(default=None)
     owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
     status: str = Field(default="New")
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -1451,6 +1464,9 @@ class Contact(SQLModel, table=True):
 class Meeting(SQLModel, table=True):
     """Scheduled or logged meetings"""
     __tablename__ = "meetings"
+    meeting_link: Optional[str] = Field(default=None, max_length=1000)  # video call URL
+    timezone: Optional[str] = Field(default=None, max_length=64)        # organiser's IANA tz; scheduled_at stored in UTC
+    created_by: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str = Field(max_length=500)
@@ -1460,10 +1476,7 @@ class Meeting(SQLModel, table=True):
     status: str = Field(default="Scheduled", max_length=50)  # Scheduled, Completed, Cancelled, No-show
     scheduled_at: Optional[datetime] = Field(default=None)
     duration_minutes: Optional[int] = Field(default=None)
-    meeting_link: Optional[str] = Field(default=None, max_length=1000)
-    timezone: Optional[str] = Field(default=None, max_length=64)
     host_id: Optional[int] = Field(default=None, foreign_key="users.id")
-    created_by: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
     lead_id: Optional[int] = Field(default=None, foreign_key="leads.id")
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
     contact_id: Optional[int] = Field(default=None, foreign_key="contacts.id")
@@ -1515,6 +1528,8 @@ class QuoteItem(SQLModel, table=True):
 class CRMQuote(SQLModel, table=True):
     """Sales quotes sent to leads/clients"""
     __tablename__ = "quotes"
+    deal_id: Optional[int] = Field(default=None, foreign_key="deals.id")
+    public_uuid: str = Field(default_factory=lambda: str(uuid.uuid4()), index=True, max_length=50)
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     quote_number: Optional[str] = Field(default=None, max_length=100, index=True)
@@ -1652,23 +1667,68 @@ class ExtractedEmail(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow)
 
 
-class DroppedClient(SQLModel, table=True):
-    """Retention history for client relationships that have ended."""
-    __tablename__ = "dropped_clients"
+class TenantFeature(SQLModel, table=True):
+    """Per-tenant feature entitlement. A missing row falls back to the registry default
+    (modules/features.py), so tenants that predate this table keep every feature they had."""
+    __tablename__ = "tenant_features"
+    __table_args__ = (UniqueConstraint("tenant_id", "feature_key", name="uq_tenant_feature"),)
     id: Optional[int] = Field(default=None, primary_key=True)
-    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
-    client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id", index=True)
-    company_name: str = Field(max_length=255)
-    reason: Optional[str] = Field(default=None, sa_column=Column(Text))
-    reason_category: Optional[str] = Field(default="Other", max_length=100)
-    dropped_by: Optional[int] = Field(default=None)
-    last_revenue: float = Field(default=0)
-    relationship_months: int = Field(default=0)
-    reactivation_potential: str = Field(default="Low", max_length=50)
-    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
-    previous_status: Optional[str] = Field(default=None, max_length=100)
-    dropped_at: datetime = Field(default_factory=_utcnow, index=True)
-    reactivated_at: Optional[datetime] = Field(default=None)
+    tenant_id: int = Field(foreign_key="tenants.id", index=True)
+    feature_key: str = Field(max_length=100, index=True)
+    enabled: bool = Field(default=True)
+    config: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class TenantSettings(SQLModel, table=True):
+    """Per-tenant branding and behaviour settings (one row per tenant); see modules/tenant_settings.py."""
+    __tablename__ = "tenant_settings"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenants.id", index=True, unique=True)
+    preset: Optional[str] = Field(default=None, max_length=100)
+    settings: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class TenantAsset(SQLModel, table=True):
+    """A tenant's uploaded brand asset (today: its logo), stored in the database so it survives redeploys."""
+    __tablename__ = "tenant_assets"
+    __table_args__ = (UniqueConstraint("tenant_id", "kind", name="uq_tenant_asset_kind"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenants.id", index=True)
+    kind: str = Field(default="logo", max_length=30)
+    content_type: str = Field(max_length=50)
+    data: bytes = Field(sa_column=Column(LargeBinary))
+    size: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class CustomizationRequest(SQLModel, table=True):
+    """A client's request for an advanced customization, raised from inside the CRM and handled by the platform team."""
+    __tablename__ = "customization_requests"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenants.id", index=True)
+    requested_by: Optional[int] = Field(default=None, foreign_key="users.id")
+    requester_name: Optional[str] = Field(default=None, max_length=255)
+    title: str = Field(max_length=200)
+    description: str = Field(sa_column=Column(Text))
+    category: str = Field(default="other", max_length=40)
+    priority: str = Field(default="normal", max_length=20)
+    status: str = Field(default="new", max_length=20, index=True)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class CustomizationRequestMessage(SQLModel, table=True):
+    """One message in a customization request thread, from the client or from the platform team."""
+    __tablename__ = "customization_request_messages"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenants.id", index=True)
+    request_id: int = Field(foreign_key="customization_requests.id", index=True)
+    author_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    author_name: Optional[str] = Field(default=None, max_length=255)
+    from_platform: bool = Field(default=False)
+    body: str = Field(sa_column=Column(Text))
     created_at: datetime = Field(default_factory=_utcnow)
 
 
@@ -1733,6 +1793,65 @@ def create_db_and_tables():
         "ALTER TABLE ai_calls ADD COLUMN language VARCHAR(20) DEFAULT 'en'",
         # AI voice agent: speaking speed (nullable) so replies use the pitch's speed
         "ALTER TABLE ai_calls ADD COLUMN speed FLOAT",
+        # Tenant ownership for child tables that had none
+        "ALTER TABLE inventory_suppliers ADD COLUMN tenant_id INTEGER REFERENCES tenants(id)",
+        "ALTER TABLE rfq_responses ADD COLUMN tenant_id INTEGER REFERENCES tenants(id)",
+        "CREATE INDEX IF NOT EXISTS ix_inventory_suppliers_tenant_id ON inventory_suppliers (tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_rfq_responses_tenant_id ON rfq_responses (tenant_id)",
+        # Columns used by the business_suite add-on (additive, nullable)
+        "ALTER TABLE users ADD COLUMN timezone VARCHAR(64)",
+        "ALTER TABLE dropped_clients ADD COLUMN previous_status VARCHAR(100)",
+        "ALTER TABLE dropped_clients ADD COLUMN reactivated_at TIMESTAMP",
+        "ALTER TABLE follow_ups ADD COLUMN timezone VARCHAR(64)",
+        "ALTER TABLE follow_ups ADD COLUMN overdue_notified_at TIMESTAMP",
+        "ALTER TABLE follow_ups ADD COLUMN contact_id INTEGER",
+        "ALTER TABLE follow_ups ADD COLUMN last_email_at TIMESTAMP",
+        "CREATE INDEX IF NOT EXISTS ix_follow_ups_contact_id ON follow_ups (contact_id)",
+        "ALTER TABLE tenants ADD COLUMN demo_of_tenant_id INTEGER",
+        "CREATE INDEX IF NOT EXISTS ix_tenants_demo_of_tenant_id ON tenants (demo_of_tenant_id)",
+        "ALTER TABLE email_otps ADD COLUMN attempts INTEGER DEFAULT 0",
+        "ALTER TABLE leads ADD COLUMN lead_source_id INTEGER",
+        "ALTER TABLE client_profiles ADD COLUMN lead_source_id INTEGER",
+        "ALTER TABLE meetings ADD COLUMN meeting_link VARCHAR(1000)",
+        "ALTER TABLE meetings ADD COLUMN timezone VARCHAR(64)",
+        "ALTER TABLE meetings ADD COLUMN created_by INTEGER REFERENCES users(id)",
+        "ALTER TABLE deals ADD COLUMN final_value FLOAT",
+        "ALTER TABLE deals ADD COLUMN currency VARCHAR(10) DEFAULT 'INR'",
+        "ALTER TABLE deals ADD COLUMN won_at TIMESTAMP",
+        "ALTER TABLE invoices ADD COLUMN quote_id INTEGER REFERENCES quotes(id)",
+        "ALTER TABLE invoices ADD COLUMN proposal_id INTEGER REFERENCES proposals(id)",
+        "ALTER TABLE invoices ADD COLUMN deal_id INTEGER REFERENCES deals(id)",
+        "ALTER TABLE quotes ADD COLUMN deal_id INTEGER REFERENCES deals(id)",
+        "ALTER TABLE quotes ADD COLUMN public_uuid VARCHAR(50)",
+        "ALTER TABLE proposals ADD COLUMN deal_id INTEGER REFERENCES deals(id)",
+        "ALTER TABLE proposals ADD COLUMN public_uuid VARCHAR(50)",
+        "ALTER TABLE task_sheet_entries ADD COLUMN outreaches_count INTEGER DEFAULT 0",
+        "ALTER TABLE task_sheet_entries ADD COLUMN positives_count INTEGER DEFAULT 0",
+        "ALTER TABLE task_sheet_entries ADD COLUMN negatives_count INTEGER DEFAULT 0",
+        "ALTER TABLE task_sheet_entries ADD COLUMN followups_scheduled INTEGER DEFAULT 0",
+        "ALTER TABLE task_sheet_entries ADD COLUMN meetings_scheduled INTEGER DEFAULT 0",
+        "ALTER TABLE task_sheet_entries ADD COLUMN key_focus TEXT",
+        # Columns used by the institute add-on (additive, nullable)
+        "ALTER TABLE leads ADD COLUMN course_interest_id INTEGER",
+        "ALTER TABLE leads ADD COLUMN gpa FLOAT",
+        "ALTER TABLE leads ADD COLUMN education_level VARCHAR(120)",
+        "ALTER TABLE leads ADD COLUMN academic_background TEXT",
+        "ALTER TABLE leads ADD COLUMN background_details JSON",
+        "ALTER TABLE leads ADD COLUMN career_goal TEXT",
+        "ALTER TABLE leads ADD COLUMN course_plan JSON",
+        "ALTER TABLE leads ADD COLUMN converted_student_id INTEGER",
+        "ALTER TABLE tasks ADD COLUMN student_id INTEGER",
+        "ALTER TABLE tasks ADD COLUMN batch_id INTEGER",
+        "ALTER TABLE tasks ADD COLUMN submission_url VARCHAR(1000)",
+        "ALTER TABLE tasks ADD COLUMN submission_file VARCHAR(1000)",
+        "ALTER TABLE tasks ADD COLUMN submission_notes TEXT",
+        "ALTER TABLE tasks ADD COLUMN submitted_at TIMESTAMP",
+        "ALTER TABLE task_sheet_entries ADD COLUMN proof_of_work TEXT",
+        "ALTER TABLE task_sheet_entries ADD COLUMN expected_date VARCHAR(50)",
+        "CREATE INDEX IF NOT EXISTS ix_leads_course_interest_id ON leads (course_interest_id)",
+        "CREATE INDEX IF NOT EXISTS ix_leads_converted_student_id ON leads (converted_student_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tasks_student_id ON tasks (student_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tasks_batch_id ON tasks (batch_id)",
     ]
     
     with engine.connect() as conn:
@@ -1772,6 +1891,45 @@ def create_db_and_tables():
     except Exception:
         pass
         
+    # Backfill tenant_id on child tables from their parent row (idempotent)
+    for child, fk, parent in (("inventory_suppliers", "item_id", "inventory_items"),
+                              ("rfq_responses", "rfq_id", "rfq_requests")):
+        try:
+            with engine.connect() as conn:
+                if engine.dialect.name == "postgresql":
+                    conn.execute(text(f"""
+                        UPDATE {child} c SET tenant_id = p.tenant_id
+                        FROM {parent} p
+                        WHERE c.{fk} = p.id AND c.tenant_id IS NULL AND p.tenant_id IS NOT NULL
+                    """))
+                else:
+                    conn.execute(text(f"""
+                        UPDATE {child} SET tenant_id = (
+                            SELECT p.tenant_id FROM {parent} p WHERE p.id = {child}.{fk})
+                        WHERE tenant_id IS NULL
+                    """))
+                conn.commit()
+        except Exception as e:
+            print(f"[startup] tenant backfill for {child} skipped: {type(e).__name__}")
+
+    # Backfill the public share id on existing quotes / proposals, and won_at on already-won deals (idempotent)
+    for table in ("quotes", "proposals"):
+        try:
+            with engine.connect() as conn:
+                if engine.dialect.name == "postgresql":
+                    conn.execute(text(f"UPDATE {table} SET public_uuid = md5(random()::text || id::text) WHERE public_uuid IS NULL"))
+                else:
+                    conn.execute(text(f"UPDATE {table} SET public_uuid = lower(hex(randomblob(16))) WHERE public_uuid IS NULL"))
+                conn.commit()
+        except Exception as e:
+            print(f"[startup] public_uuid backfill for {table} skipped: {type(e).__name__}")
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("UPDATE deals SET won_at = updated_at WHERE stage = 'Closed Won' AND won_at IS NULL"))
+            conn.commit()
+    except Exception as e:
+        print(f"[startup] deals.won_at backfill skipped: {type(e).__name__}")
+
     # Seed default statuses if none exist
     try:
         with Session(engine) as session:
@@ -1934,6 +2092,7 @@ class InventoryItem(SQLModel, table=True):
 class InventorySupplier(SQLModel, table=True):
     """Supplier-specific pricing/lot data per inventory item"""
     __tablename__ = "inventory_suppliers"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     item_id: int = Field(foreign_key="inventory_items.id")
     supplier_name: str = Field(max_length=255)
@@ -1980,6 +2139,7 @@ class RFQRequest(SQLModel, table=True):
 class RFQResponse(SQLModel, table=True):
     """Supplier's response to an RFQ"""
     __tablename__ = "rfq_responses"
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     rfq_id: int = Field(foreign_key="rfq_requests.id")
     unit_price: float
@@ -2068,6 +2228,14 @@ class APIUsageLog(SQLModel, table=True):
 class TaskSheetEntry(SQLModel, table=True):
     """Daily work log entries for sales and delivery team members."""
     __tablename__ = "task_sheet_entries"
+    proof_of_work: Optional[str] = Field(default=None, sa_column=Column(Text))
+    expected_date: Optional[str] = Field(default=None, max_length=50)
+    outreaches_count: int = Field(default=0)
+    positives_count: int = Field(default=0)
+    negatives_count: int = Field(default=0)
+    followups_scheduled: int = Field(default=0)
+    meetings_scheduled: int = Field(default=0)
+    key_focus: Optional[str] = Field(default=None, sa_column=Column(Text))
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="users.id", index=True)
@@ -2081,8 +2249,8 @@ class TaskSheetEntry(SQLModel, table=True):
     blocker: Optional[str] = Field(default=None, sa_column=Column(Text))
     follow_up_date: Optional[str] = Field(default=None, index=True)
     completion_date: Optional[str] = Field(default=None, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 # ──────────────────────────────────────────────────────
@@ -2199,100 +2367,3 @@ class CallKnowledge(SQLModel, table=True):
     usage_count: int = Field(default=0)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
-
-
-class SalespersonHistory(SQLModel, table=True):
-    """Tracks salesperson reassignment history for clients."""
-    __tablename__ = "salesperson_history"
-    id: Optional[int] = Field(default=None, primary_key=True)
-    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
-    client_id: int
-    from_user_id: Optional[int] = Field(default=None)
-    to_user_id: Optional[int] = Field(default=None)
-    from_user_name: Optional[str] = Field(default=None, max_length=200)
-    to_user_name: Optional[str] = Field(default=None, max_length=200)
-    reason: Optional[str] = Field(default=None, sa_column=Column(Text))
-    reassigned_by: Optional[int] = Field(default=None)
-    reassigned_at: Optional[datetime] = Field(default_factory=_utcnow)
-    created_at: Optional[datetime] = Field(default_factory=_utcnow)
-
-
-class LeadSource(SQLModel, table=True):
-    """Configurable sources for lead attribution and reporting."""
-    __tablename__ = "lead_sources"
-    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
-    id: Optional[int] = Field(default=None, primary_key=True)
-    name: str = Field(max_length=120)
-    channel: str = Field(default="Other", max_length=50)
-    utm_key: Optional[str] = Field(default=None, max_length=120)
-    color: Optional[str] = Field(default="#6366f1", max_length=20)
-    monthly_cost: float = Field(default=0.0)
-    is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=_utcnow)
-
-
-class BusinessCost(SQLModel, table=True):
-    """Operating costs used in owner and revenue reports."""
-    __tablename__ = "business_costs"
-    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
-    id: Optional[int] = Field(default=None, primary_key=True)
-    title: str = Field(max_length=255)
-    category: str = Field(default="Other", max_length=50)
-    amount: float = Field(default=0.0)
-    currency: str = Field(default="INR", max_length=10)
-    cost_date: str = Field(max_length=10, index=True)
-    is_recurring: bool = Field(default=False)
-    end_date: Optional[str] = Field(default=None, max_length=10)
-    employee_id: Optional[int] = Field(default=None)
-    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
-    created_by: Optional[int] = Field(default=None)
-    created_at: datetime = Field(default_factory=_utcnow)
-
-
-class DealNegotiation(SQLModel, table=True):
-    """Tracks negotiation rounds and pricing changes for deals."""
-    __tablename__ = "deal_negotiations"
-    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
-    id: Optional[int] = Field(default=None, primary_key=True)
-    deal_id: int = Field(index=True)
-    round_no: int = Field(default=1)
-    party: str = Field(default="us", max_length=20)
-    price: float = Field(default=0.0)
-    discount_pct: float = Field(default=0.0)
-    status: str = Field(default="Proposed", max_length=30)
-    notes: Optional[str] = Field(default=None, sa_column=Column(Text))
-    author_id: Optional[int] = Field(default=None)
-    author_name: Optional[str] = Field(default=None, max_length=200)
-    created_at: datetime = Field(default_factory=_utcnow)
-
-
-class OwnershipHistory(SQLModel, table=True):
-    """Tracks lead and client ownership changes."""
-    __tablename__ = "ownership_history"
-    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
-    id: Optional[int] = Field(default=None, primary_key=True)
-    entity_type: str = Field(max_length=20, index=True)
-    entity_id: int = Field(index=True)
-    entity_name: Optional[str] = Field(default=None, max_length=255)
-    from_user_id: Optional[int] = Field(default=None)
-    to_user_id: Optional[int] = Field(default=None)
-    from_user_name: Optional[str] = Field(default=None, max_length=200)
-    to_user_name: Optional[str] = Field(default=None, max_length=200)
-    reason: Optional[str] = Field(default=None, sa_column=Column(Text))
-    changed_by: Optional[int] = Field(default=None)
-    changed_by_name: Optional[str] = Field(default=None, max_length=200)
-    changed_at: datetime = Field(default_factory=_utcnow)
-
-
-class StockMovement(SQLModel, table=True):
-    """Tracks inventory stock adjustments for CRM reporting."""
-    __tablename__ = "stock_movements"
-    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
-    id: Optional[int] = Field(default=None, primary_key=True)
-    item_id: int = Field(index=True)
-    change: float = Field(default=0.0)
-    reason: str = Field(default="Adjustment", max_length=50)
-    reference: Optional[str] = Field(default=None, max_length=255)
-    balance_after: Optional[float] = Field(default=None)
-    author_id: Optional[int] = Field(default=None)
-    created_at: datetime = Field(default_factory=_utcnow)

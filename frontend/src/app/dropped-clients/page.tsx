@@ -1,252 +1,406 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { AlertTriangle, ArrowUpRight, Building2, CalendarClock, CheckCircle2, Loader2, Plus, RefreshCw, Search, Trash2, TrendingDown, UserX, X } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { UserX, Plus, X, Loader2, Trash2, TrendingDown, AlertTriangle, Building2, Calendar, IndianRupee, RefreshCw, BarChart2, ArrowUpRight } from "lucide-react";
 import { API_BASE_URL } from "@/config";
+import { useRole } from "@/context/RoleContext";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import Link from "next/link";
 
 interface DroppedClient {
   id: number;
-  client_id?: number | null;
+  client_id?: number;
   company_name: string;
-  reason?: string | null;
-  reason_category?: string | null;
-  last_revenue?: number | null;
-  relationship_months?: number | null;
-  reactivation_potential?: string | null;
-  notes?: string | null;
-  previous_status?: string | null;
-  dropped_at?: string | null;
-  reactivated_at?: string | null;
+  reason?: string;
+  reason_category?: string;
+  last_revenue?: number;
+  relationship_months?: number;
+  reactivation_potential?: string;
+  notes?: string;
+  dropped_at?: string;
+  previous_status?: string | null;   // restored when the client is reactivated
+  reactivated_at?: string | null;    // set when the client came back; the record is kept as history
 }
 
-interface ClientOption {
-  id: number;
-  companyName?: string;
-  projectName?: string;
-  email?: string;
-  status?: string;
-}
+const REASON_CATEGORIES = [
+  "Price", "Service Quality", "Competition", "No Budget", "Merger/Acquisition",
+  "Scope Change", "Project Completed", "Unresponsive", "Other"
+];
 
-const CATEGORIES = ["Price", "Service Quality", "Competition", "No Budget", "Merger/Acquisition", "Scope Change", "Project Completed", "Unresponsive", "Other"];
+const REACTIVATION_OPTIONS = ["Low", "Medium", "High"];
 
-const EMPTY_FORM = {
-  client_id: "",
-  company_name: "",
-  reason: "",
-  reason_category: "Other",
-  last_revenue: "",
-  relationship_months: "",
-  reactivation_potential: "Low",
-  notes: "",
+const CATEGORY_COLORS = [
+  "#6366f1", "#f59e0b", "#ef4444", "#10b981", "#3b82f6",
+  "#8b5cf6", "#ec4899", "#14b8a6", "#64748b"
+];
+
+const REACTIVATION_COLORS: Record<string, string> = {
+  Low: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  Medium: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+  High: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
 };
 
 export default function DroppedClientsPage() {
-  const [records, setRecords] = useState<DroppedClient[]>([]);
-  const [clients, setClients] = useState<ClientOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [category, setCategory] = useState("All");
-  const [search, setSearch] = useState("");
-  const [error, setError] = useState("");
-  const [pendingClientId, setPendingClientId] = useState("");
-  const [form, setForm] = useState(EMPTY_FORM);
+  const { role } = useRole();
+  const [clients, setClients] = useState<DroppedClient[]>([]);
 
-  const loadData = useCallback(async () => {
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [filterCat, setFilterCat] = useState("All");
+  const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const [form, setForm] = useState({
+    company_name: "",
+    reason: "",
+    reason_category: "Other",
+    last_revenue: "",
+    relationship_months: "",
+    reactivation_potential: "Low",
+    notes: "",
+  });
+
+  const loadData = async () => {
     setLoading(true);
-    setError("");
     try {
-      const [droppedResponse, clientsResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/dropped-clients`),
-        fetch(`${API_BASE_URL}/clients?per_page=200&page=1`),
-      ]);
-      if (!droppedResponse.ok) throw new Error("Could not load dropped clients.");
-      const droppedData = await droppedResponse.json();
-      const clientsData = clientsResponse.ok ? await clientsResponse.json() : {};
-      setRecords(droppedData.dropped_clients || []);
-      setClients((clientsData.clients || []).filter((client: ClientOption) => client.status !== "Dropped"));
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Could not load dropped clients.");
+      const res = await fetch(`${API_BASE_URL}/dropped-clients`);
+      const data = await res.json();
+      setClients(data.dropped_clients || []);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  useEffect(() => { void loadData(); }, [loadData]);
-
-  useEffect(() => {
-    const clientId = new URLSearchParams(window.location.search).get("client_id");
-    if (!clientId) return;
-    window.history.replaceState(null, "", window.location.pathname);
-    setPendingClientId(clientId);
-  }, []);
-
-  useEffect(() => {
-    if (!pendingClientId) return;
-    const client = clients.find(item => String(item.id) === pendingClientId);
-    if (!client) return;
-    setForm(current => ({
-      ...current,
-      client_id: pendingClientId,
-      company_name: client.companyName || client.projectName || client.email || "",
-    }));
-    setShowForm(true);
-    setPendingClientId("");
-  }, [clients, pendingClientId]);
-
-  const activeRecords = records.filter(record => !record.reactivated_at);
-  const filteredRecords = records.filter(record => {
-    const matchesCategory = category === "All" || record.reason_category === category;
-    const query = search.trim().toLowerCase();
-    const matchesSearch = !query || `${record.company_name} ${record.reason || ""} ${record.notes || ""}`.toLowerCase().includes(query);
-    return matchesCategory && matchesSearch;
-  });
-
-  const handleClientSelect = (clientId: string) => {
-    const client = clients.find(item => String(item.id) === clientId);
-    setForm(current => ({
-      ...current,
-      client_id: clientId,
-      company_name: client ? (client.companyName || client.projectName || client.email || "") : current.company_name,
-    }));
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  useEffect(() => { loadData(); }, []);
+
+  // Auto-hide toast
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // clients that came back stay in the history but are no longer "dropped"
+  const active = clients.filter(c => !c.reactivated_at);
+  const pieData = Object.entries(active.reduce<Record<string, number>>((acc, c) => {
+    const cat = c.reason_category || "Other";
+    acc[cat] = (acc[cat] || 0) + 1;
+    return acc;
+  }, {})).map(([name, value]) => ({ name, value }));
+
+  const filtered = filterCat === "All" ? active : active.filter(c => c.reason_category === filterCat);
+
+  const totalRevenueLost = active.reduce((s, c) => s + (c.last_revenue || 0), 0);
+  const highPotential = active.filter(c => c.reactivation_potential === "High").length;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setSaving(true);
-    setError("");
     try {
-      const response = await fetch(`${API_BASE_URL}/dropped-clients`, {
+      const res = await fetch(`${API_BASE_URL}/dropped-clients`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          client_id: form.client_id ? Number(form.client_id) : null,
           company_name: form.company_name,
           reason: form.reason || null,
           reason_category: form.reason_category,
-          last_revenue: Number(form.last_revenue) || 0,
-          relationship_months: Number(form.relationship_months) || 0,
+          last_revenue: parseFloat(form.last_revenue) || 0,
+          relationship_months: parseInt(form.relationship_months) || 0,
           reactivation_potential: form.reactivation_potential,
           notes: form.notes || null,
         }),
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.detail || "Could not save the record.");
-      setForm(EMPTY_FORM);
-      setShowForm(false);
-      await loadData();
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Could not save the record.");
+      if (res.ok) {
+        setToast({ ok: true, msg: "Dropped client recorded." });
+        setShowModal(false);
+        setForm({ company_name: "", reason: "", reason_category: "Other", last_revenue: "", relationship_months: "", reactivation_potential: "Low", notes: "" });
+        loadData();
+      } else {
+        setToast({ ok: false, msg: "Failed to save." });
+      }
+    } catch {
+      setToast({ ok: false, msg: "Error." });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleReactivate = async (record: DroppedClient) => {
-    if (!record.client_id || !window.confirm(`Reactivate ${record.company_name}?`)) return;
-    const response = await fetch(`${API_BASE_URL}/dropped-clients/by-client/${record.client_id}/reactivate`, { method: "POST" });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setError(data.detail || "Could not reactivate this client.");
-      return;
-    }
-    await loadData();
+  const handleDelete = async (id: number) => {
+    if (!confirm("Delete this record?")) return;
+    await fetch(`${API_BASE_URL}/dropped-clients/${id}`, { method: "DELETE" });
+    setClients(prev => prev.filter(c => c.id !== id));
+    setToast({ ok: true, msg: "Record deleted." });
   };
 
-  const handleDelete = async (record: DroppedClient) => {
-    if (!window.confirm(`Delete the retention record for ${record.company_name}?`)) return;
-    const response = await fetch(`${API_BASE_URL}/dropped-clients/${record.id}`, { method: "DELETE" });
-    if (!response.ok) {
-      setError("Could not delete this record.");
-      return;
+  const handleReactivate = async (c: DroppedClient) => {
+    if (!c.client_id || !confirm(`Reactivate ${c.company_name}?`)) return;
+    const res = await fetch(`${API_BASE_URL}/dropped-clients/by-client/${c.client_id}/reactivate`, { method: "POST" });
+    if (res.ok) {
+      setToast({ ok: true, msg: `${c.company_name} reactivated.` });
+      loadData();
+    } else {
+      setToast({ ok: false, msg: "Could not reactivate." });
     }
-    setRecords(current => current.filter(item => item.id !== record.id));
   };
-
-  const revenueLost = activeRecords.reduce((sum, record) => sum + (record.last_revenue || 0), 0);
-  const highPotential = activeRecords.filter(record => record.reactivation_potential === "High").length;
-  const categories = Array.from(new Set(records.map(record => record.reason_category || "Other")));
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300"><UserX size={21} /></div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Dropped Clients</h1>
-            <p className="text-sm text-slate-500 dark:text-zinc-400">Retention history and reactivation opportunities</p>
+    <div className="bg-slate-50 dark:bg-zinc-950">
+      <div>
+        <div className="p-6 space-y-6">
+
+          {/* Header */}
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 shadow-lg shadow-red-500/20">
+                <UserX className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Dropped Clients</h1>
+                <p className="text-sm text-slate-500 dark:text-zinc-400">Track discontinued client relationships</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={loadData} className="p-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700">
+                <RefreshCw className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white text-sm font-semibold hover:opacity-90 shadow-md transition-all active:scale-95"
+              >
+                <Plus className="w-4 h-4" /> Record Dropped Client
+              </button>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => void loadData()} title="Refresh" className="rounded-lg border border-slate-200 p-2.5 text-slate-600 hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"><RefreshCw size={17} /></button>
-          <button onClick={() => { setError(""); setShowForm(true); }} className="flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700"><Plus size={17} /> Record dropped client</button>
-        </div>
-      </header>
 
-      {error && <div role="alert" className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><AlertTriangle size={17} />{error}<button onClick={() => setError("")} className="ml-auto" aria-label="Dismiss"><X size={16} /></button></div>}
-
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-label="Dropped-client summary">
-        <div className="flex items-center gap-3 border-l-2 border-rose-500 bg-white px-4 py-3 dark:bg-zinc-900"><UserX className="text-rose-600" size={20} /><div><p className="text-xl font-bold text-slate-900 dark:text-white">{loading ? "—" : activeRecords.length}</p><p className="text-xs text-slate-500 dark:text-zinc-400">Active dropped clients</p></div></div>
-        <div className="flex items-center gap-3 border-l-2 border-amber-500 bg-white px-4 py-3 dark:bg-zinc-900"><TrendingDown className="text-amber-600" size={20} /><div><p className="text-xl font-bold text-slate-900 dark:text-white">{loading ? "—" : revenueLost.toLocaleString()}</p><p className="text-xs text-slate-500 dark:text-zinc-400">Last recorded revenue lost</p></div></div>
-        <div className="flex items-center gap-3 border-l-2 border-emerald-500 bg-white px-4 py-3 dark:bg-zinc-900"><ArrowUpRight className="text-emerald-600" size={20} /><div><p className="text-xl font-bold text-slate-900 dark:text-white">{loading ? "—" : highPotential}</p><p className="text-xs text-slate-500 dark:text-zinc-400">High reactivation potential</p></div></div>
-      </section>
-
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-zinc-800">
-          <div className="flex flex-wrap gap-2">
-            {["All", ...categories].map(item => <button key={item} onClick={() => setCategory(item)} className={`rounded-md px-3 py-1.5 text-xs font-semibold ${category === item ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"}`}>{item}</button>)}
-          </div>
-          <label className="relative w-full sm:w-64"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search retention history" className="w-full rounded-md border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white" /></label>
-        </div>
-
-        {loading ? <div className="flex justify-center py-16"><Loader2 className="animate-spin text-slate-500" size={28} /></div> : filteredRecords.length === 0 ? <div className="flex flex-col items-center py-16 text-center text-slate-500 dark:text-zinc-400"><Building2 className="mb-3 opacity-40" size={32} /><p className="font-semibold">No dropped-client records</p><p className="mt-1 text-sm">New records will appear here with their retention details.</p></div> : (
-          <div className="divide-y divide-slate-200 border-y border-slate-200 dark:divide-zinc-800 dark:border-zinc-800">
-            {filteredRecords.map(record => (
-              <article key={record.id} className="flex flex-wrap items-start gap-4 py-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-300"><Building2 size={19} /></div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="font-semibold text-slate-900 dark:text-white">{record.company_name}</h2>
-                    <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${record.reactivated_at ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" : "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"}`}>{record.reactivated_at ? "Reactivated" : "Dropped"}</span>
-                    {record.reason_category && <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">{record.reason_category}</span>}
-                  </div>
-                  {record.reason && <p className="mt-1 text-sm text-slate-600 dark:text-zinc-300">{record.reason}</p>}
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-zinc-400">
-                    <span>Revenue: {(record.last_revenue || 0).toLocaleString()}</span><span>Relationship: {record.relationship_months || 0} months</span><span>Reactivation: {record.reactivation_potential || "Low"}</span>
-                    <span className="inline-flex items-center gap-1"><CalendarClock size={13} />{record.dropped_at ? new Date(record.dropped_at).toLocaleDateString() : "Date not recorded"}</span>
-                  </div>
-                  {record.notes && <p className="mt-2 text-xs text-slate-500 dark:text-zinc-400">{record.notes}</p>}
+          {/* Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { label: "Total Dropped", value: clients.length, icon: UserX, color: "text-red-600", bg: "bg-red-50 dark:bg-red-900/20" },
+              { label: "Revenue Lost", value: `₹${totalRevenueLost.toLocaleString()}`, icon: IndianRupee, color: "text-rose-600", bg: "bg-rose-50 dark:bg-rose-900/20" },
+              { label: "High Reactivation", value: highPotential, icon: ArrowUpRight, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
+              { label: "Categories", value: pieData.length, icon: BarChart2, color: "text-violet-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
+            ].map(s => (
+              <div key={s.label} className={`flex items-center gap-3 p-4 rounded-2xl ${s.bg} border border-white/60 dark:border-white/5 shadow-sm`}>
+                <s.icon className={`w-5 h-5 ${s.color} shrink-0`} />
+                <div>
+                  <p className={`text-xl font-black ${s.color}`}>{loading ? "—" : s.value}</p>
+                  <p className="text-xs font-medium text-slate-500 dark:text-zinc-400">{s.label}</p>
                 </div>
-                <div className="flex items-center gap-1">
-                  {record.client_id && <Link href={`/admin/clients/${record.client_id}`} title="Open client" className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-zinc-800"><ArrowUpRight size={16} /></Link>}
-                  {!record.reactivated_at && record.client_id && <button onClick={() => void handleReactivate(record)} title="Reactivate client" className="rounded-md p-2 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"><CheckCircle2 size={16} /></button>}
-                  <button onClick={() => void handleDelete(record)} title="Delete retention record" className="rounded-md p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40"><Trash2 size={16} /></button>
-                </div>
-              </article>
+              </div>
             ))}
           </div>
-        )}
-      </section>
 
-      {showForm && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4" onMouseDown={event => { if (event.target === event.currentTarget) setShowForm(false); }}>
-        <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white p-5 shadow-2xl dark:bg-zinc-900">
-          <div className="mb-5 flex items-center justify-between"><div><h2 className="text-lg font-bold text-slate-900 dark:text-white">Record client departure</h2><p className="text-sm text-slate-500 dark:text-zinc-400">Save the reason and retention context.</p></div><button type="button" onClick={() => setShowForm(false)} aria-label="Close" className="rounded-md p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-zinc-800"><X size={18} /></button></div>
-          <div className="space-y-4">
-            <label className="block text-sm font-medium text-slate-700 dark:text-zinc-300">Link existing client <select value={form.client_id} onChange={event => handleClientSelect(event.target.value)} className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-950"><option value="">No linked client</option>{clients.map(client => <option key={client.id} value={client.id}>{client.companyName || client.projectName || client.email || `Client #${client.id}`}</option>)}</select></label>
-            <label className="block text-sm font-medium text-slate-700 dark:text-zinc-300">Company name <input required maxLength={255} value={form.company_name} onChange={event => setForm(current => ({ ...current, company_name: event.target.value }))} className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-950" /></label>
-            <label className="block text-sm font-medium text-slate-700 dark:text-zinc-300">Reason <textarea value={form.reason} onChange={event => setForm(current => ({ ...current, reason: event.target.value }))} rows={2} className="mt-1.5 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-950" /></label>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-zinc-300">Category <select value={form.reason_category} onChange={event => setForm(current => ({ ...current, reason_category: event.target.value }))} className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-950">{CATEGORIES.map(item => <option key={item}>{item}</option>)}</select></label>
-              <label className="block text-sm font-medium text-slate-700 dark:text-zinc-300">Reactivation potential <select value={form.reactivation_potential} onChange={event => setForm(current => ({ ...current, reactivation_potential: event.target.value }))} className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-950"><option>Low</option><option>Medium</option><option>High</option></select></label>
-              <label className="block text-sm font-medium text-slate-700 dark:text-zinc-300">Last revenue <input type="number" min="0" step="0.01" value={form.last_revenue} onChange={event => setForm(current => ({ ...current, last_revenue: event.target.value }))} className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-950" /></label>
-              <label className="block text-sm font-medium text-slate-700 dark:text-zinc-300">Relationship duration (months) <input type="number" min="0" step="1" value={form.relationship_months} onChange={event => setForm(current => ({ ...current, relationship_months: event.target.value }))} className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-950" /></label>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Chart */}
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-700 p-5 shadow-sm">
+              <h3 className="font-bold text-slate-800 dark:text-zinc-100 mb-4 flex items-center gap-2">
+                <BarChart2 className="w-4 h-4 text-red-500" /> Loss Reasons
+              </h3>
+              {pieData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 text-slate-400">
+                  <TrendingDown className="w-8 h-8 mb-2 opacity-30" />
+                  <p className="text-sm">No data yet</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" paddingAngle={3}>
+                      {pieData.map((_, i) => (
+                        <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v) => [`${v} clients`, ""]} />
+                    <Legend iconSize={8} wrapperStyle={{ fontSize: "11px" }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-zinc-300">Additional notes <textarea value={form.notes} onChange={event => setForm(current => ({ ...current, notes: event.target.value }))} rows={3} className="mt-1.5 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-950" /></label>
+
+            {/* Table */}
+            <div className="lg:col-span-2 bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-700 shadow-sm overflow-hidden">
+              {/* Filter */}
+              <div className="flex gap-2 p-4 border-b border-slate-100 dark:border-zinc-800 overflow-x-auto">
+                {["All", ...REASON_CATEGORIES].map(cat => (
+                  <button key={cat} onClick={() => setFilterCat(cat)}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${filterCat === cat ? "bg-red-500 text-white" : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200"}`}>
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {loading ? (
+                <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-red-500" /></div>
+              ) : filtered.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                  <UserX className="w-10 h-10 mb-3 opacity-30" />
+                  <p className="font-medium">No dropped clients recorded</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 dark:divide-zinc-800">
+                  {filtered.map((c, i) => (
+                    <motion.div key={c.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
+                      className="flex items-start gap-4 p-4 hover:bg-slate-50 dark:hover:bg-zinc-800/40 group transition-colors">
+                      <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center shrink-0">
+                        <Building2 className="w-5 h-5 text-red-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            {c.client_id ? (
+                              <Link
+                                href={`/admin/clients/${c.client_id}`}
+                                className="font-semibold text-slate-900 dark:text-zinc-100 hover:text-red-600 transition-colors flex items-center gap-1.5"
+                              >
+                                {c.company_name}
+                                <ArrowUpRight className="w-3.5 h-3.5 text-slate-400" />
+                              </Link>
+                            ) : (
+                              <p className="font-semibold text-slate-900 dark:text-zinc-100">{c.company_name}</p>
+                            )}
+                            {c.reason && <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5 line-clamp-1">{c.reason}</p>}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {c.client_id && (
+                              <Link
+                                href={`/admin/clients/${c.client_id}`}
+                                className="text-[11px] font-semibold text-slate-500 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all"
+                              >
+                                Overview →
+                              </Link>
+                            )}
+                            {c.client_id && (
+                              <button onClick={() => void handleReactivate(c)} title="Reactivate client"
+                                className="text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40 px-2 py-1 rounded-lg transition-all">
+                                Reactivate
+                              </button>
+                            )}
+                            <button onClick={() => handleDelete(c.id)}
+                              className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-400 hover:text-red-600 transition-all shrink-0">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 mt-2 flex-wrap">
+                          {c.reason_category && (
+                            <span className="text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-500 px-2 py-0.5 rounded-md font-medium">
+                              {c.reason_category}
+                            </span>
+                          )}
+                          {c.reactivation_potential && (
+                            <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${REACTIVATION_COLORS[c.reactivation_potential] || ""}`}>
+                              {c.reactivation_potential} Reactivation
+                            </span>
+                          )}
+                          {c.last_revenue && c.last_revenue > 0 && (
+                            <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                              <IndianRupee className="w-3 h-3" />${c.last_revenue.toLocaleString()} last revenue
+                            </span>
+                          )}
+                          {c.relationship_months && c.relationship_months > 0 && (
+                            <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />{c.relationship_months}mo relationship
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-          <div className="mt-5 flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-zinc-800"><button type="button" onClick={() => setShowForm(false)} className="rounded-md border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 dark:border-zinc-700 dark:text-zinc-300">Cancel</button><button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{saving ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />} Save record</button></div>
-        </form>
-      </div>}
+        </div>
+      </div>
+
+      {/* Add Modal */}
+      <AnimatePresence>
+        {showModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={e => { if (e.target === e.currentTarget) setShowModal(false); }}>
+            <motion.div initial={{ scale: 0.95, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 16 }}
+              className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-zinc-700">
+                <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
+                  <UserX className="w-5 h-5 text-red-500" /> Record Dropped Client
+                </h2>
+                <button onClick={() => setShowModal(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800">
+                  <X className="w-4 h-4 text-slate-500" />
+                </button>
+              </div>
+              <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Company Name *</label>
+                  <input required value={form.company_name} onChange={e => setForm(f => ({ ...f, company_name: e.target.value }))}
+                    placeholder="Acme Corp" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-red-500" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Reason</label>
+                  <input value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
+                    placeholder="Why did they leave?" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-red-500" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Category</label>
+                    <select value={form.reason_category} onChange={e => setForm(f => ({ ...f, reason_category: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-red-500">
+                      {REASON_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Reactivation</label>
+                    <select value={form.reactivation_potential} onChange={e => setForm(f => ({ ...f, reactivation_potential: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-red-500">
+                      {REACTIVATION_OPTIONS.map(o => <option key={o}>{o}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Last Revenue (₹)</label>
+                    <input type="number" value={form.last_revenue} onChange={e => setForm(f => ({ ...f, last_revenue: e.target.value }))}
+                      placeholder="0" className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-red-500" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Relationship (months)</label>
+                    <input type="number" value={form.relationship_months} onChange={e => setForm(f => ({ ...f, relationship_months: e.target.value }))}
+                      placeholder="0" className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-red-500" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Notes</label>
+                  <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2}
+                    placeholder="Additional context..." className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-red-500 resize-none" />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => setShowModal(false)}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-sm font-semibold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={saving}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 shadow-md">
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserX className="w-4 h-4" />}
+                    Save Record
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }}
+            className={`fixed bottom-6 right-6 z-[200] px-5 py-3 rounded-2xl shadow-xl text-sm font-bold text-white ${toast.ok ? "bg-emerald-600" : "bg-red-600"}`}>
+            {toast.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

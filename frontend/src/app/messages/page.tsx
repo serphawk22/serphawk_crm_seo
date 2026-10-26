@@ -120,7 +120,10 @@ export default function MessagesHubPage() {
   const connectWs = useCallback((threadId: number) => {
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     const wsBase = API_BASE_URL.replace(/^http/, 'ws');
-    const ws = new WebSocket(`${wsBase}/ws/chat/${threadId}`);
+    // Browsers cannot send headers on a WebSocket, so the signed session token travels in the query string.
+    let wsToken = "";
+    try { wsToken = localStorage.getItem("crm_token") || ""; } catch {}
+    const ws = new WebSocket(`${wsBase}/ws/chat/${threadId}?token=${encodeURIComponent(wsToken)}&user_id=${userId ?? ""}`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {

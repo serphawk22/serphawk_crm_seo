@@ -345,6 +345,8 @@
     "section_inventory": "INVENTARIO",
     "section_support": "SOPORTE",
     "section_system": "SISTEMA",
+    "section_institute": "INSTITUTO",
+    "section_business_suite": "SUITE DE NEGOCIO",
     "dashboard": "Panel",
     "work_queue": "Mi Cola de Trabajo",
     "notifications": "Notificaciones",
@@ -2127,7 +2129,7 @@
     "field_email": "Correo Electrónico",
     "email_readonly": "El correo no se puede cambiar.",
     "field_phone": "Número de Teléfono",
-    "phone_hint": "Obligatorio para la integración con WhatsApp.",
+    "phone_hint": "Su número de contacto principal. Se usa para WhatsApp y como número predeterminado en la firma del Agente de Email. Puede cambiar el país o el número en cualquier momento.",
     "save_changes": "Guardar Cambios"
   },
   "survey": {

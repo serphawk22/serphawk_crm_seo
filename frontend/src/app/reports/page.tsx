@@ -20,6 +20,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
+import { useTenantConfig } from "@/context/TenantConfigContext";
 import {
   Currency, useCurrency, money, num, pctf, PALETTE, TOOLTIP_STYLE, AXIS_TICK,
   Tile, Card, Pill, Skeleton, CurrencyToggle, Segmented, relTime, statusColor, Meter
@@ -116,10 +117,19 @@ function drawPdfTable(pdf: jsPDF, headers: string[], rows: string[][], startY: n
 // ─── MAIN REPORTS COMPONENT ──────────────────────────────────────────────────
 export default function ReportsPage() {
   const { role, loading: roleLoading } = useRole();
+  const { loaded: cfgLoaded, isOn } = useTenantConfig();
+  const execOn = isOn("command_center");   // Executive Owner Dossier
+  const aiOn = isOn("ai_reports");          // AI Reports
   const [currency, setCurrency] = useCurrency();
 
   // Mode: "executive" (Owner Dossier) vs "classic" (Original Operations & Activity Reports) vs "ai" (Prompt-Based AI Reports)
   const [viewMode, setViewMode] = useState<"executive" | "classic" | "ai">("executive");
+
+  // A company without those modules lands on the classic reports instead of an error.
+  useEffect(() => {
+    if (!cfgLoaded) return;
+    if ((viewMode === "executive" && !execOn) || (viewMode === "ai" && !aiOn)) setViewMode("classic");
+  }, [cfgLoaded, execOn, aiOn, viewMode]);
 
   // ── AI Reports State ──
   const [aiPrompt, setAiPrompt] = useState<string>("Compare all sales staff performance including leads, conversions, revenue and deal closure rates");
@@ -411,18 +421,18 @@ export default function ReportsPage() {
   }, []);
 
   useEffect(() => {
-    if (viewMode === "ai") {
+    if (viewMode === "ai" && aiOn) {
       if (!aiQuickPrompts.length) loadAiQuickPrompts();
       if (!aiReport && !aiLoading) generateAiReport();
     }
-  }, [viewMode]);
+  }, [viewMode, aiOn]);
 
   useEffect(() => {
-    if (role && !roleLoading) {
-      loadExecutiveData();
+    if (role && !roleLoading && cfgLoaded) {
+      if (execOn) loadExecutiveData();
       loadClassicData();
     }
-  }, [role, roleLoading, rangePreset]);
+  }, [role, roleLoading, rangePreset, cfgLoaded, execOn]);
 
   // Classic PDF Single Tab
   const downloadClassicTabPdf = () => {
@@ -634,6 +644,7 @@ export default function ReportsPage() {
         <div className="flex flex-wrap items-center gap-3">
           {/* VIEW MODE TOGGLE */}
           <div className="flex items-center gap-1 rounded-2xl border border-slate-200 bg-slate-100 p-1 dark:border-zinc-800 dark:bg-zinc-900">
+            {execOn && (
             <button
               onClick={() => setViewMode("executive")}
               className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black transition-all ${
@@ -644,6 +655,7 @@ export default function ReportsPage() {
             >
               <ShieldCheck size={15} /> Executive Owner Dossier
             </button>
+            )}
             <button
               onClick={() => setViewMode("classic")}
               className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black transition-all ${
@@ -654,6 +666,7 @@ export default function ReportsPage() {
             >
               <FileSpreadsheet size={15} /> Classic Operations & Activity
             </button>
+            {aiOn && (
             <button
               onClick={() => setViewMode("ai")}
               className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black transition-all ${
@@ -664,6 +677,7 @@ export default function ReportsPage() {
             >
               <Sparkles size={15} className={viewMode === "ai" ? "animate-pulse" : "text-amber-500"} /> AI Reports
             </button>
+            )}
           </div>
 
           <CurrencyToggle value={currency} onChange={setCurrency} />

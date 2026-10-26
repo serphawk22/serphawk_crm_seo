@@ -177,13 +177,13 @@ def _serialize(session: Session, items: list, tz_offset: Optional[int]) -> list:
 
 def _view_filter(stmt, view: str, start: datetime, end: datetime):
     if view == "pending":
-        return stmt.where(FollowUp.status == core.OPEN)
+        return stmt.where(FollowUp.status.in_(core.OPEN_STATES))
     if view == "overdue":
-        return stmt.where(FollowUp.status == core.OPEN, FollowUp.due_at < start)
+        return stmt.where(FollowUp.status.in_(core.OPEN_STATES), FollowUp.due_at < start)
     if view == "today":
-        return stmt.where(FollowUp.status == core.OPEN, FollowUp.due_at >= start, FollowUp.due_at < end)
+        return stmt.where(FollowUp.status.in_(core.OPEN_STATES), FollowUp.due_at >= start, FollowUp.due_at < end)
     if view == "upcoming":
-        return stmt.where(FollowUp.status == core.OPEN, FollowUp.due_at >= end)
+        return stmt.where(FollowUp.status.in_(core.OPEN_STATES), FollowUp.due_at >= end)
     if view == "completed":
         return stmt.where(FollowUp.status == core.DONE)
     if view == "cancelled":
@@ -469,12 +469,12 @@ def update_followup(fu_id: int, body: FollowUpUpdate, v: inbox.Viewer = Depends(
         fu.auto_send = body.auto_send
         if body.auto_send:
             fu.last_error = None
-    if body.status == "Cancelled" and fu.status == core.OPEN:
+    if body.status == "Cancelled" and fu.status in core.OPEN_STATES:
         fu.status = core.CANCELLED
         fu.completed_at = core.utcnow()
         fu.completed_by = v.user.id
         core.log_activity(session, fu, "Follow-up cancelled", "", v.user.id)
-    elif body.status == "Pending" and fu.status != core.OPEN:
+    elif body.status == "Pending" and fu.status not in core.OPEN_STATES:
         fu.status = core.OPEN
         fu.completed_at = fu.completed_by = fu.outcome = None
         fu.reminder_sent_at = None
@@ -514,7 +514,7 @@ class CompleteBody(BaseModel):
 def complete_followup(fu_id: int, body: CompleteBody, v: inbox.Viewer = Depends(get_viewer),
                       session: Session = Depends(get_session)):
     fu = _load(session, v, fu_id)
-    if fu.status != core.OPEN:
+    if fu.status not in core.OPEN_STATES:
         raise HTTPException(status_code=400, detail="This follow-up is already closed.")
     _, _, east = _day_bounds(body.tz_offset)
     now = core.utcnow()
@@ -699,7 +699,7 @@ def send_followup_email(fu_id: int, body: SendBody, v: inbox.Viewer = Depends(ge
     if not fu.contact_email:
         fu.contact_email = to
     core.mark_email_sent(session, fu, sent, actor_id=v.user.id, actor_name=v.user.name or v.user.email,
-                         complete=body.complete and fu.status == core.OPEN, outcome=(body.outcome or "").strip() or None)
+                         complete=body.complete and fu.status in core.OPEN_STATES, outcome=(body.outcome or "").strip() or None)
     fu.auto_send = False
     session.commit()
     session.refresh(fu)

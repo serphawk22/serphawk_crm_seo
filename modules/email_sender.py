@@ -56,6 +56,15 @@ def _serphawk_logo_bytes():
     return _logo_bytes_cache
 
 
+from modules.branding import DEFAULT as DEFAULT_BRAND, current_brand, _UNSET as _UNSET_TENANT
+
+
+def _product_name(tenant_id=_UNSET_TENANT):
+    """'SERP Hawk CRM' for the default identity, else the tenant's own brand name."""
+    brand = current_brand(tenant_id)
+    return "SERP Hawk CRM" if brand is DEFAULT_BRAND else brand.name
+
+
 def _logo_img_html(alt="SERP Hawk"):
     return (
         f'<img src="cid:serphawk_logo" alt="{alt}" width="150" height="150" '
@@ -63,10 +72,37 @@ def _logo_img_html(alt="SERP Hawk"):
     )
 
 
-def _inject_logo(html):
-    """Insert the SerpHawk logo into an HTML email body."""
+def _tenant_logo_img_html(alt):
+    """A tenant's own logo keeps its proportions (it is not necessarily square)."""
+    return (
+        f'<img src="cid:serphawk_logo" alt="{_escape_html(alt)}" '
+        'style="display:block;margin:0 auto;max-width:170px;max-height:90px;width:auto;height:auto" />'
+    )
+
+
+def _logo_for_email():
+    """(png bytes, is_tenant_logo) for the current identity; (None, False) when it should carry no logo."""
+    if current_brand() is DEFAULT_BRAND:
+        return _serphawk_logo_bytes(), False
+    return _tenant_logo_bytes(), True
+
+
+def _tenant_logo_bytes():
+    from modules.branding import current_logo
+    return current_logo()
+
+
+def _inject_logo(html, tenant_logo=False):
+    """Insert the logo into an HTML email body: SerpHawk's for the default identity, the tenant's own upload for a
+    tenant with its own brand (nothing when it has none)."""
     if "cid:serphawk_logo" in html:
         return html
+    if current_brand() is not DEFAULT_BRAND and not tenant_logo:
+        return html
+    if tenant_logo:
+        block = f'<div style="text-align:center;background:#ffffff;padding:18px 18px 4px">{_tenant_logo_img_html(current_brand().name)}</div>'
+        m = re.search(r"(<body[^>]*>)", html, re.I)
+        return html[: m.end()] + block + html[m.end():] if m else block + html
     img = _logo_img_html()
     replacements = [
         ('<strong style="font-size:18px">🦅 SERP Hawk CRM</strong>', img),
@@ -212,8 +248,11 @@ def send_email_outlook(
         # Plain text → render it inside the branded shell too, so every email
         # (PDF notifications, orders, credentials, …) carries the SerpHawk
         # logo and clean layout instead of a bare text blob.
-        paragraphs = [p.replace("\n", "<br>") for p in re.split(r"\n\s*\n", body.strip())]
-        body = "".join(f"<p>{_escape_html(p)}</p>" for p in paragraphs if p)
+        # Escape first, then turn single line breaks into <br> (escaping after would print "&lt;br&gt;").
+        paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body.strip())]
+        body = "".join(
+            f"<p>{_escape_html(p).replace(chr(10), '<br>')}</p>" for p in paragraphs if p
+        )
         is_html = True
 
     if is_html:
@@ -226,9 +265,9 @@ def send_email_outlook(
         if tracking_id and tracking_base_url:
             body = _inject_tracking_pixel(body, tracking_base_url, tracking_id)
 
-        logo_bytes = _serphawk_logo_bytes()
+        logo_bytes, tenant_logo = _logo_for_email()
         if logo_bytes:
-            body = _inject_logo(body)
+            body = _inject_logo(body, tenant_logo)
             body_part = MIMEText(body, "html")
             related = MIMEMultipart("related")
             related.attach(body_part)
@@ -291,9 +330,31 @@ def _escape_html(value):
     return str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def branded_email(title, body_html, hero_accent="#2563eb"):
-    """Return a complete, responsive HTML email with the SerpHawk header,
-    the given title and body, and a standard footer."""
+def _email_header_html(brand):
+    if brand is DEFAULT_BRAND:
+        return _logo_img_html()
+    return (f'<div style="color:#ffffff;font-size:22px;font-weight:700;letter-spacing:.5px">'
+            f'{_escape_html(brand.name)}</div>')
+
+
+def _email_footer_html(brand):
+    if brand is DEFAULT_BRAND:
+        return (
+            '<p style="margin:0;color:#7b8794;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">SerpHawk — Digital Marketing Agency</p>'
+            '<p style="margin:6px 0 0;color:#94a3b8;font-size:11px;line-height:1.6;">📧 crm@serphawk.in &nbsp;|&nbsp; 📞 +91 9502901416 &nbsp;|&nbsp; 📍 Bengaluru, India</p>'
+            '<p style="margin:4px 0 0;color:#94a3b8;font-size:11px;line-height:1.6;">SEO · Local SEO · Google Ads · Meta Ads · Social Media · Web Development</p>')
+    title = brand.name + (f" — {brand.tagline}" if brand.tagline else "")
+    contact = " &nbsp;|&nbsp; ".join(_escape_html(x) for x in (brand.email, brand.phone, brand.address) if x)
+    out = (f'<p style="margin:0;color:#7b8794;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">{_escape_html(title)}</p>')
+    if contact:
+        out += f'<p style="margin:6px 0 0;color:#94a3b8;font-size:11px;line-height:1.6;">{contact}</p>'
+    return out
+
+
+def branded_email(title, body_html, hero_accent="#2563eb", tenant_id=_UNSET_TENANT):
+    """Return a complete, responsive HTML email with the brand header (the SerpHawk logo unless the tenant
+    has its own brand), the given title and body, and a standard footer."""
+    brand = current_brand(tenant_id)
     return f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
@@ -304,7 +365,7 @@ def branded_email(title, body_html, hero_accent="#2563eb"):
         <!-- Header -->
         <tr>
           <td style="background:linear-gradient(135deg,#16233b,{hero_accent});padding:22px 28px;text-align:center;">
-            {_logo_img_html()}
+            {_email_header_html(brand)}
           </td>
         </tr>
         <!-- Title -->
@@ -322,9 +383,7 @@ def branded_email(title, body_html, hero_accent="#2563eb"):
         <!-- Footer -->
         <tr>
           <td style="background:#f8fafc;padding:18px 32px;border-top:1px solid #e6e9f0;text-align:center;">
-            <p style="margin:0;color:#7b8794;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">SerpHawk — Digital Marketing Agency</p>
-            <p style="margin:6px 0 0;color:#94a3b8;font-size:11px;line-height:1.6;">📧 crm@serphawk.in &nbsp;|&nbsp; 📞 +91 9502901416 &nbsp;|&nbsp; 📍 Bengaluru, India</p>
-            <p style="margin:4px 0 0;color:#94a3b8;font-size:11px;line-height:1.6;">SEO · Local SEO · Google Ads · Meta Ads · Social Media · Web Development</p>
+            {_email_footer_html(brand)}
             <p style="margin:8px 0 0;color:#94a3b8;font-size:10px;line-height:1.5;">If this email looks unusual, you can safely ignore it. Check your spam folder if a message you expected is missing.</p>
           </td>
         </tr>
@@ -366,7 +425,7 @@ def _attachment_note(filename):
     )
 
 
-def send_password_reset_email(to_email: str, reset_url: str):
+def send_password_reset_email(to_email: str, reset_url: str, tenant_id=_UNSET_TENANT):
     """Send a branded password-reset link. Best-effort: returns True on success."""
     sender = __import__("os").environ.get("EMAIL_SENDER") or __import__("os").environ.get("OUTLOOK_EMAIL") or ""
     password = __import__("os").environ.get("EMAIL_PASSWORD") or __import__("os").environ.get("OUTLOOK_PASSWORD") or ""
@@ -374,8 +433,9 @@ def send_password_reset_email(to_email: str, reset_url: str):
     smtp_port = __import__("os").environ.get("EMAIL_PORT") or __import__("os").environ.get("SMTP_PORT", 587)
     if not sender or not password:
         return False
-    subject = "Reset your SERP Hawk CRM password"
+    subject = f"Reset your {_product_name(tenant_id)} password"
     html = branded_email(
+        tenant_id=tenant_id,
         title="Reset your password",
         body_html=(
             "<p>We received a request to reset the password for your account. Click the button below to choose a new password. This link expires in <strong>1 hour</strong>.</p>"
@@ -399,7 +459,7 @@ def send_password_reset_email(to_email: str, reset_url: str):
         return False
 
 
-def send_otp_email(to_email: str, otp_code: str, purpose: str = "email verification"):
+def send_otp_email(to_email: str, otp_code: str, purpose: str = "email verification", tenant_id=_UNSET_TENANT):
     """Send a branded OTP code email. Best-effort: returns True on success."""
     import os
     sender = os.environ.get("EMAIL_SENDER") or os.environ.get("OUTLOOK_EMAIL") or ""
@@ -408,8 +468,9 @@ def send_otp_email(to_email: str, otp_code: str, purpose: str = "email verificat
     smtp_port = os.environ.get("EMAIL_PORT") or os.environ.get("SMTP_PORT", 587)
     if not sender or not password:
         return False
-    subject = f"Your SERP Hawk CRM verification code: {otp_code}"
+    subject = f"Your {_product_name(tenant_id)} verification code: {otp_code}"
     html = branded_email(
+        tenant_id=tenant_id,
         title="Verify your email address",
         body_html=(
             f"<p>Use the code below to complete your {purpose}. This code expires in <strong>10 minutes</strong>.</p>"

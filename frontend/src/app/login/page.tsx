@@ -39,6 +39,7 @@ export default function LoginPage() {
         }
         
         localStorage.setItem("crm_user", JSON.stringify(data.user));
+        if (data.token) localStorage.setItem("crm_token", data.token);
         
         if (data.is_new_user) {
           window.location.href = "/onboarding";
@@ -231,6 +232,12 @@ export default function LoginPage() {
               New to SERP Hawk?{" "}
               <Link href="/signup" className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
                 Create a demo workspace
+              </Link>
+            </p>
+            <p className="text-center text-sm text-slate-500 dark:text-zinc-500">
+              Setting up your company?{" "}
+              <Link href="/register" className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                Register your company
               </Link>
             </p>
           </div>
