@@ -59,7 +59,7 @@ Prospect information:
 {entity_context}
 
 Rules:
-- 90-140 words, about 45-60 seconds when spoken.
+- 6-8 words, about 2-3 seconds when spoken.
 - Greet the person, introduce yourself as calling from {COMPANY_NAME}, and say why you're calling in one sentence.
 - Reference something specific about their business, then give one or two concrete benefits.
 - End with ONE short open question that invites them to respond (e.g. about their current marketing).
@@ -69,7 +69,7 @@ Rules:
     if extra_context:
         prompt += f"\n\nAdditional instructions from the sales rep (follow closely):\n{extra_context}"
     resp = _openai().chat.completions.create(
-        model=PITCH_MODEL, messages=[{"role": "user", "content": prompt}], max_tokens=400, temperature=0.7,
+        model=PITCH_MODEL, messages=[{"role": "user", "content": prompt}], max_tokens=60, temperature=0.7,
     )
     return (resp.choices[0].message.content or "").strip().strip('"')
 

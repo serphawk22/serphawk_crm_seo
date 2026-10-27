@@ -31,6 +31,7 @@ from typing import List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 import database
@@ -143,16 +144,20 @@ def _names(session: Session, items: list) -> dict:
     user_ids = {i for f in items for i in (f.assigned_to, f.created_by, f.completed_by) if i}
     lead_ids = {f.lead_id for f in items if f.lead_id}
     client_ids = {f.client_id for f in items if f.client_id}
+    conversation_ids = {f.conversation_id for f in items if f.conversation_id}
     users = {u.id: (u.name or u.email) for u in session.exec(select(User).where(User.id.in_(user_ids))).all()} if user_ids else {}
     leads = {l.id: l.company_name or f"Lead #{l.id}" for l in session.exec(
         select(Lead).where(Lead.id.in_(lead_ids)).execution_options(skip_tenant=True)).all()} if lead_ids else {}
     clients = {c.id: core.client_label(c) for c in session.exec(
         select(ClientProfile).where(ClientProfile.id.in_(client_ids)).execution_options(skip_tenant=True)).all()} if client_ids else {}
-    return {"users": users, "leads": leads, "clients": clients}
+    conversations = {c.id: c for c in session.exec(
+        select(ConversationLog).where(ConversationLog.id.in_(conversation_ids)).execution_options(skip_tenant=True)).all()} if conversation_ids else {}
+    return {"users": users, "leads": leads, "clients": clients, "conversations": conversations}
 
 
 def _dict(f: FollowUp, names: dict, start: datetime, end: datetime) -> dict:
     ref = lambda i, table: {"id": i, "name": names[table].get(i, f"#{i}")} if i else None  # noqa: E731
+    conv = names.get("conversations", {}).get(f.conversation_id) if f.conversation_id else None
     return {
         "id": f.id, "title": f.title, "notes": f.notes, "channel": f.channel, "priority": f.priority,
         "status": f.status, "state": _state(f, start, end),
@@ -160,6 +165,18 @@ def _dict(f: FollowUp, names: dict, start: datetime, end: datetime) -> dict:
         "lead": ref(f.lead_id, "leads"), "client": ref(f.client_id, "clients"),
         "contact_name": f.contact_name, "contact_email": f.contact_email, "company_name": f.company_name,
         "source": f.source, "source_ref": f.source_ref, "ai_reason": f.ai_reason,
+        "follow_up_type": f.follow_up_type, "ai_detected": bool(f.ai_detected),
+        "schedule_status": f.schedule_status or "confirmed",
+        "requested_window": f.requested_window, "condition": f.condition,
+        "requested_at_text": f.requested_at_text,
+        "reschedule_count": int(f.reschedule_count or 0), "rescheduled_at": _iso(f.rescheduled_at),
+        "idempotency_key": f.idempotency_key,
+        "conversation_id": f.conversation_id,
+        "conversation": ({
+            "id": conv.id, "title": conv.title, "type": conv.type,
+            "conversation_at": _iso(conv.conversation_at or conv.created_at),
+            "ai_summary": conv.ai_summary, "ai_status": conv.ai_status,
+        } if conv else None),
         "assigned_to": ref(f.assigned_to, "users"), "created_by": ref(f.created_by, "users"),
         "email_subject": f.email_subject, "email_body": f.email_body, "auto_send": bool(f.auto_send),
         "email_sent_at": _iso(f.email_sent_at), "sent_email_id": f.sent_email_id, "last_error": f.last_error,
@@ -361,6 +378,7 @@ class FollowUpCreate(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     notes: Optional[str] = Field(default=None, max_length=8000)
     channel: CHANNELS = "email"
+    follow_up_type: Optional[Literal["Call", "Meeting", "Email", "WhatsApp", "Salesperson Callback", "Proposal", "Other"]] = None
     priority: PRIORITIES = "medium"
     due_at: str
     remind_at: Optional[str] = None
@@ -368,10 +386,39 @@ class FollowUpCreate(BaseModel):
     email_subject: Optional[str] = Field(default=None, max_length=500)
     email_body: Optional[str] = Field(default=None, max_length=20000)
     auto_send: bool = False
-    source: Literal["manual", "ai_suggested"] = "manual"
+    source: Literal["manual", "ai_suggested", "ai_auto", "campaign"] = "manual"
     source_ref: Optional[str] = Field(default=None, max_length=100)
     ai_reason: Optional[str] = Field(default=None, max_length=4000)
+    conversation_id: Optional[int] = None
+    ai_detected: bool = False
+    schedule_status: Literal["confirmed", "needs_confirmation"] = "confirmed"
+    requested_window: Optional[str] = Field(default=None, max_length=120)
+    condition: Optional[str] = Field(default=None, max_length=2000)
+    requested_at_text: Optional[str] = Field(default=None, max_length=200)
+    idempotency_key: Optional[str] = Field(default=None, max_length=200)
     tz_offset: Optional[int] = None
+
+
+def _check_conversation_link(session: Session, v: inbox.Viewer, conversation_id: Optional[int],
+                             lead_id: Optional[int], client_id: Optional[int]) -> Optional[int]:
+    if not conversation_id:
+        return None
+    conv = session.exec(select(ConversationLog).where(ConversationLog.id == conversation_id)
+                        .execution_options(skip_tenant=True)).first()
+    if not conv or (v.tenant_id is not None and conv.tenant_id != v.tenant_id):
+        raise HTTPException(status_code=404, detail="Source conversation not found")
+    if (lead_id and conv.lead_id and conv.lead_id != lead_id) or (client_id and conv.client_id and conv.client_id != client_id):
+        raise HTTPException(status_code=400, detail="The source conversation belongs to a different record.")
+    return conv.id
+
+
+def _existing_by_key(session: Session, key: Optional[str], tenant_id: Optional[int]) -> Optional[FollowUp]:
+    """Idempotent lookup scoped to the caller's tenant (never leak another tenant's row)."""
+    if not key:
+        return None
+    stmt = select(FollowUp).where(FollowUp.idempotency_key == key)
+    stmt = stmt.where(FollowUp.tenant_id == tenant_id) if tenant_id is not None else stmt.where(FollowUp.tenant_id.is_(None))
+    return session.exec(stmt.execution_options(skip_tenant=True)).first()
 
 
 def _validate_email_fields(fu: FollowUp):
@@ -389,26 +436,46 @@ def create_followup(body: FollowUpCreate, v: inbox.Viewer = Depends(get_viewer),
     info = _check_record(session, v, body.lead_id, body.client_id)
     if not (body.lead_id or body.client_id or (body.contact_email or "").strip()):
         raise HTTPException(status_code=400, detail="Link the follow-up to a lead, a client, or a contact email.")
+    conversation_id = _check_conversation_link(session, v, body.conversation_id, body.lead_id, body.client_id)
     _, _, east = _day_bounds(body.tz_offset)
     due = _parse_due(body.due_at, east)
     if due is None:
         raise HTTPException(status_code=400, detail="A follow-up date is required.")
+    # Idempotency: a retried create for the same source returns the existing row instead of
+    # adding a second active follow-up.
     tenant_id = info.get("tenant_id") if info else (v.tenant_id if v.tenant_id is not None else v.user.tenant_id)
+    if body.idempotency_key:
+        existing = _existing_by_key(session, body.idempotency_key, tenant_id)
+        if existing:
+            return {"item": _serialize(session, [existing], body.tz_offset)[0], "duplicate": True}
     fu = FollowUp(
         tenant_id=tenant_id, lead_id=body.lead_id if not body.client_id else None, client_id=body.client_id,
         contact_name=(body.contact_name or "").strip() or info.get("contact_name"),
         contact_email=(body.contact_email or "").strip() or info.get("contact_email"),
         company_name=(body.company_name or "").strip() or info.get("label"),
-        title=body.title.strip(), notes=(body.notes or "").strip() or None, channel=body.channel, priority=body.priority,
+        title=body.title.strip(), notes=(body.notes or "").strip() or None, channel=body.channel,
+        follow_up_type=body.follow_up_type, priority=body.priority,
         due_at=due, remind_at=_parse_due(body.remind_at, east, "remind_at") or due,
         assigned_to=_check_assignee(session, v, body.assigned_to) or info.get("owner_id") or v.user.id,
         created_by=v.user.id, email_subject=(body.email_subject or "").strip() or None,
         email_body=(body.email_body or "").strip() or None, auto_send=body.auto_send,
         source=body.source, source_ref=body.source_ref, ai_reason=body.ai_reason,
+        conversation_id=conversation_id, ai_detected=body.ai_detected,
+        schedule_status=body.schedule_status, requested_window=body.requested_window,
+        condition=body.condition, requested_at_text=body.requested_at_text,
+        idempotency_key=body.idempotency_key,
     )
     _validate_email_fields(fu)
     session.add(fu)
-    session.flush()
+    try:
+        session.flush()
+    except IntegrityError:
+        session.rollback()
+        if body.idempotency_key:
+            existing = _existing_by_key(session, body.idempotency_key, tenant_id)
+            if existing:
+                return {"item": _serialize(session, [existing], body.tz_offset)[0], "duplicate": True}
+        raise HTTPException(status_code=409, detail="A follow-up for this source already exists.")
     core.log_activity(session, fu, "Follow-up scheduled", f"Due {due.date().isoformat()} via {fu.channel}", v.user.id)
     if fu.assigned_to and fu.assigned_to != v.user.id:
         core.notify(session, fu.assigned_to, fu.tenant_id, f"New follow-up assigned: {fu.title}",
@@ -423,6 +490,7 @@ class FollowUpUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=500)
     notes: Optional[str] = Field(default=None, max_length=8000)
     channel: Optional[CHANNELS] = None
+    follow_up_type: Optional[Literal["Call", "Meeting", "Email", "WhatsApp", "Salesperson Callback", "Proposal", "Other"]] = None
     priority: Optional[PRIORITIES] = None
     due_at: Optional[str] = None
     remind_at: Optional[str] = None
@@ -433,6 +501,10 @@ class FollowUpUpdate(BaseModel):
     email_body: Optional[str] = Field(default=None, max_length=20000)
     auto_send: Optional[bool] = None
     status: Optional[Literal["Pending", "Cancelled"]] = None
+    schedule_status: Optional[Literal["confirmed", "needs_confirmation"]] = None
+    requested_window: Optional[str] = Field(default=None, max_length=120)
+    condition: Optional[str] = Field(default=None, max_length=2000)
+    requested_at_text: Optional[str] = Field(default=None, max_length=200)
     tz_offset: Optional[int] = None
 
 
@@ -443,7 +515,8 @@ def update_followup(fu_id: int, body: FollowUpUpdate, v: inbox.Viewer = Depends(
     _, _, east = _day_bounds(body.tz_offset)
     fields = body.model_dump(exclude_unset=True)
     rescheduled = False
-    for key in ("title", "notes", "channel", "priority", "contact_name", "contact_email", "email_subject", "email_body"):
+    for key in ("title", "notes", "channel", "priority", "contact_name", "contact_email", "email_subject", "email_body",
+                "follow_up_type", "schedule_status", "requested_window", "condition", "requested_at_text"):
         if key in fields:
             value = fields[key]
             setattr(fu, key, (value.strip() or None) if isinstance(value, str) else value)
@@ -461,10 +534,21 @@ def update_followup(fu_id: int, body: FollowUpUpdate, v: inbox.Viewer = Depends(
     if "remind_at" in fields:
         fu.remind_at = _parse_due(body.remind_at, east, "remind_at") or fu.due_at
         rescheduled = True
-    if rescheduled:
-        fu.reminder_sent_at = None  # remind again for the new date
     if "assigned_to" in fields:
         fu.assigned_to = _check_assignee(session, v, body.assigned_to) or v.user.id
+    if rescheduled:
+        fu.reminder_sent_at = None  # remind again for the new date
+        fu.reschedule_count = int(fu.reschedule_count or 0) + 1
+        fu.rescheduled_at = core.utcnow()
+        if "schedule_status" not in fields and fu.status == core.OPEN:
+            # A human picking an exact date/time settles an ambiguous "next week" request.
+            fu.schedule_status = "confirmed"
+            fu.requested_window = None
+            fu.requested_at_text = None
+    if "schedule_status" in fields and body.schedule_status == "confirmed":
+        # A human confirming the schedule clears the original ambiguous wording.
+        fu.requested_window = fu.requested_window if "requested_window" in fields else None
+        fu.requested_at_text = fu.requested_at_text if "requested_at_text" in fields else None
     if body.auto_send is not None:
         fu.auto_send = body.auto_send
         if body.auto_send:

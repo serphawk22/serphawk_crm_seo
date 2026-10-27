@@ -24,6 +24,7 @@ from database import (
 )
 from modules.api_tracker import current_salesperson_id
 from modules import voice_agent as va
+from modules import lead_calls
 from modules.tts_service import (
     synthesize, delete_audio, tts_options, twilio_language, language_label, resolve_voice_locale, AUDIO_DIR,
     synthesize_cached, cached_audio, prewarm_cached, CALL_TTS_MODEL, CALL_TTS_TIMEOUT, FILLER_PHRASES,
@@ -73,7 +74,7 @@ PHRASES = {
     "apology": "Sorry, I lost you for a moment. Could you say that again?",
     "goodbye_silence": "I'll let you go for now. Thanks so much for your time, and have a great day!",
     "goodbye_error": "Sorry, we ran into a problem. I'll have a colleague call you back shortly. Thanks, and goodbye!",
-    "default_opening": "Hi, this is a call from {company}. Do you have a minute?",
+    "default_opening": "Hi, this is Alex from {company}. Can we discuss growing your online visibility?",
 }
 
 # Filler pool played while the reply is generated (paid accounts: a varied set of hold phrases in
@@ -272,11 +273,16 @@ def _call_dict(c: AICall, full: bool = False, session: Optional[Session] = None)
     ctx = c.context or {}
     data = {
         "id": c.id, "pitch_id": c.pitch_id, "entity_type": c.entity_type, "entity_id": c.entity_id,
-        "entity_name": c.entity_name, "to_number": c.to_number, "from_number": c.from_number,
+        "entity_name": c.entity_name, "lead_id": c.lead_id, "to_number": c.to_number, "from_number": c.from_number,
         "status": c.status, "mode": c.mode, "language": c.language, "voice": c.voice, "accent": c.accent, "style": c.style,
         "agent_phone": c.agent_phone, "current_intent": c.current_intent, "sentiment": c.sentiment,
         "interest_score": c.interest_score, "summary": c.summary, "outcome": c.outcome,
         "next_steps": c.next_steps, "recording_url": c.recording_url, "duration_seconds": c.duration_seconds,
+        "duration": c.duration_seconds, "call_sid": c.twilio_call_sid, "started_at": _iso(c.created_at),
+        "important_notes": c.important_notes,
+        "follow_up_needed": bool(c.follow_up_needed or c.followup_needed),
+        "follow_up_at": _iso(c.follow_up_at),
+        "follow_up_reason": c.follow_up_reason,
         "error": c.error, "turns": len(c.transcript or []), "call_log_id": c.call_log_id,
         "answered_at": _iso(c.answered_at), "ended_at": _iso(c.ended_at), "created_at": _iso(c.created_at),
         "is_active": c.status in ACTIVE_STATUSES,
@@ -796,8 +802,15 @@ def _dial(session: Session, user: User, pitch: VoicePitch, etype: Optional[str],
     context = {"stage": "pitch", "doubts": [], "objections": [], "silence_count": 0}
     if pitch.language and pitch.language != "en":
         context["phrases"] = va.translate_phrases(PHRASES, language_label(pitch.language))
+    # Attach the call to its lead now (explicit id, contact/client link or dialed number)
+    # so the transcript can never end up as an orphan call.
+    lead = lead_calls.resolve_lead(
+        session, entity_type=etype, entity_id=eid, to_number=to_number,
+        tenant_id=getattr(user, "tenant_id", None),
+    )
     call = AICall(
         pitch_id=pitch.id, entity_type=etype, entity_id=eid, entity_name=info["name"] or pitch.entity_name,
+        lead_id=lead.id if lead else None,
         to_number=to_number, from_number=ready["from_number"], voice=pitch.voice, accent=pitch.accent, language=pitch.language,
         style=pitch.style, speed=pitch.speed,
         agent_phone=(lambda n: n if va.is_e164(n) else None)(va.normalize_phone(agent_phone or user.phone or "")),
@@ -2304,16 +2317,26 @@ def _finalize_call(call_id: int, tenant_id: Optional[int]) -> None:
         starter = session.get(User, call.started_by) if call.started_by else None
         if not call.assigned_to:
             call.assigned_to = (starter.name or starter.email) if starter else None
+        # An unresolved client question still needs a follow-up even if the summary
+        # itself contains no promise, so pass that signal to the extractor.
         call.followup_needed = bool(pending) or call.outcome in ("interested", "callback", "needs_follow_up")
 
-        # Audit trail only — no CallLog row is written for AI voice calls anymore.
-        if call.entity_type in ("client", "lead") and call.entity_id:
-            session.add(ActivityLog(
-                tenant_id=call.tenant_id, userId=call.started_by, action="AI Voice Call", method="Phone",
-                content=f"AI call ({call.status}, outcome: {call.outcome}). {len(pending)} question(s) need follow-up.",
-                details=call.summary,
-                clientId=call.entity_id if call.entity_type == "client" else None,
-                lead_id=call.entity_id if call.entity_type == "lead" else None,
-            ))
+        # Normalize the transcript for the lead chat, attach the call to its lead and
+        # write the follow-up state to both records. The helper also adds the Recent
+        # Activity entry ("AI call - <summary first line>") exactly once.
+        lead = session.get(Lead, call.lead_id) if call.lead_id else None
+        lead_calls.apply_call_result(session, call, lead, force_follow_up=bool(pending))
         session.add(call)
         session.commit()
+
+    # Persist the transcript as a lead/client conversation in its own session so a
+    # summarization or follow-up-detection failure can never roll back the call record.
+    from modules import conversation_store
+    result = conversation_store.save_call_conversation(call_id, tenant_id)
+    # The conversation analyser may resolve a more precise follow-up than the rules did;
+    # keep the lead banner and call record aligned with that FollowUp.
+    try:
+        if result.get("follow_up_id"):
+            lead_calls.sync_follow_up_record(call_id, result["follow_up_id"], tenant_id)
+    except Exception as exc:  # pragma: no cover - never break finalization
+        print(f"[voice_agent] follow-up sync failed for call {call_id}: {exc}")
