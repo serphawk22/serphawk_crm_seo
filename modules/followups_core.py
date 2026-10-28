@@ -125,6 +125,12 @@ def log_activity(session: Session, fu: FollowUp, action: str, details: str = "",
     ))
 
 
+def sync_call_followup(session: Session, fu: FollowUp, deleted=False):
+    if fu.conversation_id:
+        from modules.lead_calls import sync_task_state
+        sync_task_state(session, fu, deleted)
+
+
 def notify(session: Session, user_id: Optional[int], tenant_id: Optional[int], title: str, message: str, link: str):
     if not user_id:
         return
@@ -316,6 +322,7 @@ def process_auto_sends(engine=None, now: Optional[datetime] = None, limit: int =
         due = session.exec(
             select(FollowUp).where(
                 FollowUp.status.in_(OPEN_STATES), FollowUp.auto_send.is_(True), FollowUp.email_sent_at.is_(None),
+                or_(FollowUp.schedule_status == "confirmed", FollowUp.schedule_status.is_(None)),
                 FollowUp.due_at <= now, FollowUp.contact_email.is_not(None), FollowUp.email_body.is_not(None),
             ).order_by(FollowUp.due_at).limit(limit).execution_options(skip_tenant=True)
         ).all()
@@ -439,6 +446,38 @@ def _already_scanned(session: Session, keys: list) -> set:
 AUTO_SOURCES = ("campaign", "ai_auto")
 
 
+def _conversation_id_from_key(key: str) -> Optional[int]:
+    if key.startswith("conv-"):
+        try:
+            return int(key[5:])
+        except ValueError:
+            return None
+    return None
+
+
+def _scan_schedule_status(s: dict) -> str:
+    if s.get("ambiguous") or s.get("requested_window") or s.get("condition") or not s.get("due_time"):
+        return "needs_confirmation"
+    return "confirmed"
+
+
+def _suggestion_due_at(due_day: date, s: dict, tenant_id=None) -> datetime:
+    """Use an explicitly stated HH:MM; otherwise the CRM default hour."""
+    from modules.followup_ai import _crm_tz
+    local_tz = _crm_tz(tenant_id)[0]
+    due_at = datetime(due_day.year, due_day.month, due_day.day,
+                      int(os.getenv("FOLLOWUP_DEFAULT_HOUR", "10")), tzinfo=local_tz).astimezone(timezone.utc)
+    parts = str(s.get("due_time") or "").strip().split(":")
+    if len(parts) != 2 or not all(p.isdigit() for p in parts):
+        return due_at
+    hour, minute = int(parts[0]), int(parts[1])
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return due_at
+    local = datetime(due_day.year, due_day.month, due_day.day, hour, minute,
+                     tzinfo=local_tz)
+    return local.astimezone(timezone.utc)
+
+
 def _enrich_existing(session: Session, fu: FollowUp, s: dict, key: str, due_at: datetime, written: datetime):
     """A note confirms a follow-up that is already open: add what was said to it instead of a duplicate.
 
@@ -451,6 +490,12 @@ def _enrich_existing(session: Session, fu: FollowUp, s: dict, key: str, due_at: 
         fu.notes = f"{fu.notes}\n\n{line}" if fu.notes else line
     if s.get("quote") and not fu.ai_reason:
         fu.ai_reason = s["quote"]
+    conv_id = _conversation_id_from_key(key)
+    if conv_id and not fu.conversation_id:
+        fu.conversation_id = conv_id
+        fu.ai_detected = True
+    if s.get("follow_up_type") and not fu.follow_up_type:
+        fu.follow_up_type = s["follow_up_type"]
     if fu.source in AUTO_SOURCES:
         if as_utc(fu.due_at) != due_at:
             fu.due_at = fu.remind_at = due_at
@@ -458,6 +503,11 @@ def _enrich_existing(session: Session, fu: FollowUp, s: dict, key: str, due_at: 
         if s.get("title"):
             fu.title = s["title"]
         fu.source, fu.source_ref = "ai_auto", key
+        fu.idempotency_key = fu.idempotency_key or key
+        fu.schedule_status = _scan_schedule_status(s)
+        fu.requested_window = (s.get("requested_window") or None) if s.get("requested_window") else fu.requested_window
+        fu.condition = (s.get("condition") or None) if s.get("condition") else fu.condition
+        fu.requested_at_text = (s.get("requested_at_text") or None) if s.get("requested_at_text") else fu.requested_at_text
     fu.updated_at = utcnow()
     session.add(fu)
     log_activity(session, fu, "AI updated a follow-up from a new note", f"{reason} (from {key})", None)
@@ -507,7 +557,7 @@ def scan_notes(engine=None, *, lead_id: Optional[int] = None, client_id: Optiona
             if not s.get("should_follow_up") or not s.get("due_date") or float(s.get("confidence") or 0) < min_conf:
                 continue
             due_day = date.fromisoformat(s["due_date"])
-            due_at = at_local_hour(due_day)
+            due_at = _suggestion_due_at(due_day, s, tid)
             if due_at < now - timedelta(days=7):
                 continue  # an old commitment that has long passed — not worth surfacing
             existing = find_duplicate(session, tenant_id=tid, lead_id=l_id, client_id=c_id, contact_email=None, due_at=due_at)
@@ -525,18 +575,42 @@ def scan_notes(engine=None, *, lead_id: Optional[int] = None, client_id: Optiona
                 company_name=info.get("label"), title=s.get("title") or f"Follow up with {info.get('label', 'contact')}",
                 notes=s.get("reason") or None, ai_reason=s.get("quote") or s.get("reason") or None,
                 channel=s.get("channel") or "email", priority=s.get("priority") or "medium",
+                follow_up_type=s.get("follow_up_type") or "Other",
                 due_at=due_at, remind_at=due_at, source="ai_auto", source_ref=key,
+                conversation_id=_conversation_id_from_key(key), ai_detected=_conversation_id_from_key(key) is not None,
+                schedule_status=_scan_schedule_status(s),
+                requested_window=(s.get("requested_window") or None), condition=(s.get("condition") or None),
+                requested_at_text=(s.get("requested_at_text") or None), idempotency_key=key,
                 assigned_to=assignee, created_by=author_id,
             )
             session.add(fu)
-            session.flush()
+            try:
+                session.flush()
+            except IntegrityError:
+                session.rollback()
+                existing = session.exec(select(FollowUp).where(
+                    FollowUp.tenant_id == tid, FollowUp.idempotency_key == key)
+                    .execution_options(skip_tenant=True)).first()
+                if existing:
+                    result["matched"].append(existing.id)
+                continue
             mark.follow_up_id = fu.id
             session.add(mark)
             log_activity(session, fu, "AI scheduled a follow-up", f"{s.get('reason') or ''} (from {key})", None)
             notify(session, assignee, tid, f"AI scheduled a follow-up: {fu.title}",
                    f"Based on a recent note about {info.get('label', 'a contact')}, a follow-up is set for {due_day.isoformat()}.",
                    record_path(l_id, c_id))
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                # Another worker already owns this source key (conversation detection or a
+                # concurrent scan). Keep exactly one row.
+                session.rollback()
+                existing = session.exec(select(FollowUp).where(FollowUp.idempotency_key == key, FollowUp.tenant_id == tid)
+                                        .execution_options(skip_tenant=True)).first()
+                if existing:
+                    result["matched"].append(existing.id)
+                continue
             result["created"].append(fu.id)
     return result
 

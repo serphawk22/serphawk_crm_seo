@@ -53,6 +53,22 @@ Client Management > *Configure* on a client > *Create demo workspace*: a separat
 branding, eight sample leads and three sample clients, and one `Demo` login (shown once). It never touches the real
 records and can be created more than once.
 
+## Self-service demos and Demo Account Data
+
+A visitor clicks *Create a demo workspace* on the login page (`/signup`), verifies their email with a code and gets their
+own trial tenant: the `serphawk` modules, demo limits (15 clients/leads, 5 emails, 5 radar searches, 5 projects, 5 calls)
+and one `Demo` login. A new Google sign-in gets the same. The verification code is sent from the server mailbox
+(`EMAIL_SENDER` / `EMAIL_PASSWORD` / `EMAIL_HOST` on the backend); without it nobody can finish signing up, and the
+sign-up form now says so instead of waiting for a code.
+
+*Demo Account Data* (`/admin/telemetry`) manages them. As SuperAdmin you see every demo account; a company Admin sees only
+their own company's (Demo logins in their tenant and demo workspaces made for it). Per account: what they did (clients,
+leads, radar, emails, calls ...), last activity, upgrade requests, and the actions *Switch off / on* (signs them out and
+blocks sign-in), *Reset password* (shown once), and, for SuperAdmins only, *limits and usage reset*, *Convert to client*
+(removes the trial limits, the demo user becomes the company Admin, data and modules stay) and *Delete workspace* (the
+whole demo tenant, all-or-nothing; never offered for a Demo login inside a real company). The page also lists unfinished
+sign-ups of the last 7 days and warns when the server mailbox is not configured.
+
 ## When a client wants something the CRM does not do
 
 The client Admin opens *Customization Requests*, describes it, and follows the conversation there. You see every client's

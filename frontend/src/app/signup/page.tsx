@@ -13,6 +13,8 @@ import EmailOTPVerification from "@/components/EmailOTPVerification";
 import { useLanguage } from "@/context/LanguageContext";
 import "@/i18n/config";
 
+const MIN_PASSWORD = 8;
+
 const SIGNUP_LANGUAGES = [
   { code: "en", nativeName: "English", name: "English", flag: "🇺🇸" },
   { code: "es", nativeName: "Español", name: "Spanish", flag: "🇪🇸" },
@@ -213,6 +215,10 @@ export default function SignupPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email || !password) return;
+    if (password.length < MIN_PASSWORD) {
+      setError(`The password must have at least ${MIN_PASSWORD} characters.`);
+      return;
+    }
     setError("");
     setVerifyingOtp(true);
   };
@@ -225,12 +231,13 @@ export default function SignupPage() {
       const res = await fetch(`${API_BASE_URL}/demo/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password })
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), password })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed to create account");
-      
-      await login(email, password);
+
+      const result = await login(email.trim(), password);
+      if (!result.success) throw new Error(result.message || "Your workspace was created, but signing in failed. Please sign in.");
       window.location.href = "/onboarding";
     } catch (err: any) {
       setError(err.message || "An error occurred.");
@@ -425,8 +432,9 @@ export default function SignupPage() {
                 exit={{ opacity: 0, x: 20 }}
               >
                 <EmailOTPVerification
-                  email={email}
+                  email={email.trim()}
                   purpose="signup"
+                  autoSend
                   onVerified={createAccount}
                   onCancel={() => setVerifyingOtp(false)}
                 />

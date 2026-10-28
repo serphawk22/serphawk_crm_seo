@@ -30,7 +30,7 @@ database.engine = ENGINE
 _ENGINE_HOLDERS = ("database", "main", "routers.email_tracking", "routers.inbox", "routers.followups",
                    "routers.email_campaigns", "modules.inbox_sync", "modules.api_tracker", "routers.leaderboard",
                    "routers.voice_agent", "routers.tenant_config", "routers.registration", "routers.workspace",
-                   "routers.customization_requests", "addons.business_suite.scm2",
+                   "routers.customization_requests", "modules.conversation_store", "addons.business_suite.scm2",
                    "addons.business_suite.command_center", "addons.business_suite.extras", "addons.institute.routes")
 
 

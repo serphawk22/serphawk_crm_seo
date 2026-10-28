@@ -5,23 +5,48 @@ import {
   Users, Mail, Radar, Globe, UserPlus, ArrowLeft,
   BarChart2, Clock, TrendingUp, Eye, Search, RefreshCw,
   Activity, CheckCircle2, AlertTriangle, Calendar, PhoneCall, Folder, UserCheck, Wrench,
-  Brain, Target
+  Brain, Target, Settings2, Ban, Power, KeyRound, ArrowUpCircle, Trash2, Loader2, Copy, Save, RotateCcw,
+  Star, MailWarning, Hourglass
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import { useLanguage } from "@/context/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+interface LimitData { usage: number; limit: number }
+type LimitKey = "clients" | "emails" | "searches" | "projects" | "calls";
+const LIMIT_KEYS: LimitKey[] = ["clients", "emails", "searches", "projects", "calls"];
+
 interface DemoAccount {
   id: number;
   email: string;
   name: string;
-  created_at: string;
+  created_at: string | null;
+  last_active: string | null;
   tenant_id: number | null;
+  tenant_name: string | null;
+  company: string | null;
+  kind: "self_service" | "organization" | "in_company";
+  demo_of_name: string | null;
+  active: boolean;
+  upgrade_requested: boolean;
+  limits: Record<LimitKey, LimitData> | null;
+  records: { leads: number; clients: number } | null;
+  can_change_limits: boolean;
+  can_convert: boolean;
+  can_delete: boolean;
 }
 
-interface LimitData { usage: number; limit: number }
+interface DemoListResponse {
+  is_operator: boolean;
+  accounts: DemoAccount[];
+  summary: { total: number; active_this_week: number; new_this_week: number; upgrade_requests: number; disabled: number };
+  pending_signups?: Array<{ email: string; requested_at: string }>;
+  signup_mail_ready?: boolean;
+}
+
 interface DemoDetail {
+  account?: DemoAccount;
   user: { id: number; name: string; email: string; created_at: string; upgrade_requested?: boolean };
   clients:  Array<{ id: number; company: string; website: string; status: string; created_at: string }>;
   leads:    Array<{ id: number; name: string; email: string; company: string; status: string; created_at: string }>;
@@ -90,8 +115,166 @@ function Badge({ text, color }: { text: string; color: string }) {
   return <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${color}`}>{text}</span>;
 }
 
+function KindBadge({ account }: { account: DemoAccount }) {
+  const { t } = useLanguage();
+  if (account.kind === "organization")
+    return <Badge text={`${t("telemetry.kind_organization")}${account.demo_of_name ? `: ${account.demo_of_name}` : ""}`} color="bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400" />;
+  if (account.kind === "in_company")
+    return <Badge text={t("telemetry.kind_in_company")} color="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300" />;
+  return <Badge text={t("telemetry.kind_self_service")} color="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400" />;
+}
+
+async function demoAction(path: string, method: string, body?: unknown) {
+  const res = await fetch(`${API_BASE_URL}/telemetry/demo-accounts/${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", "X-Tenant-ID": "" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || data.message || `Request failed (${res.status})`);
+  return data;
+}
+
+// ─── Manage one demo account ──────────────────────────────────────────────────
+function ManagePanel({ account, onChanged, onGone }: { account: DemoAccount; onChanged: () => void; onGone: () => void }) {
+  const { t } = useLanguage();
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [password, setPassword] = useState<string | null>(null);
+  // only what the admin typed; untouched fields show the saved limit
+  const [edits, setEdits] = useState<Partial<Record<LimitKey, number>>>({});
+  const limitValue = (k: LimitKey) => edits[k] ?? account.limits?.[k]?.limit ?? 0;
+
+  const run = async (key: string, fn: () => Promise<void>) => {
+    setBusy(key); setError(""); setNotice("");
+    try { await fn(); } catch (e) { setError(e instanceof Error && e.message ? e.message : t("telemetry.action_failed")); }
+    setBusy("");
+  };
+
+  const toggleActive = () => run("active", async () => {
+    if (account.active && !window.confirm(t("telemetry.confirm_disable"))) return;
+    await demoAction(String(account.id), "PATCH", { active: !account.active });
+    setNotice(account.active ? t("telemetry.disabled_done") : t("telemetry.enabled_done"));
+    onChanged();
+  });
+
+  const resetPassword = () => run("password", async () => {
+    if (!window.confirm(t("telemetry.confirm_reset_password"))) return;
+    const data = await demoAction(`${account.id}/reset-password`, "POST");
+    setPassword(data.password);
+  });
+
+  const saveLimits = (resetUsage: boolean) => run(resetUsage ? "usage" : "limits", async () => {
+    await demoAction(String(account.id), "PATCH", resetUsage ? { reset_usage: true } : { limits: edits });
+    if (!resetUsage) setEdits({});
+    setNotice(resetUsage ? t("telemetry.usage_reset_done") : t("telemetry.limits_saved"));
+    onChanged();
+  });
+
+  const convert = () => run("convert", async () => {
+    if (!window.confirm(t("telemetry.confirm_convert"))) return;
+    await demoAction(`${account.id}/convert`, "POST");
+    onGone();
+  });
+
+  const remove = () => run("delete", async () => {
+    const typed = window.prompt(t("telemetry.confirm_delete").replace("{email}", account.email));
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== account.email.toLowerCase()) throw new Error(t("telemetry.delete_mismatch"));
+    await demoAction(String(account.id), "DELETE");
+    onGone();
+  });
+
+  const btn = "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all disabled:opacity-50 border";
+
+  return (
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Settings2 className="w-4 h-4 text-indigo-500" />
+        <h3 className="font-bold text-slate-800 dark:text-zinc-100">{t("telemetry.manage_account")}</h3>
+        <KindBadge account={account} />
+        {account.active
+          ? <Badge text={t("telemetry.status_active")} color="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400" />
+          : <Badge text={t("telemetry.status_disabled")} color="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400" />}
+        {account.tenant_name && <span className="text-xs text-slate-400 ml-auto truncate max-w-full">{t("telemetry.workspace")}: {account.company || account.tenant_name}</span>}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button onClick={toggleActive} disabled={!!busy}
+          className={`${btn} ${account.active ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 hover:bg-red-100" : "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100"}`}>
+          {account.active ? <Ban className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
+          {account.active ? t("telemetry.disable_account") : t("telemetry.enable_account")}
+        </button>
+        <button onClick={resetPassword} disabled={!!busy}
+          className={`${btn} bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800`}>
+          <KeyRound className="w-3.5 h-3.5" /> {t("telemetry.reset_password")}
+        </button>
+        {account.can_convert && (
+          <button onClick={convert} disabled={!!busy}
+            className={`${btn} bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700`}>
+            <ArrowUpCircle className="w-3.5 h-3.5" /> {t("telemetry.convert_to_client")}
+          </button>
+        )}
+        {account.can_delete && (
+          <button onClick={remove} disabled={!!busy}
+            className={`${btn} bg-white dark:bg-zinc-900 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20`}>
+            <Trash2 className="w-3.5 h-3.5" /> {t("telemetry.delete_workspace")}
+          </button>
+        )}
+        {busy && <Loader2 className="w-4 h-4 animate-spin text-indigo-500 self-center" />}
+      </div>
+
+      {account.kind === "in_company" && (
+        <p className="text-xs text-slate-500 dark:text-zinc-400">{t("telemetry.in_company_note")}</p>
+      )}
+
+      {password && (
+        <div className="px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-300 flex items-center gap-3 flex-wrap">
+          <span>{t("telemetry.new_password_once")}</span>
+          <code className="font-mono font-bold bg-white/70 dark:bg-zinc-900/60 px-2 py-0.5 rounded">{password}</code>
+          <button onClick={() => navigator.clipboard?.writeText(password)} className="flex items-center gap-1 text-xs font-bold hover:underline">
+            <Copy className="w-3.5 h-3.5" /> {t("telemetry.copy")}
+          </button>
+        </div>
+      )}
+
+      {account.can_change_limits && account.limits && (
+        <div className="space-y-3 pt-1">
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">{t("telemetry.demo_usage_limits")}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {LIMIT_KEYS.map(k => (
+              <label key={k} className="space-y-1">
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400">
+                  {t(`telemetry.limit_${k}`)} <span className="text-slate-400">({account.limits?.[k]?.usage ?? 0} {t("telemetry.used")})</span>
+                </span>
+                <input type="number" min={0} value={limitValue(k)}
+                  onChange={e => setEdits(l => ({ ...l, [k]: Math.max(0, parseInt(e.target.value || "0", 10) || 0) }))}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-sm dark:text-zinc-100 outline-none focus:ring-2 focus:ring-indigo-500" />
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => saveLimits(false)} disabled={!!busy || Object.keys(edits).length === 0}
+              className={`${btn} bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100`}>
+              <Save className="w-3.5 h-3.5" /> {t("telemetry.save_limits")}
+            </button>
+            <button onClick={() => saveLimits(true)} disabled={!!busy}
+              className={`${btn} bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800`}>
+              <RotateCcw className="w-3.5 h-3.5" /> {t("telemetry.reset_usage")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {notice && <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">{notice}</p>}
+      {error && <p className="text-sm font-medium text-red-600 dark:text-red-400">{error}</p>}
+    </div>
+  );
+}
+
 // ─── Demo Detail Full Screen ──────────────────────────────────────────────────
-function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => void }) {
+function DemoDetail({ account, onBack, onGone }: { account: DemoAccount; onBack: () => void; onGone: () => void }) {
   const { user } = useRole();
   const { t } = useLanguage();
   const [detail, setDetail] = useState<DemoDetail | null>(null);
@@ -99,8 +282,8 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
   const [backfilling, setBackfilling] = useState(false);
   const [tab, setTab] = useState<"overview" | "clients" | "leads" | "contacts" | "radar" | "emails" | "meetings" | "calls" | "projects" | "team" | "ai">("overview");
 
-  const loadDetail = async () => {
-    setLoading(true);
+  const loadDetail = async (quiet = false) => {
+    if (!quiet) setLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/telemetry/demo-account/${account.id}`, {
         headers: { "X-Tenant-ID": "" }
@@ -175,6 +358,8 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
           </span>
         </div>
       </div>
+
+      <ManagePanel account={detail?.account ?? account} onChanged={() => loadDetail(true)} onGone={onGone} />
 
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-100 dark:bg-zinc-900 p-1 rounded-2xl overflow-x-auto">
@@ -439,116 +624,180 @@ function DemoDetail({ account, onBack }: { account: DemoAccount; onBack: () => v
 }
 
 // ─── Account Grid ─────────────────────────────────────────────────────────────
+type GridFilter = "all" | "active" | "upgrade" | "disabled";
+
+function relativeTime(iso: string | null, never: string) {
+  if (!iso) return never;
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 60) return `${Math.max(mins, 1)}m`;
+  if (mins < 60 * 24) return `${Math.round(mins / 60)}h`;
+  return `${Math.round(mins / 1440)}d`;
+}
+
 function AccountGrid({ onSelect }: { onSelect: (a: DemoAccount) => void }) {
-  const { user } = useRole();
   const { t } = useLanguage();
-  const [accounts, setAccounts] = useState<DemoAccount[]>([]);
+  const [data, setData] = useState<DemoListResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<GridFilter>("all");
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const res = await fetch(`${API_BASE_URL}/telemetry/demo-accounts`, {
         headers: { "X-Tenant-ID": "" }
       });
-      const data = await res.json();
-      setAccounts(data.accounts || []);
-    } catch {}
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.detail || `${t("telemetry.load_failed")} (${res.status})`);
+      setData(body);
+    } catch (e) {
+      setLoadError(e instanceof Error && e.message ? e.message : t("telemetry.load_failed"));
+    }
     setLoading(false);
-  }, []);
+  }, [t]);
 
   useEffect(() => { load(); }, [load]);
 
+  const accounts = data?.accounts || [];
+  const summary = data?.summary;
+  const q = search.toLowerCase();
   const filtered = accounts.filter(a =>
-    a.name.toLowerCase().includes(search.toLowerCase()) ||
-    a.email.toLowerCase().includes(search.toLowerCase())
+    ((a.name || "").toLowerCase().includes(q) || a.email.toLowerCase().includes(q) || (a.company || "").toLowerCase().includes(q)) &&
+    (filter === "all" || (filter === "active" && a.active) || (filter === "disabled" && !a.active) || (filter === "upgrade" && a.upgrade_requested))
   );
+  const pending = data?.pending_signups || [];
+
+  const cards = [
+    { label: t("telemetry.total_demo_accounts"), value: summary?.total, icon: <Users className="w-6 h-6 text-indigo-600" />, bg: "bg-indigo-50 dark:bg-indigo-900/20" },
+    { label: t("telemetry.active_this_week"), value: summary?.active_this_week, icon: <CheckCircle2 className="w-6 h-6 text-green-600" />, bg: "bg-green-50 dark:bg-green-900/20", hint: `${summary?.new_this_week ?? 0} ${t("telemetry.new_this_week")}` },
+    { label: t("telemetry.upgrade_requests"), value: summary?.upgrade_requests, icon: <Star className="w-6 h-6 text-amber-500" />, bg: "bg-amber-50 dark:bg-amber-900/20" },
+    { label: t("telemetry.disabled_accounts"), value: summary?.disabled, icon: <Ban className="w-6 h-6 text-red-500" />, bg: "bg-red-50 dark:bg-red-900/20" },
+  ];
+  const filters: Array<{ key: GridFilter; label: string }> = [
+    { key: "all", label: t("telemetry.filter_all") },
+    { key: "active", label: t("telemetry.status_active") },
+    { key: "upgrade", label: t("telemetry.upgrade_requests") },
+    { key: "disabled", label: t("telemetry.status_disabled") },
+  ];
 
   return (
     <div className="space-y-5">
+      {data?.is_operator && data.signup_mail_ready === false && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+          <MailWarning className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+          <div className="text-sm text-red-700 dark:text-red-300">
+            <p className="font-bold">{t("telemetry.mail_not_ready")}</p>
+            <p>{t("telemetry.mail_not_ready_desc")}</p>
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center">
-            <Users className="w-6 h-6 text-indigo-600" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {cards.map(c => (
+          <div key={c.label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${c.bg}`}>{c.icon}</div>
+            <div className="min-w-0">
+              <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium truncate">{c.label}</p>
+              <p className="text-2xl font-black text-slate-800 dark:text-zinc-100">{loading && !data ? "—" : (c.value ?? 0)}</p>
+              {c.hint && <p className="text-[11px] text-slate-400">{c.hint}</p>}
+            </div>
           </div>
-          <div>
-            <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">{t("telemetry.total_demo_accounts")}</p>
-            <p className="text-2xl font-black text-slate-800 dark:text-zinc-100">{loading ? "—" : accounts.length}</p>
-          </div>
-        </div>
-        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-green-50 dark:bg-green-900/20 flex items-center justify-center">
-            <CheckCircle2 className="w-6 h-6 text-green-600" />
-          </div>
-          <div>
-            <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">{t("telemetry.active_this_week")}</p>
-            <p className="text-2xl font-black text-slate-800 dark:text-zinc-100">
-              {loading ? "—" : accounts.filter(a => {
-                const d = new Date(a.created_at);
-                return (Date.now() - d.getTime()) < 7 * 24 * 60 * 60 * 1000;
-              }).length}
-            </p>
-          </div>
-        </div>
-        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-            <Activity className="w-6 h-6 text-blue-600" />
-          </div>
-          <div>
-            <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">{t("telemetry.click_to_view")}</p>
-            <p className="text-sm font-semibold text-blue-500">{t("telemetry.clients_leads_radar")}</p>
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Search */}
-      <div className="flex gap-3">
-        <div className="relative flex-1">
+      {/* Search + filters */}
+      <div className="flex gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("telemetry.search_name_email")}
             className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-zinc-100" />
         </div>
-        <button onClick={load} className="p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all text-slate-500">
+        <div className="flex gap-1 bg-slate-100 dark:bg-zinc-900 p-1 rounded-xl">
+          {filters.map(f => (
+            <button key={f.key} onClick={() => setFilter(f.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${filter === f.key ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <button onClick={load} title={t("telemetry.refresh")} className="p-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all text-slate-500">
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
 
+      {loadError && (
+        <div className="px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300">{loadError}</div>
+      )}
+
       {/* Cards */}
-      {loading ? (
+      {loading && !data ? (
         <div className="py-20 text-center"><Activity className="w-8 h-8 animate-pulse mx-auto mb-3 text-indigo-400 opacity-60" /><p className="text-slate-500">{t("telemetry.loading_accounts")}</p></div>
       ) : filtered.length === 0 ? (
-        <div className="py-20 text-center text-slate-500">
+        <div className="py-16 text-center text-slate-500">
           <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p className="font-semibold">{t("telemetry.no_demo_accounts")}</p>
-          <p className="text-sm mt-1">{t("telemetry.no_demo_accounts_desc")}</p>
+          <p className="font-semibold">{accounts.length ? t("telemetry.no_match") : t("telemetry.no_demo_accounts")}</p>
+          {!accounts.length && <p className="text-sm mt-1">{t("telemetry.no_demo_accounts_desc")}</p>}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(a => (
             <motion.button key={a.id} onClick={() => onSelect(a)}
               whileHover={{ y: -2, scale: 1.01 }} whileTap={{ scale: 0.98 }}
-              className="w-full text-left bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:border-indigo-300 dark:hover:border-indigo-700 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all group">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-xl shadow-lg">
-                  {a.name.charAt(0).toUpperCase()}
+              className={`w-full text-left bg-white dark:bg-zinc-900 border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all group ${a.active ? "border-slate-200 dark:border-zinc-800 hover:border-indigo-300 dark:hover:border-indigo-700" : "border-red-200 dark:border-red-900/60 opacity-75"}`}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-xl shadow-lg shrink-0">
+                  {(a.name || a.email).charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-800 dark:text-zinc-100 truncate">{a.name}</p>
+                  <p className="font-bold text-slate-800 dark:text-zinc-100 truncate flex items-center gap-1.5">
+                    {a.name}
+                    {a.upgrade_requested && <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400 shrink-0" />}
+                  </p>
                   <p className="text-xs text-slate-500 truncate">{a.email}</p>
+                  {a.company && <p className="text-[11px] text-slate-400 truncate">{a.company}</p>}
                 </div>
-                <Eye className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 transition-colors flex-shrink-0" />
+                <Eye className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 transition-colors shrink-0" />
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400 flex items-center gap-1">
+              <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                <KindBadge account={a} />
+                {!a.active && <Badge text={t("telemetry.status_disabled")} color="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400" />}
+                {a.records && <Badge text={`${a.records.leads} ${t("telemetry.leads")} · ${a.records.clients} ${t("telemetry.clients")}`} color="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300" />}
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  {a.created_at ? new Date(a.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+                  {a.created_at ? new Date(a.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—"}
                 </span>
-                <span className="text-[10px] font-black px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full">Demo</span>
+                <span className="flex items-center gap-1" title={t("telemetry.last_active")}>
+                  <Activity className="w-3 h-3" />
+                  {relativeTime(a.last_active, t("telemetry.never"))}
+                </span>
               </div>
             </motion.button>
           ))}
+        </div>
+      )}
+
+      {/* Pending sign-ups (operator only) */}
+      {data?.is_operator && pending.length > 0 && (
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center gap-2">
+            <Hourglass className="w-4 h-4 text-amber-500" />
+            <h3 className="font-bold text-slate-800 dark:text-zinc-100">{t("telemetry.pending_signups")}</h3>
+            <span className="text-xs font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 px-2 py-0.5 rounded-full">{pending.length}</span>
+          </div>
+          <p className="px-5 pt-3 text-xs text-slate-500 dark:text-zinc-400">{t("telemetry.pending_signups_desc")}</p>
+          <DataTable
+            headers={[t("telemetry.email"), t("telemetry.requested_at")]}
+            empty=""
+            rows={pending.map(p => [
+              <span key="email" className="font-semibold">{p.email}</span>,
+              <span key="at" className="text-xs text-slate-400">{new Date(p.requested_at).toLocaleString()}</span>,
+            ])}
+          />
         </div>
       )}
     </div>
@@ -591,7 +840,7 @@ export default function DemoAccountsDashboard() {
       <AnimatePresence mode="wait">
         {selected ? (
           <motion.div key={selected.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <DemoDetail account={selected} onBack={() => setSelected(null)} />
+            <DemoDetail account={selected} onBack={() => setSelected(null)} onGone={() => setSelected(null)} />
           </motion.div>
         ) : (
           <motion.div key="grid" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>

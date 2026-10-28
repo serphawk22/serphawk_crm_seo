@@ -377,6 +377,7 @@ def create_followup(body: FollowUpBody, v: inbox.Viewer = Depends(get_viewer), s
         company_name=info.get("label"), assigned_to=assignee, created_by=v.user.id, source="manual",
     )
     session.add(f)
+    core.sync_call_followup(session, f)
     session.flush()
     core.log_activity(session, f, "Follow-up scheduled", f"Due {_local_label(due, tz_name)} via {_shown(f.channel, CHANNELS, 'Email')}", v.user.id)
     if assignee != v.user.id:
@@ -433,6 +434,7 @@ def update_followup(follow_up_id: int, body: FollowUpUpdate, v: inbox.Viewer = D
             f.status, f.completed_at, f.completed_by = st, None, None
     f.updated_at = core.utcnow()
     session.add(f)
+    core.sync_call_followup(session, f)
     session.commit()
     session.refresh(f)
     return _one(session, f)
@@ -454,6 +456,7 @@ def change_status(follow_up_id: int, body: StatusUpdateBody, v: inbox.Viewer = D
         f.completed_at = f.completed_by = None
     f.updated_at = core.utcnow()
     session.add(f)
+    core.sync_call_followup(session, f)
     core.log_activity(session, f, f"Follow-up marked {st}", f.outcome or "", v.user.id)
     session.commit()
     session.refresh(f)
@@ -470,10 +473,15 @@ def reschedule(follow_up_id: int, body: RescheduleBody, v: inbox.Viewer = Depend
         raise HTTPException(status_code=400, detail="Pick a date and time.")
     minutes = _reminder_minutes(f)
     f.due_at, f.timezone, f.remind_at = due, tz_name, _remind_at(due, minutes)
+    f.schedule_status = "confirmed"
+    f.requested_window = f.requested_at_text = None
+    f.reschedule_count = int(f.reschedule_count or 0) + 1
+    f.rescheduled_at = core.utcnow()
     f.status, f.completed_at, f.completed_by = core.OPEN, None, None
     f.reminder_sent_at = f.overdue_notified_at = None
     f.updated_at = core.utcnow()
     session.add(f)
+    core.sync_call_followup(session, f)
     core.log_activity(session, f, "Follow-up rescheduled", f"Now due {_local_label(due, tz_name)}", v.user.id)
     session.commit()
     session.refresh(f)
@@ -489,6 +497,7 @@ def complete(follow_up_id: int, body: Optional[CompleteBody] = None, v: inbox.Vi
     if body and body.note:
         f.outcome = body.note
     session.add(f)
+    core.sync_call_followup(session, f)
     core.log_activity(session, f, "Follow-up completed", f.outcome or "", v.user.id)
     session.commit()
     session.refresh(f)
@@ -500,6 +509,7 @@ def reopen(follow_up_id: int, v: inbox.Viewer = Depends(get_viewer), session: Se
     f = fu_api._load(session, v, follow_up_id)
     f.status, f.completed_at, f.completed_by, f.updated_at = core.OPEN, None, None, core.utcnow()
     session.add(f)
+    core.sync_call_followup(session, f)
     core.log_activity(session, f, "Follow-up reopened", "", v.user.id)
     session.commit()
     session.refresh(f)
@@ -509,6 +519,7 @@ def reopen(follow_up_id: int, v: inbox.Viewer = Depends(get_viewer), session: Se
 @router.delete("/follow-ups/{follow_up_id}")
 def delete_followup(follow_up_id: int, v: inbox.Viewer = Depends(get_viewer), session: Session = Depends(get_session)):
     f = fu_api._load(session, v, follow_up_id)
+    core.sync_call_followup(session, f, deleted=True)
     session.delete(f)
     session.commit()
     return {"ok": True}

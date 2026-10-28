@@ -68,6 +68,7 @@ SOFT_REFS: Dict[Tuple[str, str], str] = {
     ("follow_ups", "lead_id"): "leads", ("follow_ups", "client_id"): "client_profiles", ("follow_ups", "assigned_to"): "users",
     ("follow_ups", "created_by"): "users", ("follow_ups", "sent_email_id"): "sent_emails",
     ("follow_ups", "contact_id"): "contacts", ("follow_ups", "completed_by"): "users",
+    ("follow_ups", "conversation_id"): "conversation_logs",
     ("inbox_messages", "lead_id"): "leads", ("inbox_messages", "client_id"): "client_profiles",
     ("inbox_messages", "contact_id"): "contacts", ("inbox_messages", "sent_email_id"): "sent_emails",
     ("ownership_history", "from_user_id"): "users", ("ownership_history", "to_user_id"): "users",

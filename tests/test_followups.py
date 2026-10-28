@@ -19,6 +19,7 @@ import unittest
 
 from tests._fixtures import brand_as_dapros
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from unittest import mock
 
 from fastapi import FastAPI
@@ -743,7 +744,10 @@ class SchedulerTests(DBTestCase):
         with Session(ENGINE) as s:
             fu = s.exec(select(FollowUp)).one()
             expected = followup_ai.parse_relative_date("respond next week", NOW.date())
-            self.assertEqual(core.as_utc(fu.due_at), core.at_local_hour(expected))
+            # The fixture is a DaPros workspace: its 10am is in Mexico City.
+            promised = datetime(expected.year, expected.month, expected.day, 10,
+                                tzinfo=ZoneInfo("America/Mexico_City")).astimezone(timezone.utc)
+            self.assertEqual(core.as_utc(fu.due_at), promised)
             self.assertEqual((fu.source, fu.source_ref, fu.assigned_to, fu.lead_id), ("ai_auto", "note-1", SALES, 1))
             self.assertEqual(fu.contact_email, "jane@acme.com")
             self.assertIn("respond next week", fu.ai_reason)
@@ -776,7 +780,9 @@ class SchedulerTests(DBTestCase):
             self.assertIn("AI (", fu.notes)
 
     def test_note_moves_a_matching_campaign_follow_up_to_the_promised_date(self):
-        promised = core.at_local_hour(followup_ai.parse_relative_date("respond next week", NOW.date()))
+        day = followup_ai.parse_relative_date("respond next week", NOW.date())
+        promised = datetime(day.year, day.month, day.day, 10,
+                            tzinfo=ZoneInfo("America/Mexico_City")).astimezone(timezone.utc)
         campaign_fu = self.add_fu(source="campaign", title="Follow up on “Growth ideas”", due_at=promised - timedelta(days=2),
                                   reminder_sent_at=NOW)
         with Session(ENGINE) as s:

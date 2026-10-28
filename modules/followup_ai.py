@@ -9,9 +9,11 @@ template) so the feature keeps working without OPENAI_API_KEY or when the AI
 call fails. Notes and emails are untrusted text — prompts fence them as data
 (email_ai.UNTRUSTED) and outputs are validated here.
 """
+import os
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from modules import email_ai
 from modules.email_ai import EmailAIError
@@ -38,10 +40,113 @@ _COMMITMENT_RE = re.compile(
 )
 
 
-def _shift_off_weekend(d: date) -> date:
+def shift_off_weekend(d: date) -> date:
     while d.weekday() >= 5:  # Saturday / Sunday -> Monday
         d += timedelta(days=1)
     return d
+
+
+# Backwards-compatible private name used throughout this module.
+_shift_off_weekend = shift_off_weekend
+
+FOLLOW_UP_TYPES = ("Call", "Meeting", "Email", "WhatsApp", "Salesperson Callback", "Proposal", "Other")
+
+_WINDOW_PATTERNS = (
+    (r"\bearly next week\b", "early next week"),
+    (r"\bnext week\b", "next week"),
+    (r"\bthis week\b", "this week"),
+    (r"\bend of (?:the |this )?(?:week|month)\b", "end of the period"),
+    (r"\bnext month\b", "next month"),
+    (r"\bwithin (?:a|an|one|two|three|four|five|\d+) (?:day|week|month)s?\b", "within a stated period"),
+    (r"\bin (?:a|an|one|two|three|four|five|\d+) (?:day|week|month)s?\b", "in a stated period"),
+    (r"\bsometime\b", "sometime"),
+    (r"\bsoon\b", "soon"),
+    (r"\bafter (?:the |our )?(?:proposal|demo|meeting|call|review|approval|budget)\b", "after a prerequisite"),
+)
+
+_TIME_RE = re.compile(
+    r"(?:\b(?:at|around|about|by)\s+(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b)"
+    r"|(?:\b(?:at|around|about|by)\s+(\d{1,2})\s*(a\.?m\.?|p\.?m\.?)\b)"
+    r"|(?:\b(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\b)"
+    r"|(?:\b(noon|midday|midnight)\b)",
+    re.I,
+)
+
+
+def _clock(hour: int, minute: int, suffix: str = "") -> Optional[str]:
+    suffix = (suffix or "").replace(".", "").lower()
+    if suffix == "pm" and hour < 12:
+        hour += 12
+    if suffix == "am" and hour == 12:
+        hour = 0
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    return f"{hour:02d}:{minute:02d}"
+
+
+def parse_time_text(text: str) -> Optional[str]:
+    """The clock time explicitly stated in the text as HH:MM (24h), or None.
+
+    "tomorrow at 3 pm" -> 15:00; "15 Oct" is a date, not a time; "at 3" or "morning"
+    stays unresolved so we never invent a precise appointment time.
+    """
+    for m in _TIME_RE.finditer(text or ""):
+        if m.group(9):  # noon / midday / midnight
+            word = m.group(9).lower()
+            return {"noon": "12:00", "midday": "12:00", "midnight": "00:00"}[word]
+        if m.group(1) is not None:
+            hour, minute, suffix = m.group(1), m.group(2), m.group(3)
+        elif m.group(4) is not None:
+            hour, minute, suffix = m.group(4), 0, m.group(5)
+        else:
+            hour, minute, suffix = m.group(6), m.group(7), m.group(8)
+        value = _clock(int(hour), int(minute or 0), suffix or "")
+        if value:
+            return value
+    return None
+
+
+def detect_window(text: str) -> Optional[str]:
+    """The vague time window in the text ("next week", "after the proposal"), if any."""
+    t = text or ""
+    for pattern, label in _WINDOW_PATTERNS:
+        m = re.search(pattern, t, re.I)
+        if m:
+            return _clip(m.group(0), 120) or label
+    return None
+
+
+def detect_condition(text: str) -> Optional[str]:
+    """A prerequisite attached to the commitment ("if the budget is approved")."""
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text or ""):
+        if re.search(r"\b(if|once|after|unless|depending on|provided that|subject to)\b", sentence, re.I):
+            return _clip(sentence, 300)
+    return None
+
+
+def infer_follow_up_type(text: str, channel: str = "email") -> str:
+    t = (text or "").lower()
+    if re.search(r"\b(proposal|quote|quotation|contract|deck|pricing document)\b", t):
+        return "Proposal"
+    if re.search(r"\b(call me back|call back|callback|ring me back|phone me back|i(?:'ll| will) call (?:you )?back)\b", t):
+        return "Salesperson Callback"
+    if re.search(r"\b(whatsapp|whats app)\b", t):
+        return "WhatsApp"
+    if re.search(r"\b(meeting|demo|zoom|google meet|teams call|appointment|visit)\b", t):
+        return "Meeting"
+    if re.search(r"\b(call|phone|ring|dial)\b", t) or channel == "call":
+        return "Call"
+    if re.search(r"\b(email|mail|write to|send (?:me )?(?:an )?email)\b", t) or channel == "email":
+        return "Email"
+    if channel == "meeting":
+        return "Meeting"
+    if channel == "whatsapp":
+        return "WhatsApp"
+    return "Other"
+
+
+def _priority(text: str) -> str:
+    return "high" if re.search(r"\b(urgent|asap|immediately|right away|today|important|critical)\b", text or "", re.I) else "medium"
 
 
 def _end_of_week(d: date) -> date:
@@ -149,16 +254,31 @@ def heuristic_extract(text: str, base: date) -> dict:
     due = parse_relative_date(_first_sentence_with(text, _COMMITMENT_RE), base) if committed else None
     due = due or parse_relative_date(text, base)
     if not due or not committed:
-        return {"should_follow_up": False, "due_date": None, "title": "", "reason": "", "quote": "",
-                "channel": "email", "priority": "medium", "confidence": 0.0, "engine": "rules"}
+        return {"should_follow_up": False, "due_date": None, "due_time": None, "title": "",
+                "reason": "", "quote": "", "channel": "email", "priority": "medium",
+                "confidence": 0.0, "engine": "rules", "follow_up_type": "Other",
+                "requested_at_text": None, "requested_window": None, "condition": None,
+                "ambiguous": False}
     quote = _first_sentence_with(text, _COMMITMENT_RE)
     channel = "call" if re.search(r"\b(call|phone|ring)\b", text, re.I) else (
         "meeting" if re.search(r"\b(meeting|demo|visit)\b", text, re.I) else "email")
+    due_time = parse_time_text(text)
+    window = detect_window(text)
+    condition = detect_condition(text)
+    # The exact wording the contact used about timing, kept for the "needs confirmation" UI.
+    timing = re.search(
+        r"\b(?:on|by|at|around|before|after|next|this|tomorrow|today|within|in)\b[^.!?\n]{0,60}",
+        text or "", re.I,
+    )
     return {
-        "should_follow_up": True, "due_date": due.isoformat(),
+        "should_follow_up": True, "due_date": due.isoformat(), "due_time": due_time,
         "title": _clip(f"Follow up: {quote}", 140),
         "reason": f"From the note: “{_clip(quote, 300)}”", "quote": _clip(quote, 300),
-        "channel": channel, "priority": "medium", "confidence": 0.6, "engine": "rules",
+        "channel": channel, "priority": _priority(text), "confidence": 0.6, "engine": "rules",
+        "follow_up_type": infer_follow_up_type(text, channel),
+        "requested_at_text": _clip(timing.group(0) if timing else quote, 200),
+        "requested_window": window, "condition": condition,
+        "ambiguous": bool(window or condition),
     }
 
 
@@ -178,12 +298,60 @@ def _valid_date(value, base: date, floor: date) -> Optional[date]:
 
 
 _DATE_RULES = (
-    "Date rules: resolve relative dates against the date the text was written. When the contact promised to get "
-    "back within a period, schedule the follow-up at the END of that period so they have time to respond "
-    "(\"next week\" -> Friday of next week, \"in two weeks\" -> that day, \"tomorrow\" -> the next day). If a "
-    "specific day or date is named, use it. Never schedule on a Saturday or Sunday. If the text implies a "
-    "follow-up but gives no timing, use 3 business days after it was written."
+    "Date rules: resolve relative dates against the date and local time the text was written. When the contact "
+    "promised to get back within a period, schedule the follow-up at the END of that period so they have time to "
+    "respond (\"next week\" -> Friday of next week, \"in two weeks\" -> that day, \"tomorrow\" -> the next day). "
+    "If a specific day or date is named, use it. Never schedule on a Saturday or Sunday. If the text implies a "
+    "follow-up but gives no timing, use 3 business days after it was written. Never invent an exact clock time: "
+    "only return due_time when the text itself stated one. For a vague window (\"next week\", \"sometime after the "
+    "proposal\") return the best-effort due_date, put the original wording in requested_window and set ambiguous "
+    "to true so the salesperson confirms it."
 )
+
+
+def _str_list(value, limit: int = 8, item_chars: int = 400) -> list:
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, (list, tuple)):
+        return []
+    out = []
+    for item in value:
+        text = _clip(item, item_chars) if not isinstance(item, dict) else _clip(
+            " — ".join(str(v) for v in item.values() if v), item_chars)
+        if text and text not in out:
+            out.append(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _normalise_time(value) -> Optional[str]:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    # Already HH:MM (24h)?
+    m = re.match(r"^(\d{1,2}):(\d{2})(?:\s*(am|pm))?$", raw, re.I)
+    if m:
+        return _clock(int(m.group(1)), int(m.group(2)), m.group(3) or "")
+    return parse_time_text(raw)
+
+
+def _valid_follow_up_type(value) -> Optional[str]:
+    if not value:
+        return None
+    raw = str(value).strip().lower()
+    for known in FOLLOW_UP_TYPES:
+        if raw == known.lower():
+            return known
+    # Accept common AI synonyms.
+    if "callback" in raw or "call back" in raw:
+        return "Salesperson Callback"
+    for known in FOLLOW_UP_TYPES:
+        if known.lower() in raw:
+            return known
+    return None
 
 
 def extract_from_note(text: str, written_on: date, today: date, record_label: str = "") -> dict:
@@ -197,10 +365,14 @@ def extract_from_note(text: str, written_on: date, today: date, record_label: st
         "waiting on budget/approval, or the salesperson promised to send something or call back. Pure facts with "
         "no pending next step, closed deals, and refusals (\"not interested\", \"unsubscribe\") need no follow-up.\n"
         f"{_DATE_RULES}\n{email_ai.UNTRUSTED}\n"
-        'Respond as JSON: {"should_follow_up": bool, "due_date": "YYYY-MM-DD" or null, "title": "short imperative '
-        'task, max 12 words", "reason": "one sentence on what was said and why to follow up", "quote": "the exact '
-        'words from the note that justify it", "channel": "email|call|meeting|whatsapp|other", '
-        '"priority": "high|medium|low", "confidence": 0.0-1.0}'
+        'Respond as JSON: {"should_follow_up": bool, "due_date": "YYYY-MM-DD" or null, '
+        '"due_time": "HH:MM" or null (only if explicitly stated), '
+        '"follow_up_type": "Call|Meeting|Email|WhatsApp|Salesperson Callback|Proposal|Other", '
+        '"title": "short imperative task, max 12 words", "reason": "one sentence on what was said and why to '
+        'follow up", "quote": "the exact words from the note that justify it", '
+        '"channel": "email|call|meeting|whatsapp|other", "priority": "high|medium|low", '
+        '"requested_at_text": "the contact\'s own timing words", "requested_window": "next week|sometime|..." or null, '
+        '"condition": "any prerequisite (\"if budget approved\")" or null, "ambiguous": bool, "confidence": 0.0-1.0}'
     )
     user = (f"Record: {record_label or 'a lead/client'}\nWritten on: {written_on.isoformat()} "
             f"({_WEEKDAYS[written_on.weekday()].title()})\nToday: {today.isoformat()}\n\n<crm_context>\n{_clip(text, 4000)}\n</crm_context>")
@@ -222,16 +394,130 @@ def _clean_suggestion(data: dict, base: date, floor: date, engine: str) -> dict:
         confidence = 0.7
     channel = str(data.get("channel") or "email").lower()
     priority = str(data.get("priority") or "medium").lower()
+    fu_type = _valid_follow_up_type(data.get("follow_up_type") or data.get("type"))
+    window = _clip(data.get("requested_window"), 120) if should else ""
+    condition = _clip(data.get("condition"), 300) if should else ""
     return {
         "should_follow_up": should,
         "due_date": due.isoformat() if due else None,
+        "due_time": _normalise_time(data.get("due_time")) if should else None,
+        "follow_up_type": fu_type or infer_follow_up_type(str(data.get("quote") or data.get("reason") or ""), channel),
         "title": _clip(data.get("title"), 160) if should else "",
         "reason": _clip(data.get("reason"), 600) if should else "",
         "quote": _clip(data.get("quote"), 400) if should else "",
         "channel": channel if channel in CHANNELS else "email",
         "priority": priority if priority in PRIORITIES else "medium",
+        "requested_at_text": _clip(data.get("requested_at_text"), 200) if should else "",
+        "requested_window": window or (detect_window(str(data.get("quote") or data.get("reason") or "")) if should else ""),
+        "condition": condition or (detect_condition(str(data.get("quote") or data.get("reason") or "")) if should else ""),
+        "ambiguous": bool(data.get("ambiguous")) if should else False,
         "confidence": confidence,
         "engine": engine,
+    }
+
+
+def _crm_tz(tenant_id=None):
+    from modules.tenant_scope import current_tenant_id
+    from modules.tenant_settings import get_setting
+    tid = current_tenant_id.get() if tenant_id is None else tenant_id
+    fallback = (os.getenv("CRM_TIMEZONE") or os.getenv("FOLLOWUP_TIMEZONE") or "Asia/Kolkata").strip()
+    name = get_setting(tid, "timezone", fallback)
+    try:
+        return ZoneInfo(name), name
+    except Exception:
+        offset = int(os.getenv("FOLLOWUP_DEFAULT_TZ_OFFSET_MINUTES", "330") or 330)
+        return timezone(timedelta(minutes=offset)), f"UTC{offset // 60:+03d}:{abs(offset) % 60:02d}"
+
+
+def _fallback_intelligence(text: str, existing_summary: str = "") -> dict:
+    """Deterministic summary/intelligence used when the AI is unavailable."""
+    clean = " ".join((text or "").split())
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text or "") if s.strip()]
+    summary = (existing_summary or "").strip()
+    if not summary:
+        summary = _clip(" ".join(sentences[:4]) or clean, 1200)
+    key_points = [_clip(s, 400) for s in sentences[:6]]
+    requirements = [_clip(s, 400) for s in sentences if re.search(
+        r"\b(need|needs|require|requires|looking for|want|wants|must|expect|budget)\b", s, re.I)][:6]
+    objections = [_clip(s, 400) for s in sentences if re.search(
+        r"\b(but|however|concern|worried|not sure|expensive|too much|objection|issue|problem|competitor)\b", s, re.I)][:6]
+    decisions = [_clip(s, 400) for s in sentences if re.search(
+        r"\b(agreed|decided|confirmed|approved|will go with|signed|chose)\b", s, re.I)][:6]
+    actions = [_clip(s, 400) for s in sentences if _COMMITMENT_RE.search(s)][:6]
+    return {
+        "summary": summary, "key_points": key_points, "requirements": requirements,
+        "objections": objections, "decisions": decisions, "follow_up_actions": actions,
+    }
+
+
+def analyze_conversation(text: str, written_at: datetime, record_label: str = "",
+                         existing_summary: str = "", tenant_id=None) -> dict:
+    """Summary + structured conversation intelligence + follow-up intent, in one AI call.
+
+    Returns ``{"summary", "key_points", "requirements", "objections", "decisions",
+    "follow_up_actions", "follow_up": {...}, "engine", "error"}``. On any AI failure the
+    deterministic fallback is returned with ``error`` set; callers keep the notes and offer
+    a retry.
+    """
+    text = (text or "").strip()
+    tz, tz_name = _crm_tz(tenant_id)
+    aware = written_at if written_at.tzinfo else written_at.replace(tzinfo=timezone.utc)
+    local = aware.astimezone(tz)
+    base = local.date()
+    existing = (existing_summary or "").strip()
+    if not text:
+        return {"summary": existing, "key_points": [], "requirements": [], "objections": [],
+                "decisions": [], "follow_up_actions": [],
+                "follow_up": heuristic_extract("", base), "engine": "rules", "error": None}
+
+    system = (
+        "You are a CRM analyst. Read the untrusted conversation notes/transcript and return a summary, the "
+        "structured intelligence a salesperson needs, and whether there is an explicit follow-up commitment.\n"
+        "Capture only what was actually said: requirements/interests, objections, decisions/commitments, and "
+        "promised follow-up actions. Do not invent facts, prices, people, dates or times.\n"
+        f"{_DATE_RULES}\n"
+        f"The CRM timezone is {tz_name}. The conversation happened on {local.strftime('%Y-%m-%d %H:%M (%A)')} "
+        f"local time.\n{email_ai.UNTRUSTED}\n"
+        'Respond as JSON: {"summary": "3-5 sentences", "key_points": ["..."], '
+        '"requirements": ["..."], "objections": ["..."], "decisions": ["..."], '
+        '"follow_up_actions": ["..."], "follow_up": {"should_follow_up": bool, '
+        '"follow_up_type": "Call|Meeting|Email|WhatsApp|Salesperson Callback|Proposal|Other", '
+        '"title": "short imperative task, max 12 words", "due_date": "YYYY-MM-DD" or null, '
+        '"due_time": "HH:MM" or null (only if explicitly stated), '
+        '"requested_at_text": "the contact\'s own timing words", '
+        '"requested_window": "next week|sometime|..." or null, '
+        '"condition": "any prerequisite" or null, "channel": "email|call|meeting|whatsapp|other", '
+        '"priority": "high|medium|low", "reason": "why", "quote": "exact words", '
+        '"ambiguous": bool, "confidence": 0.0-1.0}}'
+    )
+    reused = f"\nAn existing summary is available; reuse it verbatim unless it is clearly incomplete:\n{_clip(existing, 1200)}\n" if existing else ""
+    user = (f"Record: {record_label or 'a lead/client'}\n"
+            f"Conversation time: {local.isoformat()} ({tz_name})\n{reused}\n"
+            f"<crm_context>\n{_clip(text, 7000)}\n</crm_context>")
+    try:
+        data = email_ai._chat_json(system, user, max_tokens=1200, timeout=45)
+    except Exception as exc:
+        # Any provider/transport/parse failure must degrade to the deterministic fallback:
+        # the conversation is already saved and the UI offers a retry.
+        fallback = _fallback_intelligence(text, existing)
+        follow = heuristic_extract(text, base)
+        return {**fallback, "follow_up": follow, "engine": "rules", "error": str(exc)}
+
+    fallback = _fallback_intelligence(text, existing)
+    follow_data = data.get("follow_up") if isinstance(data.get("follow_up"), dict) else data
+    follow = _clean_suggestion(follow_data, base, floor=base, engine="ai")
+    if not follow.get("should_follow_up"):
+        follow = {**heuristic_extract("", base), "should_follow_up": False}
+    return {
+        "summary": _clip(data.get("summary"), 1800) or fallback["summary"],
+        "key_points": _str_list(data.get("key_points")) or fallback["key_points"],
+        "requirements": _str_list(data.get("requirements")),
+        "objections": _str_list(data.get("objections")),
+        "decisions": _str_list(data.get("decisions")),
+        "follow_up_actions": _str_list(data.get("follow_up_actions")),
+        "follow_up": follow,
+        "engine": "ai",
+        "error": None,
     }
 
 
@@ -246,9 +532,12 @@ def suggest_from_history(*, context_text: str, record_label: str, today: date, l
         "pending and the relationship is still open, suggest a light check-in. If the record is clearly closed, "
         "lost or asked not to be contacted, set should_follow_up to false.\n"
         f"{_DATE_RULES}\n{email_ai.UNTRUSTED}\n"
-        'Respond as JSON: {"should_follow_up": bool, "due_date": "YYYY-MM-DD" or null, "title": "short imperative '
-        'task", "reason": "1-2 sentences citing what was said and when", "quote": "exact words that triggered it, '
-        'if any", "channel": "email|call|meeting|whatsapp|other", "priority": "high|medium|low", "confidence": 0.0-1.0}'
+        'Respond as JSON: {"should_follow_up": bool, "due_date": "YYYY-MM-DD" or null, "due_time": "HH:MM" or null, '
+        '"follow_up_type": "Call|Meeting|Email|WhatsApp|Salesperson Callback|Proposal|Other", '
+        '"title": "short imperative task", "reason": "1-2 sentences citing what was said and when", '
+        '"quote": "exact words that triggered it, if any", "channel": "email|call|meeting|whatsapp|other", '
+        '"priority": "high|medium|low", "requested_at_text": "...", "requested_window": "..." or null, '
+        '"condition": "..." or null, "ambiguous": bool, "confidence": 0.0-1.0}'
     )
     user = f"Record: {record_label}\nToday: {today.isoformat()} ({_WEEKDAYS[today.weekday()].title()})\n\n<crm_context>\n{context_text}\n</crm_context>"
     try:

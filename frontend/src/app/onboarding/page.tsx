@@ -48,7 +48,7 @@ export default function OnboardingPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || t("onboarding.error_save_failed"));
 
-      window.location.href = "/dashboard";
+      window.location.href = "/";
     } catch (err: any) {
       setError(err.message || t("onboarding.error_occurred"));
       setIsSubmitting(false);
