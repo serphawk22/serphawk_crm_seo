@@ -62,6 +62,11 @@ export default function EmailOTPVerification({
         setError(data.detail || "Failed to send OTP");
         return;
       }
+      if (data.delivered === false && !data.debug_otp) {
+        // the server could not send the mail: say so instead of waiting for a code that will never arrive
+        setError("We couldn't send the verification email right now. Please try again in a few minutes or contact support.");
+        return;
+      }
       setSent(true);
       setResendTimer(60);
       if (data.debug_otp) {

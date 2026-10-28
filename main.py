@@ -567,6 +567,8 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
                         return None, -1
                     if pv is not None and auth_tokens.password_fingerprint(user_obj.password) != pv:
                         return None, -1  # password changed since the token was issued
+                    if (user_obj.role or "").lower() == "demo" and not user_obj.is_active:
+                        return None, -1  # demo account switched off in Demo Account Data
                     if user_obj.role == "SuperAdmin":
                         # SuperAdmins can optionally impersonate a tenant via header
                         return uid, (int(tenant_header) if tenant_header and tenant_header.isdigit() else None)
@@ -639,6 +641,9 @@ app.include_router(registration_router)
 from routers.workspace import router as workspace_router
 app.include_router(workspace_router)
 
+from routers.demo_accounts import router as demo_accounts_router
+app.include_router(demo_accounts_router)
+
 from routers.customization_requests import router as customization_requests_router
 app.include_router(customization_requests_router)
 
@@ -649,6 +654,9 @@ app.include_router(voice_agent_router)
 
 from routers.followups import router as followups_router
 app.include_router(followups_router)
+
+from routers.lead_conversations import router as lead_conversations_router
+app.include_router(lead_conversations_router)
 
 from routers.email_campaigns import router as email_campaigns_router
 app.include_router(email_campaigns_router)
@@ -3184,6 +3192,8 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not _verify_password(body.password, user):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    if (user.role or "").lower() == "demo" and not user.is_active:
+        raise HTTPException(status_code=403, detail="This demo account has been switched off. Contact us to reactivate it.")
     result = _user_dict(user)
     if user.role == "Client":
         cp = session.exec(select(ClientProfile).where(
@@ -3315,30 +3325,14 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
     is_new_user = False
 
     if not user:
+        # a new Google user gets the same self-service demo workspace as /signup (managed in Demo Account Data)
+        from modules import demo_accounts
         is_new_user = True
-        tenant = Tenant(
-            name=f"Demo Tenant {email}",
-            is_trial=True,
-            limit_clients=15,
-            limit_emails=5,
-            limit_searches=5,
-            limit_projects=5
-        )
-        session.add(tenant)
-        session.commit()
-        session.refresh(tenant)
-
-        import os
-        user = User(
-            email=email,
-            password=_hash_password(os.urandom(16).hex()),
-            name=name,
-            role="Demo",
-            tenant_id=tenant.id
-        )
-        session.add(user)
-        session.commit()
-        session.refresh(user)
+        out = demo_accounts.create_self_service_demo(session, name=name or email, email=email,
+                                                     password_hash=_hash_password(os.urandom(16).hex()))
+        user = session.exec(select(User).where(User.id == out["admin_user_id"]).execution_options(skip_tenant=True)).first()
+    elif (user.role or "").lower() == "demo" and not user.is_active:
+        raise HTTPException(status_code=403, detail="This demo account has been switched off. Contact us to reactivate it.")
 
     result = _user_dict(user)
     if user.role == "Client":
@@ -6912,8 +6906,12 @@ def _ai_call_dict(c: AICall, session: Session = None) -> dict:
         "work_done": c.next_steps,
         "important_notes": c.important_notes,
         "assigned_to": c.assigned_to,
-        "followup_needed": bool(c.followup_needed),
-        "followup_date": c.followup_date,
+        "followup_needed": bool(c.followup_needed or c.follow_up_needed),
+        "followup_date": c.followup_date or (c.follow_up_at.isoformat() if c.follow_up_at else None),
+        "follow_up_needed": bool(c.follow_up_needed or c.followup_needed),
+        "follow_up_at": c.follow_up_at.isoformat() if c.follow_up_at else None,
+        "follow_up_reason": c.follow_up_reason,
+        "lead_id": c.lead_id,
         "client_id": c.entity_id if c.entity_type == "client" else None,
         "entity_name": c.entity_name,
         # AI-call specific extras
@@ -6984,8 +6982,11 @@ def update_calling_agent_log(
         c.assigned_to = None if body["assigned_to"] is None else str(body["assigned_to"])
     if "followup_needed" in body:
         c.followup_needed = bool(body["followup_needed"])
+        c.follow_up_needed = c.followup_needed
     if "followup_date" in body:
         c.followup_date = None if body["followup_date"] is None else str(body["followup_date"])
+        from routers.lead_conversations import _parse_lead_datetime
+        c.follow_up_at = _parse_lead_datetime(c.followup_date)
     if "outcome" in body:
         c.outcome = None if body["outcome"] is None else str(body["outcome"])
     if "next_steps" in body:
@@ -12338,12 +12339,15 @@ def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_ses
         user.id: user.name
         for user in session.exec(select(User).where(User.id.in_(owner_ids))).all()
     } if owner_ids else {}
+    from modules.lead_calls import latest_call_info
+    latest_calls = latest_call_info(session, [lead.id for lead in leads])
     return {
         "leads": [
             {
                 **lead.model_dump(),
                 "owner_name": owners.get(lead.owner_id),
                 "salesperson_name": owners.get(lead.owner_id),
+                **latest_calls.get(lead.id, {}),
             }
             for lead in leads
         ]
@@ -12511,7 +12515,8 @@ def get_lead(lead_id: int, session: Session = Depends(get_session)):
     lead = session.get(Lead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    return lead
+    from modules.lead_calls import latest_call_info
+    return {**lead.model_dump(), **latest_call_info(session, [lead_id]).get(lead_id, {})}
 
 
 @app.get("/leads/{lead_id}/activities")
@@ -12571,30 +12576,6 @@ def create_lead_note(lead_id: int, body: LeadNoteCreate, session: Session = Depe
     session.commit()
     session.refresh(note)
     return note.dict()
-
-
-@app.get("/leads/{lead_id}/conversations")
-def get_lead_conversations(lead_id: int, session: Session = Depends(get_session)):
-    convs = session.exec(select(ConversationLog).where(
-        ConversationLog.lead_id == lead_id).order_by(ConversationLog.created_at.desc())).all()
-    return {"conversations": [c.dict() for c in convs]}
-
-
-class LeadConversationCreate(BaseModel):
-    title: str
-    type: str = "call"
-    description: Optional[str] = None
-    author_name: str = "Admin"
-
-
-@app.post("/leads/{lead_id}/conversations")
-def create_lead_conversation(lead_id: int, body: LeadConversationCreate, session: Session = Depends(get_session)):
-    conv = ConversationLog(lead_id=lead_id, title=body.title, type=body.type,
-                           description=body.description, author_name=body.author_name)
-    session.add(conv)
-    session.commit()
-    session.refresh(conv)
-    return conv.dict()
 
 
 @app.get("/leads/{lead_id}/files")
@@ -18644,62 +18625,6 @@ def get_telemetry_audit_logs(
     }
 
 
-@app.post("/demo/signup")
-def create_demo_account(body: CreateUserRequest, session: Session = Depends(get_session)):
-    existing = session.exec(select(User).where(
-        User.email == body.email).execution_options(skip_tenant=True)).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already exists")
-
-    # Require a verified signup OTP for this email before creating the account
-    from modules import otp as _otp
-    _otp.require_verified(session, body.email, "signup")
-
-    tenant = Tenant(
-        name=f"Demo Tenant {body.email}",
-        is_trial=True,
-        limit_clients=15,
-        limit_emails=5,
-        limit_searches=5,
-        limit_projects=5
-    )
-    session.add(tenant)
-    session.commit()
-    session.refresh(tenant)
-
-    user = User(
-        email=body.email,
-        password=_hash_password(body.password),
-        name=body.name,
-        role="Demo",
-        tenant_id=tenant.id
-    )
-    session.add(user)
-    session.commit()
-    session.refresh(user)
-    _otp.consume(session, body.email, "signup")
-
-    # Notify Admin of new signup (wrapped in try-except so it doesn't block signup if it fails)
-    admin = session.exec(select(User).where(User.role == "Admin")).first()
-    if admin:
-        try:
-            from database import Notification
-            notification = Notification(
-                user_id=admin.id,
-                title="New Demo Signup",
-                message=f"New demo account created: {user.name} ({user.email})",
-                type="info",
-                link="/users"
-            )
-            session.add(notification)
-            session.commit()
-        except Exception as e:
-            session.rollback()
-            print(f"Failed to create admin notification for demo signup: {e}")
-
-    return {"success": True, "user": _user_dict(user), "token": auth_tokens.issue_token(user.id, user.password)}
-
-
 @app.get("/dev/diagnostic")
 def diagnostic(session: Session = Depends(get_session)):
     _require_roles(session, ["SuperAdmin"])
@@ -18748,29 +18673,6 @@ def complete_onboarding(body: OnboardingRequest, session: Session = Depends(get_
     return {"success": True, "message": "Profile updated"}
 
 
-@app.get("/telemetry/demo-accounts")
-def get_demo_accounts(session: Session = Depends(get_session)):
-    """Fetch all demo accounts for the Telemetry Dashboard."""
-    _require_roles(session, ["Admin"])
-    from database import User
-    from sqlmodel import select
-    demo_users = session.exec(select(User).where(
-        User.role == "Demo").order_by(User.createdAt.desc())).all()
-
-    return {
-        "success": True,
-        "accounts": [
-            {
-                "id": u.id,
-                "email": u.email,
-                "name": u.name,
-                "created_at": u.createdAt.isoformat() if u.createdAt else None,
-                "tenant_id": u.tenant_id
-            } for u in demo_users
-        ]
-    }
-
-
 @app.get("/demo/limits")
 def get_demo_limits(session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
@@ -18793,146 +18695,6 @@ def get_demo_limits(session: Session = Depends(get_session)):
             "searches": {"usage": tenant.usage_searches, "limit": tenant.limit_searches},
             "projects": {"usage": tenant.usage_projects, "limit": tenant.limit_projects}
         }
-    }
-
-
-@app.post("/demo/upgrade")
-def request_demo_upgrade(session: Session = Depends(get_session)):
-    from modules.api_tracker import current_salesperson_id
-    user_id = current_salesperson_id.get()
-    if not user_id:
-        return {"success": False, "message": "No user ID"}
-
-    user = session.get(User, user_id)
-
-    admin_users = session.exec(select(User).where(
-        User.role.in_(["SuperAdmin", "Admin"]))).all()
-    for admin in admin_users:
-        n = Notification(
-            user_id=admin.id,
-            title="Account Upgrade Request",
-            message=f"Demo account '{user.name}' ({user.email}) has reached their limits and clicked the Upgrade button!",
-            type="info"
-        )
-        session.add(n)
-
-    session.commit()
-    return {"success": True, "message": "Upgrade request sent to admin."}
-
-
-@app.get("/telemetry/demo-account/{user_id}")
-def get_demo_account_detail(user_id: int, session: Session = Depends(get_session)):
-    """Return full summary of a Demo user's activity - queries by tenant_id."""
-    _require_roles(session, ["Admin"])
-    from database import (User, Tenant, ClientProfile, Lead, RadarAnalysis, SentEmail,
-                          Contact, Meeting, CallLog, Project, Notification, ClientResearch, CompetitorAnalysis)
-    from sqlmodel import select
-
-    user = session.get(User, user_id)
-    if not user or user.role != "Demo":
-        raise HTTPException(status_code=404, detail="Demo account not found")
-
-    tid = user.tenant_id
-
-    def q(model, order_col):
-        """Query rows belonging to this tenant.
-        skip_tenant=True prevents the SQLAlchemy do_orm_execute hook from adding
-        a second conflicting tenant_id filter (admin's tid vs demo user's tid).
-        """
-        if not tid:
-            return []
-        stmt = (
-            select(model)
-            .where(getattr(model, "tenant_id") == tid)
-            .order_by(order_col.desc())
-            .execution_options(skip_tenant=True)
-        )
-        return session.exec(stmt).all()
-
-    raw_clients = q(ClientProfile, ClientProfile.id)
-    raw_leads = q(Lead, Lead.created_at)
-    raw_radar = q(RadarAnalysis, RadarAnalysis.run_date)
-    raw_emails = q(SentEmail, SentEmail.sent_at)
-    raw_contacts = q(Contact, Contact.id)
-    raw_meetings = q(Meeting, Meeting.scheduled_at)
-    raw_calls = q(CallLog, CallLog.received_at)
-    raw_projects = q(Project, Project.id)
-    raw_research = q(ClientResearch, ClientResearch.updated_at)
-    raw_competitor = q(CompetitorAnalysis, CompetitorAnalysis.last_updated)
-
-    # Team members: all users in the same tenant (excluding the demo user themselves)
-    raw_team = []
-    if tid:
-        raw_team = session.exec(
-            select(User)
-            .where(User.tenant_id == tid, User.id != user_id)
-            .execution_options(skip_tenant=True)
-        ).all()
-
-    limits = None
-    if tid:
-        tenant = session.get(Tenant, tid)
-        if tenant:
-            limits = {
-                "clients":  {"usage": tenant.usage_clients,  "limit": tenant.limit_clients},
-                "emails":   {"usage": tenant.usage_emails,   "limit": tenant.limit_emails},
-                "searches": {"usage": tenant.usage_searches, "limit": tenant.limit_searches},
-                "projects": {"usage": tenant.usage_projects, "limit": tenant.limit_projects},
-                "calls":    {"usage": getattr(tenant, "usage_calls", 0), "limit": getattr(tenant, "limit_calls", 5)},
-            }
-
-    upgrade_requested = False
-    admin = session.exec(select(User).where(User.role == "Admin")).first()
-    if admin:
-        upgrade_notif = session.exec(
-            select(Notification)
-            .where(
-                Notification.user_id == admin.id,
-                Notification.title == "Demo Upgrade Request",
-                Notification.message.contains(user.email)
-            )
-            .execution_options(skip_tenant=True)
-        ).first()
-        if upgrade_notif:
-            upgrade_requested = True
-
-    return {
-        "success": True,
-        "user": {
-            "id": user.id, "name": user.name, "email": user.email,
-            "created_at": user.createdAt.isoformat() if user.createdAt else None,
-            "tenant_id": tid,
-            "upgrade_requested": upgrade_requested,
-        },
-        "clients":  [{"id": c.id, "company": c.companyName or c.projectName or "—",
-                      "website": c.websiteUrl or "—", "status": c.status or "—",
-                      "created_at": None} for c in raw_clients],
-        "leads":    [{"id": l.id, "name": l.company_name or "—", "email": l.email or "—",
-                      "company": l.company_name or "—", "status": l.status or "—",
-                      "created_at": l.created_at.isoformat() if l.created_at else None} for l in raw_leads],
-        "contacts": [{"id": c.id,
-                      "name": (c.full_name or f"{c.first_name} {c.last_name or ''}").strip() or "—",
-                      "email": c.email or "—", "designation": c.designation or "—",
-                      "created_at": c.created_at.isoformat() if c.created_at else None} for c in raw_contacts],
-        "radar":    [{"id": r.id, "target_name": r.target_name or "—",
-                      "target_website": r.target_website or "—",
-                      "competitor_count": r.competitor_count or 0, "radius_km": r.radius_km or 0,
-                      "run_date": r.run_date.isoformat() if r.run_date else None} for r in raw_radar],
-        "emails":   [{"id": e.id, "to": e.to_email or "—", "subject": e.subject or "—",
-                      "status": e.status or "—",
-                      "sent_at": e.sent_at.isoformat() if e.sent_at else None} for e in raw_emails],
-        "meetings": [{"id": m.id, "title": m.title or "—", "status": m.status or "—",
-                      "scheduled_at": m.scheduled_at.isoformat() if m.scheduled_at else None} for m in raw_meetings],
-        "calls":    [{"id": c.id, "phone": c.phone_number or "—", "duration": c.duration_seconds or 0,
-                      "summary": c.summary or c.description or "—",
-                      "received_at": c.received_at.isoformat() if c.received_at else None} for c in raw_calls],
-        "projects": [{"id": p.id, "name": p.name or "—", "status": p.status or "—",
-                      "progress": p.progress or 0} for p in raw_projects],
-        "team_members": [{"id": u.id, "name": u.name or "—", "email": u.email or "—",
-                          "role": u.role or "—"} for u in raw_team],
-        "researches": [{"id": r.id, "company_overview": r.company_overview or "", "updated_at": r.updated_at.isoformat() if r.updated_at else None} for r in raw_research],
-        "competitors": [{"id": c.id, "competitor_domain": c.competitor_domain or "", "last_updated": c.last_updated.isoformat() if c.last_updated else None} for c in raw_competitor],
-        "limits": limits,
     }
 
 
@@ -19025,30 +18787,6 @@ def backfill_tenant_data(user_id: int, session: Session = Depends(get_session)):
 
     session.commit()
     return {"success": True, "tenant_id": tid, "user_id": user_id, "fixed": counts}
-
-
-@app.post("/demo/request-upgrade")
-def request_upgrade(
-    email: str = Body(embed=True),
-    session: Session = Depends(get_session)
-):
-    user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    admin = session.exec(select(User).where(User.role == "Admin")).first()
-    if admin:
-        notification = Notification(
-            user_id=admin.id,
-            title="Demo Upgrade Request",
-            message=f"Demo user {user.name} ({user.email}) requested a full account upgrade.",
-            type="alert",
-            link="/users"
-        )
-        session.add(notification)
-        session.commit()
-
-    return {"status": "success", "message": "Upgrade request sent to admin."}
 
 
 class EmailSettingsRequest(BaseModel):
@@ -19184,9 +18922,8 @@ def send_email_otp(body: SendEmailOTPRequest, request: Request, session: Session
     # Signup OTPs are not tied to a logged-in user (account doesn't exist yet)
     if body.purpose == "signup":
         uid = None
-        existing_user = session.exec(
-            select(User).where(User.email == body.email).execution_options(skip_tenant=True)).first()
-        if existing_user:
+        from modules import onboarding
+        if onboarding.email_in_use(session, body.email):
             raise HTTPException(
                 status_code=400, detail="Email already registered. Please sign in instead.")
     else:

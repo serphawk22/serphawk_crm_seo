@@ -10,7 +10,7 @@ def _utcnow():
 
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship, create_engine, Session, JSON
-from sqlalchemy import Column, String, Index, DateTime, select, func, Text, UniqueConstraint, LargeBinary
+from sqlalchemy import Column, String, Index, DateTime, select, func, Text, UniqueConstraint, LargeBinary, text
 from sqlalchemy.dialects.postgresql import JSONB
 import os
 from dotenv import load_dotenv
@@ -896,6 +896,7 @@ class FollowUp(SQLModel, table=True):
     __tablename__ = "follow_ups"
     __table_args__ = (
         Index("ix_follow_ups_tenant_status_due", "tenant_id", "status", "due_at"),
+        Index("uq_follow_ups_tenant_idempotency", "tenant_id", "idempotency_key", unique=True),
     )
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
 
@@ -918,6 +919,16 @@ class FollowUp(SQLModel, table=True):
     source: str = Field(default="manual", max_length=30)
     source_ref: Optional[str] = Field(default=None, max_length=100)  # e.g. "note-12", "conv-4", "campaign-3"
     ai_reason: Optional[str] = Field(default=None, sa_column=Column(Text))  # quote/explanation from the AI
+    conversation_id: Optional[int] = Field(default=None, index=True)
+    follow_up_type: Optional[str] = Field(default=None, max_length=40)
+    ai_detected: bool = Field(default=False, sa_column_kwargs={"server_default": text("FALSE")})
+    schedule_status: str = Field(default="confirmed", max_length=30, sa_column_kwargs={"server_default": "confirmed"})
+    requested_window: Optional[str] = Field(default=None, max_length=120)
+    condition: Optional[str] = Field(default=None, sa_column=Column(Text))
+    requested_at_text: Optional[str] = Field(default=None, max_length=200)
+    reschedule_count: int = Field(default=0, sa_column_kwargs={"server_default": text("0")})
+    rescheduled_at: Optional[datetime] = Field(default=None)
+    idempotency_key: Optional[str] = Field(default=None, max_length=200)
 
     assigned_to: Optional[int] = Field(default=None, index=True)
     created_by: Optional[int] = Field(default=None)
@@ -1308,6 +1319,7 @@ class Deal(SQLModel, table=True):
 class ConversationLog(SQLModel, table=True):
     """Call/meeting/WhatsApp/email/visit conversation logs"""
     __tablename__ = "conversation_logs"
+    __table_args__ = (Index("uq_conversation_logs_source_ref", "tenant_id", "source_ref", unique=True),)
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
@@ -1318,6 +1330,20 @@ class ConversationLog(SQLModel, table=True):
     author_id: Optional[int] = Field(default=None, foreign_key="users.id")
     author_name: Optional[str] = Field(default=None, max_length=255)
     attachment_urls: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    conversation_at: Optional[datetime] = Field(default=None)
+    transcript: Optional[str] = Field(default=None, sa_column=Column(Text))
+    ai_summary: Optional[str] = Field(default=None, sa_column=Column(Text))
+    key_points: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    requirements: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    objections: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    decisions: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    follow_up_actions: Optional[List[str]] = Field(default_factory=list, sa_column=Column(JSON))
+    follow_up_date: Optional[datetime] = Field(default=None)
+    ai_status: str = Field(default="pending", max_length=20, sa_column_kwargs={"server_default": "pending"})
+    ai_error: Optional[str] = Field(default=None, sa_column=Column(Text))
+    source: str = Field(default="manual", max_length=50, sa_column_kwargs={"server_default": "manual"})
+    source_ref: Optional[str] = Field(default=None, max_length=120)
+    updated_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=_utcnow)
     replies: List["ConversationReply"] = Relationship(back_populates="conversation")
 
@@ -1384,6 +1410,10 @@ class Account(SQLModel, table=True):
 
 class Lead(SQLModel, table=True):
     __tablename__ = "leads"
+    follow_up_needed: bool = Field(default=False, sa_column_kwargs={"server_default": text("FALSE")})
+    next_follow_up_at: Optional[datetime] = Field(default=None, index=True)
+    follow_up_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
+    last_contact_at: Optional[datetime] = Field(default=None)
     course_interest_id: Optional[int] = Field(default=None, index=True)  # courses.id (institute add-on)
     gpa: Optional[float] = Field(default=None)
     education_level: Optional[str] = Field(default=None, max_length=120)
@@ -1738,6 +1768,8 @@ def create_db_and_tables():
     """
     # Create all tables if they don't exist
     SQLModel.metadata.create_all(engine)
+    from modules.conversation_store import ensure_conversation_schema
+    ensure_conversation_schema(engine)
     
     # Run migrations (SQLite safe)
     from sqlalchemy import text
@@ -2282,6 +2314,10 @@ class VoicePitch(SQLModel, table=True):
 class AICall(SQLModel, table=True):
     """An outbound Twilio call driven by the AI voice agent (with optional human takeover)."""
     __tablename__ = "ai_calls"
+    lead_id: Optional[int] = Field(default=None, foreign_key="leads.id", index=True)
+    follow_up_needed: bool = Field(default=False, sa_column_kwargs={"server_default": text("FALSE")})
+    follow_up_at: Optional[datetime] = Field(default=None, index=True)
+    follow_up_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     pitch_id: Optional[int] = Field(default=None, foreign_key="voice_pitches.id")
