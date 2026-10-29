@@ -1,5 +1,7 @@
 """POST /users: only Admin / SalesManager / SuperAdmin, only for roles they may create, never a tenant-less user."""
+import os
 import unittest
+from unittest import mock
 
 from sqlmodel import Session, select
 
@@ -57,8 +59,7 @@ class CreateUser(TenantIsolationBase):
     def test_a_superadmin_must_name_a_tenant_so_no_tenantless_user_appears(self):
         self.assertEqual(self.create(self.root, "Admin").status_code, 400)
         r = self.create(self.root, "Admin", "scoped-admin@x.test", {"X-Tenant-ID": "3"})
-        self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(r.json()["user"]["tenant_id"], 3)
+        self.assertEqual(r.status_code, 400, r.text)
         self.assertEqual(self.create(self.root, "SuperAdmin", "operator@x.test").json()["user"]["tenant_id"], None)
 
     def test_emails_are_unique_across_tenants(self):
@@ -115,12 +116,10 @@ class UsersAreTenantScoped(TenantIsolationBase):
             s.commit()
         self.assertEqual(self.client.post("/login", json={"email": "admin3@t3.test", "password": "tenant3-pass"}).status_code, 200)
 
-    def test_a_superadmin_working_inside_a_tenant_still_works(self):
+    def test_a_superadmin_cannot_access_tenant_users(self):
         h = {"X-User-ID": str(self.root), "X-Tenant-ID": "2"}
-        r = self.client.get("/users", headers=h)
-        self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual({u["email"] for u in r.json()["users"]}, {"admin2@t2.test", "emp@t2.test"})
-        self.assertEqual(self.client.delete(f"/users/{self.emp}", headers=h).status_code, 200)
+        self.assertEqual(self.client.get("/users", headers=h).status_code, 403)
+        self.assertEqual(self.client.delete(f"/users/{self.emp}", headers=h).status_code, 403)
         self.assertEqual(self.client.get("/users/me", headers=h).status_code, 200)
 
 

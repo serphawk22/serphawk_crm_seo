@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
-from typing import List
+from typing import List, Literal, Optional
 from pydantic import BaseModel
 from database import engine, User, Deal, ConversationLog, Lead, ClientProfile, ProjectTicket
 from modules.api_tracker import current_salesperson_id
+from modules.tenant_scope import current_tenant_id
 
 router = APIRouter(prefix="/leaderboard", tags=["Leaderboard"])
 
@@ -26,13 +27,16 @@ class LeaderboardEntry(BaseModel):
     tickets_completed: int = 0
 
 @router.get("", response_model=List[LeaderboardEntry])
-def get_leaderboard(session: Session = Depends(get_session)):
-    query = select(User).where(User.role.in_(["Employee", "SalesManager", "ProjectMember", "Intern"]))
+def get_leaderboard(kind: Optional[Literal["sales", "tickets"]] = None, session: Session = Depends(get_session)):
+    roles = (["Employee", "SalesManager", "Sales"] if kind == "sales" else
+             ["ProjectMember", "Intern", "Developer"] if kind == "tickets" else
+             ["Employee", "SalesManager", "Sales", "ProjectMember", "Intern"])
+    query = select(User).where(User.role.in_(roles))
     requester_id = current_salesperson_id.get()
     if requester_id:
         requester = session.get(User, requester_id)
-        if requester and requester.tenant_id:
-            query = query.where(User.tenant_id == requester.tenant_id)
+        if requester and current_tenant_id.get():
+            query = query.where(User.tenant_id == current_tenant_id.get())
     users = session.exec(query).all()
     
     leaderboard = []

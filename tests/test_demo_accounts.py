@@ -183,16 +183,44 @@ class Listing(DemoBase):
         self.assertEqual([p["email"] for p in data["pending_signups"]], ["lost@demo.test"])
         self.assertFalse(data["signup_mail_ready"])
 
-    def test_detail_reads_the_demo_workspace(self):
+    def test_demo_management_never_exposes_workspace_records_to_operator(self):
         self.signup()
         user = self.demo_user()
         with Session(S.ENGINE) as s:
             s.add(Lead(company_name="Tried it", tenant_id=user.tenant_id))
             s.commit()
-        r = self.client.get(f"/telemetry/demo-account/{user.id}", headers=self.sa())
+        for selected in (None, 3, user.tenant_id):
+            h = self.sa()
+            if selected:
+                h['X-Tenant-ID'] = str(selected)
+            r = self.client.get(f"/telemetry/demo-account/{user.id}", headers=h)
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertFalse(r.json()['records_available'])
+            self.assertEqual(r.json()['leads'], [])
+            self.assertTrue(r.json()['account']['can_change_limits'])
+
+    def test_management_available_but_crm_hidden_when_inspection_disabled(self):
+        self.signup()
+        user = self.demo_user()
+        with Session(S.ENGINE) as s:
+            s.add(Lead(company_name='Private demo prospect', tenant_id=user.tenant_id))
+            features.set_features(s, user.tenant_id, {'demo_accounts': False})
+            s.commit()
+        for selection in (None, str(user.tenant_id), '3'):
+            h = self.sa()
+            if selection:
+                h['X-Tenant-ID'] = selection
+            r = self.client.get(f'/telemetry/demo-account/{user.id}', headers=h)
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertFalse(r.json()['records_available'])
+            self.assertTrue(r.json()['account']['can_change_limits'])
+            for key in ('leads', 'clients', 'contacts', 'emails', 'calls', 'team_members', 'projects',
+                        'radar', 'meetings', 'researches', 'competitors'):
+                self.assertEqual(r.json()[key], [], key)
+            self.assertNotIn('Private demo prospect', r.text)
+            self.assertEqual(self.client.get('/telemetry/demo-accounts', headers=h).status_code, 200)
+        r = self.client.patch(f'/telemetry/demo-accounts/{user.id}', json={'active': False}, headers=self.sa())
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual([l["name"] for l in r.json()["leads"]], ["Tried it"])
-        self.assertEqual(r.json()["account"]["kind"], "self_service")
 
     def test_detail_of_a_demo_inside_a_company_never_shows_the_company_data(self):
         with Session(S.ENGINE) as s:

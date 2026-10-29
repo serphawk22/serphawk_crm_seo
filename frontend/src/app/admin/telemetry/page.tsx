@@ -46,6 +46,7 @@ interface DemoListResponse {
 }
 
 interface DemoDetail {
+  records_available?: boolean;
   account?: DemoAccount;
   user: { id: number; name: string; email: string; created_at: string; upgrade_requested?: boolean };
   clients:  Array<{ id: number; company: string; website: string; status: string; created_at: string }>;
@@ -285,9 +286,7 @@ function DemoDetail({ account, onBack, onGone }: { account: DemoAccount; onBack:
   const loadDetail = async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/telemetry/demo-account/${account.id}`, {
-        headers: { "X-Tenant-ID": "" }
-      });
+      const res = await fetch(`${API_BASE_URL}/telemetry/demo-account/${account.id}`);
       const data = await res.json();
       if (data.success) setDetail(data);
     } catch {}
@@ -345,7 +344,7 @@ function DemoDetail({ account, onBack, onGone }: { account: DemoAccount; onBack:
         <div className="ml-auto flex items-center gap-2 flex-wrap">
           <button
             onClick={handleBackfill}
-            disabled={backfilling}
+            disabled={backfilling || detail?.records_available === false}
             title={t("telemetry.fix_data_title")}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-100 transition-all disabled:opacity-50"
           >
@@ -362,7 +361,7 @@ function DemoDetail({ account, onBack, onGone }: { account: DemoAccount; onBack:
       <ManagePanel account={detail?.account ?? account} onChanged={() => loadDetail(true)} onGone={onGone} />
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 dark:bg-zinc-900 p-1 rounded-2xl overflow-x-auto">
+      {detail?.records_available !== false && <div className="flex gap-1 bg-slate-100 dark:bg-zinc-900 p-1 rounded-2xl overflow-x-auto">
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${tab === t.key ? "bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
@@ -372,10 +371,13 @@ function DemoDetail({ account, onBack, onGone }: { account: DemoAccount; onBack:
             )}
           </button>
         ))}
-      </div>
-
+      </div>}
       {/* Content */}
-      {loading ? (
+      {detail?.records_available === false ? (
+        <p role="status" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          Use the company Admin account to view its CRM records. Demo-account management remains available above.
+        </p>
+      ) : loading ? (
         <div className="py-20 text-center"><Activity className="w-8 h-8 animate-pulse mx-auto mb-3 text-indigo-400 opacity-60" /><p className="text-slate-500">{t("telemetry.loading")}</p></div>
       ) : !detail ? (
         <div className="py-20 text-center text-slate-500">{t("telemetry.load_failed")}</div>

@@ -3,7 +3,7 @@
  *  Keys match modules/features.py. Pages that are not listed are always open (dashboard, leads, notifications, profile...). */
 const PAGE_MODULES: ReadonlyArray<readonly [string, string]> = [
   // CRM / work
-  ["/contacts", "contacts"], ["/clients", "clients"], ["/admin/clients", "clients"], ["/pipeline", "deals"],
+  ["/leads", "leads"], ["/contacts", "contacts"], ["/clients", "clients"], ["/admin/clients", "clients"], ["/pipeline", "deals"],
   ["/work-queue", "work_queue"], ["/projects", "projects"], ["/task-sheet", "task_sheet"], ["/reports", "reports"],
   ["/meetings", "meetings"], ["/calls", "calls"], ["/teams", "teams"], ["/admin/leaderboard", "leaderboard"],
   ["/admin/telemetry", "demo_accounts"],
@@ -48,4 +48,9 @@ const LABELS: Record<string, string> = {
 
 export function moduleLabel(key: string): string {
   return LABELS[key] || key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
+
+/** Platform demo management is independent of any selected tenant's plan. */
+export function isPlatformManagementPage(pathname: string | null | undefined): boolean {
+  return pathname === "/admin/telemetry" || !!pathname?.startsWith("/admin/telemetry/");
 }

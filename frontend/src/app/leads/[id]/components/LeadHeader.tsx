@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Building2, Star, User, ArrowLeft, Plus, MessageSquare,
@@ -9,6 +9,9 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { API_BASE_URL } from '@/config';
+import { useTenantConfig } from '@/context/TenantConfigContext';
+import InstituteLeadScheduleModal from '@/components/InstituteLeadScheduleModal';
+import { leadStages, scheduleStage, type ScheduleStage } from '@/lib/leadWorkflow';
 
 interface LeadHeaderProps {
   lead: any;
@@ -73,6 +76,10 @@ export default function LeadHeader({
   onCreateOpportunity, darkMode, onToggleDarkMode, onStatusChange
 }: LeadHeaderProps) {
   const { language } = useLanguage();
+  const { settings, isOn } = useTenantConfig();
+  const [schedule, setSchedule] = useState<ScheduleStage | null>(null);
+  const [statusError, setStatusError] = useState('');
+  const stages = leadStages(settings.lead_statuses, isOn('institute'), LEAD_STAGES, [lead?.status || 'New']);
   const statusCfg = STATUS_CONFIG[lead?.status] || STATUS_CONFIG.Inactive;
   const assignedEmp = employees.find((e: any) => e.id === lead?.owner_id);
   const leadScore = lead?.lead_score ?? 0;
@@ -132,27 +139,35 @@ export default function LeadHeader({
                 value={lead?.is_converted ? "Converted" : (lead?.status || "New")}
                 onChange={async (e) => {
                   const val = e.target.value;
+                  const stage = scheduleStage(val, isOn('institute'));
+                  if (stage) { setSchedule(stage); return; }
+                  setStatusError('');
                   try {
-                    await fetch(`${API_BASE_URL}/leads/${lead?.id}/status`, {
+                    const response = await fetch(`${API_BASE_URL}/leads/${lead?.id}/status`, {
                       method: "PATCH",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ status: val }),
                     });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not change stage');
                     if (onStatusChange) onStatusChange(val);
                     else window.location.reload();
                   } catch (err) {
-                    console.error(err);
+                    setStatusError(err instanceof Error ? err.message : 'Could not change stage');
                   }
                 }}
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border cursor-pointer focus:outline-none transition-all shadow-sm ${statusCfg.bg} ${statusCfg.text}`}
                 title="Change stage"
               >
-                {LEAD_STAGES.map((st) => (
+                {stages.map((st) => (
                   <option key={st} value={st} className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 font-semibold">
                     {st}
                   </option>
                 ))}
               </select>
+              {statusError && <p role="alert" className="text-sm text-red-600">{statusError}</p>}
+              {schedule && <InstituteLeadScheduleModal lead={lead} stage={schedule} onClose={() => setSchedule(null)}
+                onSuccess={() => onStatusChange ? onStatusChange(schedule) : window.location.reload()} />}
               {lead?.industry && (
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-zinc-800  text-slate-600 dark:text-zinc-300 ">
                   {lead.industry}

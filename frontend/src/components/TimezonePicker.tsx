@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Globe2, CheckCircle2, AlertTriangle, MapPin } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import {
@@ -14,6 +14,8 @@ interface Props {
   localTime?: string;
   label?: string;
   className?: string;
+  /** Condensed field for scheduling dialogs. */
+  compact?: boolean;
 }
 
 /**
@@ -23,7 +25,8 @@ interface Props {
  *  - If the device zone differs from the saved profile zone (e.g. travelling) it asks which to use.
  *  - Live preview shows how the chosen wall-clock time reads in the viewer's own zone.
  */
-export default function TimezonePicker({ value, onChange, localTime, label = "Timezone", className = "" }: Props) {
+export default function TimezonePicker({ value, onChange, localTime, label = "Timezone", className = "", compact = false }: Props) {
+  const fieldId = useId();
   const detected = useMemo(() => detectTimeZone(), []);
   const zones = useMemo(() => getTimeZones(), []);
   const [saved, setSaved] = useState<string | null | undefined>(undefined); // undefined = still loading
@@ -85,9 +88,30 @@ export default function TimezonePicker({ value, onChange, localTime, label = "Ti
 
   const inputCls = "w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500";
 
+  if (compact) return (
+    <div className={className}>
+      <div className="flex min-w-0 items-center gap-1.5 text-xs text-slate-500 dark:text-zinc-400">
+        <Globe2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+        <select aria-label={label} value={value} disabled={saving}
+          onChange={event => { void confirm(event.target.value); }}
+          className="min-w-0 flex-1 rounded-md border-0 bg-transparent py-1.5 pr-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:[&>option]:bg-zinc-900">
+          {Array.from(new Set([value, ...zones].filter(Boolean))).map(zone => (
+            <option key={zone} value={zone}>{zone}{zone === value && !invalid ? ` (${gmtLabel(zone)})` : ""}</option>
+          ))}
+        </select>
+        {needsConfirm && <button type="button" disabled={saving} onClick={() => { void confirm(value); }}
+          className="shrink-0 rounded px-1.5 py-1.5 font-medium text-indigo-600 focus-visible:outline-2 focus-visible:outline-indigo-500 disabled:opacity-50 dark:text-indigo-400">Confirm</button>}
+        {confirmed && <CheckCircle2 aria-label="Timezone confirmed" className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />}
+      </div>
+      {mismatch && needsConfirm && <p className="text-xs text-amber-600 dark:text-amber-400">Profile: {saved}. Select the timezone for this appointment.</p>}
+      {invalid && <p role="alert" className="text-xs text-red-500">Choose a valid timezone.</p>}
+      {preview && !preview.same && <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">Your time: {preview.yours} ({detected})</p>}
+    </div>
+  );
+
   return (
     <div className={className}>
-      <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+      <label htmlFor={`${fieldId}-input`} className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
         <Globe2 className="w-3.5 h-3.5" /> {label}
       </label>
 
@@ -104,7 +128,7 @@ export default function TimezonePicker({ value, onChange, localTime, label = "Ti
                 </>
               ) : (
                 <>
-                  <p className="font-bold">We detected your timezone: <span className="text-violet-600">{detected}</span> <span className="font-normal text-slate-500">({gmtLabel(detected)})</span></p>
+                  <p className="font-bold">We detected your timezone: <span className="text-violet-600 dark:text-violet-400">{detected}</span> <span className="font-normal text-slate-500 dark:text-zinc-400">({gmtLabel(detected)})</span></p>
                   <p className="text-slate-500 dark:text-zinc-400 mt-0.5">Local time there now: {formatInZone(new Date(), detected, { weekday: undefined })}. Is this correct?</p>
                 </>
               )}
@@ -119,7 +143,7 @@ export default function TimezonePicker({ value, onChange, localTime, label = "Ti
                     Keep {saved}
                   </button>
                 )}
-                <button type="button" onClick={() => setEditing(true)}
+                <button type="button" disabled={saving} onClick={() => setEditing(true)}
                   className="px-3 py-2 min-h-[40px] rounded-lg bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-700 dark:text-zinc-200">
                   Choose another
                 </button>
@@ -129,15 +153,15 @@ export default function TimezonePicker({ value, onChange, localTime, label = "Ti
         </div>
       )}
 
-      {/* Selector (always available; emphasised when editing) */}
       <input
-        list="tz-options" value={value} onChange={e => { onChange(e.target.value); }}
+        id={`${fieldId}-input`} aria-invalid={invalid}
+        list={`${fieldId}-options`} value={value} onChange={e => { onChange(e.target.value); }}
         onBlur={() => { if (value && isValidTimeZone(value) && value !== saved && editing) confirm(value); }}
         placeholder="Start typing — e.g. Asia/Kolkata"
         className={`${inputCls} ${invalid ? "border-red-400" : "border-slate-200 dark:border-zinc-700"}`}
         autoComplete="off" spellCheck={false}
       />
-      <datalist id="tz-options">{zones.map(z => <option key={z} value={z} />)}</datalist>
+      <datalist id={`${fieldId}-options`}>{zones.map(z => <option key={z} value={z} />)}</datalist>
 
       {invalid && (
         <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Unknown timezone — pick one from the list.</p>

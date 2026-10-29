@@ -102,6 +102,10 @@ def patch_client(client_id: int, body: Dict[str, Any] = Body(...), session: Sess
     if _main()._sales_scoping_on(cp.tenant_id) and (me.role or "").strip().lower() == "salesmanager" and cp.assignedEmployeeId != me.id:
         raise HTTPException(status_code=403, detail="You can only change clients assigned to you")
     status = body.get("status")
+    if status and str(status).lower() == 'converted' and not features.is_enabled(lead.tenant_id, 'clients') and not features.is_enabled(lead.tenant_id, 'institute'):
+        raise HTTPException(status_code=403, detail='The Clients module is not enabled for this company')
+    if "owner_id" in body:
+        _same_company_user(session, body['owner_id'], lead.tenant_id)
     if status:
         cp.status = str(status)[:100]
         _cascade_client_status(session, client_id, cp.status)
@@ -130,6 +134,9 @@ def patch_lead(lead_id: int, request: Request, body: Dict[str, Any] = Body(...),
         from addons.institute import routes as institute
         return institute.update_lead_stage(lead_id, institute.LeadStatusRequest(status=str(body.get("status", ""))), session)
     status = body.get("status")
+    if status and lead.tenant_id and features.is_enabled(lead.tenant_id, 'institute'):
+        from addons.institute import routes as institute
+        institute.update_lead_stage(lead_id, institute.LeadStatusRequest(status=str(status)), session)
     if status:
         lead.status = str(status)[:100]
     if "owner_id" in body:
@@ -147,9 +154,10 @@ def patch_lead(lead_id: int, request: Request, body: Dict[str, Any] = Body(...),
         if k in body:
             setattr(lead, k, body[k])
     session.add(lead)
-    session.commit()
     if status and str(status).lower() == "converted" and not lead.is_converted:
         _main().convert_lead_to_client(lead_id, session)
+    else:
+        session.commit()
     session.refresh(lead)
     return lead
 

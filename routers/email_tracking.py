@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, select
 from database import engine, SentEmail, User
 from modules.api_tracker import current_salesperson_id
+from modules.tenant_scope import using_tenant
 import base64
 from fastapi.responses import Response
 import os
@@ -75,7 +76,8 @@ def track_email_open(id: int, session: Session = Depends(get_session)):
             # else: in the ambiguous gap between the two windows — leave status as-is.
 
         session.add(email)
-        session.commit()
+        with using_tenant(email.tenant_id):
+            session.commit()
 
     # Base64 encoded transparent 1x1 GIF
     pixel = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
@@ -101,10 +103,15 @@ def _require_admin(session: Session = Depends(get_session)):
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
     role = (user.role or "").strip().lower()
-    # Same rule as main._require_roles: admin@serphawk.com is always a superuser.
-    if role == "superadmin" or (user.email or "").lower() == "admin@serphawk.com":
-        return user, None
+    if role == "superadmin":
+        from modules.tenant_scope import current_tenant_id
+        tenant_id = current_tenant_id.get()
+        if tenant_id is None or tenant_id < 1:
+            raise HTTPException(status_code=403, detail="Select a company before inspecting its mailbox")
+        return user, tenant_id
     if role in _ADMIN_ROLES:
+        if not user.tenant_id or user.tenant_id < 1:
+            raise HTTPException(status_code=403, detail="A company is required")
         return user, user.tenant_id
     raise HTTPException(status_code=403, detail="Only an admin can run this.")
 
@@ -173,7 +180,8 @@ def track_email_reply(payload: EmailReplyPayload, session: Session = Depends(get
             if payload.reply_body:
                 email_record.reply_body = payload.reply_body
             session.add(email_record)
-            session.commit()
+            with using_tenant(email_record.tenant_id):
+                session.commit()
             return {"status": "success", "message": f"Email ID {payload.email_id} marked as replied"}
 
     if payload.email:
@@ -193,7 +201,8 @@ def track_email_reply(payload: EmailReplyPayload, session: Session = Depends(get
             if payload.reply_body:
                 email_record.reply_body = payload.reply_body
             session.add(email_record)
-            session.commit()
+            with using_tenant(email_record.tenant_id):
+                session.commit()
             return {"status": "success", "message": f"Most recent email to {payload.email} marked as replied"}
             
     return {"status": "error", "message": "Email record not found or no valid identifier provided"}

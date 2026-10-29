@@ -238,7 +238,7 @@ class SyncTests(DBTestCase):
             raise OSError("connection refused")
         stats = inbox_sync.sync_mailbox(self.cfg(), ENGINE, connect=boom)
         self.assertIn("connection refused", stats["error"])
-        self.assertIn("connection refused", inbox_sync.get_sync_status()["crm@agency.test"]["last_error"])
+        self.assertIn("connection refused", inbox_sync.get_sync_status()[inbox_sync.mailbox_key(self.cfg())]["last_error"])
 
     def test_legacy_replies_are_imported_once(self):
         self.seed()
@@ -304,6 +304,9 @@ class ApiTestCase(DBTestCase):
     def setUp(self):
         super().setUp()
         self.client = TestClient(make_app())
+        p = mock.patch.dict(os.environ, {"EMAIL_CREDENTIAL_ENCRYPTION_KEY": "dGVzdC1rZXktZm9yLXVuaXQtdGVzdHMtMzJieXRlcyE="})
+        p.start()
+        self.addCleanup(p.stop)
         with Session(ENGINE) as s:
             s.add_all([Tenant(id=1, name="Agency", business_name="DaPros"), Tenant(id=2, name="Other")])
             brand_as_dapros(s)
@@ -354,6 +357,14 @@ class ApiTestCase(DBTestCase):
                            grand_total=1500, currency="USD"))
             s.add(ConversationLog(id=1, tenant_id=1, lead_id=1, title="Discovery call", type="call",
                                   description="Wants a website redesign for 3 locations", created_at=NOW - timedelta(days=4)))
+            from modules.email_crypto import encrypt_app_password
+            for uid, tid, address in ((ADMIN, 1, 'crm@agency.test'), (SALES, 1, 'crm@agency.test'), (ADMIN_T2, 2, 'crm@other.test')):
+                s.add(database.UserEmailIntegration(user_id=uid, tenant_id=tid, email=address,
+                    encrypted_app_password=encrypt_app_password('fixture-password'), smtp_host='smtp.agency.test', imap_host='imap.agency.test', imap_status='connected'))
+            for sid in (1, 2, 5):
+                sent = s.get(SentEmail, sid)
+                sent.draft_json = json.dumps({'sent_from': 'crm@other.test' if sid == 5 else 'crm@agency.test'})
+                s.add(sent)
             s.commit()
 
     def get(self, url, user=ADMIN, **kw):
@@ -384,8 +395,8 @@ class InboxListTests(ApiTestCase):
 
     def test_salesperson_only_sees_mail_of_their_own_records(self):
         keys = [i["key"] for i in self.get("/inbox/messages", user=SALES).json()["items"]]
-        self.assertEqual(keys, ["in-1", "out-1"])
-        self.assertEqual(self.get("/inbox/messages/in-2", user=SALES).status_code, 404)
+        self.assertEqual(keys, ["in-3", "in-2", "in-1", "out-2", "out-1"])
+        self.assertEqual(self.get("/inbox/messages/in-2", user=SALES).status_code, 200)
 
     def test_folders_and_filters(self):
         def keys(**params):
@@ -405,7 +416,7 @@ class InboxListTests(ApiTestCase):
         self.assertEqual(c["categories"], {"support": 1, "partnership": 1})
         self.assertEqual(c["linked"]["unlinked"], 1)
         self.assertEqual(self.get("/inbox/counts", params={"only": "unread"}).json(), {"unread": 3})
-        self.assertEqual(self.get("/inbox/counts", user=SALES).json()["folders"]["all"], 2)
+        self.assertEqual(self.get("/inbox/counts", user=SALES).json()["folders"]["all"], 5)
 
 
 class InboxMessageTests(ApiTestCase):
@@ -455,6 +466,10 @@ class InboxMessageTests(ApiTestCase):
 
     def test_reply_validates_and_requires_configured_mailbox(self):
         self.assertEqual(self.post("/inbox/messages/in-1/reply", {"subject": "Re", "body": "x", "to": "not-an-email"}).status_code, 400)
+        with Session(ENGINE) as s:
+            row = s.exec(select(database.UserEmailIntegration).where(database.UserEmailIntegration.user_id == ADMIN)).one()
+            row.encrypted_app_password = ''
+            s.add(row); s.commit()
         self.assertEqual(self.post("/inbox/messages/in-1/reply", {"subject": "Re", "body": "x"}).status_code, 503)
 
 
@@ -638,6 +653,9 @@ class ComposerTests(ApiTestCase):
 
 class SyncEndpointTests(ApiTestCase):
     def test_status_and_manual_sync(self):
+        with Session(ENGINE) as s:
+            row = s.exec(select(database.UserEmailIntegration).where(database.UserEmailIntegration.user_id == ADMIN)).one()
+            s.delete(row); s.commit()
         status = self.get("/inbox/status").json()
         self.assertEqual(status["mailboxes"], [])
         self.assertFalse(status["sender"]["configured"])
@@ -652,6 +670,57 @@ class OwnMailboxTests(ApiTestCase):
 
     KEY = "dGVzdC1rZXktZm9yLXVuaXQtdGVzdHMtMzJieXRlcyE="
 
+    def test_unverified_address_does_not_grant_mail_access(self):
+        with Session(ENGINE) as s:
+            row = s.exec(select(database.UserEmailIntegration).where(database.UserEmailIntegration.user_id == SALES)).one()
+            row.email = 'crm@agency.test'
+            row.imap_status = 'not_tested'
+            s.add(row); s.commit()
+        self.assertEqual(self.get('/inbox/messages', user=SALES).json()['items'], [])
+        self.assertEqual(self.get('/inbox/messages/in-1', user=SALES).status_code, 404)
+
+    def test_broken_user_credentials_do_not_fall_back_to_tenant_or_server_mail(self):
+        with Session(ENGINE) as s:
+            s.add(database.EmailSettings(tenant_id=1, smtp_host='smtp.shared.test', smtp_port=587, from_name='Shared', smtp_user='shared@test.invalid',
+                                        from_email='shared@test.invalid', smtp_pass='shared-password'))
+            row = s.exec(select(database.UserEmailIntegration).where(database.UserEmailIntegration.user_id == SALES)).one()
+            row.encrypted_app_password = 'invalid-encrypted-value'
+            s.add(row); s.commit()
+        status = self.get('/inbox/status', user=SALES).json()
+        self.assertFalse(status['sender']['configured'])
+        self.assertEqual(status['mailboxes'], [])
+        with mock.patch.object(inbox_sync, 'sync_mailbox') as sync:
+            self.assertEqual(self.post('/inbox/sync', user=SALES).json()['results'], [])
+            sync.assert_not_called()
+
+    def test_manual_sync_selects_only_acting_account_and_background_ignores_fallbacks(self):
+        seen = []
+        def fake(cfg, *args, **kwargs):
+            seen.append((cfg.user_id, cfg.tenant_id, cfg.password))
+            return {'mailbox': cfg.address, 'created': 0, 'error': None}
+        with mock.patch.object(inbox_sync, 'sync_mailbox', side_effect=fake), \
+             mock.patch.object(inbox_sync, 'import_legacy_replies') as legacy:
+            r = self.post('/inbox/sync?user_id=1&tenant_id=2', user=SALES)
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(seen, [(SALES, 1, 'sam-pw')])
+            legacy.assert_not_called()
+            seen.clear()
+            self.post('/inbox/sync', user=OTHER_SALES)
+            self.assertEqual(seen, [])
+            inbox_sync.run_sync_cycle(ENGINE, classify=False)
+            self.assertTrue(seen)
+            self.assertNotIn('env-pw', [password for _, _, password in seen])
+
+    def test_admin_cannot_open_or_change_another_mailbox_even_on_an_owned_record(self):
+        with Session(ENGINE) as s:
+            message = s.get(InboxMessage, 21)
+            message.lead_id = 1
+            s.add(message); s.commit()
+        self.assertEqual(self.get('/inbox/messages/in-21').status_code, 404)
+        r = self.client.patch('/inbox/messages/in-21', json={'is_read': True}, headers={'X-User-ID': str(ADMIN)})
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(self.post('/inbox/messages/bulk', {'keys': ['in-21'], 'action': 'read'}).json()['updated'], 0)
+
     def setUp(self):
         super().setUp()
         patcher = mock.patch.dict(os.environ, {"EMAIL_CREDENTIAL_ENCRYPTION_KEY": self.KEY,
@@ -661,10 +730,12 @@ class OwnMailboxTests(ApiTestCase):
         self.addCleanup(patcher.stop)
         from modules.email_crypto import encrypt_app_password
         with Session(ENGINE) as s:
+            old = s.exec(select(database.UserEmailIntegration).where(database.UserEmailIntegration.user_id == SALES)).one()
+            s.delete(old); s.commit()
             s.add(database.UserEmailIntegration(
                 tenant_id=1, user_id=SALES, email="Sam@Mine.test", encrypted_app_password=encrypt_app_password("sam-pw"),
                 smtp_host="smtp.mine.test", smtp_port=465, smtp_security="ssl", imap_host="imap.mine.test",
-                imap_port=993, imap_security="ssl"))
+                imap_port=993, imap_security="ssl", imap_status="connected"))
             s.add(InboxMessage(id=20, tenant_id=1, mailbox="sam@mine.test", message_id="<own1@x>", from_address="stranger@x.com",
                                subject="Direct to Sam", received_at=NOW))
             s.add(InboxMessage(id=21, tenant_id=1, mailbox="other@mine.test", message_id="<own2@x>", from_address="s2@x.com",
@@ -691,12 +762,12 @@ class OwnMailboxTests(ApiTestCase):
     def test_sender_status_reports_the_users_account(self):
         st = self.get("/inbox/status", user=SALES).json()["sender"]
         self.assertEqual((st["address"], st["source"]), ("Sam@Mine.test", "user_integration"))
-        self.assertEqual(self.get("/inbox/status", user=OTHER_SALES).json()["sender"]["source"], "server_env")
+        self.assertFalse(self.get("/inbox/status", user=OTHER_SALES).json()["sender"]["configured"])
 
     def test_integration_mailboxes_are_synced_with_their_port_and_security(self):
         with Session(ENGINE) as s:
             cfgs = inbox_sync.get_mailbox_configs(s)
-        mine = cfgs[0]
+        mine = next(c for c in cfgs if c.user_id == SALES)
         self.assertEqual((mine.address, mine.login, mine.password, mine.imap_host, mine.imap_port, mine.imap_security,
                           mine.user_id, mine.tenant_id), ("sam@mine.test", "Sam@Mine.test", "sam-pw", "imap.mine.test",
                                                           993, "ssl", SALES, 1))
@@ -711,7 +782,7 @@ class OwnMailboxTests(ApiTestCase):
         self.assertEqual(self.get("/inbox/messages/in-21", user=SALES).status_code, 404)
         self.assertEqual(self.get("/inbox/messages/in-20", user=OTHER_SALES).status_code, 404)
         admin_keys = [i["key"] for i in self.get("/inbox/messages").json()["items"]]
-        self.assertTrue({"in-20", "in-21"} <= set(admin_keys))
+        self.assertFalse({"in-20", "in-21"} & set(admin_keys))
         mine = self.get("/inbox/status", user=SALES).json()["mailboxes"]
         self.assertEqual([m["address"] for m in mine], ["sam@mine.test"])
 
@@ -777,10 +848,10 @@ class ScopedReplyScanTests(ApiTestCase):
             return mock.Mock(**{"select.return_value": ("OK", [b"0"]), "search.return_value": ("OK", [b""])})
         with mock.patch.object(inbox_sync, "_connect", fake_connect):
             email_sender.check_email_replies(tenant_id=2)
-            self.assertEqual(opened, ["ops@other.test"])
+            self.assertEqual(opened, ["crm@other.test", "ops@other.test"])
             opened.clear()
             email_sender.check_email_replies()
-            self.assertEqual(sorted(opened), ["crm@agency.test", "ops@other.test"])
+            self.assertEqual(sorted(opened), ["crm@agency.test", "crm@other.test", "ops@other.test"])
 
 
 if __name__ == "__main__":

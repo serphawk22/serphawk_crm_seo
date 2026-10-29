@@ -11,6 +11,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { useLanguage } from "@/context/LanguageContext";
 import SalesAssignModal from "@/components/SalesAssignModal";
 import AddFollowUpModal, { FollowUpTarget } from "@/components/AddFollowUpModal";
+import InstituteLeadScheduleModal from "@/components/InstituteLeadScheduleModal";
+import { leadStages, scheduleStage, type ScheduleStage } from "@/lib/leadWorkflow";
 
 interface Lead {
   id: number;
@@ -78,23 +80,22 @@ export default function LeadsPage() {
   const { role, user } = useRole();
   const { settings: tenantSettings, isOn } = useTenantConfig();
   const sourcesOn = isOn('lead_sources');
+  const institute = isOn('institute');
   const router = useRouter();
   const isAdmin = role === 'Admin' || role === 'SuperAdmin';
 
   useEffect(() => {
-    if (role && role !== 'Admin' && role !== 'Employee' && role !== 'Intern' && role !== 'SalesManager' && role !== 'Demo') {
+    if (role && !['SuperAdmin', 'Admin', 'Employee', 'Intern', 'SalesManager', 'Sales', 'Demo'].includes(role)) {
       router.replace('/');
     }
   }, [role, router]);
 
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [loadError, setLoadError] = useState("");
+  const [schedule, setSchedule] = useState<{ lead: Lead; stage: ScheduleStage } | null>(null);
   const STATUSES = useMemo(() => {
-    const custom = tenantSettings.lead_statuses;
-    if (!custom || custom.length === 0) return DEFAULT_STATUSES;
-    // a lead whose status was removed from the list must not vanish from the board
-    const extra = Array.from(new Set(leads.map((l) => l.status))).filter((st) => st && st !== "Converted" && !custom.includes(st));
-    return [...custom, ...extra];
-  }, [tenantSettings.lead_statuses, leads]);
+    return leadStages(tenantSettings.lead_statuses, institute, DEFAULT_STATUSES, leads.map(l => l.status));
+  }, [tenantSettings.lead_statuses, institute, leads]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -211,30 +212,42 @@ export default function LeadsPage() {
 
   const fetchLeads = async () => {
     setLoading(true);
+    setLoadError("");
     try {
-      const url = new URL(`${API_BASE_URL}/leads`);
+      const url = new URL(`${API_BASE_URL}/leads`, window.location.origin);
       if ((role === 'SalesManager' || role === 'Employee') && user?.id) {
         url.searchParams.append('owner_id', String(user.id));
       }
       const res = await fetch(url.toString());
-      if (res.ok) setLeads((await res.json()).leads || []);
+      if (!res.ok) throw new Error("Could not load leads. Please retry.");
+      setLeads((await res.json()).leads || []);
     } catch (e) {
       console.error("Failed to fetch leads", e);
+      setLoadError(e instanceof Error ? e.message : "Could not load leads");
     } finally { setLoading(false); }
   };
 
   const handleStatusChange = async (leadId: number, newStatus: string) => {
-    const isConverted = newStatus.toLowerCase() === "converted";
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: newStatus, is_converted: isConverted } : l));
+    const scheduledStage = scheduleStage(newStatus, institute);
+    const lead = leads.find(l => l.id === leadId);
+    if (scheduledStage && lead) {
+      setSchedule({ lead, stage: scheduledStage });
+      return;
+    }
     try {
-      await fetch(`${API_BASE_URL}/leads/${leadId}/status`, {
+      const res = await fetch(`${API_BASE_URL}/leads/${leadId}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not update lead status');
+      }
+      await fetchLeads();
     } catch (e) {
       console.error("Failed to update lead status", e);
-      fetchLeads();
+      setLoadError(e instanceof Error ? e.message : 'Could not update lead status');
     }
   };
 
@@ -287,22 +300,28 @@ export default function LeadsPage() {
     setSaving(true);
     try {
       if (editLead) {
-        // Edit: save directly, no sales assign needed
-        await fetch(`${API_BASE_URL}/leads/${editLead.id}`, {
+        const stage = scheduleStage(form.status, institute);
+        const response = await fetch(`${API_BASE_URL}/leads/${editLead.id}`, {
           method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
+          body: JSON.stringify({ ...form, status: stage ? editLead.status : form.status }),
         });
+        if (!response.ok) throw new Error('Could not save lead');
         setShowModal(false);
+        if (stage) setSchedule({ lead: editLead, stage });
         fetchLeads();
       } else {
         if (!isAdmin) {
           // Salesperson creates lead: automatically assign to themselves
-          const payload = { ...form, owner_id: user?.id || null };
-          await fetch(`${API_BASE_URL}/leads`, {
+          const stage = scheduleStage(form.status, institute);
+          const payload = { ...form, status: stage ? 'New' : form.status, owner_id: user?.id || null };
+          const response = await fetch(`${API_BASE_URL}/leads`, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
+          if (!response.ok) throw new Error('Could not create lead');
+          const created = await response.json();
           setShowModal(false);
+          if (stage) setSchedule({ lead: created, stage });
           fetchLeads();
         } else {
           // New lead: show sales assign modal for admins
@@ -311,6 +330,8 @@ export default function LeadsPage() {
           setShowSalesAssign(true);
         }
       }
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Could not save lead');
     } finally { setSaving(false); }
   };
 
@@ -319,14 +340,19 @@ export default function LeadsPage() {
     if (!pendingLeadForm) return;
     try {
       const payload = { ...pendingLeadForm };
+      const stage = scheduleStage(payload.status, institute);
+      if (stage) payload.status = 'New';
       if (employeeId) payload.owner_id = employeeId;
-      await fetch(`${API_BASE_URL}/leads`, {
+      const response = await fetch(`${API_BASE_URL}/leads`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (!response.ok) throw new Error('Could not create lead');
+      const created = await response.json();
+      if (stage) setSchedule({ lead: created, stage });
       setPendingLeadForm(null);
       fetchLeads();
-    } catch (e) { console.error(e); }
+    } catch (err) { setLoadError(err instanceof Error ? err.message : 'Could not create lead'); }
   };
 
   const handleDelete = async (id: number, e: React.MouseEvent) => {
@@ -340,10 +366,11 @@ export default function LeadsPage() {
     e.stopPropagation();
     if (!confirm(t("leads.confirm_convert"))) return;
     try {
-      await fetch(`${API_BASE_URL}/leads/${id}/convert`, { method: "POST" });
+      const response = await fetch(`${API_BASE_URL}/leads/${id}/convert`, { method: "POST" });
+      if (!response.ok) throw new Error('Could not convert lead');
       fetchLeads();
     } catch (err) {
-      console.error(err);
+      setLoadError(err instanceof Error ? err.message : 'Could not convert lead');
     }
   };
 
@@ -559,7 +586,8 @@ export default function LeadsPage() {
                           <select
                             value={lead.is_converted ? "Converted" : lead.status}
                             onChange={e => handleStatusChange(lead.id, e.target.value)}
-                            className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border cursor-pointer focus:outline-none ${STATUS_STYLE[lead.is_converted ? "Converted" : lead.status] || STATUS_STYLE.New}`}
+                            aria-label={`Status for ${lead.company_name}`}
+                            className={`max-w-full min-h-11 text-xs font-bold px-2 py-2 rounded border cursor-pointer focus:outline-none ${STATUS_STYLE[lead.is_converted ? "Converted" : lead.status] || STATUS_STYLE.New}`}
                           >
                             {STATUSES.map(st => (
                               <option key={st} value={st} className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100">{st}</option>
@@ -600,14 +628,14 @@ export default function LeadsPage() {
             })}
           </div>
         ) : currentView === 'graph' ? (
-          <div className="p-8 h-full">
-            <div className="bg-white dark:bg-[#111111] p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-[#222222] h-[500px]">
+          <div className="p-3 sm:p-8 h-full overflow-x-auto">
+            <div className="bg-white dark:bg-[#111111] p-3 sm:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-[#222222] min-w-[280px]">
               <h3 className="text-lg font-bold mb-6 text-slate-900 dark:text-white">{t("leads.leads_by_status")}</h3>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={STATUSES.map(s => ({ name: s, count: filtered.filter(l => l.status === s).length }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <ResponsiveContainer width="100%" height={Math.max(300, STATUSES.length * 40)}>
+                <BarChart layout="vertical" data={STATUSES.map(s => ({ name: s, count: filtered.filter(l => l.status === s).length }))} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
-                  <XAxis dataKey="name" stroke="#888" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#888" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <XAxis type="number" stroke="#888" allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" width={135} stroke="#888" fontSize={11} tickLine={false} axisLine={false} />
                   <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{backgroundColor: '#000', borderColor: '#222', color: '#fff'}} />
                   <Bar dataKey="count" fill="currentColor" className="fill-blue-500 dark:fill-white" radius={[4, 4, 0, 0]} />
                 </BarChart>
@@ -775,7 +803,7 @@ export default function LeadsPage() {
                         >
                           <CalendarClock className="w-3.5 h-3.5" />
                         </button>
-                        {!lead.is_converted && (
+                        {!lead.is_converted && isOn('clients') && !institute && (
                           <button onClick={e => handleConvert(lead.id, e)} title={t("leads.convert_to_client")} className="p-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600 transition-colors">
                             <CheckCircle2 className="w-3.5 h-3.5" />
                           </button>
@@ -988,6 +1016,8 @@ export default function LeadsPage() {
       />
 
       {/* Add Follow-up Modal */}
+      {loadError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-40 rounded-xl bg-red-50 p-4 text-red-800 shadow-lg">{loadError} <button onClick={fetchLeads} className="ml-3 underline">Retry</button></div>}
+      {schedule && <InstituteLeadScheduleModal lead={schedule.lead} stage={schedule.stage} onClose={() => setSchedule(null)} onSuccess={fetchLeads} />}
       <AddFollowUpModal
         open={!!followUpTarget}
         onClose={() => setFollowUpTarget(null)}

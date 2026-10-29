@@ -9,17 +9,16 @@ Inbox + record Email tab API.
                                             CRM history, sending, and the record's email history
 
 Access, enforced here rather than by hiding UI:
-  Admin / SuperAdmin / Demo  -> the whole tenant mailbox; may email any lead or client
+  Inbox content             -> the signed-in account's active Email Agent mailbox only
+  Admin / SuperAdmin / Demo  -> may email any lead or client in the authorized tenant
   SalesManager / Employee    -> only mail linked to leads they own (Lead.owner_id) or clients
                                 assigned to them (ClientProfile.assignedEmployeeId), and may
                                 only email those records
   every other role           -> 403
-Identity still comes from the X-User-ID header (AUDIT_REPORT.md §4), so these checks are only
-as strong as that.
+Identity is resolved by the application's authentication middleware.
 
 Message keys are "in-<inbox_messages.id>" and "out-<sent_emails.id>".
-Every query also filters tenant_id explicitly: main.py's tenant listener skips aggregate
-selects such as count(), so it can't be relied on alone here.
+Inbox queries also filter tenant_id explicitly, including counts and bulk actions.
 """
 import json
 import os
@@ -87,6 +86,7 @@ class Viewer:
     role: str
     tenant_id: Optional[int]
     full_access: bool
+    mailbox_address: Optional[str] = None
 
 
 def _role_of(user: User) -> str:
@@ -102,15 +102,18 @@ def get_viewer(request: Request, session: Session = Depends(get_session)) -> Vie
     role = _role_of(user)
     if role == "SuperAdmin":
         header = request.headers.get("X-Tenant-ID", "")
-        tenant_id = int(header) if header.isdigit() else None
+        tenant_id = int(header) if header.isdigit() else -1
+        if tenant_id < 1 or not session.get(Tenant, tenant_id):
+            raise HTTPException(status_code=403, detail="Select a company before inspecting its mailbox")
     else:
         tenant_id = user.tenant_id
+        if not tenant_id or tenant_id < 1:
+            raise HTTPException(status_code=403, detail="A company is required")
     # Which roles get tenant-wide vs own-records-only access is a per-tenant setting
     # (role_policy.inbox.*, modules/tenant_settings.py); the defaults are the constants above.
     full_roles = tenant_settings.role_list(tenant_id, "inbox", "full_access", FULL_ACCESS_ROLES)
     scoped_roles = tenant_settings.role_list(tenant_id, "inbox", "scoped", SCOPED_ROLES)
-    # Same rule as main._require_roles: admin@serphawk.com is always a superuser.
-    if role == "SuperAdmin" or (user.email or "").lower() == "admin@serphawk.com":
+    if role == "SuperAdmin":
         full_access = True
     elif role in full_roles:
         full_access = True
@@ -118,7 +121,12 @@ def get_viewer(request: Request, session: Session = Depends(get_session)) -> Vie
         full_access = False
     else:
         raise HTTPException(status_code=403, detail="Your role does not have access to the Inbox.")
-    return Viewer(user=user, role=role, tenant_id=tenant_id, full_access=full_access)
+    integration = session.exec(select(UserEmailIntegration).where(
+        UserEmailIntegration.user_id == user.id, UserEmailIntegration.tenant_id == tenant_id,
+        UserEmailIntegration.is_active == True)).first()
+    address = (integration.email.strip().lower()
+               if integration and integration.email and integration.imap_status == "connected" else None)
+    return Viewer(user=user, role=role, tenant_id=tenant_id, full_access=full_access, mailbox_address=address)
 
 
 def _tenant(stmt, model, v: Viewer):
@@ -134,19 +142,16 @@ def _owned_clients(v: Viewer):
 
 
 def _scope(stmt, model, v: Viewer):
-    """Admins see the whole tenant. Everyone else sees mail linked to their own leads / clients, plus —
-    because the Inbox follows each person's Email Integration — everything received in their own
-    mailbox and everything they sent themselves."""
+    """Inbox content belongs to the account's configured mailbox, including for Admins."""
     stmt = _tenant(stmt, model, v)
-    if v.full_access:
-        return stmt
-    conds = [model.lead_id.in_(_owned_leads(v)), model.client_id.in_(_owned_clients(v))]
+    if not v.mailbox_address:
+        return stmt.where(False)
     if model is InboxMessage:
-        conds.append(InboxMessage.mailbox.in_(
-            select(func.lower(UserEmailIntegration.email)).where(UserEmailIntegration.user_id == v.user.id)))
-    elif model is SentEmail:
-        conds.append(SentEmail.draft_json.like(f'%"sent_by_user_id": {int(v.user.id)},%'))
-    return stmt.where(or_(*conds))
+        return stmt.where(func.lower(InboxMessage.mailbox) == v.mailbox_address)
+    # The tracked sender is authoritative; record ownership alone does not say
+    # which SMTP account sent the message. Support normal and compact JSON.
+    metadata = func.lower(func.replace(SentEmail.draft_json, " ", ""))
+    return stmt.where(metadata.contains(json.dumps({"sent_from": v.mailbox_address}, separators=(",", ":"))[1:-1], autoescape=True))
 
 
 def _owns(session: Session, v: Viewer, lead_id: Optional[int], client_id: Optional[int]) -> bool:
@@ -579,14 +584,12 @@ def _sent_by_me(v: Viewer, msg: SentEmail) -> bool:
 def _load_message(session: Session, v: Viewer, key: str):
     kind, mid = _parse_key(key)
     if kind == "in":
-        msg = session.get(InboxMessage, mid)
-        if (not msg or (v.tenant_id is not None and msg.tenant_id != v.tenant_id)
-                or not (_owns(session, v, msg.lead_id, msg.client_id) or _in_my_mailbox(session, v, msg.mailbox))):
+        msg = session.exec(_scope(select(InboxMessage), InboxMessage, v).where(InboxMessage.id == mid)).first()
+        if not msg:
             raise HTTPException(status_code=404, detail="Message not found")
         return kind, msg
-    msg = session.get(SentEmail, mid)
-    if (not msg or (v.tenant_id is not None and msg.tenant_id != v.tenant_id) or msg.status in ("Draft", "Sending")
-            or not (_owns(session, v, msg.lead_id, msg.client_id) or _sent_by_me(v, msg))):
+    msg = session.exec(_scope(select(SentEmail), SentEmail, v).where(SentEmail.id == mid)).first()
+    if not msg or msg.status in ("Draft", "Sending"):
         raise HTTPException(status_code=404, detail="Message not found")
     return kind, msg
 
@@ -773,7 +776,7 @@ _thread_summaries = _TTLCache(ttl_seconds=1800)
 
 
 def _scope_key(v: Viewer) -> str:
-    return f"t{v.tenant_id}:" + ("all" if v.full_access else f"u{v.user.id}")
+    return f"t{v.tenant_id}:u{v.user.id}:{v.mailbox_address or 'unconfigured'}"
 
 
 @router.post("/inbox/messages/{key}/summarize")
@@ -964,15 +967,16 @@ def inbox_assistant(body: AssistantBody, v: Viewer = Depends(get_viewer), sessio
 # ─────────────────────────────────────────────────────────────────────────────
 # Sending (shared by inbox replies and the record Email tab)
 # ─────────────────────────────────────────────────────────────────────────────
-def sender_account(session: Session, user_id: Optional[int], tenant_id: Optional[int]):
+def sender_account(session: Session, user_id: Optional[int], tenant_id: Optional[int], *, integration_only=False):
     """The mailbox this user sends from: their own Email Integration (Email Agent → Settings), else the
     company mailbox in Settings → SMTP, else the server's env mailbox. Raises MailAccountError if none."""
-    return company_mailer.resolve_account(session, user_id, tenant_id, allow_server_fallback=True)
+    return company_mailer.resolve_account(session, user_id, tenant_id, allow_server_fallback=True,
+                                           integration_only=integration_only)
 
 
-def sender_status(session: Session, user_id: Optional[int], tenant_id: Optional[int]) -> dict:
+def sender_status(session: Session, user_id: Optional[int], tenant_id: Optional[int], *, integration_only=False) -> dict:
     try:
-        a = sender_account(session, user_id, tenant_id)
+        a = sender_account(session, user_id, tenant_id, integration_only=integration_only)
     except company_mailer.MailAccountError as e:
         return {"address": None, "configured": False, "source": None, "label": None, "message": str(e)}
     return {"address": a.email, "configured": True, "source": a.source, "label": company_mailer.SOURCE_LABELS.get(a.source)}
@@ -983,7 +987,7 @@ def _send_and_record(session: Session, v: Viewer, *, tenant_id: Optional[int], t
                      source: str, in_reply_to: Optional[str] = None, references: Optional[str] = None,
                      reply_to_key: Optional[str] = None, log_conversation: bool = True) -> SentEmail:
     try:
-        account = sender_account(session, v.user.id, tenant_id)
+        account = sender_account(session, v.user.id, tenant_id, integration_only=source == "inbox_reply")
     except company_mailer.MailAccountError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
@@ -1135,17 +1139,16 @@ def send_inbox_reply(key: str, body: ReplyBody, v: Viewer = Depends(get_viewer),
 def inbox_status(v: Viewer = Depends(get_viewer), session: Session = Depends(get_session)):
     status = inbox_sync.get_sync_status()
     mailboxes = []
-    for cfg in inbox_sync.mailboxes_for_tenant(session, v.tenant_id):
-        if not v.full_access and cfg.user_id != v.user.id:
-            continue  # a salesperson sees the sync state of their own mailbox only
-        s = status.get(cfg.address, {})
+    for cfg in inbox_sync.mailboxes_for_user(session, v.tenant_id, v.user.id):
+        s = status.get(inbox_sync.mailbox_key(cfg), {})
         mailboxes.append({
             "address": cfg.address, "own_settings": cfg.tenant_owned,
             "last_sync_at": s.get("last_sync_at"), "last_error": s.get("last_error"),
         })
     return {
         "mailboxes": mailboxes,
-        "sender": sender_status(session, v.user.id, v.tenant_id),
+        "mailbox_verified": bool(v.mailbox_address),
+        "sender": sender_status(session, v.user.id, v.tenant_id, integration_only=True),
         "ai_enabled": bool(os.getenv("OPENAI_API_KEY")),
         "sync_interval_seconds": int(os.getenv("INBOX_SYNC_INTERVAL_SECONDS", "120")),
         "role": v.role,
@@ -1156,17 +1159,19 @@ def inbox_status(v: Viewer = Depends(get_viewer), session: Session = Depends(get
 @router.post("/inbox/sync")
 def inbox_sync_now(v: Viewer = Depends(get_viewer), session: Session = Depends(get_session)):
     tenant_id = v.tenant_id
+    user_id = v.user.id
     _release(session)  # the sync talks to IMAP for a while; don't hold this request's transaction meanwhile
-    results = inbox_sync.run_sync_cycle(tenant_id=tenant_id, classify=False, max_new=60)
+    results = inbox_sync.run_sync_cycle(tenant_id=tenant_id, user_id=user_id, classify=False, max_new=60)
     # AI triage of what just arrived runs in the background so the button returns quickly.
-    if os.getenv("OPENAI_API_KEY"):
-        threading.Thread(target=lambda: _safe_classify(), daemon=True, name="inbox-classify").start()
+    if results and v.mailbox_address and os.getenv("OPENAI_API_KEY"):
+        threading.Thread(target=_safe_classify, args=(tenant_id, v.mailbox_address),
+                         daemon=True, name="inbox-classify").start()
     return {"ok": True, "results": results}
 
 
-def _safe_classify():
+def _safe_classify(tenant_id, mailbox):
     try:
-        email_ai.classify_pending()
+        email_ai.classify_pending(tenant_id=tenant_id, mailbox=mailbox)
     except Exception as e:
         print(f"[Inbox] background triage failed: {e}")
 

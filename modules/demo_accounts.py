@@ -29,7 +29,6 @@ DEMO_LIMITS = {"limit_clients": 15, "limit_emails": 5, "limit_searches": 5, "lim
 LIMIT_KEYS = {"clients": "limit_clients", "emails": "limit_emails", "searches": "limit_searches",
               "projects": "limit_projects", "calls": "limit_calls"}
 UPGRADE_TITLE = "Demo Upgrade Request"
-LEGACY_OPERATOR_EMAIL = "admin@serphawk.com"   # main._require_roles treats this login as an operator too
 _OPTS = {"skip_tenant": True}
 
 
@@ -53,8 +52,7 @@ def is_demo(user: Optional[User]) -> bool:
 
 
 def is_operator(user: Optional[User]) -> bool:
-    return bool(user) and ((user.role or "").strip().lower() == "superadmin"
-                           or (user.email or "").strip().lower() == LEGACY_OPERATOR_EMAIL)
+    return bool(user) and (user.role or "").strip().lower() == "superadmin"
 
 
 def signup_mail_ready() -> bool:

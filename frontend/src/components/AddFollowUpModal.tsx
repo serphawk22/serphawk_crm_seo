@@ -9,6 +9,7 @@ import {
 import { API_BASE_URL } from "@/config";
 import TimezonePicker from "@/components/TimezonePicker";
 import { detectTimeZone, zonedWallToUtc } from "@/lib/timezone";
+import { useTenantConfig } from "@/context/TenantConfigContext";
 
 export interface FollowUpTarget {
   type: "lead" | "client";
@@ -27,6 +28,8 @@ interface AddFollowUpModalProps {
 }
 
 export default function AddFollowUpModal({ open, onClose, target, onSuccess }: AddFollowUpModalProps) {
+  const { isOn } = useTenantConfig();
+  const board = isOn('followup_board');
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("10:00");
@@ -93,6 +96,7 @@ export default function AddFollowUpModal({ open, onClose, target, onSuccess }: A
     try {
       const wallClock = `${date}T${time}`;
       const utcIso = zonedWallToUtc(wallClock, timezone);
+      if (!utcIso) throw new Error("Choose a valid date, time and timezone");
 
       const payload = {
         title: title.trim(),
@@ -108,14 +112,20 @@ export default function AddFollowUpModal({ open, onClose, target, onSuccess }: A
         notify_email: sendNotification ? notifyEmail.trim() : null,
       };
 
-      let res = await fetch(`${API_BASE_URL}/follow-ups`, {
+      const endpoint = board ? '/follow-ups' : '/followups';
+      const body = board ? payload : {
+        title: payload.title, notes: payload.notes, lead_id: payload.lead_id, client_id: payload.client_id,
+        channel: channel.toLowerCase(), priority: priority.toLowerCase(), due_at: utcIso,
+        remind_at: new Date(utcIso.getTime() - (remindOneHourBefore ? 3600000 : 0)).toISOString(),
+      };
+      let res = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
       });
       // The notification email needs confirmation (lib/emailConfirm); if it was cancelled, still save the follow-up.
       const first = await res.clone().json().catch(() => ({}));
-      if (res.ok && first?.cancelled) {
+      if (board && res.ok && first?.cancelled) {
         res = await fetch(`${API_BASE_URL}/follow-ups`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -309,7 +319,7 @@ export default function AddFollowUpModal({ open, onClose, target, onSuccess }: A
                   <option value="Low">Low</option>
                   <option value="Medium">Medium</option>
                   <option value="High">High</option>
-                  <option value="Urgent">Urgent</option>
+                  {board && <option value="Urgent">Urgent</option>}
                 </select>
               </div>
             </div>
@@ -334,7 +344,7 @@ export default function AddFollowUpModal({ open, onClose, target, onSuccess }: A
                 </div>
               </label>
 
-              <div className="border-t border-slate-200/60 dark:border-zinc-700/60 pt-2.5">
+              {board && <div className="border-t border-slate-200/60 dark:border-zinc-700/60 pt-2.5">
                 <label className="flex items-start gap-2.5 cursor-pointer">
                   <input
                     type="checkbox"
@@ -364,7 +374,7 @@ export default function AddFollowUpModal({ open, onClose, target, onSuccess }: A
                     />
                   </div>
                 )}
-              </div>
+              </div>}
             </div>
 
             {/* Notes */}

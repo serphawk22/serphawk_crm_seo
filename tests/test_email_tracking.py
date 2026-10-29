@@ -169,8 +169,7 @@ class WebhookGuardTests(DBTestCase):
             self.assertEqual(self.post("/webhook/check-replies-now", user=ADMIN).status_code, 429)  # rate limited
             self.assertEqual(self.post("/webhook/check-replies-now", user=ADMIN_T2).status_code, 200)  # per tenant; lower-case role
             self.assertEqual(scan.call_args.kwargs, {"tenant_id": 2})
-            self.assertEqual(self.post("/webhook/check-replies-now", user=ROOT).status_code, 200)
-            self.assertEqual(scan.call_args.kwargs, {"tenant_id": None})  # SuperAdmin: every mailbox
+            self.assertEqual(self.post("/webhook/check-replies-now", user=ROOT).status_code, 403)
 
     def test_backfill_is_admin_only_bounded_and_rate_limited(self):
         self.assertEqual(self.post("/webhook/backfill-reply-content", user=SALES).status_code, 403)

@@ -119,6 +119,10 @@ def demo_account_detail(user_id: int, session: Session = Depends(get_session)):
     account = demo_accounts.account_dict(session, user, tenant, operator)
     # A Demo login inside a real company shares that company's records: never show the company's data here.
     tid = user.tenant_id if account["kind"] != "in_company" else None
+    records_available = not operator
+    if not records_available:
+        # Management metadata stays available without opening CRM records.
+        tid = None
 
     def q(model, order_col):
         if not tid:
@@ -131,6 +135,7 @@ def demo_account_detail(user_id: int, session: Session = Depends(get_session)):
     iso = demo_accounts.iso
     return {
         "success": True,
+        "records_available": records_available,
         "account": account,
         "user": {"id": user.id, "name": user.name, "email": user.email, "created_at": iso(user.createdAt),
                  "tenant_id": user.tenant_id, "upgrade_requested": account["upgrade_requested"]},

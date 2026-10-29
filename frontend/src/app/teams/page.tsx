@@ -7,8 +7,16 @@ import { API_BASE_URL } from "@/config";
 import { cn } from "@/lib/utils";
 import PageGuide from "@/components/PageGuide";
 import { useLanguage } from "@/context/LanguageContext";
+import { useTenantConfig } from "@/context/TenantConfigContext";
+import InstitutePeople from "@/components/InstitutePeople";
 
 export default function TeamsPage() {
+  const { loaded, isOn } = useTenantConfig();
+  if (!loaded) return <p role="status" className="p-6">Loading team configuration…</p>;
+  return <StandardTeamsPage institute={isOn('institute')} />;
+}
+
+function StandardTeamsPage({ institute }: { institute: boolean }) {
   const { t } = useLanguage();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,7 +129,7 @@ export default function TeamsPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {institute ? <InstitutePeople key={users.length} /> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl shadow-sm overflow-hidden flex flex-col">
           <div className="p-6 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50/50 dark:bg-zinc-950/50">
             <h3 className="font-bold text-lg text-gray-900 dark:text-zinc-50 flex items-center gap-3">
@@ -201,6 +209,7 @@ export default function TeamsPage() {
         </div>
       </div>
 
+      }
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
@@ -260,11 +269,12 @@ export default function TeamsPage() {
                   <optgroup label={t("teams.optgroup_sales")}>
                     <option value="Admin">Admin</option>
                     <option value="SalesManager">{t("teams.opt_sales_manager")}</option>
+                    <option value="Employee">Salesperson</option>
                   </optgroup>
-                  <optgroup label={t("teams.optgroup_dev")}>
+                  {!institute && <optgroup label={t("teams.optgroup_dev")}>
                     <option value="ProjectMember">{t("teams.opt_project_member")}</option>
                     <option value="Intern">{t("teams.opt_intern")}</option>
-                  </optgroup>
+                  </optgroup>}
                 </select>
               </div>
 

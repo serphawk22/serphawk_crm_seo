@@ -54,7 +54,9 @@ def _add_master_lead(session: Session, body: RegisterRequest) -> None:
         session.add(Lead(company_name=body.company_name.strip()[:255], email=body.email.strip(), phone=body.phone,
                          website=body.website, industry=body.industry, source="Trial Signup", status="New",
                          notes=f"Registered by {body.admin_name.strip()}", tenant_id=master.id))
-        session.commit()
+        from modules.tenant_scope import using_tenant
+        with using_tenant(master.id):
+            session.commit()
     except Exception as e:                  # a lead that cannot be saved must not undo a registration
         session.rollback()
         print(f"[register] could not add the registration as a lead: {type(e).__name__}")

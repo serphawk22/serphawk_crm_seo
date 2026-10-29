@@ -65,6 +65,7 @@ export interface InboxCounts {
 }
 
 export interface InboxStatus {
+  mailbox_verified?: boolean;
   mailboxes: { address: string; own_settings: boolean; last_sync_at: string | null; last_error: string | null }[];
   sender: { address: string | null; configured: boolean; source?: string | null; label?: string | null; message?: string };
   ai_enabled: boolean;

@@ -17,7 +17,7 @@ class FeatureUnit(unittest.TestCase):
         self.assertEqual(f("/voice-agent/pitches"), "voice_agent")
         self.assertIsNone(f("/voice-agent/twilio/voice"), "Twilio webhooks must stay reachable")
         self.assertIsNone(f("/inboxes"), "prefix match must respect segment boundaries")
-        self.assertIsNone(f("/leads"))
+        self.assertEqual(f("/leads"), "leads")
         self.assertEqual(f("/rfq/3/respond"), "inventory")
 
     def test_registry_is_consistent(self):
@@ -91,9 +91,9 @@ class FeatureApi(TenantIsolationBase):
         self.client.put("/superadmin/tenants/2/features", json={"features": {"followups": True}}, headers=self.sa())
         self.assertNotEqual(self.client.get("/followups/summary", headers=self.as_tenant(2)).status_code, 403)
 
-    def test_locked_feature_cannot_be_disabled(self):
+    def test_leads_can_be_disabled_per_company(self):
         r = self.client.put("/superadmin/tenants/2/features", json={"features": {"leads": False}}, headers=self.sa())
-        self.assertTrue(r.json()["features"]["leads"])
+        self.assertFalse(r.json()["features"]["leads"])
 
     def test_unknown_feature_rejected(self):
         r = self.client.put("/superadmin/tenants/2/features", json={"features": {"teleport": True}}, headers=self.sa())

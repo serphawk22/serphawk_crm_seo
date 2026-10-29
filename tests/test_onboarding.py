@@ -819,9 +819,9 @@ class CompanyMailbox(OnboardingBase):
     def test_the_platform_operator_gets_a_clear_answer_never_a_401(self):
         """A 401 makes the app log the user out, so 'no company selected' must be a different status."""
         g = self.client.get("/settings/email", headers=self.sa())
-        self.assertEqual((g.status_code, g.json()), (200, {"no_tenant": True}))
-        self.assertEqual(self.save(headers=self.sa()).status_code, 400)
-        self.assertEqual(self.client.post("/settings/email/test", json={}, headers=self.sa()).status_code, 400)
+        self.assertEqual(g.status_code, 403)
+        self.assertEqual(self.save(headers=self.sa()).status_code, 403)
+        self.assertEqual(self.client.post("/settings/email/test", json={}, headers=self.sa()).status_code, 403)
         self.assertEqual(self.client.get("/settings/email").status_code, 401, "not signed in is still a 401")
 
     def test_connection_test_uses_saved_details_and_is_admin_only(self):
@@ -888,7 +888,7 @@ class ClientOverview(OnboardingBase):
         alpha = by[2]
         self.assertEqual((alpha["preset"], alpha["brand_name"], alpha["country"], alpha["has_logo"]), ("bpo", "Alpha Logistics", "IN", True))
         self.assertEqual((alpha["users"], alpha["leads"], alpha["clients"], alpha["open_requests"]), (2, 1, 1, 1))
-        self.assertEqual(alpha["admin_email"], "admin2@t2.test")
+        self.assertNotIn("admin_email", alpha)
         self.assertGreater(alpha["modules_on"], by[3]["modules_on"] - 1)
         self.assertFalse(by[3]["has_logo"])
         self.assertEqual(by[demo["tenant_id"]]["demo_of_tenant_id"], 2)

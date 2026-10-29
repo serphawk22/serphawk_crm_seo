@@ -5,6 +5,8 @@ import { Trophy, Star, Ticket, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
+import { useTenantConfig } from "@/context/TenantConfigContext";
+import InstitutePeople from "@/components/InstitutePeople";
 
 interface LeaderboardEntry {
   user_id: number;
@@ -120,6 +122,12 @@ function TicketsPodium({ top3 }: { top3: LeaderboardEntry[] }) {
 }
 
 export default function LeaderboardPage() {
+  const { loaded, isOn } = useTenantConfig();
+  if (!loaded) return <p role="status" className="p-6">Loading leaderboard configuration…</p>;
+  return isOn('institute') ? <InstitutePeople leaderboard /> : <StandardLeaderboardPage />;
+}
+
+function StandardLeaderboardPage() {
   const { t } = useLanguage();
   const [salesLeaderboard, setSalesLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [ticketsLeaderboard, setTicketsLeaderboard] = useState<LeaderboardEntry[]>([]);

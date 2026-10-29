@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { useLanguage, Language } from "@/context/LanguageContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { useTenantConfig } from "@/context/TenantConfigContext";
+import { isPlatformManagementPage } from "@/lib/moduleRoutes";
 
 // --- DND Kit Imports ---
 import {
@@ -56,7 +57,7 @@ const INBOX_ROLES = ["Admin", "SalesManager", "Employee", "Demo", "SuperAdmin"];
 // Sidebar item -> feature (module) a tenant can switch off. Items not listed are always shown.
 const ITEM_FEATURE: Record<string, string> = {
   "item-work-queue": "work_queue", "item-inbox": "inbox", "item-followups": "followups",
-  "item-contacts": "contacts", "item-clients": "clients", "item-deals": "deals",
+  "item-leads": "leads", "item-contacts": "contacts", "item-clients": "clients", "item-deals": "deals",
   "item-projects": "projects", "item-task-sheet": "task_sheet", "item-reports": "reports",
   "item-meetings": "meetings", "item-calls": "calls", "item-teams": "teams", "item-leaderboard": "leaderboard",
   "item-email-agent": "email_agent", "item-voice-agent": "voice_agent",
@@ -267,7 +268,7 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
 
   const visibleItems = section.items
     .filter((item: SidebarItem) => (role === 'SuperAdmin' || item.roles.includes(role)) && !(item.id === 'item-reports' && !['Admin', 'SuperAdmin', 'SalesManager'].includes(role)))
-    .filter((item: SidebarItem) => hasFeature(ITEM_FEATURE[item.id]))
+    .filter((item: SidebarItem) => (role === 'SuperAdmin' && isPlatformManagementPage(item.href)) || hasFeature(ITEM_FEATURE[item.id]))
     .filter((item: SidebarItem) => !ITEM_ADDON[item.id] || isOn(ITEM_ADDON[item.id]))
     .filter((item: SidebarItem) => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()))
     // a company with the follow-up board gets the board (which has the email follow-ups as a tab) behind the same menu entry

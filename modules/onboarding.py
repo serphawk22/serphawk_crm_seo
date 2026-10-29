@@ -159,12 +159,15 @@ def create_workspace(
     session.commit()
     session.refresh(tenant)
     try:
-        user = User(email=admin_email, password=password_hash, name=admin_name, phone=phone, role=admin_role,
-                    tenant_id=tenant.id)
-        session.add(user)
-        session.commit()
-        session.refresh(user)
-        applied = presets.apply_preset(session, tenant.id, preset, settings)
+        from modules.tenant_scope import using_tenant
+        with using_tenant(tenant.id):
+            user = User(email=admin_email, password=password_hash, name=admin_name, phone=phone, role=admin_role,
+                        tenant_id=tenant.id)
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            applied = presets.apply_preset(session, tenant.id, preset, settings)
+            admin_user_id = user.id
     except Exception:
         # never leave a half-made tenant behind (for example when two registrations race on the same email)
         session.rollback()
@@ -174,7 +177,7 @@ def create_workspace(
         session.exec(Tenant.__table__.delete().where(Tenant.id == tenant.id))
         session.commit()
         raise
-    return {"tenant_id": tenant.id, "tenant_name": tenant.name, "admin_user_id": user.id, "admin_email": admin_email,
+    return {"tenant_id": tenant.id, "tenant_name": tenant.name, "admin_user_id": admin_user_id, "admin_email": admin_email,
             **applied}
 
 

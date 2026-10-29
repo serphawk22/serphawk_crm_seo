@@ -59,6 +59,8 @@ class TokenAuth(TenantIsolationBase):
 
     def names(self, headers):
         r = self.client.get("/leads", headers=headers)
+        if r.status_code == 401:
+            return set()
         self.assertEqual(r.status_code, 200, r.text)
         return {l["company_name"] for l in r.json()["leads"]}
 
@@ -130,23 +132,22 @@ class CorsPreflight(TenantIsolationBase):
 
 
 class LegacyHeaderCompat(TenantIsolationBase):
-    """Default behaviour is unchanged so the currently deployed frontend keeps working."""
+    """Compatibility headers require an explicit deployment opt-in."""
 
     def setUp(self):
-        p = mock.patch.dict(os.environ, {"SESSION_SECRET": "route-test-secret"})
+        p = mock.patch.dict(os.environ, {"SESSION_SECRET": "route-test-secret", "LEGACY_USER_HEADER": "1"})
         p.start()
-        os.environ.pop("LEGACY_USER_HEADER", None)
         self.addCleanup(p.stop)
         super().setUp()
 
-    def test_header_still_works_by_default(self):
+    def test_header_works_when_explicitly_enabled(self):
         r = self.client.get("/leads", headers=self.as_tenant(2))
         self.assertEqual({l["company_name"] for l in r.json()["leads"]}, {"Lead of 2"})
 
     def test_unknown_user_id_is_not_unscoped(self):
         """A made-up user id used to resolve to 'no tenant', which meant no filter at all."""
         r = self.client.get("/leads", headers={"X-User-ID": "999999"})
-        self.assertEqual(r.json()["leads"], [])
+        self.assertEqual(r.status_code, 401)
 
 
 if __name__ == "__main__":

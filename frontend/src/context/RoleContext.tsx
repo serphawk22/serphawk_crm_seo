@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { API_BASE_URL } from '@/config';
+import { isInternalApi } from '@/lib/apiRequest';
 
 export type Role = 'SuperAdmin' | 'Admin' | 'Employee' | 'Client' | 'Intern' | 'SalesManager' | 'Supplier' | 'Demo' | 'ProjectMember' | 'Developer' | 'Student' | 'Instructor' | 'Sales';
 
@@ -36,33 +37,34 @@ if (typeof window !== 'undefined' && !(window as any)._fetchPatched) {
     const token = localStorage.getItem('crm_token');
     
     // Only inject tenant_id for internal API calls, not external ones like docs.google.com
-    const isInternalApi = typeof resource === 'string' && (resource.startsWith(API_BASE_URL) || resource.startsWith('/'));
+    const internal = isInternalApi(resource, API_BASE_URL, window.location.origin);
 
-    if (saved && isInternalApi) {
+    if (saved && internal) {
       try {
         const parsed = JSON.parse(saved);
         config = config || {};
+        // Header names are case-insensitive. Object spreads can leave both
+        // "authorization" and "Authorization", which fetch combines into an
+        // invalid comma-separated bearer token. Merge and replace using Headers.
+        const headers = new Headers(resource instanceof Request ? resource.headers : undefined);
+        new Headers(config.headers).forEach((value, key) => headers.set(key, value));
         // Signed session token (the real credential). X-User-ID below stays for backends that have not
         // been upgraded yet; an upgraded backend ignores it whenever a token is present.
         if (token) {
-          config.headers = {
-            ...config.headers,
-            'Authorization': `Bearer ${token}`
-          };
+          headers.set('Authorization', `Bearer ${token}`);
         }
         if (parsed.id) {
-          config.headers = {
-            ...config.headers,
-            'X-User-ID': String(parsed.id)
-          };
+          headers.set('X-User-ID', String(parsed.id));
         }
-        // Skip sending tenant ID if the user is a SuperAdmin, giving them global access
-        if (parsed.tenant_id && parsed.role !== 'SuperAdmin') {
-          config.headers = {
-            ...config.headers,
-            'X-Tenant-ID': String(parsed.tenant_id)
-          };
+        // Explicit tenant headers serve platform configuration requests only;
+        // ordinary users always use their own tenant and the backend enforces it.
+        const selectedTenant = parsed.role === 'SuperAdmin'
+          ? headers.get('X-Tenant-ID') : parsed.tenant_id;
+        if (selectedTenant) {
+          headers.set('X-Tenant-ID', String(selectedTenant));
         }
+        // Keep queued offline requests serializable while retaining one entry per header.
+        config.headers = Object.fromEntries(headers);
       } catch (e) {}
     }
     if (!navigator.onLine && config && config.method && config.method !== 'GET') {
@@ -81,7 +83,7 @@ if (typeof window !== 'undefined' && !(window as any)._fetchPatched) {
     }
     // Universal "confirm before email" gate: block any outbound request that
     // sends a mail until the user confirms it in the popup.
-    if (isInternalApi && typeof resource === 'string') {
+    if (internal && typeof resource === 'string') {
       try {
         const { emailTriggerInfo, requestEmailConfirmation } = await import('@/lib/emailConfirm');
         const info = emailTriggerInfo(resource, config);
@@ -108,7 +110,7 @@ if (typeof window !== 'undefined' && !(window as any)._fetchPatched) {
     }
     
     // If we get a 401 from an internal API (other than the login endpoint itself)
-    if (response.status === 401 && isInternalApi && typeof resource === 'string' && !resource.endsWith('/login')) {
+    if (response.status === 401 && internal && typeof resource === 'string' && !resource.endsWith('/login')) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('crm_user');
         localStorage.removeItem('crm_token');
@@ -119,7 +121,7 @@ if (typeof window !== 'undefined' && !(window as any)._fetchPatched) {
     }
     
     // The API refuses a module the company has not got with 403 + {feature}: tell the user once instead of failing silently.
-    if (response.status === 403 && isInternalApi && typeof window !== 'undefined') {
+    if (response.status === 403 && internal && typeof window !== 'undefined') {
       response.clone().json().then((body) => {
         if (body && body.feature) {
           window.dispatchEvent(new CustomEvent('module-not-enabled', { detail: { feature: body.feature, message: body.detail } }));
