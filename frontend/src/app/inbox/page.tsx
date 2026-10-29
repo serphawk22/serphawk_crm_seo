@@ -198,7 +198,7 @@ export default function InboxPage() {
       const failed = res.results.find((r) => r.error);
       setNotice(failed
         ? { kind: 'error', text: `Sync problem with ${failed.mailbox}: ${failed.error}` }
-        : { kind: 'ok', text: res.results.length === 0 ? 'No mailbox is connected for your workspace yet.' : created ? `${created} new email${created === 1 ? '' : 's'} synced.` : 'You are up to date.' });
+        : { kind: 'ok', text: res.results.length === 0 ? 'Connect your mailbox in Email Agent → Settings to sync this account.' : created ? `${created} new email${created === 1 ? '' : 's'} synced.` : 'You are up to date.' });
       inboxApi.status().then(setStatus).catch(() => {});
       await Promise.all([loadPage(0, true), loadCounts()]);
     } catch (e) {
@@ -305,10 +305,13 @@ export default function InboxPage() {
             {mailbox ? (
               <>Every email for <b className="text-gray-700 dark:text-zinc-300">{mailbox.address}</b> · synced {timeAgo(mailbox.last_sync_at)}</>
             ) : status ? (
-              <>Replies to emails sent from the CRM appear here. <Link href="/admin/settings" className="font-bold text-indigo-600 hover:underline">Connect a mailbox</Link> to see all incoming mail.</>
+              <>Connect your account’s mailbox in <Link href="/email-agent?settings=email" className="font-bold text-indigo-600 hover:underline">Email Agent → Settings</Link> to sync incoming mail.</>
             ) : 'All your emails, sorted and summarized by AI.'}
-            {!status?.full_access && status && <span className="ml-1">· showing emails for your assigned leads and clients</span>}
+            {mailbox && <span className="ml-1">· only your connected mailbox</span>}
           </p>
+          {mailbox && status?.mailbox_verified === false && (
+            <p className="mt-1 text-xs text-amber-700">Test your saved IMAP connection in Email Agent → Settings before viewing mailbox contents.</p>
+          )}
           {mailbox?.last_error && (
             <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
               <AlertTriangle size={12} /> Last sync failed: {mailbox.last_error}

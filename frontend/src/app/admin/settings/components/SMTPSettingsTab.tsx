@@ -44,12 +44,15 @@ export default function SMTPSettingsTab() {
 
   const fetchSettings = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("crm_token");
       const res = await fetch(`${API_BASE_URL}/settings/email`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       const data = await res.json();
-      if (!res.ok) return;
+      if (!res.ok) {
+        setError(typeof data.detail === "string" ? data.detail : "Could not load mailbox settings.");
+        return;
+      }
       if (data.smtp_host) {
         setSettings({ ...data, smtp_pass: "" });
         // If settings already exist, consider email as pre-verified
@@ -76,12 +79,12 @@ export default function SMTPSettingsTab() {
     setSaving(true);
     setError("");
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("crm_token");
       const res = await fetch(`${API_BASE_URL}/settings/email`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(settings),
       });

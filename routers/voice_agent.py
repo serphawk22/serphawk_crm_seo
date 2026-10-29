@@ -105,7 +105,7 @@ def _current_user(session: Session) -> User:
         raise HTTPException(status_code=401, detail="Unauthorized")
     # Roles are stored inconsistently ("admin" vs "Admin"), so compare case-insensitively.
     allowed = {r.lower() for r in ALLOWED_ROLES}
-    if (user.role or "").lower() not in allowed and (user.email or "").lower() != "admin@serphawk.com":
+    if (user.role or "").lower() not in allowed:
         raise HTTPException(status_code=403, detail="Forbidden")
     return user
 

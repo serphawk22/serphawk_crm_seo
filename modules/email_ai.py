@@ -156,7 +156,7 @@ def classify_batch(items: list, tenant_id=None) -> dict:
     return results
 
 
-def classify_pending(engine=None, limit: int = 30, batch_size: int = 10) -> int:
+def classify_pending(engine=None, limit: int = 30, batch_size: int = 10, *, tenant_id=None, mailbox=None) -> int:
     """Triage the newest not-yet-classified inbound messages. Returns how many were classified."""
     from database import ClientProfile, InboxMessage, Lead, engine as default_engine
 
@@ -164,9 +164,13 @@ def classify_pending(engine=None, limit: int = 30, batch_size: int = 10) -> int:
     # Read everything up front and close the session: no DB transaction (and no table locks) may stay
     # open while waiting on OpenAI, or a concurrent ALTER TABLE queues every query behind it.
     with Session(engine) as session:
+        stmt = select(InboxMessage).where(InboxMessage.ai_classified_at.is_(None))
+        if tenant_id is not None:
+            stmt = stmt.where(InboxMessage.tenant_id == tenant_id)
+        if mailbox is not None:
+            stmt = stmt.where(InboxMessage.mailbox == mailbox)
         rows = session.exec(
-            select(InboxMessage)
-            .where(InboxMessage.ai_classified_at.is_(None))
+            stmt
             .order_by(InboxMessage.received_at.desc())
             .limit(limit)
             .execution_options(skip_tenant=True)

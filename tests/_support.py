@@ -80,6 +80,13 @@ def main_client(testcase, engine=ENGINE):
     """TestClient for the real main.app (real middleware, tenant filter and routes), no lifespan."""
     from fastapi.testclient import TestClient
 
+    # Older route fixtures deliberately exercise compatibility headers. Production
+    # defaults to signed sessions; tests of that default explicitly unset this flag.
+    if "LEGACY_USER_HEADER" not in os.environ:
+        p = mock.patch.dict(os.environ, {"LEGACY_USER_HEADER": "1"})
+        p.start()
+        testcase.addCleanup(p.stop)
+
     main = load_main()
     use_engine(testcase, engine)
     testcase.addCleanup(reset_context)

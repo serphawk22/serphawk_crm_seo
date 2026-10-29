@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:phone": "node scripts/check-phone.js"
+    "test:phone": "node scripts/check-phone.js",
+    "test:lead-workflow": "node scripts/check-lead-workflow.mjs",
+    "test:branding-session": "node scripts/check-branding-session.mjs",
+    "test:superadmin-access": "node scripts/check-superadmin-access.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

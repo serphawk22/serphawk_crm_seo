@@ -113,7 +113,7 @@ from database import (
     APIKey,
     EmailSettings,
 )
-from sqlmodel import Session, select
+from sqlmodel import Session, select, SQLModel
 from sqlalchemy import func, or_
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Depends, FastAPI, HTTPException, Query, Form, UploadFile, File, Body
@@ -327,6 +327,11 @@ def _add_tenant_filter(execute_state):
     if execute_state.execution_options.get("skip_tenant"):
         return
 
+    if execute_state.is_update and not tenant_scope.platform_management_write.get():
+        values = getattr(execute_state.statement, "_values", None) or {}
+        if any(getattr(key, "key", key) == "tenant_id" for key in values):
+            raise HTTPException(status_code=403, detail="Bulk updates cannot move records between companies")
+
     # Scope every use of every tenant-owned entity (selects, joins, column-only selects, aggregates,
     # relationship loads, bulk UPDATE / DELETE). See modules/tenant_scope.py for what is and is not covered.
     if execute_state.is_select or execute_state.is_update or execute_state.is_delete:
@@ -350,6 +355,19 @@ def _auto_assign_tenant_id(session, flush_context, instances):
         if hasattr(obj, "tenant_id") and getattr(obj, "tenant_id") is None:
             if hasattr(obj, "__tablename__") and obj.__tablename__ not in global_tables:
                 setattr(obj, "tenant_id", tenant_id)
+
+    # A scoped read alone cannot prevent a handler from moving a row to another
+    # company by accepting tenant_id in a payload. Enforce the write boundary too.
+    from sqlalchemy import inspect
+    if tenant_scope.platform_management_write.get():
+        return  # only authenticated SuperAdmin /superadmin/* management handlers
+    for obj in session.new.union(session.dirty).union(session.deleted):
+        if not hasattr(obj, "tenant_id") or getattr(obj, "__tablename__", None) in global_tables:
+            continue
+        history = inspect(obj).attrs.tenant_id.history
+        if (tenant_id < 1 or obj.tenant_id != tenant_id
+                or any(old != tenant_id for old in history.deleted)):
+            raise HTTPException(status_code=403, detail="Record must belong to the selected company")
 
 
 @event.listens_for(SASession, "after_flush")
@@ -508,8 +526,8 @@ def _require_roles(session: Session, allowed_roles):
     """Enforce role access for sensitive endpoints.
 
     Returns the current User. Raises 401 if unauthenticated and 403 if the
-    caller's role is not allowed. SuperAdmin and the legacy UI superadmin
-    (admin@serphawk.com) are always permitted.
+    caller's role is not allowed. Platform access follows the SuperAdmin role,
+    never an email-address special case.
     """
     uid = current_salesperson_id.get()
     if not uid:
@@ -518,7 +536,7 @@ def _require_roles(session: Session, allowed_roles):
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
     role = _normalize_role(user.role)
-    if role == "SuperAdmin" or (user.email or "").lower() == "admin@serphawk.com" or role in allowed_roles:
+    if role == "SuperAdmin" or role in allowed_roles:
         return user
     raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -529,6 +547,7 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         current_client_id.set(None)
         current_salesperson_id.set(None)
         current_tenant_id.set(None)
+        tenant_scope.platform_management_write.set(False)
         current_endpoint.set(request.url.path)
         # Identity. A signed session token (Authorization: Bearer ...) is the real credential. The legacy
         # unsigned X-User-ID header / ?user_id= query parameter is only honoured when NO Authorization header
@@ -550,8 +569,8 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
 
         # Now securely resolve tenant_id based on the authenticated user.
         # This prevents malicious spoofing of X-Tenant-ID and fixes legacy missing headers.
-        tenant_header = request.headers.get("X-Tenant-ID")
         path = request.url.path
+        operator = False
 
         # Twilio voice webhooks and static audio are unauthenticated and latency-critical
         # (Twilio drops a call after ~15s), so they skip the user lookup entirely.
@@ -564,23 +583,28 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
                 with Session(engine) as session:
                     user_obj = session.get(User, uid)
                     if not user_obj:
-                        return None, -1
+                        return None, -1, False
                     if pv is not None and auth_tokens.password_fingerprint(user_obj.password) != pv:
-                        return None, -1  # password changed since the token was issued
-                    if (user_obj.role or "").lower() == "demo" and not user_obj.is_active:
-                        return None, -1  # demo account switched off in Demo Account Data
-                    if user_obj.role == "SuperAdmin":
-                        # SuperAdmins can optionally impersonate a tenant via header
-                        return uid, (int(tenant_header) if tenant_header and tenant_header.isdigit() else None)
+                        return None, -1, False  # password changed since the token was issued
+                    user_role = _normalize_role(user_obj.role)
+                    if user_role == "Demo" and not user_obj.is_active:
+                        return None, -1, False  # demo account switched off in Demo Account Data
+                    if user_role == "SuperAdmin":
+                        # Platform operators have no tenant CRM context. Use a
+                        # tenant Admin login to work with that company's records.
+                        return uid, -1, True
                     # Force tenant_id to be the user's actual tenant in the DB
-                    return uid, user_obj.tenant_id
+                    if not user_obj.tenant_id or user_obj.tenant_id < 1:
+                        return None, -1, False
+                    return uid, user_obj.tenant_id, False
 
             # Blocking DB call: run it in the threadpool so it doesn't stall the event loop
             # (which delayed every other request, including Twilio webhooks).
             from starlette.concurrency import run_in_threadpool
-            resolved_uid, resolved_tenant = await run_in_threadpool(_resolve_identity, claimed_uid, claimed_pv)
+            resolved_uid, resolved_tenant, operator = await run_in_threadpool(_resolve_identity, claimed_uid, claimed_pv)
             current_salesperson_id.set(resolved_uid)
             current_tenant_id.set(resolved_tenant)
+            tenant_scope.platform_management_write.set(operator and path.startswith('/superadmin/'))
         else:
             # Unauthenticated requests CANNOT be given SuperAdmin access (None), and must not pick a
             # tenant with a client-supplied X-Tenant-ID either. Force an invalid tenant ID so they see
@@ -588,11 +612,25 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
             current_tenant_id.set(-1)
 
         # Feature entitlements: a tenant that has a module switched off gets 403 for that module's routes.
-        # Anonymous requests (-1: webhooks, public store) and unscoped SuperAdmins (None) are never gated.
+        # Public handlers resolve their tenant themselves. Operators must select one
+        # tenant for CRM requests; platform management handlers retain their own role checks.
         gated_tenant = current_tenant_id.get()
+        platform_path = (path.startswith(("/superadmin/", "/me/", "/users/me", "/notifications/",
+                                          "/telemetry/demo-account", "/auth/"))
+                         or path in {"/health", "/login", "/telemetry/page-visit"})
+        operator_create = operator and gated_tenant == -1 and path == '/users' and request.method == 'POST'
+        if operator and not platform_path and not operator_create:
+            return JSONResponse(status_code=403, content={
+                "detail": "Use the company Admin account to access its CRM records.",
+                "code": "tenant_admin_required"})
+        no_selection = current_salesperson_id.get() and gated_tenant == -1 and not platform_path
+        # Creating another platform operator is a global management duty. The
+        # handler still requires a tenant before it can create any tenant user.
+        if (gated_tenant is None or gated_tenant < 1) and not operator_create and (no_selection or tenant_scope.requires_tenant(path)):
+            return JSONResponse(status_code=403 if current_salesperson_id.get() else 401,
+                                content={"detail": "Sign in and select a valid company to access CRM records"})
         if gated_tenant is not None and gated_tenant >= 1:
-            feature_key = features.feature_for_path(path)
-            if feature_key:
+            for feature_key in features.gates_for_path(path):
                 from starlette.concurrency import run_in_threadpool
                 if not await run_in_threadpool(features.is_enabled, gated_tenant, feature_key):
                     return JSONResponse(status_code=403, content={
@@ -2666,7 +2704,7 @@ def omnisearch(q: str, session: Session = Depends(get_session)):
         return {"results": []}
 
     from database import ClientProfile, Lead, Task, Deal
-    from sqlalchemy import select, or_
+    from sqlalchemy import or_
 
     search_term = f"%{q}%"
     results = []
@@ -2674,16 +2712,18 @@ def omnisearch(q: str, session: Session = Depends(get_session)):
     # Search Clients
     clients = session.exec(select(ClientProfile).where(
         ClientProfile.tenant_id == tenant_id,
-        or_(ClientProfile.companyName.ilike(search_term), ClientProfile.contactPerson.ilike(
-            search_term), ClientProfile.email.ilike(search_term))
+        features.is_enabled(tenant_id, "clients"),
+        or_(ClientProfile.companyName.ilike(search_term), ClientProfile.contact_person.ilike(search_term),
+            ClientProfile.userId.in_(select(User.id).where(User.email.ilike(search_term))))
     ).limit(5)).all()
     for c in clients:
         results.append({"type": "Client", "title": c.companyName,
-                       "subtitle": c.contactPerson, "route": f"/admin/clients/{c.id}"})
+                       "subtitle": c.contact_person or "", "route": f"/admin/clients/{c.id}"})
 
     # Search Leads
     leads = session.exec(select(Lead).where(
         Lead.tenant_id == tenant_id,
+        features.is_enabled(tenant_id, "leads"),
         or_(Lead.company_name.ilike(search_term), Lead.email.ilike(search_term))
     ).limit(5)).all()
     for l in leads:
@@ -2766,8 +2806,6 @@ def get_all_tenants(session: Session = Depends(get_session)):
                 "id": t.id,
                 "name": t.name,
                 "business_name": t.business_name,
-                "email": t.email,
-                "phone": t.phone,
                 "is_trial": t.is_trial,
                 "created_at": t.created_at,
                 "users": user_count or 0,
@@ -4033,6 +4071,8 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
     if body.email:
         user = session.exec(select(User).where(
             User.email == body.email).execution_options(skip_tenant=True)).first()
+        if user and user.tenant_id != tenant_id:
+            raise HTTPException(status_code=409, detail="Email is unavailable for this company")
         if not user:
             try:
                 user = User(
@@ -4040,6 +4080,7 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
                     password=_hash_password(body.password or "changeme"),
                     name=body.name or body.companyName or "Client",
                     role="Client",
+                    tenant_id=tenant_id,
                 )
                 session.add(user)
                 session.commit()
@@ -4049,6 +4090,8 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
                 session.rollback()
                 user = session.exec(select(User).where(
                     User.email == body.email).execution_options(skip_tenant=True)).first()
+                if user and user.tenant_id != tenant_id:
+                    raise HTTPException(status_code=409, detail="Email is unavailable for this company")
 
     cp = ClientProfile(
         tenant_id=current_tenant_id.get(),
@@ -4123,30 +4166,20 @@ class SheetImportRequest(_BM):
 @app.get("/dev/reset-clients")
 def dev_reset_clients(session: Session = Depends(get_session)):
     _require_roles(session, ["SuperAdmin"])
-    from sqlalchemy import text
+    tenant_id = _require_tenant()
     from sqlmodel import delete
 
     # 1. Delete Client Research
     session.exec(delete(ClientResearch))
 
     # 2. Reset Client Profiles
-    is_postgres = engine.url.drivername.startswith("postgres")
-    if is_postgres:
-        session.exec(
-            text("TRUNCATE TABLE client_profiles RESTART IDENTITY CASCADE"))
-    else:
-        session.exec(delete(ClientProfile))
-        try:
-            session.exec(
-                text("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'client_profiles'"))
-        except Exception:
-            pass
+    session.exec(delete(ClientProfile).where(ClientProfile.tenant_id == tenant_id))
 
     # 3. Clear Users with role 'Client'
     session.exec(delete(User).where(User.role == 'Client'))
 
     session.commit()
-    return {"message": "Client database has been completely reset to 0."}
+    return {"message": "Selected company's clients have been reset."}
 
 
 @app.get("/dev/seed-catalog")
@@ -4888,6 +4921,8 @@ def update_client(
     if not cp:
         raise HTTPException(status_code=404, detail="Client not found")
     updates = body.model_dump(exclude_unset=True)
+    if "assignedEmployeeId" in updates:
+        _validate_company_assignee(session, updates["assignedEmployeeId"])
     for field, val in updates.items():
         if field == "customFields" and val is not None:
             cp.customFields = {**(cp.customFields or {}), **val}
@@ -6750,6 +6785,8 @@ def list_calls(unsummarized: Optional[bool] = None, session: Session = Depends(g
 @app.post("/calls")
 def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
+    if body.client_id and not session.get(ClientProfile, body.client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
 
     # Check limit for Demo users
     if tenant_id:
@@ -6800,9 +6837,14 @@ def update_call(
     c = session.get(CallLog, call_id)
     if not c:
         raise HTTPException(status_code=404, detail="Call not found")
+    allowed = {"phone_number", "duration_seconds", "summary", "description", "work_done",
+               "assigned_to", "followup_needed", "followup_date", "client_id"}
+    if set(body) - allowed:
+        raise HTTPException(status_code=422, detail="Unsupported call fields")
+    if body.get("client_id") and not session.get(ClientProfile, body["client_id"]):
+        raise HTTPException(status_code=404, detail="Client not found")
     for field, val in body.items():
-        if hasattr(c, field):
-            setattr(c, field, val)
+        setattr(c, field, val)
     session.add(c)
     session.commit()
     session.refresh(c)
@@ -7067,6 +7109,21 @@ def _sched_dict(s: ScheduledCall) -> dict:
     }
 
 
+def _validate_company_assignee(session: Session, user_id: Optional[int]) -> None:
+    if user_id:
+        user = session.get(User, user_id)
+        if not user or user.tenant_id != current_tenant_id.get():
+            raise HTTPException(status_code=404, detail="Assignee not found in this company")
+
+
+def _validate_call_entity(session: Session, kind: str, entity_id: Optional[int]) -> None:
+    model = {"client": ClientProfile, "lead": Lead, "contact": Contact}.get(kind)
+    if model is None:
+        raise HTTPException(status_code=422, detail="Choose client, lead, or contact")
+    if entity_id and not session.get(model, entity_id):
+        raise HTTPException(status_code=404, detail="Call record not found")
+
+
 @app.get("/scheduled-calls")
 def list_scheduled_calls(session: Session = Depends(get_session)):
     items = session.exec(select(ScheduledCall).order_by(
@@ -7076,6 +7133,7 @@ def list_scheduled_calls(session: Session = Depends(get_session)):
 
 @app.post("/scheduled-calls")
 def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = Depends(get_session)):
+    _validate_call_entity(session, body.entity_type, body.entity_id)
     dt = None
     if body.scheduled_at:
         try:
@@ -7134,9 +7192,20 @@ def update_scheduled_call(sc_id: int, body: Dict[str, Any], session: Session = D
     sc = session.get(ScheduledCall, sc_id)
     if not sc:
         raise HTTPException(status_code=404, detail="Scheduled call not found")
+    allowed = {"title", "scheduled_at", "entity_type", "entity_id", "entity_name",
+               "entity_email", "pitch", "notes", "assigned_to"}
+    if set(body) - allowed:
+        raise HTTPException(status_code=422, detail="Unsupported scheduled call fields")
+    _validate_call_entity(session, body.get("entity_type", sc.entity_type), body.get("entity_id", sc.entity_id))
     for k, v in body.items():
-        if hasattr(sc, k):
-            setattr(sc, k, v)
+        if k == "scheduled_at" and v:
+            try:
+                v = datetime.fromisoformat(v.replace("Z", "+00:00"))
+                if v.tzinfo is None:
+                    v = v.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=422, detail="Invalid scheduled date")
+        setattr(sc, k, v)
     session.add(sc)
     session.commit()
     session.refresh(sc)
@@ -8100,6 +8169,7 @@ def global_search(q: str = Query("", min_length=1), session: Session = Depends(g
     # Clients
     for c in session.exec(
         select(ClientProfile).where(
+            features.is_enabled(current_tenant_id.get(), "clients"),
             (ClientProfile.companyName.ilike(term)) | (
                 ClientProfile.projectName.ilike(term))
         ).limit(5)
@@ -12327,7 +12397,8 @@ class ContactCreateRequest(BaseModel):
 
 @app.get("/leads")
 def get_leads(owner_id: Optional[int] = None, session: Session = Depends(get_session)):
-    query = select(Lead)
+    query = select(Lead).where(Lead.is_converted == False, Lead.converted_client_id.is_(None),
+                               Lead.converted_student_id.is_(None))
     if owner_id is not None:
         query = query.where(Lead.owner_id == owner_id)
     tenant_id = current_tenant_id.get()
@@ -12361,7 +12432,8 @@ def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(
     import csv as _csv
     import json as _json
 
-    query = select(Lead)
+    query = select(Lead).where(Lead.is_converted == False, Lead.converted_client_id.is_(None),
+                               Lead.converted_student_id.is_(None))
     if owner_id is not None:
         query = query.where(Lead.owner_id == owner_id)
     tenant_id = current_tenant_id.get()
@@ -12455,6 +12527,9 @@ def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(
 @app.post("/leads")
 def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)):
     tenant_id = current_tenant_id.get()
+    _validate_company_assignee(session, body.owner_id)
+    if body.status.lower() == 'converted':
+        raise HTTPException(status_code=422, detail="Create the prospect first, then use its conversion action")
     if tenant_id and tenant_id != 1:
         tenant = session.get(Tenant, tenant_id)
         if tenant:
@@ -12764,10 +12839,17 @@ def update_lead(lead_id: int, body: LeadCreateRequest, session: Session = Depend
     lead = session.get(Lead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    for key, value in body.dict().items():
+    _validate_company_assignee(session, body.owner_id)
+    if 'status' in body.model_fields_set and features.is_enabled(lead.tenant_id, 'institute'):
+        from addons.institute import routes as institute
+        institute.update_lead_stage(lead_id, institute.LeadStatusRequest(status=body.status), session)
+    for key, value in body.model_dump(exclude_unset=True).items():
         setattr(lead, key, value)
     session.add(lead)
-    session.commit()
+    if body.status.lower() == 'converted' and not lead.is_converted:
+        convert_lead_to_client(lead_id, session)
+    else:
+        session.commit()
     session.refresh(lead)
     return lead
 
@@ -12979,6 +13061,7 @@ async def generate_lead_swot(lead_id: int, session: Session = Depends(get_sessio
 @app.delete("/debug/purge-leads")
 def purge_leads_debug(session: Session = Depends(get_session)):
     _require_roles(session, ["SuperAdmin"])
+    tenant_id = _require_tenant()
     queries = [
         "DELETE FROM sent_emails WHERE lead_id IS NOT NULL",
         "DELETE FROM activity_logs WHERE lead_id IS NOT NULL",
@@ -12992,7 +13075,8 @@ def purge_leads_debug(session: Session = Depends(get_session)):
     ]
     for q in queries:
         try:
-            session.execute(text(q))
+            suffix = " AND tenant_id = :tenant_id" if " WHERE " in q else " WHERE tenant_id = :tenant_id"
+            session.execute(text(q + suffix), {"tenant_id": tenant_id})
         except Exception as e:
             print("Error executing", q, e)
     session.commit()
@@ -13018,7 +13102,8 @@ def delete_lead(lead_id: int, session: Session = Depends(get_session)):
             "DELETE FROM client_research WHERE lead_id = :lead_id",
         ]
         for q in queries:
-            session.execute(text(q), {"lead_id": lead_id})
+            session.execute(text(q + " AND tenant_id = :tenant_id"),
+                            {"lead_id": lead_id, "tenant_id": current_tenant_id.get()})
 
         session.delete(lead)
         session.commit()
@@ -13178,7 +13263,10 @@ Return ONLY valid JSON matching exactly:
 
 @app.post("/leads/{lead_id}/convert")
 def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)):
-    lead = session.get(Lead, lead_id)
+    if not features.is_enabled(current_tenant_id.get(), "clients"):
+        raise HTTPException(status_code=403, detail="The Clients module is not enabled for this company")
+    lead = session.exec(select(Lead).where(Lead.id == lead_id).with_for_update()
+                        .execution_options(populate_existing=True)).first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     if lead.is_converted:
@@ -13195,8 +13283,7 @@ def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)
         owner_id=lead.owner_id
     )
     session.add(account)
-    session.commit()
-    session.refresh(account)
+    session.flush()
 
     # 2. Create ClientProfile
     client = ClientProfile(
@@ -13210,8 +13297,7 @@ def convert_lead_to_client(lead_id: int, session: Session = Depends(get_session)
         assignedEmployeeId=lead.owner_id
     )
     session.add(client)
-    session.commit()
-    session.refresh(client)
+    session.flush()
 
     # 3. Re-link Contacts
     contacts = session.exec(select(Contact).where(
@@ -17744,38 +17830,44 @@ def mark_email_replied(payload: EmailReplyUpdate, session: Session = Depends(get
 # ─── DATABASE MANAGEMENT ──────────────────────────────────────────────────
 
 
+def _tenant_browser_table(session: Session, table_name: str):
+    """The database viewer is subject to the same tenant/feature boundary as CRM APIs."""
+    _require_roles(session, ["Admin"])
+    tenant_id = _require_tenant()
+    table = SQLModel.metadata.tables.get(table_name)
+    if table is None or "tenant_id" not in table.c or table_name in tenant_scope.GLOBAL_TABLES:
+        raise HTTPException(status_code=403, detail="This table is not available in the company data viewer")
+    module = {"leads": "leads", "client_profiles": "clients", "call_logs": "calls", "scheduled_calls": "calls",
+              "ai_calls": "voice_agent", "inbox_messages": "inbox", "sent_emails": "inbox"}.get(table_name)
+    if module and not features.is_enabled(tenant_id, module):
+        raise HTTPException(status_code=403, detail="The table's module is not enabled", headers={"X-Module": module})
+    columns = [c for c in table.c if not any(word in c.name.lower() for word in ("password", "token"))
+               and c.name.lower() not in {"smtp_pass", "otp_code", "api_key"}]
+    return table, columns, tenant_id
+
+
 @app.get("/admin/db/tables")
 def get_db_tables(session: Session = Depends(get_session)):
     _require_roles(session, ["Admin"])
-    inspector = inspect(session.bind)
-    tables = inspector.get_table_names()
+    _require_tenant()
+    tables = [name for name, table in SQLModel.metadata.tables.items()
+              if "tenant_id" in table.c and name not in tenant_scope.GLOBAL_TABLES]
     return {"tables": tables}
 
 
 @app.get("/admin/db/tables/{table_name}")
 def get_db_table_data(table_name: str, page: int = 1, per_page: int = 50, sort_col: str = None, sort_dir: str = "asc", session: Session = Depends(get_session)):
-    _require_roles(session, ["Admin"])
-    inspector = inspect(session.bind)
-    if table_name not in inspector.get_table_names():
-        raise HTTPException(status_code=404, detail="Table not found")
-
-    columns = [{"name": col["name"], "type": str(
-        col["type"])} for col in inspector.get_columns(table_name)]
-
-    query = f'SELECT * FROM "{table_name}"'
-    if sort_col:
-        # Prevent basic SQL injection on column name
-        if sort_col in [c["name"] for c in columns]:
-            direction = "ASC" if sort_dir.lower() == "asc" else "DESC"
-            query += f' ORDER BY "{sort_col}" {direction}'
-
-    query += f" LIMIT {per_page} OFFSET {(page - 1) * per_page}"
-
-    result = session.exec(text(query)).mappings().all()
-
-    # Get total count
-    count_query = f'SELECT COUNT(*) FROM "{table_name}"'
-    total = session.exec(text(count_query)).scalar()
+    from sqlalchemy import select as core_select
+    table, safe_columns, tenant_id = _tenant_browser_table(session, table_name)
+    columns = [{"name": c.name, "type": str(c.type)} for c in safe_columns]
+    predicate = table.c.tenant_id == tenant_id
+    query = core_select(*safe_columns).where(predicate)
+    if sort_col in {c.name for c in safe_columns}:
+        col = table.c[sort_col]
+        query = query.order_by(col.desc() if sort_dir.lower() == 'desc' else col.asc())
+    page, per_page = max(1, page), max(1, min(per_page, 500))
+    result = session.execute(query.limit(per_page).offset((page - 1) * per_page)).mappings().all()
+    total = session.execute(core_select(func.count()).select_from(table).where(predicate)).scalar()
 
     return {
         "columns": columns,
@@ -17788,17 +17880,13 @@ def get_db_table_data(table_name: str, page: int = 1, per_page: int = 50, sort_c
 
 @app.get("/admin/db/export/{table_name}")
 def export_db_table(table_name: str, session: Session = Depends(get_session)):
-    _require_roles(session, ["Admin"])
     from fastapi.responses import StreamingResponse
     import csv
     import io
-    inspector = inspect(session.bind)
-    if table_name not in inspector.get_table_names():
-        raise HTTPException(status_code=404, detail="Table not found")
-
-    columns = [col["name"] for col in inspector.get_columns(table_name)]
-    query = f'SELECT * FROM "{table_name}"'
-    result = session.exec(text(query)).mappings().all()
+    from sqlalchemy import select as core_select
+    table, safe_columns, tenant_id = _tenant_browser_table(session, table_name)
+    columns = [c.name for c in safe_columns]
+    result = session.execute(core_select(*safe_columns).where(table.c.tenant_id == tenant_id)).mappings().all()
 
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=columns)
@@ -18587,9 +18675,11 @@ def get_telemetry_audit_logs(
     """
     from sqlmodel import select
     from database import AuditLog, User
+    _require_roles(session, ["Admin"])
+    tenant_id = _require_tenant()
 
     stmt = select(AuditLog, User).join(
-        User, AuditLog.user_id == User.id, isouter=True)
+        User, AuditLog.user_id == User.id, isouter=True).where(AuditLog.tenant_id == tenant_id)
     if user_id:
         stmt = stmt.where(AuditLog.user_id == user_id)
 
@@ -18612,7 +18702,7 @@ def get_telemetry_audit_logs(
         })
 
     from sqlalchemy import func
-    count_stmt = select(func.count(AuditLog.id))
+    count_stmt = select(func.count(AuditLog.id)).where(AuditLog.tenant_id == tenant_id)
     if user_id:
         count_stmt = count_stmt.where(AuditLog.user_id == user_id)
     total_count = session.exec(count_stmt).one()

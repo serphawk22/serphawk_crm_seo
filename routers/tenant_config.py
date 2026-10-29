@@ -57,7 +57,7 @@ def _super(session: Session) -> User:
 
 
 def _my_tenant(user: User) -> Optional[int]:
-    """The tenant the caller is acting in: their own, or for a SuperAdmin the one picked with X-Tenant-ID."""
+    """Tenant users act in their own company; platform operators have no CRM tenant."""
     tid = current_tenant_id.get()
     if tid is not None and tid >= 1:
         return tid
@@ -78,10 +78,14 @@ def my_features(session: Session = Depends(get_session)):
     tid = _my_tenant(user)
     preset, _ = tenant_settings.get_stored(tid) if tid else (None, {})
     settings = tenant_settings.get_settings(tid)
+    enabled = features.effective_features(tid)
+    if tid and enabled.get("institute") and not settings.get("lead_statuses"):
+        from addons.institute.routes import LEAD_STAGES
+        settings = {**settings, "lead_statuses": list(LEAD_STAGES)}
     return {
         "tenant_id": tid,
         "preset": preset,
-        "features": features.effective_features(tid),
+        "features": enabled,
         "settings": {k: settings.get(k) for k in tenant_settings.PUBLIC_KEYS},
     }
 
@@ -180,25 +184,20 @@ def tenants_overview(session: Session = Depends(get_session)):
                             .group_by(model.tenant_id).execution_options(**skip)).all()
         return {tid: n for tid, n in rows}
 
-    users, leads, clients = counts(User), counts(Lead), counts(ClientProfile)
+    users, leads, clients = counts(User), counts(Lead, Lead.is_converted == False), counts(ClientProfile)
     open_requests = counts(CustomizationRequest, CustomizationRequest.status.in_(("new", "in_review")))
     with_logo = set(session.exec(select(TenantAsset.tenant_id).where(TenantAsset.kind == "logo").execution_options(**skip)).all())
     stored = {r.tenant_id: (r.preset, r.settings or {}) for r in session.exec(select(TenantSettings).execution_options(**skip)).all()}
     rows_by_tenant: Dict[int, Dict[str, bool]] = {}
     for f in session.exec(select(TenantFeature).execution_options(**skip)).all():
         rows_by_tenant.setdefault(f.tenant_id, {})[f.feature_key] = bool(f.enabled)
-    admin_email: Dict[int, str] = {}
-    for tid, email in session.exec(select(User.tenant_id, User.email).where(User.role == "Admin", User.tenant_id.is_not(None))
-                                   .order_by(User.id).execution_options(**skip)).all():
-        admin_email.setdefault(tid, email)
-
     out = []
     for t in session.exec(select(Tenant).order_by(Tenant.id.desc()).execution_options(**skip)).all():
         preset, st = stored.get(t.id, (None, {}))
         out.append({
             "id": t.id, "name": t.name, "business_name": t.business_name, "brand_name": st.get("brand_name"),
             "is_trial": bool(t.is_trial), "demo_of_tenant_id": t.demo_of_tenant_id, "created_at": t.created_at,
-            "admin_email": admin_email.get(t.id), "users": users.get(t.id, 0), "leads": leads.get(t.id, 0),
+            "users": users.get(t.id, 0), "leads": leads.get(t.id, 0),
             "clients": clients.get(t.id, 0), "open_requests": open_requests.get(t.id, 0), "preset": preset,
             "country": st.get("country"), "currency": st.get("default_currency"), "locale": st.get("locale"),
             "has_logo": t.id in with_logo or bool(st.get("brand_logo_url")),

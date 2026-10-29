@@ -321,7 +321,7 @@ export default function ClientsPage() {
 
   const fetchActivities = async () => {
     try {
-      const url = new URL(`${API_BASE_URL}/activities`);
+      const url = new URL(`${API_BASE_URL}/activities`, window.location.origin);
       if (role === 'SalesManager' && user?.id) {
         url.searchParams.append('user_id', String(user.id));
       }
@@ -404,7 +404,7 @@ export default function ClientsPage() {
     setLoading(true);
     const start = performance.now();
     try {
-      const url = new URL(`${API_BASE_URL}/clients`);
+      const url = new URL(`${API_BASE_URL}/clients`, window.location.origin);
       if (filter !== 'All') url.searchParams.append('status', filter);
       if (search.trim()) url.searchParams.append('query', search.trim());
       url.searchParams.append('page', String(page));

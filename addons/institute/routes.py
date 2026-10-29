@@ -1359,7 +1359,7 @@ class StudentNoteRequest(BaseModel):
 
 def _salesperson_assignment_metrics(session: Session):
     eligible_users = session.exec(
-        select(User).where(User.role.in_(["SalesManager", "Employee"]), User.is_active == True)
+        select(User).where(User.role.in_(["SalesManager", "Employee", "Sales"]), User.is_active == True)
     ).all()
     metrics = {user.id: {"revenue_collected": 0.0, "assigned_workload": 0} for user in eligible_users if user.id is not None}
     leads = session.exec(select(Lead)).all()
@@ -3563,7 +3563,7 @@ def get_institute_analytics(session: Session = Depends(get_session)):
 
 @router.get("/institute/team-performance")
 def get_institute_team_performance(session: Session = Depends(get_session)):
-    _require_roles(session, ["Admin", "Demo"])
+    actor = _require_roles(session, ["Admin", "SalesManager", "Demo"])
     sales_users, assignment_metrics = _salesperson_assignment_metrics(session)
     sales_users.sort(key=lambda user: user.name.lower())
     sales = []
@@ -3616,5 +3616,8 @@ def get_institute_team_performance(session: Session = Depends(get_session)):
             "batches_completed": sum(1 for item in batches if item.status == "Completed"),
             "avg_rating": round(sum(item.rating for item in feedback) / len(feedback), 1) if feedback else 0,
         })
+    if _normalize_role(actor.role) == 'SalesManager':
+        for entry in sales + instructors:
+            entry.pop('email', None)
     return {"sales": sales, "instructors": instructors}
 

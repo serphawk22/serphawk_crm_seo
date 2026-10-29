@@ -10,6 +10,7 @@ What this does NOT cover: raw SQL via `text()` and Core statements that do not n
 must filter `tenant_id` themselves.
 """
 import contextvars
+from contextlib import contextmanager
 from functools import lru_cache
 from typing import Optional, Tuple
 
@@ -17,9 +18,39 @@ from sqlalchemy import or_
 from sqlalchemy.orm import with_loader_criteria
 from sqlmodel import SQLModel
 
-# The tenant of the current request. None = unscoped (SuperAdmin without a tenant, background workers),
-# -1 = anonymous (matches nothing). Set by main.APIIntelligenceMiddleware.
+# None is reserved for trusted startup/background work; -1 means no authorized
+# tenant (anonymous or an operator without selection). Middleware sets this per request.
 current_tenant_id = contextvars.ContextVar("current_tenant_id", default=None)
+platform_management_write = contextvars.ContextVar("platform_management_write", default=False)
+
+
+@contextmanager
+def using_tenant(tenant_id):
+    """For trusted provisioning or public handlers AFTER resolving their record's tenant."""
+    token = current_tenant_id.set(tenant_id)
+    try:
+        yield
+    finally:
+        current_tenant_id.reset(token)
+
+
+def requires_tenant(path: str) -> bool:
+    """CRM requests cannot run with anonymous or platform-wide context.
+
+    Public intake handlers authenticate their secret and resolve their tenant themselves.
+    Platform configuration and personal session routes have their own role/identity checks.
+    """
+    if path in {"/leads/intake", "/leads/webhook", "/api/leads/webhook"} or path.startswith("/users/me"):
+        return False
+    root = path.strip("/").split("/", 1)[0]
+    return root in {
+        "leads", "clients", "contacts", "accounts", "calls", "scheduled-calls", "calling-agent-logs",
+        "inbox", "sent-emails", "followups", "follow-ups", "email-campaigns", "analytics", "institute",
+        "users", "employees", "leaderboard", "search", "omnisearch", "dashboard", "dashboard-stats",
+        "dashboard-call-pitch", "reports", "management", "command-center", "lead-sources", "projects",
+        "deals", "courses", "students", "instructors", "batches", "enrollments", "payments", "attendance",
+        "lead-demo-sessions", "lead-walk-ins", "lead-webinars", "lead-follow-ups", "schedule",
+    }
 
 # Tables that are deliberately cross-tenant. `users` is NOT one of them any more: it is scoped like every other
 # table, with two rules (see user_option): you can always load yourself, and look-ups BY E-MAIL stay global because

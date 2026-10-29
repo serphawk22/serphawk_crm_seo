@@ -70,9 +70,12 @@ PRESETS: Dict[str, dict] = {
         "description": "SCM HB-style: leads and admissions tracking, students, courses, batches, enrollments and fees, "
                        "attendance, portals, reports, inbox, follow-ups and email agent.",
         "features": {"leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
-                     "followups", "email_agent", "support", "institute"},
+                     "followups", "email_agent", "support", "institute", "lead_sources"},
         "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "lead_assignment": "revenue",
-                     "sales_scoping": True},
+                     "sales_scoping": True,
+                     "lead_statuses": ["New", "Contacted", "Not Responded", "Follow-up", "Webinar Scheduled",
+                                       "Webinar Attended", "Webinar Not Attended", "Walk-in Scheduled",
+                                       "Walk-in Attended", "Walk-in Not Attended", "Converted", "Lost"]},
     },
     "design-agency": {
         "label": "Design / marketing agency (Spanish-first)",

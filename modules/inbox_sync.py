@@ -4,7 +4,12 @@ inbox_messages table, so the in-app Inbox can list, search and AI-triage all
 received mail — not only the replies that email_sender.check_email_replies
 records as EmailReply rows.
 
-Mailboxes synced each cycle:
+Inbox cycles sync active per-user Email Agent integrations only. A manual cycle
+also filters by authenticated user and tenant before decrypting any credentials.
+Tenant/server discovery below is retained for the separate legacy reply checker;
+it is never used as an Inbox fallback. Legacy reply import is no longer automatic.
+
+Legacy reply-checker mailbox sources (not Inbox sync sources):
   - the env-configured CRM mailbox (EMAIL_SENDER / EMAIL_PASSWORD /
     IMAP_SERVER — the same one the reply checker polls). It belongs to
     INBOX_DEFAULT_TENANT_ID (default 1, matching the startup migration that
@@ -97,6 +102,10 @@ def _set_status(address: str, **fields):
 def get_sync_status() -> dict:
     with _status_lock:
         return {addr: dict(s) for addr, s in _mailbox_status.items()}
+
+
+def mailbox_key(cfg: MailboxConfig) -> tuple:
+    return cfg.tenant_id, cfg.user_id, cfg.address, cfg.imap_host
 
 
 def _lock_for(address: str) -> threading.Lock:
@@ -246,15 +255,19 @@ def env_mailbox_address() -> str:
     return (sender or "").strip().lower()
 
 
-def _integration_configs(session: Session) -> list:
+def _integration_configs(session: Session, tenant_id=None, user_id=None) -> list:
     """Each user's own Email Integration mailbox (Email Agent → Settings), so mail sent from and received by
     that address is synced for them. A password that can't be decrypted is skipped, not fatal."""
     from modules.email_crypto import EmailCredentialEncryptionError, decrypt_app_password
     out = []
-    rows = session.exec(select(UserEmailIntegration).where(UserEmailIntegration.is_active == True)  # noqa: E712
-                        .order_by(UserEmailIntegration.id).execution_options(skip_tenant=True)).all()
+    stmt = select(UserEmailIntegration).where(UserEmailIntegration.is_active == True)  # noqa: E712
+    if tenant_id is not None:
+        stmt = stmt.where(UserEmailIntegration.tenant_id == tenant_id)
+    if user_id is not None:
+        stmt = stmt.where(UserEmailIntegration.user_id == user_id)
+    rows = session.exec(stmt.order_by(UserEmailIntegration.id).execution_options(skip_tenant=True)).all()
     for r in rows:
-        if not (r.email and r.encrypted_app_password and r.imap_host):
+        if not (r.tenant_id and r.tenant_id > 0 and r.email and r.encrypted_app_password and r.imap_host):
             continue
         try:
             password = decrypt_app_password(r.encrypted_app_password)
@@ -297,6 +310,13 @@ def mailboxes_for_tenant(session: Session, tenant_id: Optional[int]) -> list:
     return [c for c in configs if c.tenant_id == tenant_id]
 
 
+def mailboxes_for_user(session: Session, tenant_id: int, user_id: int) -> list:
+    """Only this account's saved IMAP integration; never tenant/server fallback."""
+    if not tenant_id or tenant_id < 1 or not user_id:
+        return []
+    return _integration_configs(session, tenant_id=tenant_id, user_id=user_id)
+
+
 # ── Linking to CRM records ───────────────────────────────────────────────────
 def match_address(session: Session, address: str, tenant_id: Optional[int]) -> dict:
     """Find the lead / client / contact a sender address belongs to, within one tenant."""
@@ -336,6 +356,8 @@ def link_inbound(session: Session, cfg: MailboxConfig, parsed: dict) -> dict:
         ).first()
         if reply:
             sent = session.get(SentEmail, reply.sent_email_id, execution_options={"skip_tenant": True})
+            if sent and cfg.tenant_owned and sent.tenant_id != cfg.tenant_id:
+                sent = None
     # 2. Same heuristic as the reply checker: the newest email we sent to this address.
     if sent is None and from_addr:
         stmt = (
@@ -444,7 +466,7 @@ def sync_mailbox(cfg: MailboxConfig, engine=None, days_back: int = 3, max_new: i
     """Mirror new INBOX messages from the last `days_back` days. Never raises."""
     engine = engine or default_engine
     stats = {"mailbox": cfg.address, "scanned": 0, "created": 0, "error": None}
-    lock = _lock_for(cfg.address)
+    lock = _lock_for(mailbox_key(cfg))
     if not lock.acquire(blocking=False):
         stats["error"] = "A sync of this mailbox is already running."
         return stats
@@ -491,11 +513,11 @@ def sync_mailbox(cfg: MailboxConfig, engine=None, days_back: int = 3, max_new: i
                     session.rollback()
                     print(f"[Inbox sync] {cfg.address}: failed on uid {uid}: {inner}")
 
-        _set_status(cfg.address, tenant_id=cfg.tenant_id, last_sync_at=datetime.now(timezone.utc).isoformat(),
+        _set_status(mailbox_key(cfg), tenant_id=cfg.tenant_id, last_sync_at=datetime.now(timezone.utc).isoformat(),
                     last_error=None, last_created=stats["created"])
     except Exception as e:
         stats["error"] = str(e)[:300]
-        _set_status(cfg.address, tenant_id=cfg.tenant_id, last_attempt_at=datetime.now(timezone.utc).isoformat(),
+        _set_status(mailbox_key(cfg), tenant_id=cfg.tenant_id, last_attempt_at=datetime.now(timezone.utc).isoformat(),
                     last_error=stats["error"])
         print(f"[Inbox sync] {cfg.address}: {e}")
     finally:
@@ -594,37 +616,34 @@ def relink_unlinked(engine=None, max_addresses: int = 100) -> int:
 _cycle_count = 0
 
 
-def run_sync_cycle(engine=None, tenant_id: Optional[int] = None, classify: bool = True, max_new: int = 200) -> list:
-    """One full pass: legacy replies, every (or one tenant's) mailbox, relink, AI triage."""
+def run_sync_cycle(engine=None, tenant_id: Optional[int] = None, classify: bool = True, max_new: int = 200,
+                   user_id: Optional[int] = None) -> list:
+    """Sync saved user integrations only. Manual requests also supply the acting user."""
     global _cycle_count
     engine = engine or default_engine
     _cycle_count += 1
-    try:
-        import_legacy_replies(engine)
-    except Exception as e:
-        print(f"[Inbox sync] legacy reply import failed: {e}")
-
     with Session(engine) as session:
-        configs = mailboxes_for_tenant(session, tenant_id) if tenant_id is not None else get_mailbox_configs(session)
+        configs = (mailboxes_for_user(session, tenant_id, user_id) if user_id is not None
+                   else _integration_configs(session, tenant_id=tenant_id))
 
     backfill_days = int(os.getenv("INBOX_SYNC_BACKFILL_DAYS", "30"))
     recent_days = int(os.getenv("INBOX_SYNC_DAYS", "3"))
     results = []
     for cfg in configs:
-        backfilled = get_sync_status().get(cfg.address, {}).get("backfilled")
+        backfilled = get_sync_status().get(mailbox_key(cfg), {}).get("backfilled")
         stats = sync_mailbox(cfg, engine, days_back=recent_days if backfilled else backfill_days, max_new=max_new)
         # Only a run that fetched everything outstanding completes the backfill.
         if not stats["error"] and not backfilled and stats["created"] < max_new:
-            _set_status(cfg.address, backfilled=True)
+            _set_status(mailbox_key(cfg), backfilled=True)
         results.append(stats)
 
-    if _cycle_count % 10 == 1:
+    if user_id is None and _cycle_count % 10 == 1:
         try:
             relink_unlinked(engine)
         except Exception as e:
             print(f"[Inbox sync] relink failed: {e}")
 
-    if classify and os.getenv("OPENAI_API_KEY"):
+    if user_id is None and classify and os.getenv("OPENAI_API_KEY"):
         try:
             from modules.email_ai import classify_pending
             classify_pending(engine)
@@ -649,8 +668,7 @@ def _sync_loop(interval_seconds: int):
 
 def start_inbox_sync_thread():
     """Start the background inbox sync once per process. Safe to call repeatedly.
-    Runs even without a configured mailbox so older EmailReply history and
-    AI triage still reach the Inbox."""
+    Each cycle discovers active user integrations; no tenant/server fallback."""
     global _thread_started
     with _thread_lock:
         if _thread_started:

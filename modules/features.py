@@ -44,12 +44,11 @@ _FEATURES: List[Feature] = [
     # CRM / Work. Switching a module off closes it, not only its menu entry:
     #   * the page is closed in the app (frontend/src/lib/moduleRoutes.ts + components/ModuleGate.tsx), and
     #   * the module's own API is refused (403) where the endpoints belong to that module alone.
-    # The shared data endpoints (clients, contacts, deals, projects, calls, reports, users) are deliberately NOT listed: the
-    # dashboard, lead research, the calls bar, the developer dashboard and the analytics pages all read them, so closing them
-    # would break modules the company does have. They stay tenant-scoped like every other query.
-    _f("leads", "Leads", "CRM", "Lead list, research and conversion.", locked=True),
+    # Leads, Clients and Calls close their data APIs too. Other shared endpoints
+    # remain available to entitled dashboards and still enforce tenant scoping.
+    _f("leads", "Leads", "CRM", "Lead list, research and conversion.", path_prefixes=("/leads",)),
     _f("contacts", "Contacts", "CRM"),
-    _f("clients", "Clients", "CRM"),
+    _f("clients", "Clients", "CRM", path_prefixes=("/clients",)),
     _f("deals", "Deals / pipeline", "CRM"),
     # Work
     _f("work_queue", "My Work Queue", "Work", path_prefixes=("/work-queue",)),
@@ -57,7 +56,8 @@ _FEATURES: List[Feature] = [
     _f("task_sheet", "Task Sheet", "Work", path_prefixes=("/task-sheet",)),
     _f("reports", "Reports", "Work"),
     _f("meetings", "Meetings", "Work", path_prefixes=("/meetings",)),     # /meetings/history is the longer prefix: its own module
-    _f("calls", "Calls", "Work"),
+    _f("calls", "Calls", "Work", path_prefixes=("/calls", "/scheduled-calls"),
+       path_regexes=(r"^/(clients|leads|contacts)/\d+/simulate-call$",)),
     _f("teams", "Team Directory", "Teams"),
     _f("leaderboard", "Leaderboard", "Teams", path_prefixes=("/leaderboard",)),
     # Communication / AI agents
@@ -159,7 +159,10 @@ def effective_features(tenant_id: Optional[int], use_cache: bool = True) -> Dict
 
 def _resolve(rows: Dict[str, bool]) -> Dict[str, bool]:
     """Entitlement rows -> effective on/off for every registered feature."""
-    return {key: True if feat.locked else rows.get(key, feat.default_on) for key, feat in FEATURES.items()}
+    result = {key: True if feat.locked else rows.get(key, feat.default_on) for key, feat in FEATURES.items()}
+    if result.get("institute") and "voice_agent" not in rows:
+        result["voice_agent"] = False  # admissions calling stays on hold until explicitly configured
+    return result
 
 
 def is_enabled(tenant_id: Optional[int], key: str) -> bool:
@@ -190,6 +193,20 @@ def feature_for_path(path: str) -> Optional[str]:
                     return None
             return key
     return None
+
+
+def gates_for_path(path: str) -> List[str]:
+    key = feature_for_path(path)
+    gates = [key] if key else []
+    if re.fullmatch(r"/leads/\d+/convert", path):
+        gates.append("clients")
+    # Specialized handlers still need their parent CRM section enabled. Public
+    # intake resolves its tenant and entitlement in the handler itself.
+    if path not in {"/leads/intake", "/leads/webhook", "/api/leads/webhook"}:
+        for prefix, parent in (("/leads", "leads"), ("/clients", "clients")):
+            if _matches(path, prefix) and parent not in gates:
+                gates.append(parent)
+    return gates
 
 
 def set_features(session: Session, tenant_id: int, changes: Dict[str, bool]) -> Dict[str, bool]:

@@ -133,7 +133,7 @@ class WorkloadAssignment(ToolsBase):
             s.add(User(email="root@platform.test", password="x", name="Root", role="SuperAdmin", tenant_id=None))
             s.commit()
             su = s.exec(select(User).where(User.email == "root@platform.test").execution_options(skip_tenant=True)).one().id
-        self.assertEqual(self.client.post("/leads/auto-assign", headers={"X-User-ID": str(su)}).status_code, 400, "pick a company first")
+        self.assertEqual(self.client.post("/leads/auto-assign", headers={"X-User-ID": str(su)}).status_code, 403, "pick a company first")
 
 
 class RevenueAssignment(ToolsBase):

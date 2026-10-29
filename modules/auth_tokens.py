@@ -61,7 +61,7 @@ def ttl_seconds() -> int:
 
 
 def legacy_header_allowed() -> bool:
-    return os.getenv("LEGACY_USER_HEADER", "1").strip().lower() not in ("0", "false", "no", "off")
+    return os.getenv("LEGACY_USER_HEADER", "0").strip().lower() not in ("0", "false", "no", "off")
 
 
 def issue_token(user_id: int, password_hash: Optional[str], now: Optional[float] = None) -> str:

@@ -68,12 +68,13 @@ class MailAccount:
         return f"MailAccount({self.email!r}, {self.smtp_host}:{self.smtp_port}, {self.source})"
 
 
-def _user_integration(session: Session, user_id: Optional[int]) -> Optional[MailAccount]:
+def _user_integration(session: Session, user_id: Optional[int], tenant_id: Optional[int] = None) -> Optional[MailAccount]:
     if not user_id:
         return None
-    row = session.exec(
-        select(UserEmailIntegration).where(UserEmailIntegration.user_id == user_id).execution_options(skip_tenant=True)
-    ).first()
+    stmt = select(UserEmailIntegration).where(UserEmailIntegration.user_id == user_id)
+    if tenant_id is not None:
+        stmt = stmt.where(UserEmailIntegration.tenant_id == tenant_id)
+    row = session.exec(stmt.execution_options(skip_tenant=True)).first()
     if not row or not row.is_active or not row.email or not row.encrypted_app_password or not row.smtp_host:
         return None
     from modules.email_crypto import EmailCredentialEncryptionError, decrypt_app_password
@@ -116,18 +117,23 @@ def _server_env() -> Optional[MailAccount]:
 
 
 def resolve_account(session: Session, user_id: Optional[int], tenant_id: Optional[int],
-                    allow_server_fallback: bool = False) -> MailAccount:
+                    allow_server_fallback: bool = False, *, integration_only: bool = False) -> MailAccount:
     """The account `user_id` sends from. Raises MailAccountError when none is usable."""
     decrypt_error = None
     try:
-        account = _user_integration(session, user_id)
+        account = _user_integration(session, user_id, tenant_id if integration_only else None)
     except MailAccountError as e:
         account, decrypt_error = None, e
-    account = account or _tenant_settings(session, tenant_id)
-    if account is None and allow_server_fallback:
+    if integration_only and (not tenant_id or tenant_id < 1):
+        account = None
+    if not integration_only:
+        account = account or _tenant_settings(session, tenant_id)
+    if account is None and allow_server_fallback and not integration_only:
         account = _server_env()
     if account is None:
-        raise decrypt_error or MailAccountError(NOT_CONFIGURED_MESSAGE)
+        raise decrypt_error or MailAccountError(
+            "Connect your account's mailbox under Email Agent → Settings (Email Integration)."
+            if integration_only else NOT_CONFIGURED_MESSAGE)
     profile = session.exec(
         select(EmailAgentProfile).where(EmailAgentProfile.user_id == user_id).execution_options(skip_tenant=True)
     ).first() if user_id else None
