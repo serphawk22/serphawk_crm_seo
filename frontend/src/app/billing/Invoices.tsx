@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
+import { useTenantConfig } from "@/context/TenantConfigContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface InvoiceLineItem {
@@ -67,6 +68,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
   ref
 ) {
   const { role, user } = useRole();
+  const { settings } = useTenantConfig();
   const isAdmin = role === "Admin" || role === "SuperAdmin";
 
   // List state
@@ -88,7 +90,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
     client_id: "" as string | number,
     amount: "",
     tax: "",
-    currency: "INR",
+    currency: settings.default_currency || "INR",
     due_date: "",
     notes: "",
   });
@@ -165,7 +167,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
 
   // ── Create ───────────────────────────────────────────────────────────────
   function openCreate() {
-    setForm({ client_id: "", amount: "", tax: "", currency: "INR", due_date: "", notes: "" });
+    setForm({ client_id: "", amount: "", tax: "", currency: settings.default_currency || "INR", due_date: "", notes: "" });
     setLineItems([{ description: "", amount: 0, provider: "Internal" }]);
     setError(null);
     const clientsUrl = (!isAdmin && user?.id) ? `${API_BASE_URL}/clients?assigned_employee_id=${user.id}` : `${API_BASE_URL}/clients`;
@@ -237,109 +239,177 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
       </AnimatePresence>
 
       {!embedded && (
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/20">
-              <FileText className="w-6 h-6 text-white" />
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl shadow-2xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/40 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+              <FileText className="w-3.5 h-3.5" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Invoices</h1>
-              <p className="text-sm text-slate-500 dark:text-zinc-400">Track and manage client invoices</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate">Invoices</h1>
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200/60 dark:border-zinc-700">
+                  {invoices.length}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 dark:text-zinc-500 leading-none mt-0.5 truncate">Track and manage client invoices</p>
             </div>
           </div>
           <button onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:opacity-90 shadow-md transition-all active:scale-95">
-            <Plus className="w-4 h-4" /> New Invoice
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 shadow-2xs transition-colors shrink-0">
+            <Plus className="w-3.5 h-3.5" /> New Invoice
           </button>
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Total Invoices", value: invoices.length, c: "text-blue-600" },
-          { label: "Pending", value: invoices.filter(i => ["Draft", "Sent"].includes(i.status)).length, c: "text-amber-600" },
-          { label: "Paid", value: invoices.filter(i => i.status === "Paid").length, c: "text-emerald-600" },
-          { label: "Total Value", value: `₹${filtered.reduce((s, i) => s + (i.total || 0), 0).toFixed(0)}`, c: "text-indigo-600" },
-        ].map(s => (
-          <div key={s.label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 shadow-sm">
-            <p className={`text-2xl font-black ${s.c}`}>{loading ? "—" : s.value}</p>
-            <p className="text-xs font-medium text-slate-500 dark:text-zinc-400 mt-0.5">{s.label}</p>
+      {/* Compact 4-KPI Metric Strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2.5 px-3 flex items-center gap-2.5 shadow-2xs">
+          <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200/50 dark:border-blue-800/40 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+            <FileText className="w-3.5 h-3.5" />
           </div>
-        ))}
+          <div className="min-w-0">
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Total Invoices</div>
+            <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{loading ? "—" : invoices.length}</div>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2.5 px-3 flex items-center gap-2.5 shadow-2xs">
+          <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200/50 dark:border-amber-800/40 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+            <FileText className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Pending</div>
+            <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{loading ? "—" : invoices.filter(i => ["Draft", "Sent"].includes(i.status)).length}</div>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2.5 px-3 flex items-center gap-2.5 shadow-2xs">
+          <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/50 dark:border-emerald-800/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+            <CheckCircle className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Paid</div>
+            <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{loading ? "—" : invoices.filter(i => i.status === "Paid").length}</div>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2.5 px-3 flex items-center gap-2.5 shadow-2xs">
+          <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200/50 dark:border-indigo-800/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+            <FileText className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Total Value</div>
+            <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5 truncate">{loading ? "—" : `₹${filtered.reduce((s, i) => s + (i.total || 0), 0).toFixed(0)}`}</div>
+          </div>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoices..."
-            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+      {/* Single-row Search & Filter Toolbar */}
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2 px-3 flex items-center justify-between gap-3 shadow-2xs flex-wrap">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+          <input 
+            value={search} 
+            onChange={e => setSearch(e.target.value)} 
+            placeholder="Search invoices..."
+            className="w-full pl-8 pr-3 py-1 rounded-lg border border-slate-200/90 dark:border-white/10 bg-slate-50 dark:bg-zinc-800/60 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 dark:text-zinc-200" 
+          />
         </div>
-        <div className="flex gap-1.5 flex-wrap">
+        <div className="flex gap-1 flex-wrap overflow-x-auto">
           {["All", ...STATUSES].map(s => (
-            <button key={s} onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${statusFilter === s ? "bg-blue-500 text-white shadow" : "bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-700"}`}>
+            <button 
+              key={s} 
+              onClick={() => setStatusFilter(s)}
+              className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors whitespace-nowrap ${
+                statusFilter === s 
+                  ? "bg-blue-600 text-white shadow-2xs" 
+                  : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
+              }`}
+            >
               {s}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl shadow-sm overflow-hidden">
-        <div className="hidden md:grid grid-cols-[auto_1.5fr_1fr_1fr_1fr_1fr_auto] gap-4 px-6 py-3 border-b border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50">
-          {["#", "Client", "Amount", "Tax", "Total", "Status", ""].map(h => (
-            <p key={h} className="text-[10px] font-black uppercase tracking-widest text-slate-400">{h}</p>
-          ))}
+      {/* Premium List Cards */}
+      <div className="space-y-1.5">
+        <div className="hidden md:grid grid-cols-[120px_1.5fr_1fr_1fr_1fr_1fr_auto] gap-3 px-3 py-1.5 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
+          <div>Invoice #</div>
+          <div>Client</div>
+          <div>Amount</div>
+          <div>Tax</div>
+          <div>Total</div>
+          <div>Status</div>
+          <div className="text-right">Actions</div>
         </div>
+
         {loading ? (
-          <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-500 w-8 h-8" /></div>
+          <div className="flex justify-center py-16"><Loader2 className="animate-spin text-blue-600 w-7 h-7" /></div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <FileText className="w-10 h-10 text-slate-300 mb-3" />
-            <p className="text-slate-500 font-bold">No invoices yet</p>
-            <button onClick={openCreate} className="mt-3 px-4 py-2 rounded-xl bg-blue-500 text-white text-sm font-semibold hover:bg-blue-600 transition-all">
+          <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-zinc-900 rounded-xl border border-dashed border-slate-200 dark:border-zinc-800">
+            <FileText className="w-8 h-8 text-slate-300 dark:text-zinc-600 mb-2" />
+            <p className="text-xs font-semibold text-slate-600 dark:text-zinc-400">No invoices yet</p>
+            <button onClick={openCreate} className="mt-2.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors shadow-2xs">
               Create first invoice
             </button>
           </div>
         ) : filtered.map((inv, i) => (
-          <motion.div key={inv.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
-            className="grid grid-cols-1 md:grid-cols-[auto_1.5fr_1fr_1fr_1fr_1fr_auto] gap-3 md:gap-4 items-center px-6 py-4 border-b border-slate-100 dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-800/40 group transition-colors cursor-pointer"
-            onClick={() => setPreviewInv(inv)}>
-            <span className="text-xs font-mono text-slate-400">{inv.invoice_number}</span>
-            <div className="flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <span className="text-xs text-slate-600 dark:text-zinc-300 truncate">
-                {inv.client_name || <span className="text-slate-400 italic">No client</span>}
+          <motion.div 
+            key={inv.id} 
+            initial={{ opacity: 0, y: 4 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            transition={{ delay: i * 0.015 }}
+            className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2.5 px-3 shadow-2xs hover:shadow-xs hover:border-blue-500/60 dark:hover:border-blue-500/50 transition-all duration-150 group cursor-pointer"
+            onClick={() => setPreviewInv(inv)}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-[120px_1.5fr_1fr_1fr_1fr_1fr_auto] gap-2 md:gap-3 items-center">
+              <span className="text-[11px] font-mono font-semibold text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-800/80 px-2 py-0.5 rounded border border-slate-200/60 dark:border-zinc-700 w-fit">
+                {inv.invoice_number}
               </span>
-            </div>
-            <span className="text-sm font-black text-slate-800 dark:text-zinc-100">{fmtMoney(inv.amount, inv.currency || "MXN")}</span>
-            <span className="text-sm text-slate-600 dark:text-zinc-300">{fmtMoney(inv.tax, inv.currency || "MXN")}</span>
-            <span className="text-sm font-black text-slate-800 dark:text-zinc-100">{fmtMoney(inv.total, inv.currency || "MXN")}</span>
-            <select value={inv.status} onClick={e => e.stopPropagation()}
-              onChange={e => handleStatus(inv, e.target.value)}
-              className={`text-xs font-bold px-2 py-1 rounded-lg border-0 outline-none cursor-pointer ${STATUS_COLORS[inv.status] || STATUS_COLORS.Draft}`}>
-              {STATUSES.map(s => <option key={s}>{s}</option>)}
-            </select>
-            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
-              <button onClick={e => { e.stopPropagation(); setPreviewInv(inv); }} title="Preview Invoice"
-                className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20">
-                <Eye className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={e => { e.stopPropagation(); handleDownloadPDF(inv); }} title="Download PDF"
-                className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20">
-                <Download className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={e => { e.stopPropagation(); handleDelete(inv.id); }} title="Delete Invoice"
-                className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20">
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span className="text-xs font-semibold text-slate-800 dark:text-zinc-200 truncate">
+                  {inv.client_name || <span className="text-slate-400 italic">No client</span>}
+                </span>
+              </div>
+              <span className="text-xs font-medium text-slate-600 dark:text-zinc-300">{fmtMoney(inv.amount, inv.currency || "MXN")}</span>
+              <span className="text-xs text-slate-400 dark:text-zinc-500">{fmtMoney(inv.tax, inv.currency || "MXN")}</span>
+              <span className="text-xs font-bold text-slate-900 dark:text-white">{fmtMoney(inv.total, inv.currency || "MXN")}</span>
+              <div onClick={e => e.stopPropagation()}>
+                <select 
+                  value={inv.status} 
+                  onChange={e => handleStatus(inv, e.target.value)}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-md border-0 outline-none cursor-pointer ${STATUS_COLORS[inv.status] || STATUS_COLORS.Draft}`}
+                >
+                  {STATUSES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                <button 
+                  onClick={() => setPreviewInv(inv)} 
+                  title="Preview Invoice"
+                  className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition-colors"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                </button>
+                <button 
+                  onClick={() => handleDownloadPDF(inv)} 
+                  title="Download PDF"
+                  className="p-1 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </button>
+                <button 
+                  onClick={() => handleDelete(inv.id)} 
+                  title="Delete Invoice"
+                  className="p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </motion.div>
         ))}
       </div>
-
+      
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* CREATE INVOICE MODAL                                                */}
       {/* ═══════════════════════════════════════════════════════════════════ */}

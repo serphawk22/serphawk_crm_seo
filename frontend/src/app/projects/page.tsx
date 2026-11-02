@@ -1,22 +1,29 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { StickyNote, Users, Plus, Search, MoreVertical, X, Check, Loader2 } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { StickyNote, Users, Plus, Search, MoreVertical, X, Check, Loader2, LayoutList, LayoutGrid, ChevronRight, Folder } from "lucide-react";
 import { API_BASE_URL } from '@/config';
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useRole } from "@/context/RoleContext";
 import PageGuide from '@/components/PageGuide';
 import DemoLimits from '@/components/DemoLimits';
+import ProjectMemberSelect from '@/components/ProjectMemberSelect';
 import { useLanguage } from "@/context/LanguageContext";
 
 export default function ProjectsPage() {
   const { t } = useLanguage();
   const { role, user } = useRole();
-  const [projects, setProjects] = useState([]);
+  const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createError, setCreateError] = useState("");
+  
+  // Toolbar state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [viewMode, setViewMode] = useState<"list" | "cards">("list");
   
   // Form State
   const [name, setName] = useState("");
@@ -62,6 +69,7 @@ export default function ProjectsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    setCreateError("");
     setIsSubmitting(true);
     try {
       const res = await fetch(`${API_BASE_URL}/projects`, {
@@ -81,7 +89,6 @@ export default function ProjectsPage() {
       if (res.ok) {
         setShowCreateModal(false);
         fetchProjects();
-        // Reset form
         setName("");
         setDescription("");
         setStatus("Planning");
@@ -90,8 +97,12 @@ export default function ProjectsPage() {
         setClientId("");
         setLeadId("");
         setProjectMemberIds([]);
+      } else {
+        const error = await res.json().catch(() => ({}));
+        setCreateError(typeof error.detail === "string" ? error.detail : "Unable to create project. Please check the selected members.");
       }
     } catch (error) {
+      setCreateError("Unable to create project. Please try again.");
       console.error("Failed to create project:", error);
     } finally {
       setIsSubmitting(false);
@@ -114,25 +125,147 @@ export default function ProjectsPage() {
     }
   };
 
+  const filteredProjects = useMemo(() => {
+    return projects.filter((p: any) => {
+      const matchesSearch = !searchQuery || 
+        (p.name && p.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesStatus = statusFilter === "all" || (p.status || "").toLowerCase() === statusFilter.toLowerCase();
+      return matchesSearch && matchesStatus;
+    });
+  }, [projects, searchQuery, statusFilter]);
+
+  const activeCount = projects.filter((p: any) => p.status === 'Active').length;
+  const planningCount = projects.filter((p: any) => p.status === 'Planning').length;
+  const completedCount = projects.filter((p: any) => p.status === 'Completed').length;
+
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">{t("projects.title")}</h1>
-          <p className="text-gray-500 font-medium">{t("projects.subtitle")}</p>
+    <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300 pb-16">
+      {/* Compact Executive Header */}
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl shadow-2xs">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/40 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+            <Folder className="w-3.5 h-3.5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate">{t("projects.title")}</h1>
+              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200/60 dark:border-zinc-700">
+                {projects.length}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 dark:text-zinc-500 leading-none mt-0.5 truncate">{t("projects.subtitle")}</p>
+          </div>
         </div>
         {role === "Admin" || role === "SuperAdmin" ? (
           <button 
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-2xl font-bold hover:shadow-lg hover:-translate-y-0.5 transition-all active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-2xs transition-colors shrink-0"
           >
-            <Plus className="w-5 h-5" />
-            {t("projects.new_project")}
+            <Plus className="w-3.5 h-3.5" />
+            <span>{t("projects.new_project")}</span>
           </button>
         ) : null}
       </div>
 
       <DemoLimits type="projects" />
+
+      {/* Compact 4-KPI Metric Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2.5 px-3 flex items-center gap-2.5 shadow-2xs">
+          <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200/50 dark:border-blue-800/40 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+            <Folder className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Total Projects</div>
+            <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{projects.length}</div>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2.5 px-3 flex items-center gap-2.5 shadow-2xs">
+          <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/50 dark:border-emerald-800/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+            <StickyNote className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Active</div>
+            <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{activeCount}</div>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2.5 px-3 flex items-center gap-2.5 shadow-2xs">
+          <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200/50 dark:border-amber-800/40 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+            <StickyNote className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Planning</div>
+            <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{planningCount}</div>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2.5 px-3 flex items-center gap-2.5 shadow-2xs">
+          <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200/50 dark:border-indigo-800/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+            <Check className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Completed</div>
+            <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{completedCount}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Single-row Search & Filter Toolbar */}
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2 px-3 flex items-center justify-between gap-3 shadow-2xs flex-wrap">
+        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+          <div className="relative flex-1 max-w-xs">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search projects..." 
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-1 rounded-lg border border-slate-200/90 dark:border-white/10 bg-slate-50 dark:bg-zinc-800/60 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 dark:text-zinc-200"
+            />
+          </div>
+
+          <div className="flex items-center gap-1 overflow-x-auto">
+            {["all", "Active", "Planning", "Completed"].map((st) => (
+              <button
+                key={st}
+                onClick={() => setStatusFilter(st)}
+                className={cn(
+                  "px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors whitespace-nowrap",
+                  statusFilter === st 
+                    ? "bg-blue-600 text-white shadow-2xs" 
+                    : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                )}
+              >
+                {st === "all" ? "All" : st}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* View Switcher */}
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-zinc-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-white/5 shrink-0">
+          <button
+            onClick={() => setViewMode("list")}
+            className={cn(
+              "p-1 rounded-md transition-colors",
+              viewMode === "list" ? "bg-white dark:bg-zinc-700 text-blue-600 shadow-2xs" : "text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300"
+            )}
+            title="List view"
+          >
+            <LayoutList className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => setViewMode("cards")}
+            className={cn(
+              "p-1 rounded-md transition-colors",
+              viewMode === "cards" ? "bg-white dark:bg-zinc-700 text-blue-600 shadow-2xs" : "text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300"
+            )}
+            title="Cards view"
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
 
       <PageGuide
         pageKey="projects"
@@ -146,136 +279,231 @@ export default function ProjectsPage() {
         ]}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {loading ? (
-          [1, 2, 3].map(i => <div key={i} className="h-64 bg-gray-100 dark:bg-zinc-800 animate-pulse rounded-[2.5rem]"></div>)
-        ) : projects.length > 0 ? (
-          projects.map((project: any) => (
-            <Link 
-              href={`/projects/${project.id}`} 
-              key={project.id} 
-              className="bg-white p-8 rounded-[2.5rem] border shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group relative overflow-hidden"
-            >
-              <div className="flex justify-between items-start mb-6">
-                <div className={cn(
-                  "p-4 rounded-2xl",
-                  project.status === 'Planning' ? "bg-amber-50 text-amber-600" :
-                  project.status === 'Active' ? "bg-blue-50 text-blue-600" :
-                  project.status === 'Completed' ? "bg-green-50 text-green-600" : "bg-gray-50 dark:bg-zinc-950 text-gray-600 dark:text-zinc-300"
-                )}>
-                  <StickyNote className="w-6 h-6" />
-                </div>
-                <div className="flex flex-col items-end">
-                   <select
-                     value={project.status}
-                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                     onChange={(e) => updateProjectStatus(e, project.id)}
-                     className={cn(
-                       "px-2 py-1 text-[10px] font-black uppercase rounded-lg border mb-1 outline-none cursor-pointer hover:opacity-80 transition-opacity appearance-none",
-                       project.status === 'Planning' ? "bg-amber-50 text-amber-600 border-amber-100" :
-                       project.status === 'Active' ? "bg-blue-50 text-blue-600 border-blue-100" :
-                       project.status === 'Completed' ? "bg-green-50 text-green-600 border-green-100" : "bg-gray-50 dark:bg-zinc-950 text-gray-400 border-gray-100 dark:border-zinc-800"
-                     )}
-                   >
-                     <option value="Planning">Planning</option>
-                     <option value="Active">Active</option>
-                     <option value="Completed">Completed</option>
-                   </select>
-                   <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest leading-none">{t("projects.status")}</p>
-                </div>
-              </div>
-              
-              <h3 className="text-xl font-black text-gray-900 mb-2 truncate group-hover:text-blue-600 transition-colors uppercase tracking-tight" title={project.name}>{project.name}</h3>
-              <p className="text-sm text-gray-400 font-medium mb-6 line-clamp-2 min-h-[2.5rem]">
-                {project.description || t("projects.no_description")}
-              </p>
-
-              <div className="space-y-3">
-                <div className="flex justify-between items-end">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t("projects.progress")}</p>
-                  <p className="text-sm font-black text-gray-900">{project.progress}%</p>
-                </div>
-                <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden">
-                  <div 
-                    className={cn(
-                      "h-full rounded-full transition-all duration-1000",
-                      project.progress > 80 ? "bg-green-500" : project.progress > 40 ? "bg-blue-500" : "bg-amber-500"
-                    )}
-                    style={{ width: `${project.progress}%` }}
-                  ></div>
-                </div>
-              </div>
-              
-              <div className="mt-6 pt-6 border-t border-gray-50 flex justify-between items-center">
-                 <div className="flex -space-x-2">
-                    <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/30 border-2 border-white dark:border-zinc-900 flex items-center justify-center text-[10px] font-black text-blue-600 dark:text-blue-400">
-                      +{(project.employeeIds?.length || 0) + (project.internIds?.length || 0)}
-                    </div>
-                 </div>
-                 <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">{t("projects.team_assigned")}</p>
-              </div>
-            </Link>
-          ))
-        ) : (
-          <div className="col-span-full p-20 text-center bg-gray-50 dark:bg-zinc-950 rounded-[3rem] border-2 border-dashed border-gray-200 dark:border-zinc-700">
-            <div className="w-16 h-16 bg-white dark:bg-zinc-900 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm border">
-               <StickyNote className="w-8 h-8 text-gray-300" />
+      {/* Main Content Area */}
+      {loading ? (
+        <div className="space-y-2">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-14 bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl animate-pulse" />
+          ))}
+        </div>
+      ) : filteredProjects.length > 0 ? (
+        viewMode === "list" ? (
+          <div className="space-y-1.5">
+            {/* Desktop Table Header */}
+            <div className="hidden md:grid grid-cols-12 gap-3 px-3 py-1.5 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
+              <div className="col-span-5">Project & Objective</div>
+              <div className="col-span-2">Status</div>
+              <div className="col-span-3">Progress</div>
+              <div className="col-span-2 text-right">Team & Link</div>
             </div>
-            <p className="text-xl font-black text-gray-900 dark:text-zinc-50 mb-2">{t("projects.empty_title")}</p>
-            <p className="text-gray-500 dark:text-zinc-400 font-medium max-w-xs mx-auto mb-8">{t("projects.empty_desc")}</p>
-            <button 
-              onClick={() => setShowCreateModal(true)}
-              className="px-8 py-3 bg-white dark:bg-zinc-900 border-2 border-gray-900 text-gray-900 dark:text-zinc-50 rounded-2xl font-bold text-sm hover:bg-gray-900 hover:text-white transition-all shadow-sm"
-            >
-               {t("projects.create_new_project")}
-            </button>
+
+            {filteredProjects.map((project: any) => (
+              <Link 
+                href={`/projects/${project.id}`} 
+                key={project.id} 
+                className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2.5 px-3 shadow-2xs hover:shadow-xs hover:border-blue-500/60 dark:hover:border-blue-500/50 transition-all duration-150 group block"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3 items-center">
+                  {/* Left: Icon + Title + Description */}
+                  <div className="col-span-5 flex items-center gap-2.5 min-w-0">
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border",
+                      project.status === 'Planning' ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200/50 dark:border-amber-800/40" :
+                      project.status === 'Active' ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border-blue-200/50 dark:border-blue-800/40" :
+                      project.status === 'Completed' ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200/50 dark:border-emerald-800/40" : 
+                      "bg-slate-50 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border-slate-200/50 dark:border-zinc-700"
+                    )}>
+                      <StickyNote className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-slate-900 dark:text-white text-[13px] leading-tight truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                        {project.name}
+                      </div>
+                      <div className="text-[11px] text-slate-400 dark:text-zinc-500 truncate mt-0.5">
+                        {project.description || t("projects.no_description")}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status Dropdown */}
+                  <div className="col-span-2 flex items-center" onClick={e => { e.preventDefault(); e.stopPropagation(); }}>
+                    <select
+                      value={project.status}
+                      onClick={e => { e.preventDefault(); e.stopPropagation(); }}
+                      onChange={e => updateProjectStatus(e, project.id)}
+                      className={cn(
+                        "px-2 py-0.5 text-[11px] font-bold uppercase rounded-md border outline-none cursor-pointer hover:opacity-90 transition-opacity",
+                        project.status === 'Planning' ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200/60 dark:border-amber-800/40" :
+                        project.status === 'Active' ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border-blue-200/60 dark:border-blue-800/40" :
+                        project.status === 'Completed' ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200/60 dark:border-emerald-800/40" : 
+                        "bg-slate-50 dark:bg-zinc-800 text-slate-400 border-slate-200 dark:border-zinc-700"
+                      )}
+                    >
+                      <option value="Planning">Planning</option>
+                      <option value="Active">Active</option>
+                      <option value="Completed">Completed</option>
+                    </select>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="col-span-3 flex items-center gap-2">
+                    <div className="flex-1 bg-slate-100 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                      <div 
+                        className={cn(
+                          "h-full rounded-full transition-all duration-500",
+                          project.progress > 80 ? "bg-emerald-500" : project.progress > 40 ? "bg-blue-500" : "bg-amber-500"
+                        )}
+                        style={{ width: `${project.progress}%` }}
+                      />
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-zinc-300 w-8 text-right">
+                      {project.progress}%
+                    </span>
+                  </div>
+
+                  {/* Team & Link */}
+                  <div className="col-span-2 flex items-center justify-end gap-2">
+                    <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-zinc-400 font-semibold bg-slate-50 dark:bg-zinc-800/60 px-1.5 py-0.5 rounded border border-slate-200/60 dark:border-zinc-700">
+                      <Users className="w-3 h-3 text-slate-400" />
+                      <span>{(project.employeeIds?.length || 0) + (project.internIds?.length || 0)}</span>
+                    </div>
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                </div>
+              </Link>
+            ))}
           </div>
-        )}
-      </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredProjects.map((project: any) => (
+              <Link 
+                href={`/projects/${project.id}`} 
+                key={project.id} 
+                className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-3.5 shadow-2xs hover:shadow-xs hover:border-blue-500/60 dark:hover:border-blue-500/50 transition-all duration-150 group block"
+              >
+                <div className="flex justify-between items-start mb-2.5">
+                  <div className={cn(
+                    "p-2 rounded-lg border",
+                    project.status === 'Planning' ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200/50 dark:border-amber-800/40" :
+                    project.status === 'Active' ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border-blue-200/50 dark:border-blue-800/40" :
+                    project.status === 'Completed' ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200/50 dark:border-emerald-800/40" : 
+                    "bg-slate-50 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border-slate-200/50 dark:border-zinc-700"
+                  )}>
+                    <StickyNote className="w-4 h-4" />
+                  </div>
+                  <select
+                    value={project.status}
+                    onClick={e => { e.preventDefault(); e.stopPropagation(); }}
+                    onChange={e => updateProjectStatus(e, project.id)}
+                    className={cn(
+                      "px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border outline-none cursor-pointer",
+                      project.status === 'Planning' ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200/60 dark:border-amber-800/40" :
+                      project.status === 'Active' ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border-blue-200/60 dark:border-blue-800/40" :
+                      project.status === 'Completed' ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200/60 dark:border-emerald-800/40" : 
+                      "bg-slate-50 dark:bg-zinc-800 text-slate-400 border-slate-200 dark:border-zinc-700"
+                    )}
+                  >
+                    <option value="Planning">Planning</option>
+                    <option value="Active">Active</option>
+                    <option value="Completed">Completed</option>
+                  </select>
+                </div>
+                
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-1 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" title={project.name}>
+                  {project.name}
+                </h3>
+                <p className="text-xs text-slate-400 dark:text-zinc-500 mb-3 line-clamp-2 min-h-[2rem]">
+                  {project.description || t("projects.no_description")}
+                </p>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase">
+                    <span>{t("projects.progress")}</span>
+                    <span className="text-slate-800 dark:text-zinc-200 font-bold">{project.progress}%</span>
+                  </div>
+                  <div className="w-full bg-slate-100 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                    <div 
+                      className={cn(
+                        "h-full rounded-full transition-all duration-500",
+                        project.progress > 80 ? "bg-emerald-500" : project.progress > 40 ? "bg-blue-500" : "bg-amber-500"
+                      )}
+                      style={{ width: `${project.progress}%` }}
+                    />
+                  </div>
+                </div>
+                
+                <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-white/5 flex justify-between items-center">
+                  <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-zinc-400 font-medium">
+                    <Users className="w-3 h-3 text-slate-400" />
+                    <span>+{(project.employeeIds?.length || 0) + (project.internIds?.length || 0)} members</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                    View <ChevronRight className="w-3 h-3" />
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )
+      ) : (
+        <div className="p-12 text-center bg-white dark:bg-zinc-900 rounded-xl border border-dashed border-slate-200 dark:border-zinc-800">
+          <div className="w-12 h-12 bg-slate-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center mx-auto mb-3 shadow-2xs">
+            <StickyNote className="w-6 h-6 text-slate-400" />
+          </div>
+          <p className="text-sm font-semibold text-slate-900 dark:text-zinc-100 mb-1">{t("projects.empty_title")}</p>
+          <p className="text-xs text-slate-400 dark:text-zinc-500 max-w-xs mx-auto mb-4">{t("projects.empty_desc")}</p>
+          <button 
+            onClick={() => setShowCreateModal(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold text-xs hover:bg-blue-700 transition-colors shadow-2xs"
+          >
+            {t("projects.create_new_project")}
+          </button>
+        </div>
+      )}
 
       {/* Create Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white dark:bg-zinc-900 w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-8 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50 dark:bg-zinc-950/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-xl border border-slate-200/90 dark:border-white/10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="p-4 border-b border-slate-200 dark:border-zinc-800 flex justify-between items-center bg-slate-50/50 dark:bg-zinc-950/50">
               <div>
-                <h2 className="text-2xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">{t("projects.create_project_title")}</h2>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t("projects.create_project_sub")}</p>
+                <h2 className="text-base font-bold text-slate-900 dark:text-zinc-50">{t("projects.create_project_title")}</h2>
+                <p className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mt-0.5">{t("projects.create_project_sub")}</p>
               </div>
-              <button onClick={() => setShowCreateModal(false)} className="p-3 hover:bg-white dark:bg-zinc-900 rounded-2xl transition-all shadow-sm">
-                <X className="w-5 h-5 text-gray-400" />
+              <button onClick={() => setShowCreateModal(false)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors">
+                <X className="w-4 h-4 text-slate-400" />
               </button>
             </div>
             
-            <form onSubmit={handleCreate} className="p-8 space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_project_title")}</label>
+            <form onSubmit={handleCreate} className="p-4 space-y-3.5">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">{t("projects.field_project_title")}</label>
                 <input 
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder={t("projects.project_title_placeholder")} 
-                  className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                  className="w-full px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-blue-500 transition-all outline-none text-slate-900 dark:text-white"
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_objective")}</label>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">{t("projects.field_objective")}</label>
                 <textarea 
-                  rows={3}
+                  rows={2}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder={t("projects.objective_placeholder")} 
-                  className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none resize-none"
+                  className="w-full px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-medium focus:ring-1 focus:ring-blue-500 transition-all outline-none resize-none text-slate-900 dark:text-white"
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_project_type")}</label>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">{t("projects.field_project_type")}</label>
                 <select 
                   value={projectType}
                   onChange={(e) => setProjectType(e.target.value)}
-                  className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"
+                  className="w-full px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-blue-500 transition-all outline-none text-slate-900 dark:text-white"
                 >
                   <option value="Development">{t("projects.type_development")}</option>
                   <option value="Sales">{t("projects.type_sales")}</option>
@@ -283,24 +511,24 @@ export default function ProjectsPage() {
               </div>
 
               {projectType === 'Sales' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_assign_client")}</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">{t("projects.field_assign_client")}</label>
                     <select 
                       value={clientId}
                       onChange={(e) => setClientId(e.target.value)}
-                      className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"
+                      className="w-full px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-blue-500 transition-all outline-none text-slate-900 dark:text-white"
                     >
                       <option value="">{t("projects.none")}</option>
                       {availableClients.map(c => <option key={c.id} value={c.id}>{c.companyName || c.email}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_assign_lead")}</label>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">{t("projects.field_assign_lead")}</label>
                     <select 
                       value={leadId}
                       onChange={(e) => setLeadId(e.target.value)}
-                      className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"
+                      className="w-full px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-blue-500 transition-all outline-none text-slate-900 dark:text-white"
                     >
                       <option value="">{t("projects.none")}</option>
                       {availableLeads.map(l => <option key={l.id} value={l.id}>{l.name || l.email}</option>)}
@@ -309,63 +537,52 @@ export default function ProjectsPage() {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_assign_members")}</label>
-                <select 
-                  multiple
-                  value={projectMemberIds.map(String)}
-                  onChange={(e) => {
-                    const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value));
-                    setProjectMemberIds(selected);
-                  }}
-                  className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-                  style={{ minHeight: '100px' }}
-                >
-                  {availableUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
-                </select>
-                <p className="text-[10px] text-gray-400 ml-1">{t("projects.ctrl_select_hint")}</p>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">{t("projects.field_assign_members")}</label>
+                <ProjectMemberSelect users={availableUsers} value={projectMemberIds} onChange={setProjectMemberIds} />
+                {createError && <p role="alert" className="text-xs text-red-600 mt-1">{createError}</p>}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_initial_status")}</label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">{t("projects.field_initial_status")}</label>
                   <select 
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
-                    className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-blue-500 transition-all outline-none text-slate-900 dark:text-white"
                   >
                     <option>Planning</option>
                     <option>Active</option>
                     <option>Hold</option>
                   </select>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("projects.field_progress")}</label>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">{t("projects.field_progress")}</label>
                   <input 
                     type="number" 
                     min="0" 
                     max="100"
                     value={progress}
                     onChange={(e) => setProgress(Number(e.target.value))}
-                    className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-blue-500 transition-all outline-none text-slate-900 dark:text-white"
                   />
                 </div>
               </div>
 
-              <div className="pt-4 flex gap-4">
+              <div className="pt-2 flex gap-3">
                 <button 
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="flex-1 px-6 py-4 bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-zinc-400 rounded-2xl font-bold text-sm hover:bg-gray-200 transition-all"
+                  className="flex-1 px-4 py-2 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 rounded-lg font-semibold text-xs hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
                 >
                   {t("projects.cancel")}
                 </button>
                 <button 
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex-1 px-6 py-4 bg-gray-900 text-white rounded-2xl font-bold text-sm hover:bg-black shadow-lg shadow-gray-900/20 transition-all flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold text-xs hover:bg-blue-700 shadow-2xs transition-colors flex items-center justify-center gap-1.5"
                 >
-                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                   {t("projects.create_project_btn")}
                 </button>
               </div>

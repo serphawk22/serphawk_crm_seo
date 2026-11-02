@@ -11,6 +11,7 @@ interface User {
   id: number;
   email: string;
   name: string;
+  phone?: string | null;
   role: Role;
   client_id?: number;
   tenant_id?: number | null;
@@ -23,6 +24,7 @@ interface RoleContextType {
   user: User | null;
   login: (email: string, pass: string) => Promise<{ success: boolean; message?: string; is_new_user?: boolean }>;
   logout: () => void;
+  updateProfile: (profile: { name: string; phone?: string | null }) => void;
   loading: boolean;
 }
 
@@ -206,6 +208,13 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     router.replace('/login');
   };
 
+  const updateProfile = (profile: { name: string; phone?: string | null }) => {
+    if (!user) return;
+    const updated = { ...user, ...profile };
+    localStorage.setItem('crm_user', JSON.stringify(updated));
+    setUser(updated);
+  };
+
   return (
     <RoleContext.Provider value={{ 
       role: user?.role || 'Client' as Role, 
@@ -214,6 +223,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       user, 
       login, 
       logout,
+      updateProfile,
       loading
     }}>
       {children}

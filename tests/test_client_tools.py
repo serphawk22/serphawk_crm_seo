@@ -118,15 +118,15 @@ class TaskSheet(Base):
                 "summary": f"work by {who}", "outreaches_count": 10, "positives_count": 4, "key_focus": "Cold calls", **extra}
         return self.client.post("/task-sheet", json=body, headers=self.h(tid, who))
 
-    def test_a_salesperson_submits_for_themselves_but_cannot_read_edit_or_delete(self):
+    def test_a_salesperson_submits_reads_edits_own_entries_but_cannot_delete(self):
         r = self.sheet(2, "anu", user_id=self.reps[(2, "ben")])
         self.assertEqual(r.status_code, 200, r.text)
         entry = r.json()["entry"]
         self.assertEqual(entry["user_id"], self.reps[(2, "anu")], "the user id in the request is ignored")
         self.assertEqual((entry["outreaches_count"], entry["key_focus"]), (10, "Cold calls"))
         h = self.h(2, "anu")
-        self.assertEqual(self.client.get("/task-sheet", headers=h).status_code, 403)
-        self.assertEqual(self.client.put(f"/task-sheet/{entry['id']}", json={**entry}, headers=h).status_code, 403)
+        self.assertEqual(self.client.get("/task-sheet", headers=h).status_code, 200)
+        self.assertEqual(self.client.put(f"/task-sheet/{entry['id']}", json={**entry}, headers=h).status_code, 200)
         self.assertEqual(self.client.delete(f"/task-sheet/{entry['id']}", headers=h).status_code, 403)
         self.assertEqual(self.client.post("/task-sheet/ai-summary", json={}, headers=h).status_code, 403)
 
@@ -167,7 +167,7 @@ class TaskSheet(Base):
     def test_companies_without_scoping_keep_their_rules(self):
         h = self.h(3, "anu")
         old = (datetime.utcnow().date() - timedelta(days=3)).isoformat()
-        self.assertEqual(self.sheet(3, "anu", work_date=old).status_code, 400, "new entries are for today only")
+        self.assertEqual(self.sheet(3, "anu", work_date=old).status_code, 200, "staff may log past work")
         self.assertEqual(self.sheet(3, "anu").status_code, 200)
         self.assertEqual(self.client.get("/task-sheet", headers=h).status_code, 200, "anyone may still list")
         self.assertEqual(self.client.post("/task-sheet/ai-summary", json={}, headers=h).status_code, 403, "the summary is admin-only everywhere")
@@ -224,7 +224,7 @@ class ClientStatus(Base):
 
     def test_a_salesperson_cannot_change_a_client_that_is_not_theirs_when_scoped(self):
         r = self.client.patch(f"/clients/{self.clients[2]}", json={"status": "Won"}, headers=self.h(2, "anu"))
-        self.assertEqual(r.status_code, 403, r.text)
+        self.assertEqual(r.status_code, 404, r.text)  # ownership filtering conceals other people's records
         self.client.patch(f"/clients/{self.clients[2]}", json={"assignedEmployeeId": self.reps[(2, "anu")]}, headers=self.h(2))
         self.assertEqual(self.client.patch(f"/clients/{self.clients[2]}", json={"status": "Won"}, headers=self.h(2, "anu")).status_code, 200)
 
@@ -312,7 +312,7 @@ class CompanyReport(Base):
     def test_access_follows_the_company_and_the_assignment(self):
         self.assertEqual(self.post(self.clients[3], tid=2)[0].status_code, 404)
         self.assertEqual(self.status(self.clients[3], tid=2).status_code, 404)
-        self.assertEqual(self.post(self.clients[2], who="anu")[0].status_code, 403, "scoped: not this salesperson's client")
+        self.assertEqual(self.post(self.clients[2], who="anu")[0].status_code, 404, "scoped: not this salesperson's client")
         self.client.patch(f"/clients/{self.clients[2]}", json={"assignedEmployeeId": self.reps[(2, "anu")]}, headers=self.h(2))
         self.assertEqual(self.post(self.clients[2], who="anu")[0].status_code, 200)
 

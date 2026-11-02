@@ -10,6 +10,7 @@ import {
 import { Zap, ArrowUpRight, TrendingUp, IndianRupee, Filter, RefreshCw, Calendar, Award, Flame, AlertCircle, CheckCircle2, ChevronRight, Layers, Target, Users, Briefcase, Activity, Clock, ShieldAlert, Sparkles, ExternalLink, Search, SlidersHorizontal, ArrowUpDown } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
+import { useTenantConfig } from "@/context/TenantConfigContext";
 import {
   Currency, useCurrency, money, num, pctf, PALETTE, TOOLTIP_STYLE, AXIS_TICK,
   Tile, Card, SectionTitle, Meter, Empty, Pill, Skeleton, CurrencyToggle, Segmented,
@@ -18,6 +19,8 @@ import {
 
 export default function LeadSourceAnalyticsPage() {
   const { role, loading: roleLoading } = useRole();
+  const { hasFeature } = useTenantConfig();
+  const sourcesEnabled = hasFeature("lead_sources");
   const router = useRouter();
   const [currency, setCurrency] = useCurrency();
 
@@ -221,6 +224,7 @@ export default function LeadSourceAnalyticsPage() {
 
           <Link
             href="/lead-sources"
+            style={sourcesEnabled ? undefined : { display: "none" }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--primary)] text-white text-xs font-bold shadow hover:opacity-90 transition-opacity"
           >
             Manage Sources
@@ -1042,7 +1046,7 @@ export default function LeadSourceAnalyticsPage() {
                 <div className="pt-2 border-t border-[var(--border)]">
                   <button
                     onClick={handleBackfill}
-                    disabled={backfilling}
+                    disabled={backfilling || !sourcesEnabled || !["Admin", "SuperAdmin"].includes(role)}
                     className="w-full py-2 px-3 rounded-lg bg-[var(--primary)]/10 text-[var(--primary)] hover:bg-[var(--primary)] hover:text-white text-xs font-bold transition-all disabled:opacity-50"
                   >
                     {backfilling ? "Running Backfill..." : "Auto-Map Existing Leads to Sources"}

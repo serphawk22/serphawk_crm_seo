@@ -22,6 +22,15 @@ from routers.tenant_config import _ADMIN_ROLES, _my_tenant, _role, _super, _tena
 
 router = APIRouter(tags=["workspace"])
 
+
+@router.get("/support/helpdesk")
+def support_helpdesk(session: Session = Depends(get_session)):
+    user = _user(session)
+    if _role(user) not in {"Admin", "SuperAdmin", "SalesManager", "Sales", "Employee", "ProjectMember", "Demo"}:
+        raise HTTPException(status_code=403, detail="Staff support only")
+    tid = _my_tenant(user)
+    return {"url": tenant_settings.get_setting(tid, "support_portal_url", "https://projecthub.serphawk.in/client/login")}
+
 # The system moves a lead to these on its own (a new lead; the first e-mail sent), so they cannot be renamed or removed.
 LOCKED_STATUSES = ("New", "Contacted")
 

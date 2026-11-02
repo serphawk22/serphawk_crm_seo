@@ -48,6 +48,8 @@ def reset_context():
     depends on set ordering, i.e. on Python's hash seed: a test that passes on one run and errors on the next."""
     from modules.api_tracker import current_client_id, current_endpoint, current_salesperson_id
     from modules.tenant_scope import current_tenant_id
+    from modules.sales_access import actor
+    actor.set(None)
     current_tenant_id.set(None)
     current_salesperson_id.set(None)
     current_client_id.set(None)

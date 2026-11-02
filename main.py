@@ -320,6 +320,9 @@ current_tenant_id = tenant_scope.current_tenant_id  # defined in modules/tenant_
 
 @event.listens_for(SASession, "do_orm_execute")
 def _add_tenant_filter(execute_state):
+    from modules import sales_access
+    if not execute_state.execution_options.get("skip_tenant"):
+        execute_state.statement = execute_state.statement.options(*sales_access.criteria())
     tenant_id = current_tenant_id.get()
     if tenant_id is None:
         return
@@ -342,6 +345,23 @@ def _add_tenant_filter(execute_state):
 
 @event.listens_for(SASession, "before_flush")
 def _auto_assign_tenant_id(session, flush_context, instances):
+    from modules import sales_access
+    from database import Lead, ClientProfile, Contact, CallLog, ScheduledCall
+    actor = sales_access.actor.get()
+    for obj in session.new:
+        if actor and isinstance(obj, (Lead, ClientProfile, Contact, CallLog, ScheduledCall)):
+            obj.created_by = actor[0]
+            if sales_access.is_sales():
+                field = "assignedEmployeeId" if isinstance(obj, ClientProfile) else "assigned_to" if isinstance(obj, (CallLog, ScheduledCall)) else "owner_id"
+                if not getattr(obj, field):
+                    setattr(obj, field, str(actor[0]) if field == "assigned_to" else actor[0])
+    if sales_access.is_sales():
+        from sqlalchemy import inspect
+        for obj in session.new.union(session.dirty):
+            if isinstance(obj, (Lead, ClientProfile, Contact, CallLog, ScheduledCall)):
+                field = "assignedEmployeeId" if isinstance(obj, ClientProfile) else "assigned_to" if isinstance(obj, (CallLog, ScheduledCall)) else "owner_id"
+                if inspect(obj).attrs[field].history.has_changes() and getattr(obj, field) not in (actor[0], str(actor[0]), actor[2], actor[3]):
+                    raise HTTPException(status_code=403, detail="Only an Admin can assign another team member")
     tenant_id = current_tenant_id.get()
     if tenant_id is None:
         return
@@ -368,6 +388,14 @@ def _auto_assign_tenant_id(session, flush_context, instances):
         if (tenant_id < 1 or obj.tenant_id != tenant_id
                 or any(old != tenant_id for old in history.deleted)):
             raise HTTPException(status_code=403, detail="Record must belong to the selected company")
+    from modules.record_duplicates import validate
+    validate(session)
+
+
+@event.listens_for(SASession, "after_transaction_end")
+def _release_duplicate_locks(session, transaction):
+    from modules.record_duplicates import transaction_ended
+    transaction_ended(session, transaction)
 
 
 @event.listens_for(SASession, "after_flush")
@@ -543,6 +571,8 @@ def _require_roles(session: Session, allowed_roles):
 
 class APIIntelligenceMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        from modules import sales_access
+        sales_access.actor.set(None)
         # Reset context for this request
         current_client_id.set(None)
         current_salesperson_id.set(None)
@@ -583,27 +613,28 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
                 with Session(engine) as session:
                     user_obj = session.get(User, uid)
                     if not user_obj:
-                        return None, -1, False
+                        return None, -1, False, None
                     if pv is not None and auth_tokens.password_fingerprint(user_obj.password) != pv:
-                        return None, -1, False  # password changed since the token was issued
+                        return None, -1, False, None  # password changed since the token was issued
                     user_role = _normalize_role(user_obj.role)
-                    if user_role == "Demo" and not user_obj.is_active:
-                        return None, -1, False  # demo account switched off in Demo Account Data
+                    if not user_obj.is_active:
+                        return None, -1, False, None  # removed or disabled account
                     if user_role == "SuperAdmin":
                         # Platform operators have no tenant CRM context. Use a
                         # tenant Admin login to work with that company's records.
-                        return uid, -1, True
+                        return uid, -1, True, (uid, user_role, user_obj.name, user_obj.email)
                     # Force tenant_id to be the user's actual tenant in the DB
                     if not user_obj.tenant_id or user_obj.tenant_id < 1:
-                        return None, -1, False
-                    return uid, user_obj.tenant_id, False
+                        return None, -1, False, None
+                    return uid, user_obj.tenant_id, False, (uid, user_role, user_obj.name, user_obj.email)
 
             # Blocking DB call: run it in the threadpool so it doesn't stall the event loop
             # (which delayed every other request, including Twilio webhooks).
             from starlette.concurrency import run_in_threadpool
-            resolved_uid, resolved_tenant, operator = await run_in_threadpool(_resolve_identity, claimed_uid, claimed_pv)
+            resolved_uid, resolved_tenant, operator, identity = await run_in_threadpool(_resolve_identity, claimed_uid, claimed_pv)
             current_salesperson_id.set(resolved_uid)
             current_tenant_id.set(resolved_tenant)
+            sales_access.actor.set(identity)
             tenant_scope.platform_management_write.set(operator and path.startswith('/superadmin/'))
         else:
             # Unauthenticated requests CANNOT be given SuperAdmin access (None), and must not pick a
@@ -617,7 +648,7 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         gated_tenant = current_tenant_id.get()
         platform_path = (path.startswith(("/superadmin/", "/me/", "/users/me", "/notifications/",
                                           "/telemetry/demo-account", "/auth/"))
-                         or path in {"/health", "/login", "/telemetry/page-visit"})
+                         or path in {"/health", "/login", "/telemetry/page-visit", "/change-password"})
         operator_create = operator and gated_tenant == -1 and path == '/users' and request.method == 'POST'
         if operator and not platform_path and not operator_create:
             return JSONResponse(status_code=403, content={
@@ -632,7 +663,9 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         if gated_tenant is not None and gated_tenant >= 1:
             for feature_key in features.gates_for_path(path):
                 from starlette.concurrency import run_in_threadpool
-                if not await run_in_threadpool(features.is_enabled, gated_tenant, feature_key):
+                person = sales_access.actor.get()
+                enabled = await run_in_threadpool(sales_access.effective_modules, gated_tenant, person[1] if person else "")
+                if not enabled.get(feature_key, True):
                     return JSONResponse(status_code=403, content={
                         "detail": f"The '{features.FEATURES[feature_key].label}' module is not enabled for your account.",
                         "feature": feature_key})
@@ -678,6 +711,9 @@ app.include_router(registration_router)
 
 from routers.workspace import router as workspace_router
 app.include_router(workspace_router)
+
+from routers.record_imports import router as record_imports_router
+app.include_router(record_imports_router)
 
 from routers.demo_accounts import router as demo_accounts_router
 app.include_router(demo_accounts_router)
@@ -2394,7 +2430,7 @@ def _normalize_role(role: Optional[str]) -> str:
         "student": "Student",
         "instructor": "Instructor",
         "salesmanager": "SalesManager",
-        "sales": "Sales",
+        "sales": "SalesManager",
         "demo": "Demo",
         "projectmember": "ProjectMember",
     }
@@ -2430,7 +2466,8 @@ def _verify_password(plain: str, user: User) -> bool:
 
 
 def _user_dict(u: User) -> dict:
-    return {"id": u.id, "email": u.email, "name": u.name, "phone": getattr(u, "phone", None), "role": _normalize_role(u.role), "tenant_id": u.tenant_id}
+    role = _normalize_role(u.role)
+    return {"id": u.id, "email": u.email, "name": u.name, "phone": getattr(u, "phone", None), "role": "SalesManager" if role == "Employee" else role, "tenant_id": u.tenant_id}
 
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -3230,8 +3267,8 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not _verify_password(body.password, user):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    if (user.role or "").lower() == "demo" and not user.is_active:
-        raise HTTPException(status_code=403, detail="This demo account has been switched off. Contact us to reactivate it.")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="This account has been switched off. Contact your administrator.")
     result = _user_dict(user)
     if user.role == "Client":
         cp = session.exec(select(ClientProfile).where(
@@ -3369,8 +3406,8 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
         out = demo_accounts.create_self_service_demo(session, name=name or email, email=email,
                                                      password_hash=_hash_password(os.urandom(16).hex()))
         user = session.exec(select(User).where(User.id == out["admin_user_id"]).execution_options(skip_tenant=True)).first()
-    elif (user.role or "").lower() == "demo" and not user.is_active:
-        raise HTTPException(status_code=403, detail="This demo account has been switched off. Contact us to reactivate it.")
+    elif not user.is_active:
+        raise HTTPException(status_code=403, detail="This account has been switched off. Contact your administrator.")
 
     result = _user_dict(user)
     if user.role == "Client":
@@ -3393,9 +3430,11 @@ def auth_google(body: GoogleAuthRequest, session: Session = Depends(get_session)
 @app.post("/users")
 def create_user(body: CreateUserRequest, session: Session = Depends(get_session)):
     # Who may create whom. Without this any signed-in user (even a Client) could mint an Admin for their tenant.
-    actor = _require_roles(session, ["Admin", "SalesManager"])
+    actor = _require_roles(session, ["Admin"])
     actor_role = _normalize_role(actor.role)
     new_role = _normalize_role(body.role)
+    if new_role == "Employee":
+        new_role = "SalesManager"  # retired sales-person role; existing rows retain their ids
     known_roles = {"SuperAdmin", "Admin", "SalesManager", "Employee", "Intern", "Client", "Supplier", "Demo",
                    "ProjectMember", "Developer", "Student", "Instructor", "Sales"}
     if new_role not in known_roles:
@@ -3827,7 +3866,10 @@ def test_email_integration(body: EmailIntegrationTestRequest, session: Session =
 
 @app.get("/users")
 def list_users(role: Optional[str] = None, session: Session = Depends(get_session)):
-    query = select(User)
+    from modules import sales_access
+    query = select(User).where(User.is_active == True)
+    if sales_access.is_sales():
+        query = query.where(User.id == current_salesperson_id.get())
     tenant_id = current_tenant_id.get()
     if tenant_id:
         query = query.where(User.tenant_id == tenant_id)
@@ -3842,6 +3884,9 @@ def list_users(role: Optional[str] = None, session: Session = Depends(get_sessio
 
 @app.get("/users/{user_id}/stats")
 def get_user_stats(user_id: int, session: Session = Depends(get_session)):
+    from modules import sales_access
+    if sales_access.is_sales() and user_id != current_salesperson_id.get():
+        raise HTTPException(status_code=403, detail="You can only view your own profile")
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -3909,7 +3954,15 @@ def delete_user(user_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="User not found")
     if _normalize_role(user.role) == "SuperAdmin" and _normalize_role(actor.role) != "SuperAdmin":
         raise HTTPException(status_code=403, detail="Only a SuperAdmin can remove a SuperAdmin")
-    session.delete(user)
+    if user.id == actor.id:
+        raise HTTPException(status_code=409, detail="You cannot remove your own account")
+    if _normalize_role(user.role) == "Admin":
+        admins = session.exec(select(User).where(User.tenant_id == user.tenant_id, User.is_active == True)).all()
+        if sum(_normalize_role(u.role) == "Admin" for u in admins) <= 1:
+            raise HTTPException(status_code=409, detail="Keep at least one active Admin")
+    # Preserve foreign-key references and history while revoking every session.
+    user.is_active = False
+    session.add(user)
     session.commit()
     return {"ok": True}
 
@@ -3919,8 +3972,11 @@ def delete_user(user_id: int, session: Session = Depends(get_session)):
 # ─────────────────────────────────────────────────────────────────────────────
 @app.get("/employees")
 def list_employees(session: Session = Depends(get_session)):
-    query = select(User).where(User.role.in_(
-        ["Employee", "Admin", "SalesManager"]))
+    query = select(User).where(User.is_active == True, User.role.in_(
+        ["Employee", "Admin", "SalesManager", "Sales"]))
+    from modules import sales_access
+    if sales_access.is_sales():
+        query = query.where(User.id == current_salesperson_id.get())
     tenant_id = current_tenant_id.get()
     if tenant_id:
         query = query.where(User.tenant_id == tenant_id)
@@ -3931,8 +3987,11 @@ def list_employees(session: Session = Depends(get_session)):
 @app.get("/employees/workload")
 def get_employees_workload(session: Session = Depends(get_session)):
     """Return each sales team member with their active client and active lead counts."""
-    query = select(User).where(User.role.in_(
-        ["Employee", "Admin", "SalesManager"]))
+    query = select(User).where(User.is_active == True, User.role.in_(
+        ["Employee", "Admin", "SalesManager", "Sales"]))
+    from modules import sales_access
+    if sales_access.is_sales():
+        query = query.where(User.id == current_salesperson_id.get())
     tenant_id = current_tenant_id.get()
     if tenant_id:
         query = query.where(User.tenant_id == tenant_id)
@@ -4083,7 +4142,7 @@ def create_client(body: ClientCreateRequest, session: Session = Depends(get_sess
                     tenant_id=tenant_id,
                 )
                 session.add(user)
-                session.commit()
+                session.flush()
                 session.refresh(user)
             except Exception:
                 # Email already exists (race condition) — roll back and fetch existing user
@@ -4318,15 +4377,21 @@ async def import_sheet(body: SheetImportRequest, background_tasks: BackgroundTas
         if email:
             existing_user = session.exec(select(User).where(
                 User.email == email).execution_options(skip_tenant=True)).first()
+            if existing_user and existing_user.tenant_id != tenant_id:
+                skipped.append({"reason": "email unavailable for this company", "company": company})
+                continue
+            if existing_user:
+                cp.userId = existing_user.id
             if not existing_user:
                 new_user = User(
                     email=email,
                     password=_hash_password("changeme"),
                     name=company,
                     role="Client",
+                    tenant_id=tenant_id,
                 )
                 session.add(new_user)
-                session.commit()
+                session.flush()
                 session.refresh(new_user)
                 cp.userId = new_user.id
 
@@ -5790,7 +5855,8 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
             MarketplaceService.is_active == True,
         )
     ).all()
-    existing_by_name = {s.service_name.lower(): s for s in existing}
+    from modules.record_duplicates import name_key
+    existing_by_name = {name_key(s.service_name): s for s in existing}
 
     added = 0
     updated = 0
@@ -5798,7 +5864,7 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
         svc_name = svc.get("name", "").strip()
         if not svc_name:
             continue
-        key = svc_name.lower()
+        key = name_key(svc_name)
         if key in existing_by_name:
             # Update existing entry
             ms = existing_by_name[key]
@@ -6209,6 +6275,15 @@ def list_projects(member_id: Optional[int] = None, session: Session = Depends(ge
 
 @app.post("/projects")
 def create_project(body: ProjectCreateRequest, session: Session = Depends(get_session)):
+    _require_roles(session, {"Admin", "Demo"})
+    member_ids = list(dict.fromkeys(body.projectMemberIds))
+    for member_id in member_ids:
+        member = session.get(User, member_id)
+        if not member or not member.is_active or member.role not in {"Admin", "SalesManager", "Sales", "Employee", "Intern", "ProjectMember"}:
+            raise HTTPException(422, "Select active team members from this company")
+    for model, record_id in ((ClientProfile, body.clientId), (Lead, body.leadId)):
+        if record_id is not None and session.get(model, record_id) is None:
+            raise HTTPException(404, "Project client or lead not found")
     p = Project(
         name=body.name,
         description=body.description,
@@ -6217,6 +6292,10 @@ def create_project(body: ProjectCreateRequest, session: Session = Depends(get_se
         employeeIds=body.employeeIds,
         internIds=body.internIds,
         clientIds=body.clientIds,
+        projectMemberIds=member_ids,
+        project_type=body.project_type,
+        clientId=body.clientId,
+        leadId=body.leadId,
         tenant_id=current_tenant_id.get()
     )
     session.add(p)
@@ -6432,6 +6511,10 @@ def _project_dict(p: Project) -> dict:
         "employeeIds": p.employeeIds or [],
         "internIds": p.internIds or [],
         "clientIds": p.clientIds or [],
+        "projectMemberIds": p.projectMemberIds or [],
+        "project_type": p.project_type,
+        "clientId": p.clientId,
+        "leadId": p.leadId,
         "createdAt": p.createdAt.isoformat(),
         "updatedAt": p.updatedAt.isoformat(),
     }
@@ -6784,6 +6867,7 @@ def list_calls(unsummarized: Optional[bool] = None, session: Session = Depends(g
 
 @app.post("/calls")
 def log_call(body: CallCreateRequest, session: Session = Depends(get_session)):
+    body.assigned_to = _call_assignee(session, body.assigned_to)
     tenant_id = current_tenant_id.get()
     if body.client_id and not session.get(ClientProfile, body.client_id):
         raise HTTPException(status_code=404, detail="Client not found")
@@ -6841,6 +6925,8 @@ def update_call(
                "assigned_to", "followup_needed", "followup_date", "client_id"}
     if set(body) - allowed:
         raise HTTPException(status_code=422, detail="Unsupported call fields")
+    if "assigned_to" in body:
+        body["assigned_to"] = _call_assignee(session, body["assigned_to"])
     if body.get("client_id") and not session.get(ClientProfile, body["client_id"]):
         raise HTTPException(status_code=404, detail="Client not found")
     for field, val in body.items():
@@ -6891,6 +6977,10 @@ def _call_dict(c: CallLog, session: Session = None) -> dict:
         "client_id": getattr(c, "client_id", None),
     }
 
+    if session and c.assigned_to and c.assigned_to.isdigit():
+        assignee = session.get(User, int(c.assigned_to))
+        if assignee:
+            d["assigned_to_name"] = assignee.name or assignee.email
     if session and c.client_id:
         from database import ClientProfile
         cp = session.get(ClientProfile, c.client_id)
@@ -7092,7 +7182,8 @@ class ScheduledCallCreateRequest(BaseModel):
     assigned_to: Optional[str] = None
 
 
-def _sched_dict(s: ScheduledCall) -> dict:
+def _sched_dict(s: ScheduledCall, session: Session = None) -> dict:
+    assigned = session.get(User, int(s.assigned_to)) if session and s.assigned_to and s.assigned_to.isdigit() else None
     return {
         "id": s.id,
         "title": s.title,
@@ -7104,9 +7195,25 @@ def _sched_dict(s: ScheduledCall) -> dict:
         "pitch": s.pitch,
         "notes": s.notes,
         "assigned_to": s.assigned_to,
+        "assigned_to_name": (assigned.name or assigned.email) if assigned else s.assigned_to,
         "status": s.status,
         "created_at": s.created_at.isoformat(),
     }
+
+
+def _call_assignee(session: Session, value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    value = str(value).strip()
+    query = select(User).where(User.tenant_id == current_tenant_id.get(), User.is_active == True)
+    if value.isdigit():
+        query = query.where(User.id == int(value))
+    else:
+        query = query.where(or_(User.email == value, User.name == value))
+    matches = session.exec(query).all()
+    if len(matches) != 1:
+        raise HTTPException(status_code=422, detail="Select one active company account for the call")
+    return str(matches[0].id)
 
 
 def _validate_company_assignee(session: Session, user_id: Optional[int]) -> None:
@@ -7128,11 +7235,12 @@ def _validate_call_entity(session: Session, kind: str, entity_id: Optional[int])
 def list_scheduled_calls(session: Session = Depends(get_session)):
     items = session.exec(select(ScheduledCall).order_by(
         ScheduledCall.scheduled_at.asc())).all()
-    return {"scheduled_calls": [_sched_dict(s) for s in items]}
+    return {"scheduled_calls": [_sched_dict(s, session) for s in items]}
 
 
 @app.post("/scheduled-calls")
 def create_scheduled_call(body: ScheduledCallCreateRequest, session: Session = Depends(get_session)):
+    body.assigned_to = _call_assignee(session, body.assigned_to)
     _validate_call_entity(session, body.entity_type, body.entity_id)
     dt = None
     if body.scheduled_at:
@@ -7196,6 +7304,8 @@ def update_scheduled_call(sc_id: int, body: Dict[str, Any], session: Session = D
                "entity_email", "pitch", "notes", "assigned_to"}
     if set(body) - allowed:
         raise HTTPException(status_code=422, detail="Unsupported scheduled call fields")
+    if "assigned_to" in body:
+        body["assigned_to"] = _call_assignee(session, body["assigned_to"])
     _validate_call_entity(session, body.get("entity_type", sc.entity_type), body.get("entity_id", sc.entity_id))
     for k, v in body.items():
         if k == "scheduled_at" and v:
@@ -7279,7 +7389,7 @@ def list_activities(user_id: Optional[int] = None, session: Session = Depends(ge
 # Email Agent
 # ─────────────────────────────────────────────────────────────────────────────
 @app.post("/generate")
-def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks = None):
+def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks = None, session: Session = Depends(get_session)):
     try:
         from modules.llm_engine import generate_email as _gen, analyze_content
         from modules.scraper import scrape_website
@@ -7287,7 +7397,6 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
         import os
         from database import SentEmail
         import json
-        session = next(get_session())
         profile_sender = _email_agent_sender(session)
         _sig = profile_sender.get("signature") if profile_sender.get("auto_append") else ""
 
@@ -7409,6 +7518,17 @@ def generate_email(body: GenerateEmailRequest, background_tasks: BackgroundTasks
             # Try to find existing client by email
             existing_client = session.exec(select(ClientProfile).where(
                 ClientProfile.email == body.to_email)).first() if hasattr(ClientProfile, 'email') else None
+            if existing_client is None:
+                existing_client = session.exec(select(ClientProfile).join(User, User.id == ClientProfile.userId).where(
+                    func.lower(User.email) == (body.to_email or "").strip().lower())).first()
+            if existing_client is None:
+                # Older unlinked profiles have no email column. Reuse only the
+                # exact name/address fallback identity, as duplicate prevention
+                # does, so retrying a draft does not insert the same profile.
+                from modules.record_duplicates import identifiers, name_key
+                identity = name_key(draft_obj["company_name"] or "Unknown Company") + "|"
+                existing_client = next((cp for cp in session.exec(select(ClientProfile)).all()
+                    if cp.userId is None and identifiers(ClientProfile, cp.model_dump()).get("company and address") == identity), None)
             if existing_client:
                 client_id = existing_client.id
             else:
@@ -8714,6 +8834,7 @@ def _task_sheet_dict(entry: TaskSheetEntry, session: Session) -> dict:
         **entry.model_dump(),
         "user_name": user.name if user else "Unknown user",
         "user_email": user.email if user else None,
+        "user_role": _user_dict(user)["role"] if user else "Staff",
         "project_name": project.name if project else None,
         "ticket_name": ticket.task if ticket else None,
         "created_at": entry.created_at.isoformat(),
@@ -8740,14 +8861,21 @@ def list_task_sheet_entries(
     user_id: Optional[int] = None,
     work_date: Optional[str] = None,
     period: Optional[str] = None,
+    status: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
-    if _sales_scoping_on():
-        _require_admin_user(session, "Only admins can view task-sheet entries")     # everyone else just gets the form
+    me = _current_user(session)
+    if not me:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not _is_admin_user(me):
+        user_id = me.id
     q = select(TaskSheetEntry).order_by(
         TaskSheetEntry.work_date.desc(), TaskSheetEntry.updated_at.desc())
     if user_id:
         q = q.where(TaskSheetEntry.user_id == user_id)
+    if status and status != "all":
+        done = ("Done", "Completed")
+        q = q.where(TaskSheetEntry.status.in_(done) if status in done else TaskSheetEntry.status == status)
     if work_date:
         q = q.where(TaskSheetEntry.work_date == work_date)
     elif period:
@@ -8756,20 +8884,36 @@ def list_task_sheet_entries(
     return {"entries": [_task_sheet_dict(entry, session) for entry in entries]}
 
 
+def _task_sheet_data(body: TaskSheetEntryRequest, session: Session) -> dict:
+    me = _current_user(session)
+    if not me:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    data = body.model_dump()
+    if not _is_admin_user(me):
+        data["user_id"] = me.id
+    _validate_company_assignee(session, data["user_id"])
+    for key in ("work_date", "expected_date", "follow_up_date", "completion_date"):
+        if data.get(key):
+            try:
+                datetime.strptime(data[key], "%Y-%m-%d")
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=422, detail=f"{key} must be YYYY-MM-DD")
+    data["summary"] = data["summary"].strip()
+    if not data["summary"]:
+        raise HTTPException(status_code=422, detail="Describe the work performed")
+    for key in ("outreaches_count", "positives_count", "negatives_count", "followups_scheduled", "meetings_scheduled", "time_spent_minutes"):
+        data[key] = data.get(key) or 0
+        if data[key] < 0:
+            raise HTTPException(status_code=422, detail="Activity counts and time cannot be negative")
+    for key, model in (("project_id", Project), ("ticket_id", ProjectTicket)):
+        if data.get(key) and not session.get(model, data[key]):
+            raise HTTPException(status_code=404, detail=f"{key} not found")
+    return data
+
+
 @app.post("/task-sheet")
 def create_task_sheet_entry(body: TaskSheetEntryRequest, session: Session = Depends(get_session)):
-    data = body.model_dump()
-    if _sales_scoping_on():
-        me = _current_user(session)
-        if not me:
-            raise HTTPException(status_code=401, detail="Unauthorized")
-        if not _is_admin_user(me):
-            data["user_id"] = me.id                  # a salesperson can only ever submit their own sheet
-    else:
-        today = datetime.utcnow().date().isoformat()
-        if body.work_date != today:
-            raise HTTPException(
-                status_code=400, detail="New task-sheet entries can only be added for today")
+    data = _task_sheet_data(body, session)
     entry = TaskSheetEntry(**data, tenant_id=current_tenant_id.get())
     session.add(entry)
     session.commit()
@@ -8779,16 +8923,15 @@ def create_task_sheet_entry(body: TaskSheetEntryRequest, session: Session = Depe
 
 @app.put("/task-sheet/{entry_id}")
 def update_task_sheet_entry(entry_id: int, body: TaskSheetEntryRequest, session: Session = Depends(get_session)):
-    scoped = _sales_scoping_on()
-    if scoped:
-        _require_admin_user(session, "Only admins can edit task-sheet entries")
+    data = _task_sheet_data(body, session)
     entry = session.get(TaskSheetEntry, entry_id)
     if not entry:
         raise HTTPException(
             status_code=404, detail="Task-sheet entry not found")
-    for field, value in body.model_dump().items():
-        if field != "work_date" or scoped:
-            setattr(entry, field, value)
+    if not _is_admin_user(_current_user(session)) and entry.user_id != current_salesperson_id.get():
+        raise HTTPException(status_code=404, detail="Task-sheet entry not found")
+    for field, value in data.items():
+        setattr(entry, field, value)
     entry.updated_at = datetime.now(timezone.utc)
     session.add(entry)
     session.commit()
@@ -8816,7 +8959,10 @@ def generate_task_sheet_ai_summary(body: Dict[str, Any] = Body(...), session: Se
     q = select(TaskSheetEntry)
     if user_id:
         q = q.where(TaskSheetEntry.user_id == user_id)
-    q = _task_sheet_period(q, period)
+    if body.get("work_date"):
+        q = q.where(TaskSheetEntry.work_date == str(body["work_date"]))
+    else:
+        q = _task_sheet_period(q, period)
     entries = session.exec(q.order_by(TaskSheetEntry.work_date.desc())).all()
     user_ids = {e.user_id for e in entries}
     users_map = {u.id: u for u in session.exec(select(User).where(User.id.in_(user_ids))).all()} if user_ids else {}
@@ -8953,6 +9099,7 @@ def list_invoices(
     user_id: Optional[int] = None,
     session: Session = Depends(get_session),
 ):
+    _require_roles(session, ["Admin", "SalesManager", "Employee", "Client", "Demo"])
     q = select(Invoice).order_by(Invoice.created_at.desc())
     if client_id:
         q = q.where(Invoice.client_id == client_id)
@@ -8970,6 +9117,13 @@ def list_invoices(
 
 @app.post("/invoices")
 def create_invoice(body: InvoiceCreateRequest, session: Session = Depends(get_session)):
+    from modules.branding import current_brand
+    _require_roles(session, ["Admin", "SalesManager", "Employee", "Demo"])
+    if not session.get(ClientProfile, body.client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    for model, record_id in ((Proposal, body.proposal_id), (Deal, body.deal_id), (ServiceRequest, body.service_request_id)):
+        if record_id and not session.get(model, record_id):
+            raise HTTPException(status_code=404, detail="Invoice reference not found")
     total = round(body.amount + body.tax, 2)
     inv = Invoice(
         invoice_number=_generate_invoice_number(session),
@@ -9014,8 +9168,8 @@ def create_invoice(body: InvoiceCreateRequest, session: Session = Depends(get_se
             if user and user.email:
                 _send_notification_email(
                     user.email,
-                    f"New Invoice #{inv.invoice_number} from DaPros",
-                    f"<h2>New Invoice</h2><p>Hi {cp.companyName or 'there'},</p><p>A new invoice <strong>#{inv.invoice_number}</strong> for <strong>${inv.total}</strong> has been created.</p><p>Please log in to your dashboard to view details.</p><p>— Team DaPros</p>",
+                    f"New Invoice #{inv.invoice_number} from {current_brand().name}",
+                    f"<h2>New Invoice</h2><p>Hi {cp.companyName or 'there'},</p><p>A new invoice <strong>#{inv.invoice_number}</strong> for <strong>${inv.total}</strong> has been created.</p><p>Please log in to your dashboard to view details.</p><p>— Team {current_brand().name}</p>",
                 )
             notif = Notification(
                 user_id=cp.userId,
@@ -9032,10 +9186,13 @@ def create_invoice(body: InvoiceCreateRequest, session: Session = Depends(get_se
 
 @app.post("/invoices/from-quote/{request_id}")
 def invoice_from_quote(request_id: int, session: Session = Depends(get_session)):
+    _require_roles(session, ["Admin", "SalesManager", "Employee", "Demo"])
     sr = session.get(ServiceRequest, request_id)
     if not sr:
         raise HTTPException(
             status_code=404, detail="Service request not found")
+    if not session.get(ClientProfile, sr.client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
     if not sr.quoted_amount:
         raise HTTPException(
             status_code=400, detail="No quoted amount on this request")
@@ -9080,6 +9237,8 @@ def get_invoice(invoice_id: int, session: Session = Depends(get_session)):
 def update_invoice(
     invoice_id: int, body: InvoiceUpdateRequest, session: Session = Depends(get_session)
 ):
+    from modules.branding import current_brand
+    _require_roles(session, ["Admin", "SalesManager", "Employee", "Demo"])
     inv = session.get(Invoice, invoice_id)
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -9103,8 +9262,8 @@ def update_invoice(
             if user and user.email:
                 _send_notification_email(
                     user.email,
-                    f"Invoice #{inv.invoice_number} Sent — DaPros",
-                    f"<h2>Invoice Ready for Payment</h2><p>Hi {cp.companyName or 'there'},</p><p>Invoice <strong>#{inv.invoice_number}</strong> for <strong>${inv.total}</strong> has been sent to you.</p><p>Due date: {inv.due_date or 'TBD'}</p><p>— Team DaPros</p>",
+                    f"Invoice #{inv.invoice_number} Sent — {current_brand().name}",
+                    f"<h2>Invoice Ready for Payment</h2><p>Hi {cp.companyName or 'there'},</p><p>Invoice <strong>#{inv.invoice_number}</strong> for <strong>${inv.total}</strong> has been sent to you.</p><p>Due date: {inv.due_date or 'TBD'}</p><p>— Team {current_brand().name}</p>",
                 )
 
     return {"invoice": _invoice_dict(inv, session)}
@@ -9112,6 +9271,7 @@ def update_invoice(
 
 @app.delete("/invoices/{invoice_id}")
 def delete_invoice(invoice_id: int, session: Session = Depends(get_session)):
+    _require_roles(session, ["Admin", "SalesManager", "Employee", "Demo"])
     inv = session.get(Invoice, invoice_id)
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -10469,6 +10629,8 @@ class PasswordChangeRequest(BaseModel):
 
 @app.post("/change-password")
 def change_password(body: PasswordChangeRequest, session: Session = Depends(get_session)):
+    if body.user_id != current_salesperson_id.get():
+        raise HTTPException(status_code=403, detail="You can only change your own password")
     user = session.get(User, body.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -10479,6 +10641,7 @@ def change_password(body: PasswordChangeRequest, session: Session = Depends(get_
         raise HTTPException(
             status_code=400, detail="New password must be at least 6 characters")
     user.password = _hash_password(body.new_password)
+    user.hashed_password = ""  # invalidate the legacy alternative password too
     user.updatedAt = datetime.now(timezone.utc)
     session.add(user)
     session.commit()
@@ -11718,6 +11881,8 @@ def create_marketplace_service(
     provider_address = None
     if body.provider_client_id:
         cp = session.get(ClientProfile, body.provider_client_id)
+        if not cp:
+            raise HTTPException(status_code=404, detail="Provider not found in this company")
         if cp:
             provider_name = provider_name or cp.companyName
             provider_industry = cp.industry
@@ -12526,6 +12691,9 @@ def export_leads_csv(owner_id: Optional[int] = None, session: Session = Depends(
 
 @app.post("/leads")
 def create_lead(body: LeadCreateRequest, session: Session = Depends(get_session)):
+    from modules import sales_access
+    if sales_access.is_sales() and not body.owner_id:
+        body.owner_id = current_salesperson_id.get()
     tenant_id = current_tenant_id.get()
     _validate_company_assignee(session, body.owner_id)
     if body.status.lower() == 'converted':
@@ -12794,12 +12962,13 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
             MarketplaceService.is_active == True,
         )
     ).all()
-    existing_names = {s.service_name.lower() for s in existing}
+    from modules.record_duplicates import name_key
+    existing_names = {name_key(s.service_name) for s in existing}
 
     added = 0
     for svc in services:
         svc_name = svc.get("name", "").strip()
-        if not svc_name or svc_name.lower() in existing_names:
+        if not svc_name or name_key(svc_name) in existing_names:
             continue
         ms = MarketplaceService(
             service_name=svc_name,
@@ -12817,7 +12986,7 @@ Rules: 3-8 services max. approx_cost in USD. cost_is_estimated always true for f
             tenant_id=current_tenant_id.get(),
         )
         session.add(ms)
-        existing_names.add(svc_name.lower())
+        existing_names.add(name_key(svc_name))
         added += 1
 
     session.commit()
@@ -13669,6 +13838,9 @@ async def import_execute(
             "updated": updated_count,
             "total": len(records)
         }
+    except HTTPException:
+        session.rollback()
+        raise
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
@@ -15624,6 +15796,14 @@ class CaseUpdateRequest(BaseModel):
     resolution: Optional[str] = None
 
 
+def _case_for_viewer(session: Session, case_id: int) -> Case:
+    actor = _require_roles(session, ["Admin", "SalesManager", "Employee", "ProjectMember", "Demo"])
+    case = session.get(Case, case_id)
+    if not case or (_normalize_role(actor.role) not in {"Admin", "SuperAdmin", "Demo"} and case.assigned_to != actor.id):
+        raise HTTPException(status_code=404, detail="Case not found")
+    return case
+
+
 def _case_dict(c: Case, session: Session) -> dict:
     client = session.get(ClientProfile, c.client_id) if c.client_id else None
     lead = session.get(Lead, c.lead_id) if c.lead_id else None
@@ -15801,8 +15981,13 @@ def update_scmhub_case(case_id: int, body: ScmhubCaseUpdateRequest):
 
 
 @app.get("/cases")
-def list_cases(status: Optional[str] = None, priority: Optional[str] = None, client_id: Optional[int] = None, session: Session = Depends(get_session)):
+def list_cases(status: Optional[str] = None, priority: Optional[str] = None, client_id: Optional[int] = None, assigned_to: Optional[int] = None, session: Session = Depends(get_session)):
+    actor = _require_roles(session, ["Admin", "SalesManager", "Employee", "ProjectMember", "Demo"])
     q = select(Case).order_by(Case.created_at.desc())
+    if _normalize_role(actor.role) not in {"Admin", "SuperAdmin", "Demo"}:
+        q = q.where(Case.assigned_to == actor.id)
+    elif assigned_to:
+        q = q.where(Case.assigned_to == assigned_to)
     if status:
         q = q.where(Case.status == status)
     if priority:
@@ -15852,7 +16037,7 @@ def create_case(body: CaseCreateRequest, session: Session = Depends(get_session)
 
 @app.get("/cases/{case_id}")
 def get_case(case_id: int, session: Session = Depends(get_session)):
-    c = session.get(Case, case_id)
+    c = _case_for_viewer(session, case_id)
     if not c:
         raise HTTPException(status_code=404, detail="Case not found")
     return {"case": _case_dict(c, session)}
@@ -15860,11 +16045,16 @@ def get_case(case_id: int, session: Session = Depends(get_session)):
 
 @app.put("/cases/{case_id}")
 def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depends(get_session)):
-    c = session.get(Case, case_id)
+    c = _case_for_viewer(session, case_id)
     if not c:
         raise HTTPException(status_code=404, detail="Case not found")
     tenant_id = current_tenant_id.get() or c.tenant_id
     updates = body.model_dump(exclude_unset=True)
+    actor = _current_user(session)
+    if "assigned_to" in updates:
+        _validate_company_assignee(session, updates["assigned_to"])
+        if not _is_admin_user(actor) and updates["assigned_to"] != c.assigned_to:
+            raise HTTPException(status_code=403, detail="Only an Admin can reassign a case")
     old_status = c.status
     if updates.get("status") in ("Resolved", "Closed") and not c.resolved_at:
         c.resolved_at = datetime.now(timezone.utc)
@@ -15894,6 +16084,7 @@ def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depend
 
 @app.delete("/cases/{case_id}")
 def delete_case(case_id: int, session: Session = Depends(get_session)):
+    _require_admin_user(session)
     c = session.get(Case, case_id)
     if not c:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -17920,6 +18111,8 @@ class InventoryItemCreate(BaseModel):
 
 
 class InventorySupplierCreate(BaseModel):
+    supplier_user_id: Optional[int] = None
+    existing_supplier_id: Optional[int] = None
     supplier_name: str
     supplier_brand: Optional[str] = None
     supplier_email: Optional[str] = None
@@ -18113,70 +18306,69 @@ def delete_inventory_item(item_id: int, session: Session = Depends(get_session))
     return {"ok": True}
 
 
+@app.get("/inventory/supplier-accounts")
+def supplier_accounts(session: Session = Depends(get_session)):
+    _require_roles(session, ["Admin", "SalesManager", "Employee", "Demo"])
+    users = session.exec(select(User).where(User.tenant_id == current_tenant_id.get(), User.role == "Supplier", User.is_active == True)).all()
+    return {"suppliers": [{"id": user.id, "name": user.name, "email": user.email} for user in users]}
+
+
 @app.post("/inventory/{item_id}/suppliers")
 def add_supplier(item_id: int, data: InventorySupplierCreate, session: Session = Depends(get_session)):
+    _require_roles(session, ["Admin", "SalesManager", "Employee", "Demo"])
     item = session.get(InventoryItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-
-    supplier_user_id = None
-    credentials_created = False
+    from modules.record_duplicates import lock_company
+    lock_company(session, item.tenant_id)
+    values = data.model_dump(exclude={"supplier_user_id", "existing_supplier_id"})
+    values["lot_number"] = (data.lot_number or "").strip() or None
+    account_id = data.supplier_user_id
+    if data.existing_supplier_id:
+        existing = session.get(InventorySupplier, data.existing_supplier_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Supplier not found in this company")
+        account_id = existing.supplier_user_id
+        values.update(supplier_name=existing.supplier_name, supplier_email=existing.supplier_email)
+    account = session.get(User, account_id) if account_id else None
+    if account_id and (not account or account.tenant_id != item.tenant_id):
+        raise HTTPException(status_code=404, detail="Supplier account not found in this company")
+    email = (values.get("supplier_email") or "").strip().lower()
     generated_password = None
-
-    # Auto-create supplier login if email provided
-    if data.supplier_email:
-        generated_password = _generate_unique_password()
-        hashed = _hash_password(generated_password)
-        existing_user = session.exec(select(User).where(
-            User.email == data.supplier_email).execution_options(skip_tenant=True)).first()
-        if existing_user:
-            # Update role + reset password so we always have fresh credentials to show
-            existing_user.role = "Supplier"
-            existing_user.password = hashed
-            existing_user.hashed_password = hashed
-            existing_user.is_active = True
-            existing_user.status = "Active"
-            session.add(existing_user)
-            session.commit()
-            supplier_user_id = existing_user.id
-        else:
-            supplier_user = User(
-                email=data.supplier_email,
-                password=hashed,
-                hashed_password=hashed,
-                name=data.supplier_name,
-                role="Supplier",
-                is_active=True,
-                status="Active"
-            )
-            session.add(supplier_user)
-            session.commit()
-            session.refresh(supplier_user)
-            supplier_user_id = supplier_user.id
-        credentials_created = True
-
-    supplier = InventorySupplier(
-        item_id=item_id, supplier_user_id=supplier_user_id, **data.dict())
+    if account:
+        if (account.role or "").lower() != "supplier" or not account.is_active:
+            raise HTTPException(status_code=409, detail="Select an active Supplier account")
+        values.update(supplier_email=account.email, supplier_name=account.name or values["supplier_name"])
+    elif email:
+        # Email availability is global; a foreign or non-supplier account is never changed.
+        account = session.exec(select(User).where(func.lower(User.email) == email).execution_options(skip_tenant=True)).first()
+        if account and (account.tenant_id != item.tenant_id or (account.role or "").lower() != "supplier" or not account.is_active):
+            raise HTTPException(status_code=409, detail="Email is unavailable for a supplier account in this company")
+        if not account:
+            generated_password = _generate_unique_password()
+            password_hash = _hash_password(generated_password)
+            account = User(email=email, password=password_hash, hashed_password=password_hash, name=values["supplier_name"], role="Supplier", tenant_id=item.tenant_id, is_active=True, status="Active")
+            session.add(account); session.flush()
+        values["supplier_email"] = account.email
+    query = select(InventorySupplier).where(InventorySupplier.item_id == item_id, InventorySupplier.lot_number == values["lot_number"])
+    if account:
+        query = query.where(InventorySupplier.supplier_user_id == account.id)
+    else:
+        query = query.where(func.lower(InventorySupplier.supplier_name) == values["supplier_name"].strip().lower(), InventorySupplier.supplier_user_id == None)
+    supplier = session.exec(query).first()
+    already_linked = supplier is not None
+    if not supplier:
+        supplier = InventorySupplier(item_id=item_id, tenant_id=item.tenant_id, supplier_user_id=account.id if account else None, **values)
+        if generated_password:
+            supplier.login_password = generated_password
+            supplier.credentials_sent = False
+        session.add(supplier)
+    session.commit(); session.refresh(supplier)
+    result = {"id": supplier.id, "supplier_name": supplier.supplier_name, "supplier_email": supplier.supplier_email, "supplier_user_id": supplier.supplier_user_id,
+              "credentials_created": bool(generated_password), "already_linked": already_linked}
     if generated_password:
-        supplier.login_password = generated_password
-        supplier.credentials_sent = False
-    session.add(supplier)
-    session.commit()
-    session.refresh(supplier)
-
-    result = {
-        "id": supplier.id,
-        "supplier_name": supplier.supplier_name,
-        "supplier_email": supplier.supplier_email,
-        "supplier_user_id": supplier_user_id,
-        "credentials_created": credentials_created,
-    }
-    if credentials_created and generated_password:
-        result["login_email"] = data.supplier_email
-        result["login_password"] = generated_password
-
+        result.update(login_email=account.email, login_password=generated_password)
     return result
-
 
 @app.delete("/inventory/suppliers/{supplier_id}")
 def delete_supplier(supplier_id: int, session: Session = Depends(get_session)):
@@ -18190,10 +18382,21 @@ def delete_supplier(supplier_id: int, session: Session = Depends(get_session)):
 
 @app.put("/inventory/suppliers/{supplier_id}")
 def update_supplier(supplier_id: int, data: InventorySupplierCreate, session: Session = Depends(get_session)):
+    _require_roles(session, ["Admin", "SalesManager", "Employee", "Demo"])
     s = session.get(InventorySupplier, supplier_id)
     if not s:
         raise HTTPException(status_code=404, detail="Supplier not found")
-    for k, v in data.dict(exclude_unset=True).items():
+    if data.supplier_user_id is not None and data.supplier_user_id != s.supplier_user_id:
+        account = session.get(User, data.supplier_user_id)
+        if not account or account.tenant_id != s.tenant_id or (account.role or "").lower() != "supplier" or not account.is_active:
+            raise HTTPException(status_code=404, detail="Supplier account not found in this company")
+        s.supplier_user_id = account.id
+        data.supplier_email = account.email
+    if s.supplier_user_id and data.supplier_email:
+        account = session.get(User, s.supplier_user_id)
+        if not account or data.supplier_email.strip().lower() != account.email.lower():
+            raise HTTPException(status_code=409, detail="Choose a supplier account to change the login email")
+    for k, v in data.model_dump(exclude_unset=True, exclude={"supplier_user_id", "existing_supplier_id"}).items():
         setattr(s, k, v)
     session.add(s)
     session.commit()

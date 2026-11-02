@@ -42,14 +42,14 @@ export default function CreateInstituteLoginButton({ profileId, profileKind, has
   };
 
   if (hasAccount || created) {
-    return <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400"><Check className="h-3.5 w-3.5" />Login ready</span>;
+    return <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400 whitespace-nowrap"><Check className="h-3.5 w-3.5" />Login ready</span>;
   }
   if (!hasEmail) {
-    return <span title="Add an email address to this profile first" className="text-xs text-[var(--text-secondary)]">Email required</span>;
+    return <span title="Add an email address to this profile first" className="text-xs text-[var(--text-secondary)] whitespace-nowrap">Email required</span>;
   }
 
   return <>
-    <button type="button" onClick={() => { setError(""); setOpen(true); }} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--background)]">
+    <button type="button" onClick={() => { setError(""); setOpen(true); }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2 py-1 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--background)] whitespace-nowrap shadow-xs transition-colors">
       <KeyRound className="h-3.5 w-3.5" />Create login
     </button>
     {open && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !saving) setOpen(false); }}>

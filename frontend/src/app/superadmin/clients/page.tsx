@@ -1,7 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { AlertCircle, ArrowRight, Building2, CheckCircle2, Inbox, Layers, Plus, RefreshCw, Search, Settings2, Users, UsersRound } from "lucide-react";
+import { AlertCircle, ArrowRight, Building2, CheckCircle2, Inbox, Layers, Plus, RefreshCw, Search, Settings2, Users, UsersRound, LayoutList, LayoutGrid } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import { ToastStack, useToasts } from "@/components/Toasts";
 import BulkDrawer from "./BulkDrawer";
@@ -17,12 +17,12 @@ type Sort = "newest" | "name" | "users";
 
 function StatCard({ label, value, hint, icon: Icon, tone, href }: { label: string; value: number | string; hint?: string; icon: React.ElementType; tone: string; href?: string }) {
   const body = (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white ${tone}`}><Icon className="h-5 w-5" /></div>
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2.5 px-3 shadow-2xs flex items-center gap-2.5 hover:border-indigo-500/50 transition-colors">
+      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-2xs ${tone}`}><Icon className="h-3.5 w-3.5" /></div>
       <div className="min-w-0">
-        <p className="text-2xl font-bold leading-none text-slate-900 dark:text-white">{value}</p>
-        <p className="mt-1.5 text-sm font-medium text-slate-600 dark:text-zinc-300">{label}</p>
-        {hint && <p className="text-xs text-slate-400 dark:text-zinc-500">{hint}</p>}
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 leading-none truncate">{label}</p>
+        <p className="mt-0.5 text-sm font-bold text-slate-900 dark:text-white leading-tight truncate">{value}</p>
+        {hint && <p className="text-[10px] text-slate-400 dark:text-zinc-500 truncate">{hint}</p>}
       </div>
     </div>
   );
@@ -66,6 +66,7 @@ export default function ClientManagementPage() {
   const [showBulk, setShowBulk] = useState(false);
   const [configuring, setConfiguring] = useState<number | null>(null);
   const [logoBump, setLogoBump] = useState<Record<number, number>>({});
+  const [viewMode, setViewMode] = useState<"list" | "cards">("list");
 
   const loadOverview = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true);
@@ -128,138 +129,262 @@ export default function ClientManagementPage() {
     <div className="mx-auto max-w-7xl space-y-5 pb-6 font-sans">
       <ToastStack toasts={toasts} dismiss={dismiss} />
 
-      {/* Header */}
-      <motion.div initial={reducedMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 p-5 text-white shadow-sm sm:p-6">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
-        <div className="pointer-events-none absolute -bottom-20 left-1/3 h-56 w-56 rounded-full bg-fuchsia-400/20 blur-3xl" />
-        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-2xl">
-            <h1 className="text-2xl font-bold tracking-tight">Client management</h1>
-            <p className="mt-1.5 text-sm leading-relaxed text-indigo-100">
+      {/* Compact Executive Header */}
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl shadow-2xs">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+            <Building2 className="w-3.5 h-3.5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate">Client Management</h1>
+              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200/60 dark:border-zinc-700">
+                {tenants.length} tenants
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 dark:text-zinc-500 leading-none mt-0.5 truncate">
               Manage client workspaces, enabled modules and onboarding in one place.
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <button onClick={() => setShowNew(true)} className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-indigo-700 shadow-lg transition hover:bg-indigo-50 active:scale-[0.98]">
-              <Plus className="h-4 w-4" /> New client
-            </button>
-            <button onClick={() => setShowBulk(true)} className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-5 py-3 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/25 active:scale-[0.98]">
-              <UsersRound className="h-4 w-4" /> Add many
-            </button>
-          </div>
         </div>
-      </motion.div>
-
-      {/* Numbers */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Clients" value={totals?.clients ?? "–"} hint={totals ? `${totals.paid} paid, ${totals.trial} on trial` : undefined} icon={Building2} tone="bg-gradient-to-br from-indigo-500 to-blue-600" />
-        <StatCard label="Users" value={totals?.users ?? "–"} hint="Across all clients" icon={Users} tone="bg-gradient-to-br from-emerald-500 to-teal-600" />
-        <StatCard label="Demo workspaces" value={totals?.demo ?? "–"} hint="Safe places to try things" icon={Layers} tone="bg-gradient-to-br from-violet-500 to-fuchsia-600" />
-        <StatCard label="Open requests" value={totals?.open_requests ?? "–"} hint={totals?.open_requests ? "Waiting for your reply" : "Nothing waiting"} icon={Inbox} tone="bg-gradient-to-br from-amber-500 to-orange-600" href="/superadmin/requests" />
-      </div>
-
-      {/* Toolbar */}
-      <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900 sm:p-4">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter clients">
-          {FILTERS.map((f) => (
-            <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${filter === f.key ? "bg-slate-900 text-white shadow dark:bg-white dark:text-slate-900" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800 dark:hover:bg-zinc-800"}`}>
-              {f.label} <span className="ml-1 opacity-60">{counts[f.key]}</span>
-            </button>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-0 basis-full sm:flex-1 sm:basis-auto">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input className={`${inputCls} pl-10`} placeholder="Search by company name" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search clients" />
-          </div>
-          <select className={`${inputCls} w-auto min-w-0 flex-1 sm:w-44 sm:flex-none`} value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort clients">
-            <option value="newest">Newest first</option><option value="name">Name A to Z</option><option value="users">Most users</option>
-          </select>
-          {hasFilters && <button type="button" className="px-2 py-2 text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-300" onClick={clearFilters}>Clear filters</button>}
-          <button type="button" className={ghostBtn} onClick={() => loadOverview(true)} aria-label="Refresh the list" disabled={loading || refreshing}>
-            <RefreshCw className={`h-4 w-4 motion-reduce:animate-none ${refreshing ? "animate-spin" : ""}`} />
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={() => setShowNew(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-indigo-700 transition">
+            <Plus className="h-3.5 w-3.5" /> New client
+          </button>
+          <button onClick={() => setShowBulk(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700 transition">
+            <UsersRound className="h-3.5 w-3.5" /> Add many
           </button>
         </div>
       </div>
 
-      {/* Clients */}
-      <section aria-label="Client directory" aria-busy={loading || refreshing} className={`${styles.directory} space-y-3`}>
-      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <h2 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">Client workspaces</h2>
-        <p role="status" aria-live="polite" className="text-xs text-slate-500 dark:text-zinc-400">{loading ? "Loading clients…" : loadError ? "List unavailable" : `${visible.length} of ${counts[filter]} shown`}</p>
+      {/* Compact 4-KPI Numbers Strip */}
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Clients" value={totals?.clients ?? "–"} hint={totals ? `${totals.paid} paid, ${totals.trial} on trial` : undefined} icon={Building2} tone="bg-indigo-600" />
+        <StatCard label="Users" value={totals?.users ?? "–"} hint="Across all clients" icon={Users} tone="bg-emerald-600" />
+        <StatCard label="Demo workspaces" value={totals?.demo ?? "–"} hint="Safe places to try things" icon={Layers} tone="bg-violet-600" />
+        <StatCard label="Open requests" value={totals?.open_requests ?? "–"} hint={totals?.open_requests ? "Waiting for your reply" : "Nothing waiting"} icon={Inbox} tone="bg-amber-600" href="/superadmin/requests" />
       </div>
-      {loading ? (
-        <Skeleton />
-      ) : loadError ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-10 text-center dark:border-red-900/60 dark:bg-red-950/20">
-          <AlertCircle className="h-8 w-8 text-red-500" />
-          <p className="font-semibold text-red-800 dark:text-red-300">The client list could not be loaded</p>
-          <p className="text-sm text-red-700 dark:text-red-400">{loadError}</p>
-          <button className={primaryBtn} onClick={() => { setLoading(true); loadOverview(); }}>Try again</button>
+
+      {/* Single-row Toolbar with View Switcher */}
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2 px-3 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+        <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-[200px]">
+          <div className="relative flex-1 min-w-[160px] max-w-xs">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input className="w-full pl-8 pr-3 py-1 rounded-lg border border-slate-200/90 dark:border-white/10 bg-slate-50 dark:bg-zinc-800/60 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-zinc-200" placeholder="Search by company name" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search clients" />
+          </div>
+
+          <div className="flex gap-1 overflow-x-auto" role="group" aria-label="Filter clients">
+            {FILTERS.map((f) => (
+              <button 
+                key={f.key} 
+                type="button" 
+                aria-pressed={filter === f.key} 
+                onClick={() => setFilter(f.key)}
+                className={`rounded-md px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap transition-colors ${filter === f.key ? "bg-indigo-600 text-white shadow-2xs" : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"}`}
+              >
+                {f.label} <span className="ml-1 opacity-70">({counts[f.key]})</span>
+              </button>
+            ))}
+          </div>
         </div>
-      ) : visible.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-white p-14 text-center dark:border-zinc-700 dark:bg-zinc-900/50">
-          <Building2 className="h-10 w-10 text-slate-300 dark:text-zinc-600" />
-          <p className="font-semibold text-slate-900 dark:text-white">{tenants.length === 0 ? "No clients yet" : "No client matches"}</p>
-          <p className="max-w-sm text-sm text-slate-500 dark:text-zinc-400">
-            {tenants.length === 0 ? "Create the first client. It gets its own admin login and starts from a ready-made setup." : "Try another search or filter."}
-          </p>
-          {tenants.length === 0 && <button className={primaryBtn} onClick={() => setShowNew(true)}><Plus className="h-4 w-4" /> New client</button>}
-          {tenants.length > 0 && hasFilters && <button type="button" className={ghostBtn} onClick={clearFilters}>Clear filters</button>}
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          <select className="px-2 py-1 rounded-lg border border-slate-200/90 dark:border-white/10 bg-slate-50 dark:bg-zinc-800 text-xs font-medium text-slate-700 dark:text-zinc-200 outline-none" value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort clients">
+            <option value="newest">Newest first</option><option value="name">Name A to Z</option><option value="users">Most users</option>
+          </select>
+
+          {hasFilters && <button type="button" className="px-2 py-1 text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400" onClick={clearFilters}>Clear</button>}
+
+          {/* View Switcher: List vs Cards */}
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-zinc-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-white/5">
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`p-1 rounded-md transition-colors ${viewMode === "list" ? "bg-white dark:bg-zinc-700 text-indigo-600 shadow-2xs" : "text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300"}`}
+              title="List view"
+            >
+              <LayoutList className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("cards")}
+              className={`p-1 rounded-md transition-colors ${viewMode === "cards" ? "bg-white dark:bg-zinc-700 text-indigo-600 shadow-2xs" : "text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300"}`}
+              title="Cards view"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <button type="button" className="p-1 rounded-lg border border-slate-200/80 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-500 hover:bg-slate-100 dark:hover:bg-zinc-700 transition" onClick={() => loadOverview(true)} aria-label="Refresh the list" disabled={loading || refreshing}>
+            <RefreshCw className={`h-3.5 w-3.5 motion-reduce:animate-none ${refreshing ? "animate-spin" : ""}`} />
+          </button>
         </div>
-      ) : (
-        <ul aria-label="Client workspaces" className="space-y-3">
-          {visible.map((t, i) => {
-            const name = displayName(t);
-            const parent = t.demo_of_tenant_id ? byId[t.demo_of_tenant_id] : null;
-            return (
-              <motion.li key={t.id} aria-labelledby={`workspace-${t.id}`} initial={reducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reducedMotion ? 0 : 0.2, delay: reducedMotion ? 0 : Math.min(i, 6) * 0.025 }}
-                className={`${styles.row} group rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors hover:border-indigo-200 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-indigo-800`}>
-                <div className="flex min-w-0 items-center gap-3">
-                  <ClientAvatar tenantId={t.id} name={name} hasLogo={t.has_logo} version={logoBump[t.id]} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <h3 id={`workspace-${t.id}`} title={name} className="truncate text-sm font-semibold text-slate-900 dark:text-white">{name}</h3>
+      </div>
+
+      {/* Clients Section */}
+      <section aria-label="Client directory" aria-busy={loading || refreshing} className="space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500">Client workspaces</h2>
+          <p role="status" aria-live="polite" className="text-[11px] text-slate-400 dark:text-zinc-500">{loading ? "Loading clients…" : loadError ? "List unavailable" : `${visible.length} of ${counts[filter]} shown`}</p>
+        </div>
+
+        {loading ? (
+          <Skeleton />
+        ) : loadError ? (
+          <div className="flex flex-col items-center gap-2.5 rounded-xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-900/60 dark:bg-rose-950/20">
+            <AlertCircle className="h-6 w-6 text-rose-500" />
+            <p className="font-semibold text-rose-800 dark:text-rose-300 text-xs">The client list could not be loaded</p>
+            <p className="text-xs text-rose-700 dark:text-rose-400">{loadError}</p>
+            <button className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700" onClick={() => { setLoading(true); loadOverview(); }}>Try again</button>
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center dark:border-zinc-800 dark:bg-zinc-900">
+            <Building2 className="h-8 w-8 text-slate-300 dark:text-zinc-600 mb-1" />
+            <p className="font-semibold text-slate-900 dark:text-white text-xs">{tenants.length === 0 ? "No clients yet" : "No client matches"}</p>
+            <p className="max-w-xs text-xs text-slate-400 dark:text-zinc-500">
+              {tenants.length === 0 ? "Create the first client workspace." : "Try another search or filter."}
+            </p>
+            {tenants.length === 0 && <button className="mt-2 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700" onClick={() => setShowNew(true)}><Plus className="h-3.5 w-3.5 inline mr-1" /> New client</button>}
+          </div>
+        ) : viewMode === "list" ? (
+          <div className="space-y-1.5" role="list" aria-label="Client workspaces">
+            {/* Desktop Table Header */}
+            <div className="hidden md:grid grid-cols-12 gap-3 px-3 py-1.5 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
+              <div className="col-span-5">Workspace & Details</div>
+              <div className="col-span-4">Metrics (Users · Leads · Clients · Modules)</div>
+              <div className="col-span-3 text-right">Actions</div>
+            </div>
+
+            {visible.map((t, i) => {
+              const name = displayName(t);
+              const parent = t.demo_of_tenant_id ? byId[t.demo_of_tenant_id] : null;
+              return (
+                <motion.div 
+                  key={t.id} 
+                  role="listitem"
+                  aria-labelledby={`workspace-${t.id}`}
+                  initial={reducedMotion ? false : { opacity: 0, y: 4 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  transition={{ duration: reducedMotion ? 0 : 0.15, delay: reducedMotion ? 0 : Math.min(i, 6) * 0.02 }}
+                  className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-2.5 px-3 shadow-2xs hover:shadow-xs hover:border-indigo-500/60 dark:hover:border-indigo-500/50 transition-all group"
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3 items-center">
+                    {/* Left: Avatar + Name + Tags */}
+                    <div className="col-span-5 flex min-w-0 items-center gap-2.5">
+                      <ClientAvatar tenantId={t.id} name={name} hasLogo={t.has_logo} version={logoBump[t.id]} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <h3 id={`workspace-${t.id}`} title={name} className="truncate text-xs font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{name}</h3>
+                          {t.demo_of_tenant_id ? <Badge tone="violet">Demo</Badge> : <Badge tone={t.is_trial ? "amber" : "green"}>{t.is_trial ? "Trial" : "Paid"}</Badge>}
+                        </div>
+                        <p className="mt-0.5 flex flex-wrap gap-x-1.5 text-[11px] text-slate-400 dark:text-zinc-500 truncate">
+                          <span>{presetLabel(t.preset)}</span>
+                          {t.country && <span>· {t.country}{t.currency ? ` (${t.currency})` : ""}</span>}
+                          {parent && <span className="text-violet-600 dark:text-violet-400">· Demo of {displayName(parent)}</span>}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Middle: Metrics */}
+                    <div className="col-span-4 flex items-center gap-3">
+                      {[["Users", t.users], ["Leads", t.leads], ["Clients", t.clients], ["Modules", `${t.modules_on}/${totalModules || features.length || "–"}`]].map(([label, value]) => (
+                        <div key={label as string} className="min-w-0">
+                          <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase">{label}: </span>
+                          <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">{value}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Right: Actions */}
+                    <div className="col-span-3 flex items-center justify-end gap-2">
+                      {t.open_requests > 0 ? (
+                        <a href="/superadmin/requests" className="inline-flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/40 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:bg-amber-100">
+                          <Inbox className="h-3 w-3" /> {t.open_requests} req
+                        </a>
+                      ) : null}
+                      <button 
+                        type="button" 
+                        aria-label={`Configure ${name}`} 
+                        onClick={() => setConfiguring(t.id)} 
+                        className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200/50 dark:border-indigo-800/40 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors"
+                      >
+                        <Settings2 className="h-3 w-3" /> Configure <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" role="list" aria-label="Client workspaces">
+            {visible.map((t, i) => {
+              const name = displayName(t);
+              const parent = t.demo_of_tenant_id ? byId[t.demo_of_tenant_id] : null;
+              return (
+                <div 
+                  key={t.id} 
+                  role="listitem"
+                  aria-labelledby={`workspace-${t.id}`}
+                  className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-3 shadow-2xs hover:shadow-xs hover:border-indigo-500/60 dark:hover:border-indigo-500/50 transition-all flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ClientAvatar tenantId={t.id} name={name} hasLogo={t.has_logo} version={logoBump[t.id]} />
+                        <div className="min-w-0">
+                          <h3 id={`workspace-${t.id}`} title={name} className="truncate text-xs font-semibold text-slate-900 dark:text-white">{name}</h3>
+                          <p className="text-[10px] text-slate-400 dark:text-zinc-500 truncate">{presetLabel(t.preset)}</p>
+                        </div>
+                      </div>
                       {t.demo_of_tenant_id ? <Badge tone="violet">Demo</Badge> : <Badge tone={t.is_trial ? "amber" : "green"}>{t.is_trial ? "Trial" : "Paid"}</Badge>}
                     </div>
-                    <p className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-zinc-400">
-                      <span>{t.name}</span><span aria-hidden="true">·</span><span>{presetLabel(t.preset)}</span>
-                      {t.country && <span>{t.country}{t.currency ? ` · ${t.currency}` : ""}</span>}
-                      {parent && <span className="text-violet-600 dark:text-violet-300">Demo of {displayName(parent)}</span>}
-                    </p>
+
+                    <div className="grid grid-cols-4 gap-1 p-2 bg-slate-50 dark:bg-zinc-800/60 rounded-lg border border-slate-100 dark:border-zinc-800 my-2 text-center">
+                      <div>
+                        <div className="text-[9px] uppercase font-semibold text-slate-400">Users</div>
+                        <div className="text-xs font-bold text-slate-800 dark:text-zinc-200 mt-0.5">{t.users}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase font-semibold text-slate-400">Leads</div>
+                        <div className="text-xs font-bold text-slate-800 dark:text-zinc-200 mt-0.5">{t.leads}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase font-semibold text-slate-400">Clients</div>
+                        <div className="text-xs font-bold text-slate-800 dark:text-zinc-200 mt-0.5">{t.clients}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase font-semibold text-slate-400">Mods</div>
+                        <div className="text-xs font-bold text-slate-800 dark:text-zinc-200 mt-0.5">{t.modules_on}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-zinc-800 mt-1">
+                    {t.open_requests > 0 ? (
+                      <a href="/superadmin/requests" className="inline-flex items-center gap-1 rounded bg-amber-50 dark:bg-amber-950/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                        <Inbox className="h-3 w-3" /> {t.open_requests} req
+                      </a>
+                    ) : (
+                      <span className="text-[10px] text-slate-400">No requests</span>
+                    )}
+                    <button 
+                      type="button" 
+                      onClick={() => setConfiguring(t.id)} 
+                      aria-label={`Configure ${name}`}
+                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200/50 dark:border-indigo-800/40 px-2 py-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100"
+                    >
+                      <Settings2 className="h-3 w-3" /> Configure
+                    </button>
                   </div>
                 </div>
-                <dl className={styles.metrics}>
-                  {[["Users", t.users], ["Leads", t.leads], ["Clients", t.clients], ["Modules", `${t.modules_on}/${totalModules || features.length || "–"}`]].map(([label, value]) => (
-                    <div key={label as string} className="min-w-0">
-                      <dt className="text-[10px] font-medium text-slate-500 dark:text-zinc-400">{label}</dt>
-                      <dd className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900 dark:text-white">{value}</dd>
-                    </div>
-                  ))}
-                </dl>
-
-
-                <div className={styles.actions}>
-                  {t.open_requests > 0 ? (
-                    <a href="/superadmin/requests" className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-300">
-                      <Inbox className="h-3.5 w-3.5" /> {t.open_requests} request{t.open_requests === 1 ? "" : "s"}
-                    </a>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] text-slate-400 dark:text-zinc-500"><CheckCircle2 className="h-3.5 w-3.5" /> No open requests</span>
-                  )}
-                  <button type="button" aria-label={`Configure ${name}`} onClick={() => setConfiguring(t.id)} className="inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-950">
-                    <Settings2 className="h-3.5 w-3.5" /> Configure <ArrowRight className="h-3.5 w-3.5 motion-safe:transition-transform motion-safe:group-hover:translate-x-0.5" />
-                  </button>
-                </div>
-              </motion.li>
-            );
-          })}
-        </ul>
-      )}
+              );
+            })}
+          </div>
+        )}
       </section>
 
-      <NewClientDrawer
+            <NewClientDrawer
         open={showNew}
         onClose={() => setShowNew(false)}
         presets={presets}

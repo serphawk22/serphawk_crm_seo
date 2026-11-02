@@ -48,7 +48,7 @@ const INDUSTRIES = [
   "Real Estate", "Education", "Manufacturing", "Retail", "Legal",
   "Consulting", "Media", "Hospitality", "Construction", "Other"
 ];
-const SOURCES = ["Website", "Email", "Referral", "LinkedIn", "Cold Call", "Event", "Radar", "Import", "Other"];
+const SOURCES = ["Website", "Meta Ads", "Google Ads", "Email", "Referral", "LinkedIn", "Cold Call", "Event", "Radar", "Import", "Other"];
 // The standard pipeline; a company can name its own stages in Company profile -> Lead statuses.
 const DEFAULT_STATUSES = ["New", "Contacted", "Qualified", "Proposal Sent", "Negotiation", "Won", "Lost"];
 
@@ -189,6 +189,8 @@ export default function LeadsPage() {
 
   const searchParams = useSearchParams();
   useEffect(() => {
+    const requestedSearch = searchParams?.get("search");
+    if (requestedSearch) setSearchQuery(requestedSearch);
     if (searchParams?.get("action") === "add") {
       openCreate();
       window.history.replaceState({}, "", "/leads");
@@ -305,7 +307,7 @@ export default function LeadsPage() {
           method: "PUT", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...form, status: stage ? editLead.status : form.status }),
         });
-        if (!response.ok) throw new Error('Could not save lead');
+        if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not save lead'); }
         setShowModal(false);
         if (stage) setSchedule({ lead: editLead, stage });
         fetchLeads();
@@ -318,7 +320,7 @@ export default function LeadsPage() {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
-          if (!response.ok) throw new Error('Could not create lead');
+          if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not create lead'); }
           const created = await response.json();
           setShowModal(false);
           if (stage) setSchedule({ lead: created, stage });
@@ -347,7 +349,7 @@ export default function LeadsPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!response.ok) throw new Error('Could not create lead');
+      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not create lead'); }
       const created = await response.json();
       if (stage) setSchedule({ lead: created, stage });
       setPendingLeadForm(null);
@@ -416,13 +418,24 @@ export default function LeadsPage() {
   return (
     <div className="flex flex-col h-full bg-[#f8fafc] dark:bg-black">
       {/* Header */}
-      <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-black">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t("leads.title")}</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("leads.subtitle")}</p>
+      <div className="px-4 sm:px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-black">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-xs shrink-0">
+              <Building2 className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t("leads.title")}</h1>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-zinc-300 border border-slate-200/80 dark:border-white/5">
+                  {leads.length} total
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t("leads.subtitle")}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             <button
               onClick={async () => {
                 try {
@@ -445,81 +458,104 @@ export default function LeadsPage() {
                   alert("Failed to export leads.");
                 }
               }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-white/5 transition-colors shadow-xs"
             >
-              <Download className="w-4 h-4" /> Export CSV
+              <Download className="w-3.5 h-3.5" /> Export CSV
             </button>
             {isAdmin && (
               <button
                 onClick={handleAutoAssignLeads}
                 disabled={autoAssigning}
                 title="Automatically distribute unassigned leads by round-robin with conversion rate tie-breaker"
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-violet-600 hover:bg-violet-700 text-white shadow-sm transition-all hover:shadow-md active:scale-95 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-violet-600 hover:bg-violet-700 text-white shadow-xs transition-all active:scale-95 disabled:opacity-50"
               >
-                {autoAssigning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 text-amber-300" />}
+                {autoAssigning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-amber-300" />}
                 Auto-Assign Leads
               </button>
             )}
-            <Link href="/import" className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
-              <Upload className="w-4 h-4" /> {t("leads.import")}
+            <Link href="/import" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-white/5 transition-colors shadow-xs">
+              <Upload className="w-3.5 h-3.5" /> {t("leads.import")}
             </Link>
             <button
               id="add-lead-btn"
               onClick={openCreate}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all hover:shadow-md active:scale-95"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:opacity-95 shadow-xs transition-all active:scale-95"
             >
-              <Plus className="w-4 h-4" /> {t("leads.add_lead")}
+              <Plus className="w-3.5 h-3.5" /> {t("leads.add_lead")}
             </button>
           </div>
         </div>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-          {stats.map(s => (
-            <div key={s.label} className={`flex items-center gap-3 px-4 py-3 rounded-xl ${s.bg} border border-transparent`}>
-              <p className={`text-xl font-black ${s.color}`}>{loading ? "—" : s.value}</p>
-              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">{s.label}</p>
+        {/* High-density Compact Metrics Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mt-3">
+          {stats.map((s) => (
+            <div
+              key={s.label}
+              className="rounded-xl border border-slate-200/90 dark:border-white/10 bg-white/90 dark:bg-[#111111]/90 p-2 sm:px-3 sm:py-2 flex items-center justify-between shadow-xs hover:border-slate-300 dark:hover:border-white/20 transition-all"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className={`w-7 h-7 rounded-lg ${s.bg} border border-slate-200/40 dark:border-white/5 flex items-center justify-center shrink-0`}>
+                  <Building2 className={`w-3.5 h-3.5 ${s.color}`} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">{s.label}</p>
+                  <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none mt-0.5">{loading ? "—" : s.value}</p>
+                </div>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Demo Limits Banner */}
-      <div className="px-6 pt-4">
+      <div className="px-4 sm:px-6 pt-2">
         <DemoLimits type="clients" />
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 sm:px-6 py-3 bg-white dark:bg-black border-b border-slate-200 dark:border-slate-800 flex-wrap gap-3">
+      <div className="flex items-center justify-between px-3 sm:px-6 py-2.5 bg-white dark:bg-black border-b border-slate-200 dark:border-slate-800 flex-wrap gap-2.5">
         <div className="relative w-full sm:w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text" placeholder={t("leads.search_placeholder")}
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-900 dark:text-white placeholder:text-slate-400"
+            className="w-full h-9 pl-9 pr-8 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all text-slate-900 dark:text-white placeholder:text-slate-400 shadow-xs"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap max-w-full overflow-x-auto scrollbar-none pb-1 sm:pb-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap max-w-full overflow-x-auto scrollbar-none pb-0.5 sm:pb-0">
           <ViewSwitcher currentView={currentView} onViewChange={setCurrentView} />
 
           <select
             value={sortOption}
             onChange={e => setSortOption(e.target.value as "recent" | "name")}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 focus:outline-none border-r-8 border-transparent"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-white/5 focus:outline-none cursor-pointer"
           >
             <option value="recent">{t("leads.sort_recent")}</option>
             <option value="name">{t("leads.sort_name")}</option>
           </select>
 
-          {["All", ...STATUSES].map(s => {
-            const count = s === "All" ? leads.length : leads.filter(l => (l.is_converted ? "Converted" : l.status) === s).length;
-            return (
-              <button key={s} onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${statusFilter === s ? "bg-blue-600 dark:bg-white text-white dark:text-black shadow-sm" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
-                {s} ({count})
-              </button>
-            );
-          })}
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+            {["All", ...STATUSES].map(s => {
+              const count = s === "All" ? leads.length : leads.filter(l => (l.is_converted ? "Converted" : l.status) === s).length;
+              return (
+                <button key={s} onClick={() => setStatusFilter(s)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 whitespace-nowrap ${statusFilter === s ? "bg-blue-600 text-white shadow-xs font-semibold" : "bg-slate-100/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
+                  <span>{s}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${statusFilter === s ? "bg-blue-700/80 text-white" : "bg-slate-200/80 dark:bg-white/10 text-slate-600 dark:text-slate-400"}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -667,63 +703,87 @@ export default function LeadsPage() {
             </table>
           </div>
         ) : (
-          <div className="overflow-x-auto w-full">
-            <table className="w-full text-left border-collapse min-w-[640px]">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-[13px] font-semibold text-slate-500 dark:text-slate-400">
-                <th className="px-6 py-4 font-medium">Company</th>
-                <th className="px-6 py-4 font-medium">Industry</th>
-                <th className="px-6 py-4 font-medium">Contact</th>
-                <th className="px-6 py-4 font-medium">Salesperson</th>
-                <th className="px-6 py-4 font-medium">Source</th>
-                <th className="px-6 py-4 font-medium">Status</th>
-                <th className="px-6 py-4 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              <AnimatePresence>
-                {filtered.map((lead, idx) => (
-                  <motion.tr
-                    key={lead.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.03 }}
-                    onClick={() => router.push(`/leads/${lead.id}`)}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer group transition-colors"
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-slate-900 dark:text-white text-sm group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1">
-                          {lead.company_name}
-                          <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="w-full p-3 sm:p-4 space-y-2">
+            {/* Subtle column headers for desktop */}
+            <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
+              <div className="col-span-3">Company</div>
+              <div className="col-span-2">Contact</div>
+              <div className="col-span-2">Salesperson</div>
+              <div className="col-span-2">Source</div>
+              <div className="col-span-3 text-right">Status & Actions</div>
+            </div>
+
+            <AnimatePresence>
+              {filtered.map((lead, idx) => (
+                <motion.div
+                  key={lead.id}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(idx * 0.02, 0.25) }}
+                  onClick={() => router.push(`/leads/${lead.id}`)}
+                  className="group rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#111111]/90 p-3 sm:px-4 sm:py-2.5 shadow-xs hover:border-blue-500/60 dark:hover:border-blue-500/50 hover:shadow-md transition-all duration-150 cursor-pointer"
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
+                    {/* Company & Website */}
+                    <div className="col-span-1 sm:col-span-2 lg:col-span-3 min-w-0 flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-xs">
+                        {lead.company_name[0]?.toUpperCase() || "L"}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="font-semibold text-sm text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate flex items-center gap-1">
+                          <span className="truncate">{lead.company_name}</span>
+                          <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-blue-500 shrink-0" />
                         </span>
-                        {lead.website && (
-                          <div className="flex items-center gap-1 mt-0.5 text-[12px] text-slate-400">
-                            <Globe className="w-3 h-3" />
-                            <a href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`}
-                              target="_blank" rel="noreferrer"
-                              onClick={e => e.stopPropagation()}
-                              className="hover:text-blue-600 hover:underline truncate max-w-[180px]">
-                              {lead.website.replace(/^https?:\/\//, '')}
-                            </a>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2 mt-0.5 text-[11px] truncate">
+                          {lead.website ? (
+                            <div className="flex items-center gap-1 text-slate-400 truncate">
+                              <Globe className="w-3 h-3 shrink-0" />
+                              <a
+                                href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                className="hover:text-blue-600 hover:underline truncate max-w-[140px]"
+                              >
+                                {lead.website.replace(/^https?:\/\//, '')}
+                              </a>
+                            </div>
+                          ) : null}
+                          {lead.industry && (
+                            <span className="text-slate-500 dark:text-zinc-400 truncate text-[10.5px]">
+                              {lead.website ? "• " : ""}{lead.industry}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-[13px] text-slate-600 dark:text-slate-300">{lead.industry || "—"}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-0.5">
-                        {lead.email && <div className="flex items-center gap-1 text-[12px] text-slate-500"><Mail className="w-3 h-3" /><span className="truncate max-w-[160px]">{lead.email}</span></div>}
-                        {lead.phone && <div className="flex items-center gap-1 text-[12px] text-slate-500"><Phone className="w-3 h-3" /><span>{lead.phone}</span></div>}
-                        {!lead.email && !lead.phone && <span className="text-slate-400 text-[12px]">—</span>}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
+                    </div>
+
+                    {/* Contact Info */}
+                    <div className="col-span-1 lg:col-span-2 min-w-0">
+                      {lead.email ? (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-zinc-300 truncate" title={lead.email}>
+                          <Mail className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="truncate">{lead.email}</span>
+                        </div>
+                      ) : null}
+                      {lead.phone ? (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-zinc-400 truncate mt-0.5" title={lead.phone}>
+                          <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="truncate">{lead.phone}</span>
+                        </div>
+                      ) : null}
+                      {!lead.email && !lead.phone && (
+                        <span className="text-xs text-slate-400 italic">—</span>
+                      )}
+                    </div>
+
+                    {/* Salesperson */}
+                    <div className="col-span-1 lg:col-span-2 min-w-0" onClick={e => e.stopPropagation()}>
                       {isAdmin ? (
                         <select
                           value={lead.owner_id || ""}
                           onChange={e => handleAssignSalesperson(lead.id, e.target.value ? Number(e.target.value) : null)}
-                          className="text-[12px] font-medium bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-[145px]"
+                          className="text-xs font-medium bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer max-w-[150px] truncate shadow-xs"
                           title="Assign Salesperson"
                         >
                           <option value="">Unassigned</option>
@@ -734,21 +794,32 @@ export default function LeadsPage() {
                           ))}
                         </select>
                       ) : (
-                        <div className="flex items-center gap-2 py-1">
-                          <div className="w-6 h-6 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 flex items-center justify-center text-[10px] font-bold shrink-0">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <div className="w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 flex items-center justify-center text-[10px] font-bold shrink-0">
                             {(lead.salesperson_name || lead.owner_name || 'U').charAt(0).toUpperCase()}
                           </div>
-                          <span className="text-[12px] font-semibold text-slate-700 dark:text-zinc-300 truncate max-w-[130px]">
+                          <span className="text-xs font-semibold text-slate-700 dark:text-zinc-300 truncate max-w-[130px]">
                             {lead.salesperson_name || lead.owner_name || 'Unassigned'}
                           </span>
                         </div>
                       )}
-                    </td>
-                    <td className="px-6 py-4">
+                    </div>
+
+                    {/* Source */}
+                    <div className="col-span-1 lg:col-span-2 min-w-0">
                       {lead.source?.toLowerCase().includes("website") ? (
                         <div className="flex flex-col gap-0.5">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40">
-                            <Globe className="w-3 h-3 text-emerald-600" /> {(() => { try { return new URL(String(lead.ai_analysis_results?.website_form?.page_url || lead.website || '')).hostname.replace(/^www\./, ''); } catch { return ''; } })() || 'Website'}
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 truncate max-w-[150px]">
+                            <Globe className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                            <span className="truncate">
+                              {(() => {
+                                try {
+                                  return new URL(String(lead.ai_analysis_results?.website_form?.page_url || lead.website || '')).hostname.replace(/^www\./, '');
+                                } catch {
+                                  return 'Website';
+                                }
+                              })()}
+                            </span>
                           </span>
                           {lead.ai_analysis_results?.website_form?.form_name && (
                             <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-semibold truncate max-w-[140px]" title={lead.ai_analysis_results.website_form.form_name}>
@@ -757,16 +828,18 @@ export default function LeadsPage() {
                           )}
                         </div>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/60 dark:border-white/5 truncate max-w-[130px]">
                           {lead.source || "Unknown"}
                         </span>
                       )}
-                    </td>
-                    <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
+                    </div>
+
+                    {/* Status & Actions */}
+                    <div className="col-span-1 sm:col-span-2 lg:col-span-3 flex items-center justify-end gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                       <select
                         value={lead.is_converted ? "Converted" : lead.status}
                         onChange={e => handleStatusChange(lead.id, e.target.value)}
-                        className={`inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wide border cursor-pointer focus:outline-none transition-all shadow-sm ${STATUS_STYLE[lead.is_converted ? "Converted" : lead.status] || STATUS_STYLE.New}`}
+                        className={`inline-flex items-center px-2 py-1 rounded-md text-[11px] font-bold uppercase tracking-wide border cursor-pointer focus:outline-none transition-all shadow-xs whitespace-nowrap ${STATUS_STYLE[lead.is_converted ? "Converted" : lead.status] || STATUS_STYLE.New}`}
                         title="Change lead stage"
                       >
                         {STATUSES.map(st => (
@@ -775,14 +848,12 @@ export default function LeadsPage() {
                           </option>
                         ))}
                       </select>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+
+                      <div className="flex items-center gap-1">
                         <Link
                           href={`/meetings?new=true&lead_id=${lead.id}&title=${encodeURIComponent(`Meeting with ${lead.company_name}`)}`}
-                          onClick={e => e.stopPropagation()}
                           title="Schedule Meeting"
-                          className="p-1.5 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-slate-400 hover:text-indigo-600 transition-colors"
+                          className="p-1.5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300 dark:hover:bg-indigo-900/30 text-slate-400 transition-colors shadow-xs"
                         >
                           <Calendar className="w-3.5 h-3.5" />
                         </Link>
@@ -799,33 +870,48 @@ export default function LeadsPage() {
                             });
                           }}
                           title="Schedule Follow-up"
-                          className="p-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/30 text-slate-400 hover:text-amber-600 transition-colors"
+                          className="p-1.5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-300 dark:hover:bg-amber-900/30 text-slate-400 transition-colors shadow-xs"
                         >
                           <CalendarClock className="w-3.5 h-3.5" />
                         </button>
                         {!lead.is_converted && isOn('clients') && !institute && (
-                          <button onClick={e => handleConvert(lead.id, e)} title={t("leads.convert_to_client")} className="p-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600 transition-colors">
+                          <button
+                            onClick={e => handleConvert(lead.id, e)}
+                            title={t("leads.convert_to_client")}
+                            className="p-1.5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-300 dark:hover:bg-emerald-900/30 text-slate-400 transition-colors shadow-xs"
+                          >
                             <CheckCircle2 className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <button onClick={e => handleAddNote(lead, e)} title={t("leads.add_note")} className="p-1.5 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/30 text-slate-400 hover:text-yellow-600 transition-colors">
+                        <button
+                          onClick={e => handleAddNote(lead, e)}
+                          title={t("leads.add_note")}
+                          className="p-1.5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:bg-yellow-50 hover:text-yellow-600 hover:border-yellow-300 dark:hover:bg-yellow-900/30 text-slate-400 transition-colors shadow-xs"
+                        >
                           <Tag className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={e => openEdit(lead, e)} title={t("leads.edit_lead")} className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors">
+                        <button
+                          onClick={e => openEdit(lead, e)}
+                          title={t("leads.edit_lead")}
+                          className="p-1.5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 dark:hover:bg-blue-900/30 text-slate-400 transition-colors shadow-xs"
+                        >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         {isAdmin && (
-                          <button onClick={e => handleDelete(lead.id, e)} title={t("leads.delete_lead")} className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors">
+                          <button
+                            onClick={e => handleDelete(lead.id, e)}
+                            title={t("leads.delete_lead")}
+                            className="p-1.5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-300 dark:hover:bg-rose-900/30 text-slate-400 transition-colors shadow-xs"
+                          >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </div>
-                    </td>
-                  </motion.tr>
-                ))}
-              </AnimatePresence>
-            </tbody>
-          </table>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         )}
       </div>

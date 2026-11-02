@@ -2569,7 +2569,7 @@
     "password_ph": "••••••••",
     "field_role": "Rol del Equipo",
     "optgroup_sales": "Ventas y Gestión",
-    "opt_sales_manager": "Ventas",
+    "opt_sales_manager": "Gerente de ventas",
     "opt_sales_rep": "Empleado (Representante de Ventas)",
     "optgroup_dev": "Equipo de Desarrollo",
     "opt_project_member": "Miembro de Proyecto (Desarrollador)",

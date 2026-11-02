@@ -64,7 +64,8 @@ class FeatureApi(TenantIsolationBase):
         body = r.json()
         for key, feat in features.FEATURES.items():
             # everything that existed before entitlements stays on; ported add-ons start off until enabled
-            self.assertEqual(body["features"][key], feat.default_on, key)
+            expected = True if key in {"cases", "invoices"} else feat.default_on
+            self.assertEqual(body["features"][key], expected, key)  # legacy support/billing include their split modules
         self.assertTrue(body["features"]["inbox"])
         self.assertFalse(body["features"]["finance_suite"])
         self.assertIsNone(body["settings"]["brand_name"], "no stored brand = keep the built-in text")

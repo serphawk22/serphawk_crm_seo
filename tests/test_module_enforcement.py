@@ -56,11 +56,11 @@ class ModuleApisAreClosed(TenantIsolationBase):
 
     def test_shared_data_endpoints_are_deliberately_not_gated(self):
         # the dashboard, lead research, the calls bar, the developer dashboard and the analytics pages read these
-        for path in ("/contacts", "/deals", "/projects", "/reports/summary", "/users"):
+        for path in ("/deals", "/projects", "/users"):
             self.assertIsNone(features.feature_for_path(path), path)
 
     def test_crm_sections_are_gated_on_the_server(self):
-        for path, key in (("/leads", "leads"), ("/clients", "clients"), ("/calls", "calls")):
+        for path, key in (("/leads", "leads"), ("/clients", "clients"), ("/calls", "calls"), ("/contacts", "contacts"), ("/reports/summary", "reports")):
             self.assertEqual(features.feature_for_path(path), key)
 
 

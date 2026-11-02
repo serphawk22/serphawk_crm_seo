@@ -102,7 +102,7 @@ class Access(BoardBase):
 
     def test_an_employee_cannot_attach_a_follow_up_to_someone_elses_lead(self):
         r = self.create(self.emp(), lead_id=self.leads[2])
-        self.assertEqual(r.status_code, 403, r.text)
+        self.assertEqual(r.status_code, 404, r.text)
 
     def test_an_employee_cannot_assign_to_others_but_an_admin_can(self):
         self.assertEqual(self.create(self.emp(), owner_id=self.users[2]).status_code, 403)
@@ -314,7 +314,7 @@ class Email(BoardBase):
 
     def test_draft_needs_something_to_ground_it_in_and_respects_scope(self):
         self.assertEqual(self.client.post("/follow-ups/email-draft", json={"goal": "x"}, headers=self.admin()).status_code, 400)
-        self.assertEqual(self.client.post("/follow-ups/email-draft", json={"lead_id": self.leads[2]}, headers=self.emp()).status_code, 403)
+        self.assertEqual(self.client.post("/follow-ups/email-draft", json={"lead_id": self.leads[2]}, headers=self.emp()).status_code, 404)
         self.assertEqual(self.client.post("/follow-ups/email-draft", json={"lead_id": self.leads[3]}, headers=self.admin()).status_code, 404)
 
     def test_send_records_the_mail_completes_and_logs_it(self):
@@ -343,7 +343,7 @@ class Email(BoardBase):
         ok = {"lead_id": self.emp_lead, "to_email": "buyer@emplead.test", "subject": "s", "body": "b"}
         self.assertEqual(self.client.post("/follow-ups/send-email", json={**ok, "to_email": "nope"}, headers=self.admin()).status_code, 400)
         self.assertEqual(self.client.post("/follow-ups/send-email", json={**ok, "subject": " "}, headers=self.admin()).status_code, 400)
-        self.assertEqual(self.client.post("/follow-ups/send-email", json={**ok, "lead_id": self.leads[2]}, headers=self.emp()).status_code, 403)
+        self.assertEqual(self.client.post("/follow-ups/send-email", json={**ok, "lead_id": self.leads[2]}, headers=self.emp()).status_code, 404)
         self.assertEqual(self.sent, [])
         with Session(S.ENGINE) as s:
             for e in s.exec(select(EmailSettings).execution_options(skip_tenant=True)).all():

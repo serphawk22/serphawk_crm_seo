@@ -78,7 +78,8 @@ def my_features(session: Session = Depends(get_session)):
     tid = _my_tenant(user)
     preset, _ = tenant_settings.get_stored(tid) if tid else (None, {})
     settings = tenant_settings.get_settings(tid)
-    enabled = features.effective_features(tid)
+    from modules.sales_access import effective_modules
+    enabled = effective_modules(tid, _role(user))
     if tid and enabled.get("institute") and not settings.get("lead_statuses"):
         from addons.institute.routes import LEAD_STAGES
         settings = {**settings, "lead_statuses": list(LEAD_STAGES)}
@@ -102,6 +103,41 @@ def get_my_settings(session: Session = Depends(get_session)):
 
 class SettingsUpdate(BaseModel):
     settings: Dict[str, object]
+
+
+@router.get("/tenant/sales-access")
+@router.get("/superadmin/tenants/{tenant_id}/sales-access")
+def get_sales_access(tenant_id: Optional[int] = None, session: Session = Depends(get_session)):
+    user = _user(session)
+    if tenant_id is not None:
+        _super(session)
+        _tenant_or_404(session, tenant_id)
+    elif _role(user) not in _ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Admins only")
+    tid = tenant_id if tenant_id is not None else _my_tenant(user)
+    from modules.sales_access import effective_modules
+    return {"catalog": features.catalog(), "entitlements": features.effective_features(tid),
+            "access": effective_modules(tid, "SalesManager"),
+            "overrides": tenant_settings.get_setting(tid, "sales_module_access", {}) or {}}
+
+
+@router.put("/tenant/sales-access")
+@router.put("/superadmin/tenants/{tenant_id}/sales-access")
+def set_sales_access(body: Dict[str, bool], tenant_id: Optional[int] = None, session: Session = Depends(get_session)):
+    user = _user(session)
+    if tenant_id is not None:
+        _super(session)
+        _tenant_or_404(session, tenant_id)
+    elif _role(user) not in _ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Admins only")
+    tid = tenant_id if tenant_id is not None else _my_tenant(user)
+    if not tid:
+        raise HTTPException(status_code=400, detail="A company is required")
+    try:
+        tenant_settings.update_settings(session, tid, {"sales_module_access": body})
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    return get_sales_access(tenant_id, session)
 
 
 @router.put("/tenant/settings")
@@ -211,6 +247,7 @@ def tenants_overview(session: Session = Depends(get_session)):
 
 
 class OnboardRequest(BaseModel):
+    account_role: str = "Admin"
     name: str                       # unique tenant name / slug
     business_name: Optional[str] = None
     email: Optional[str] = None
@@ -232,6 +269,8 @@ def _onboard(session: Session, body: OnboardRequest) -> dict:
 
     if body.preset not in presets.PRESETS:
         raise HTTPException(status_code=422, detail=f"Unknown preset '{body.preset}'")
+    if body.account_role not in {"Admin", "SalesManager"}:
+        raise HTTPException(status_code=422, detail="Choose Admin or SalesManager")
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="name is required")
@@ -252,7 +291,8 @@ def _onboard(session: Session, body: OnboardRequest) -> dict:
         out = onboarding.create_workspace(
             session, company_name=body.business_name or name, tenant_name=name, admin_name=body.admin_name,
             admin_email=admin_email, password_hash=_hash_password(password), phone=body.phone, preset=body.preset,
-            settings=settings, is_trial=body.is_trial, limits=body.limits, business_email=body.email)
+            settings=settings, is_trial=body.is_trial, limits=body.limits, business_email=body.email,
+            admin_role=body.account_role)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     if not body.admin_password:

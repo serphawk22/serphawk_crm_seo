@@ -240,12 +240,12 @@ class ChainTests(ApiTestCase):
         self.assertEqual(kw["body"].count("Best Regards,"), 1)  # saved signature replaced the AI sign-off
         self.assertNotIn("Fundador, DaPros", kw["body"])
 
-        r, send = self.send_manual(user=OTHER)  # no integration, no server mailbox: recorded, not sent
+        r, send = self.send_manual(user=OTHER, to_email="olga-buyer@example.test")  # own recipient; no integration or server mailbox
         self.assertEqual(r.status_code, 200)
         send.assert_not_called()
 
         with mock.patch.dict(os.environ, SERVER_ENV):
-            r, send = self.send_manual(user=OTHER)
+            r, send = self.send_manual(user=OTHER, to_email="olga-buyer@example.test")
         kw = send.call_args.kwargs
         self.assertEqual((kw["sender_email"], kw["sender_password"], kw["smtp_server"]),
                          ("server@dapros.test", "server-pw", "smtp.server.test"))
@@ -281,6 +281,8 @@ class ChainTests(ApiTestCase):
         with Session(ENGINE) as s:
             row = s.get(SentEmail, r.json()["email_id"])
             self.assertIsNotNone(row.sent_at)  # stored as a datetime, not draft_obj's ISO string
+            from database import ClientProfile
+            self.assertEqual(len(s.exec(select(ClientProfile)).all()), 1)  # retries reuse the draft's client
 
     def test_quotes_use_the_users_own_integration_first(self):
         import main

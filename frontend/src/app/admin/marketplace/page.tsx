@@ -134,7 +134,7 @@ export default function MarketplacePage() {
     if (!form.service_name.trim()) return;
     setSaving(true);
     try {
-      await fetch(`${API_BASE_URL}/marketplace/services`, {
+      const response = await fetch(`${API_BASE_URL}/marketplace/services`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -146,11 +146,17 @@ export default function MarketplacePage() {
           provider_name: form.provider_name || null,
         }),
       });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : "Could not save marketplace service");
+      }
       setSaveSuccess(true);
       setForm({ service_name: "", category: "", description: "", estimated_cost: "", provider_client_id: "", provider_name: "" });
       fetchServices();
       fetch(`${API_BASE_URL}/marketplace/categories`).then(r => r.json()).then(d => setCategories(d.categories || []));
       setTimeout(() => { setSaveSuccess(false); setShowAddModal(false); }, 1500);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not save marketplace service");
     } finally { setSaving(false); }
   };
 

@@ -7,6 +7,7 @@ import {
   AlertTriangle, ArrowRight, Download, ChevronRight, Table2
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
+import { useSearchParams } from "next/navigation";
 
 type ImportTarget = "leads" | "clients";
 type ImportResult = { created: number; skipped: number; errors: string[] };
@@ -18,7 +19,8 @@ Global Retail Co,info@globalretail.com,+44-20-1234-5678,,Retail,Website,Contacte
 
 export default function ImportPage() {
   const { t } = useLanguage();
-  const [target, setTarget] = useState<ImportTarget>("leads");
+  const searchParams = useSearchParams();
+  const [target, setTarget] = useState<ImportTarget>(() => searchParams?.get("target") === "clients" ? "clients" : "leads");
   const [step, setStep] = useState<"upload" | "preview" | "result">("upload");
   const [dragging, setDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -29,33 +31,28 @@ export default function ImportPage() {
   const [mode, setMode] = useState<"file" | "google">("file");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const parseCSV = (text: string): { headers: string[]; rows: string[][] } => {
-    const lines = text.trim().split("\n");
-    const headers = lines[0].split(",").map(h => h.replace(/"/g, "").trim());
-    const rows = lines.slice(1).map(line => {
-      const cols: string[] = [];
-      let inQuote = false, current = "";
-      for (const ch of line) {
-        if (ch === '"') { inQuote = !inQuote; }
-        else if (ch === ',' && !inQuote) { cols.push(current.trim()); current = ""; }
-        else current += ch;
-      }
-      cols.push(current.trim());
-      return cols;
-    }).filter(r => r.some(c => c.trim()));
-    return { headers, rows };
+  const parseCSV = async (text: string): Promise<{ headers: string[]; rows: string[][] }> => {
+    const XLSX = await import("xlsx");
+    const workbook = XLSX.read(text, { type: "string", raw: true });
+    const rows = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets[workbook.SheetNames[0]], { header: 1, defval: "", raw: false });
+    if (!rows.length) throw new Error("The sheet is empty");
+    return { headers: rows[0].map(String), rows: rows.slice(1).map(row => row.map(String)).filter(row => row.some(value => value.trim())) };
   };
 
   const handleFile = useCallback((f: File) => {
     setFile(f);
     const reader = new FileReader();
-    reader.onload = e => {
-      const text = e.target?.result as string;
-      const parsed = parseCSV(text);
-      setPreview(parsed);
-      setStep("preview");
+    reader.onload = async e => {
+      try {
+        const XLSX = await import("xlsx");
+        const workbook = XLSX.read(e.target?.result, { type: /\.xlsx?$/i.test(f.name) ? "array" : "string", raw: true });
+        const rows = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets[workbook.SheetNames[0]], { header: 1, defval: "", raw: false });
+        if (!rows.length) throw new Error("The file is empty");
+        setPreview({ headers: rows[0].map(String), rows: rows.slice(1).map(row => row.map(String)).filter(row => row.some(value => value.trim())) });
+        setStep("preview");
+      } catch (error) { alert(error instanceof Error ? error.message : "Could not read import file"); }
     };
-    reader.readAsText(f);
+    if (/\.xlsx?$/i.test(f.name)) reader.readAsArrayBuffer(f); else reader.readAsText(f);
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -80,7 +77,7 @@ export default function ImportPage() {
       const res = await fetch(csvUrl);
       if (res.ok) {
         const text = await res.text();
-        const parsed = parseCSV(text);
+        const parsed = await parseCSV(text);
         setPreview(parsed);
         setStep("preview");
       } else {
@@ -95,13 +92,7 @@ export default function ImportPage() {
     if (!preview) return;
     setImporting(true);
     try {
-      let csvContent: string;
-      if (file) {
-        csvContent = await file.text();
-      } else {
-        // Rebuild CSV from preview
-        csvContent = [preview.headers, ...preview.rows].map(row => row.join(",")).join("\n");
-      }
+      const csvContent = [preview.headers, ...preview.rows].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\r\n");
       const blob = new Blob([csvContent], { type: "text/csv" });
       const formData = new FormData();
       formData.append("file", blob, "import.csv");
@@ -114,7 +105,11 @@ export default function ImportPage() {
         const data = await res.json();
         setResult(data);
         setStep("result");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(typeof data.detail === "string" ? data.detail : "Import failed. Please check the file and try again.");
       }
+    } catch { alert("Could not complete the import. Please try again.");
     } finally { setImporting(false); }
   };
 

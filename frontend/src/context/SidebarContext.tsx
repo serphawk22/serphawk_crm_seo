@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 interface SidebarContextType {
   collapsed: boolean;
@@ -14,6 +14,13 @@ const SidebarContext = createContext<SidebarContextType>({
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    const narrowScreen = window.matchMedia("(max-width: 767px)");
+    const collapseOnSmallScreen = () => { if (narrowScreen.matches) setCollapsed(true); };
+    collapseOnSmallScreen();
+    narrowScreen.addEventListener("change", collapseOnSmallScreen);
+    return () => narrowScreen.removeEventListener("change", collapseOnSmallScreen);
+  }, []);
   return (
     <SidebarContext.Provider value={{ collapsed, setCollapsed }}>
       {children}

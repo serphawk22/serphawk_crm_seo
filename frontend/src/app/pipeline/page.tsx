@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { useRole } from "@/context/RoleContext";
 import { API_BASE_URL } from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
-import { Sidebar } from "@/components/Sidebar";
 import { 
-  Kanban, Plus, MoreVertical, DollarSign, Calendar, Clock, MapPin, Search, Pencil
+  Kanban, Plus, MoreVertical, DollarSign, Calendar, Clock, MapPin, Search, Pencil,
+  TrendingUp, Award, Layers, CheckCircle2, X
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Deal {
   id: number;
@@ -172,170 +173,287 @@ export default function PipelinePage() {
   }, {} as Record<string, Deal[]>);
 
   const totalValue = deals.reduce((sum, d) => sum + (d.value || 0), 0);
+  const wonDealsCount = dealsByStage["Closed Won"]?.length || 0;
+  const avgDealValue = deals.length ? Math.round(totalValue / deals.length) : 0;
 
-  if (loading) return <div className="p-8 text-center">{t("pipeline.loading_pipeline")}</div>;
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-24 text-slate-400 text-sm">
+        {t("pipeline.loading_pipeline")}
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-zinc-950">
-      <Sidebar role={role} />
-      <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 relative">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-2">
-                <Kanban className="w-6 h-6 text-indigo-600" />
+    <div className="space-y-4">
+      {/* Compact Executive Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#111111]/90 p-3 sm:px-4 sm:py-3 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 flex items-center justify-center shrink-0">
+            <Kanban className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">
                 {t("pipeline.sales_pipeline")}
               </h1>
-              <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">{t("pipeline.manage_track_deals")}</p>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                {deals.length} deals
+              </span>
             </div>
-            
-            <div className="flex items-center gap-4">
-              <select value={sortBy} onChange={event => setSortBy(event.target.value as typeof sortBy)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" aria-label="Sort deals">
-                <option value="latest">Latest first</option>
-                <option value="oldest">Oldest first</option>
-                <option value="highest_value">Highest value</option>
-                <option value="lowest_value">Lowest value</option>
-                <option value="stale">Stale longest</option>
-              </select>
-              <div className="bg-white dark:bg-zinc-900 px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 shadow-sm flex flex-col items-end">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("pipeline.total_pipeline")}</span>
-                <span className="text-lg font-bold text-slate-800 dark:text-zinc-100">${totalValue.toLocaleString()}</span>
-              </div>
-              <button 
-                onClick={() => { setEditingDeal(null); setNewDeal({ title: "", value: "", client_id: "", assigned_to: "", stage: "Lead", expected_close_date: "" }); setShowAddModal(true); }}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl shadow-sm transition-colors flex items-center gap-2 text-sm font-medium"
-              >
-                <Plus className="w-4 h-4" />
-                {t("pipeline.add_deal")}
-              </button>
-            </div>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+              {t("pipeline.manage_track_deals")}
+            </p>
           </div>
+        </div>
 
-          {error && <div className="p-4 mb-4 bg-red-50 text-red-600 rounded-xl">{error}</div>}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Sort Selector */}
+          <select
+            value={sortBy}
+            onChange={event => setSortBy(event.target.value as typeof sortBy)}
+            className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-zinc-300 outline-none cursor-pointer"
+            aria-label="Sort deals"
+          >
+            <option value="latest" className="dark:bg-zinc-900">Latest first</option>
+            <option value="oldest" className="dark:bg-zinc-900">Oldest first</option>
+            <option value="highest_value" className="dark:bg-zinc-900">Highest value</option>
+            <option value="lowest_value" className="dark:bg-zinc-900">Lowest value</option>
+            <option value="stale" className="dark:bg-zinc-900">Stale longest</option>
+          </select>
 
-          {role === "Admin" && salesPerformance.length > 0 && <div className="mb-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-zinc-700 dark:bg-zinc-900"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:bg-zinc-800"><tr><th className="px-4 py-3">Salesperson</th><th className="px-4 py-3">Deals</th><th className="px-4 py-3">Pipeline</th><th className="px-4 py-3">Won Revenue</th><th className="px-4 py-3">Lead</th><th className="px-4 py-3">Negotiation</th><th className="px-4 py-3">Won</th></tr></thead><tbody>{salesPerformance.map(item => <tr key={item.assigned_to || "unassigned"} className="border-t border-slate-100 dark:border-zinc-800"><td className="px-4 py-3 font-bold dark:text-white">{item.salesperson}</td><td className="px-4 py-3">{item.deals}</td><td className="px-4 py-3">${Number(item.pipeline_value).toLocaleString()}</td><td className="px-4 py-3 font-bold text-emerald-600">${Number(item.won_revenue).toLocaleString()}</td><td className="px-4 py-3">{item.stages.Lead || 0}</td><td className="px-4 py-3">{item.stages.Negotiation || 0}</td><td className="px-4 py-3">{item.stages["Closed Won"] || 0}</td></tr>)}</tbody></table></div>}
+          <button 
+            onClick={() => { setEditingDeal(null); setNewDeal({ title: "", value: "", client_id: "", assigned_to: "", stage: "Lead", expected_close_date: "" }); setShowAddModal(true); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold text-xs shadow-xs transition"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>{t("pipeline.add_deal")}</span>
+          </button>
+        </div>
+      </div>
 
-          {/* Kanban Board */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4 pb-6">
-            {STAGES.map(stage => (
-              <div 
-                key={stage}
-                className="min-w-0 min-h-[360px] bg-slate-100 dark:bg-zinc-800/50 rounded-2xl border border-slate-200 dark:border-zinc-700 flex flex-col"
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, stage)}
-              >
-                <div className="p-4 border-b border-slate-200 dark:border-zinc-700 flex items-center justify-between bg-slate-100 dark:bg-zinc-800/80 rounded-t-2xl">
-                  <h3 className="font-semibold text-slate-700 dark:text-zinc-200 flex items-center gap-2">
-                    {stage}
-                    <span className="bg-white dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 text-xs py-0.5 px-2 rounded-full font-medium border border-slate-200 dark:border-zinc-700">
-                      {dealsByStage[stage].length}
-                    </span>
-                  </h3>
-                  <span className="text-sm font-medium text-slate-500 dark:text-zinc-400">
-                    ${dealsByStage[stage].reduce((sum, d) => sum + (d.value || 0), 0).toLocaleString()}
+      {/* 4-KPI Metric Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
+        <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
+          <div>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">{t("pipeline.total_pipeline")}</p>
+            <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight mt-0.5 font-mono">${totalValue.toLocaleString()}</p>
+          </div>
+          <div className="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+            <DollarSign className="w-3.5 h-3.5" />
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
+          <div>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Active Deals</p>
+            <p className="text-base sm:text-lg font-bold text-indigo-600 dark:text-indigo-400 leading-tight mt-0.5">{deals.length}</p>
+          </div>
+          <div className="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+            <Layers className="w-3.5 h-3.5" />
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
+          <div>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Closed Won</p>
+            <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 leading-tight mt-0.5">{wonDealsCount}</p>
+          </div>
+          <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <Award className="w-3.5 h-3.5" />
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
+          <div>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Average Deal</p>
+            <p className="text-base sm:text-lg font-bold text-cyan-600 dark:text-cyan-400 leading-tight mt-0.5 font-mono">${avgDealValue.toLocaleString()}</p>
+          </div>
+          <div className="w-7 h-7 rounded-lg bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center shrink-0">
+            <TrendingUp className="w-3.5 h-3.5" />
+          </div>
+        </div>
+      </div>
+
+      {error && <div className="p-3 bg-red-50 text-red-600 rounded-xl text-xs font-semibold">{error}</div>}
+
+      {/* Sales Performance (Admin only) */}
+      {role === "Admin" && salesPerformance.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#111111]/90 shadow-xs">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-50/70 dark:bg-white/5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 border-b border-slate-200/80 dark:border-white/10">
+              <tr>
+                <th className="px-4 py-2.5">Salesperson</th>
+                <th className="px-4 py-2.5">Deals</th>
+                <th className="px-4 py-2.5">Pipeline</th>
+                <th className="px-4 py-2.5">Won Revenue</th>
+                <th className="px-4 py-2.5">Lead</th>
+                <th className="px-4 py-2.5">Negotiation</th>
+                <th className="px-4 py-2.5">Won</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+              {salesPerformance.map(item => (
+                <tr key={item.assigned_to || "unassigned"} className="hover:bg-slate-50/60 dark:hover:bg-white/5 transition-colors">
+                  <td className="px-4 py-2 font-bold text-slate-900 dark:text-white">{item.salesperson}</td>
+                  <td className="px-4 py-2">{item.deals}</td>
+                  <td className="px-4 py-2 font-mono">${Number(item.pipeline_value).toLocaleString()}</td>
+                  <td className="px-4 py-2 font-mono font-bold text-emerald-600 dark:text-emerald-400">${Number(item.won_revenue).toLocaleString()}</td>
+                  <td className="px-4 py-2">{item.stages.Lead || 0}</td>
+                  <td className="px-4 py-2">{item.stages.Negotiation || 0}</td>
+                  <td className="px-4 py-2 font-bold text-emerald-600">{item.stages["Closed Won"] || 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Kanban Board */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-2.5 pb-6">
+        {STAGES.map(stage => {
+          const stageTotal = dealsByStage[stage]?.reduce((sum, d) => sum + (d.value || 0), 0) || 0;
+          return (
+            <div 
+              key={stage}
+              className="min-w-0 min-h-[360px] bg-slate-50/80 dark:bg-white/5 rounded-xl border border-slate-200/90 dark:border-white/10 flex flex-col shadow-xs"
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, stage)}
+            >
+              <div className="px-3 py-2 border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between bg-white dark:bg-[#111111]/90 rounded-t-xl">
+                <h3 className="font-bold text-xs text-slate-800 dark:text-zinc-200 flex items-center gap-1.5 truncate">
+                  <span className="truncate">{stage}</span>
+                  <span className="bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-zinc-400 text-[10px] py-0.2 px-1.5 rounded-full font-bold">
+                    {dealsByStage[stage]?.length || 0}
                   </span>
-                </div>
-                
-                <div className="p-3 flex-1 overflow-y-auto space-y-3 max-h-[calc(100vh-270px)]">
-                  {dealsByStage[stage].map(deal => (
-                    <div
-                      key={deal.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, deal)}
-                      className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-700 shadow-sm cursor-grab active:cursor-grabbing hover:border-indigo-300 hover:shadow-md transition-all group"
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <h4 className="min-w-0 flex-1 break-words whitespace-normal pr-2 font-semibold leading-5 text-slate-800 dark:text-zinc-100" title={deal.title}>{deal.title}</h4>
-                        <button type="button" onClick={() => openEditDeal(deal)} title="Edit deal" className="text-slate-400 hover:text-indigo-600 dark:text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button type="button" className="hidden text-slate-400 hover:text-slate-600 dark:text-zinc-300">
-                          <MoreVertical className="w-4 h-4" />
-                        </button>
+                </h3>
+                <span className="text-[11px] font-mono font-bold text-slate-500 dark:text-zinc-400 shrink-0">
+                  ${stageTotal.toLocaleString()}
+                </span>
+              </div>
+              
+              <div className="p-2 flex-1 overflow-y-auto space-y-2 max-h-[calc(100vh-280px)]">
+                {dealsByStage[stage]?.map(deal => (
+                  <div
+                    key={deal.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, deal)}
+                    className="bg-white dark:bg-[#111111]/90 p-2.5 rounded-lg border border-slate-200/90 dark:border-white/10 shadow-xs cursor-grab active:cursor-grabbing hover:border-indigo-400/80 dark:hover:border-indigo-500/80 transition-all group"
+                  >
+                    <div className="flex justify-between items-start mb-1.5">
+                      <h4 className="min-w-0 flex-1 break-words whitespace-normal pr-1.5 font-bold text-xs text-slate-800 dark:text-zinc-100 leading-tight" title={deal.title}>
+                        {deal.title}
+                      </h4>
+                      <button 
+                        type="button" 
+                        onClick={() => openEditDeal(deal)} 
+                        title="Edit deal" 
+                        className="text-slate-400 hover:text-indigo-600 dark:text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    </div>
+                    
+                    <div className="min-w-0 text-[11px] text-slate-500 dark:text-zinc-400 mb-2 flex items-start gap-1">
+                      <MapPin className="w-3 h-3 shrink-0 mt-0.5 text-slate-400" />
+                      <span className="min-w-0 break-words whitespace-normal font-medium">{deal.client_name}</span>
+                    </div>
+                    
+                    <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-white/5">
+                      <div className="flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400 font-mono font-bold text-xs">
+                        <DollarSign className="w-3.5 h-3.5" />
+                        {deal.value.toLocaleString()}
                       </div>
-                      
-                      <div className="min-w-0 text-sm text-slate-500 dark:text-zinc-400 mb-3 flex items-start gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span className="min-w-0 break-words whitespace-normal">{deal.client_name}</span>
-                      </div>
-                      
-                      <div className="space-y-2 pt-3 border-t border-slate-100 dark:border-zinc-800">
-                        <div className="flex items-center gap-1 text-emerald-600 font-semibold text-sm">
-                          <DollarSign className="w-4 h-4" />
-                          {deal.value.toLocaleString()}
-                        </div>
-                        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                          {deal.assigned_name && <p className="min-w-[72px] flex-1 break-words text-left text-[10px] font-bold text-indigo-500">Owner: {deal.assigned_name}</p>}
-                          {deal.expected_close_date && (
-                            <div className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-slate-400 font-medium">
-                              <Calendar className="w-3.5 h-3.5" />
-                              {new Date(deal.expected_close_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                            </div>
-                          )}
-                        </div>
+                      <div className="flex flex-wrap items-center justify-between gap-1 text-[10px]">
+                        {deal.assigned_name && (
+                          <span className="text-indigo-600 dark:text-indigo-400 font-semibold truncate max-w-[110px]">
+                            {deal.assigned_name}
+                          </span>
+                        )}
+                        {deal.expected_close_date && (
+                          <div className="flex shrink-0 items-center gap-1 text-slate-400 font-medium ml-auto">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(deal.expected_close_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </main>
-
-        {/* Add Deal Modal */}
-        {showAddModal && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-              <div className="p-6 border-b border-slate-100 dark:border-zinc-800">
-                <h2 className="text-xl font-bold text-slate-800 dark:text-zinc-100">{editingDeal ? "Edit Deal" : t("pipeline.create_new_deal")}</h2>
-              </div>
-              <form onSubmit={handleAddDeal} className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">{t("pipeline.deal_title")}</label>
-                  <input required type="text" value={newDeal.title} onChange={e => setNewDeal({...newDeal, title: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" placeholder="e.g. Website Redesign" />
-                </div>
-                {role !== "SalesManager" && <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">Assign Sales Owner</label>
-                  <select required value={newDeal.assigned_to} onChange={e => setNewDeal({...newDeal, assigned_to: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl outline-none">
-                    <option value="">Select salesperson</option>
-                    {salesUsers.map(salesUser => <option key={salesUser.id} value={salesUser.id}>{salesUser.name || salesUser.email} · {salesUser.email}</option>)}
-                  </select>
-                </div>}
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">{t("pipeline.client")}</label>
-                  <select required value={newDeal.client_id} onChange={e => setNewDeal({...newDeal, client_id: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none">
-                    <option value="">{t("pipeline.select_client")}</option>
-                    {clients.map(c => (
-                      <option key={c.id} value={c.id}>{c.companyName || c.email}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">{t("pipeline.value_label")}</label>
-                    <input type="number" step="0.01" value={newDeal.value} onChange={e => setNewDeal({...newDeal, value: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" placeholder="0.00" />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">{t("pipeline.close_date")}</label>
-                    <input type="date" value={newDeal.expected_close_date} onChange={e => setNewDeal({...newDeal, expected_close_date: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" />
+                ))}
+                {(!dealsByStage[stage] || dealsByStage[stage].length === 0) && (
+                  <div className="h-20 flex items-center justify-center border border-dashed border-slate-200/80 dark:border-white/10 rounded-lg text-[11px] text-slate-400">
+                    Empty
                   </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-zinc-200 mb-1">{t("pipeline.starting_stage")}</label>
-                  <select value={newDeal.stage} onChange={e => setNewDeal({...newDeal, stage: e.target.value})} className="w-full px-4 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none">
-                    {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                
-                <div className="flex gap-3 pt-4 border-t border-slate-100 dark:border-zinc-800">
-                  <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 font-medium rounded-xl hover:bg-slate-50 dark:bg-zinc-950 transition-colors">{t("pipeline.cancel")}</button>
-                  <button type="submit" className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors shadow-sm">{editingDeal ? "Save Changes" : t("pipeline.create_deal")}</button>
-                </div>
-              </form>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })}
       </div>
+
+      {/* Add / Edit Deal Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-[#111111] rounded-2xl border border-slate-200 dark:border-white/10 shadow-xl w-full max-w-md overflow-hidden text-slate-900 dark:text-white">
+            <div className="px-5 py-4 border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Kanban className="w-4 h-4 text-indigo-600" />
+                {editingDeal ? "Edit Deal" : t("pipeline.create_new_deal")}
+              </h2>
+              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleAddDeal} className="p-5 space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1">{t("pipeline.deal_title")} *</label>
+                <input required type="text" value={newDeal.title} onChange={e => setNewDeal({...newDeal, title: e.target.value})} className="w-full px-3 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-xs outline-none focus:border-indigo-500" placeholder="e.g. Website Redesign" />
+              </div>
+              {role !== "SalesManager" && <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1">Assign Sales Owner</label>
+                <select required value={newDeal.assigned_to} onChange={e => setNewDeal({...newDeal, assigned_to: e.target.value})} className="w-full px-3 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-white/10 rounded-xl text-xs outline-none focus:border-indigo-500">
+                  <option value="" className="dark:bg-zinc-900">Select salesperson</option>
+                  {salesUsers.map(salesUser => <option key={salesUser.id} value={salesUser.id} className="dark:bg-zinc-900">{salesUser.name || salesUser.email} · {salesUser.email}</option>)}
+                </select>
+              </div>}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1">{t("pipeline.client")} *</label>
+                <select required value={newDeal.client_id} onChange={e => setNewDeal({...newDeal, client_id: e.target.value})} className="w-full px-3 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-white/10 rounded-xl text-xs outline-none focus:border-indigo-500">
+                  <option value="" className="dark:bg-zinc-900">{t("pipeline.select_client")}</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id} className="dark:bg-zinc-900">{c.companyName || c.email}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1">{t("pipeline.value_label")}</label>
+                  <input type="number" step="0.01" value={newDeal.value} onChange={e => setNewDeal({...newDeal, value: e.target.value})} className="w-full px-3 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-xs outline-none focus:border-indigo-500" placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1">{t("pipeline.close_date")}</label>
+                  <input type="date" value={newDeal.expected_close_date} onChange={e => setNewDeal({...newDeal, expected_close_date: e.target.value})} className="w-full px-3 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-xs outline-none focus:border-indigo-500" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1">{t("pipeline.starting_stage")}</label>
+                <select value={newDeal.stage} onChange={e => setNewDeal({...newDeal, stage: e.target.value})} className="w-full px-3 py-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-white/10 rounded-xl text-xs outline-none focus:border-indigo-500">
+                  {STAGES.map(s => <option key={s} value={s} className="dark:bg-zinc-900">{s}</option>)}
+                </select>
+              </div>
+              
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200/80 dark:border-white/10">
+                <button type="button" onClick={() => setShowAddModal(false)} className="px-3 py-1.5 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-zinc-300 font-semibold rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 transition-colors">
+                  {t("pipeline.cancel")}
+                </button>
+                <button type="submit" className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs transition-colors shadow-xs">
+                  {editingDeal ? "Save Changes" : t("pipeline.create_deal")}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
