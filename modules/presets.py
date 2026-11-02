@@ -12,11 +12,11 @@ from sqlmodel import Session
 
 from modules import features, tenant_settings
 
-_CRM_BASE = {"leads", "contacts", "clients", "deals", "work_queue", "projects", "task_sheet", "reports",
-             "meetings", "calls", "teams", "leaderboard", "inbox", "followups", "email_agent", "support"}
+_CRM_BASE = {"dashboard", "leads", "contacts", "clients", "deals", "work_queue", "projects", "task_sheet", "reports",
+             "meetings", "calls", "teams", "leaderboard", "inbox", "followups", "email_agent", "support", "cases"}
 
 # The business-suite modules the SerpHawk flagship ships to its own users (ported from the SCM BPO deployment).
-_FLAGSHIP_SUITE = {"lead_sources", "finance_suite", "ownership", "stock_movements", "meeting_history", "command_center",
+_FLAGSHIP_SUITE = {"cases", "invoices", "support_sh", "lead_sources", "lead_source_analytics", "finance_suite", "ownership", "stock_movements", "meeting_history", "command_center",
                    "ai_reports", "dropped_clients", "proposals_portal", "followup_board"}
 
 PRESETS: Dict[str, dict] = {
@@ -33,7 +33,7 @@ PRESETS: Dict[str, dict] = {
         "label": "Standard CRM",
         "description": "The CRM every business starts from: leads, contacts, clients, deals, projects and tasks, reports, "
                        "inbox, follow-ups, email agent, products, billing and proposals. Brand-neutral.",
-        "features": _CRM_BASE | {"products", "billing", "proposals"},
+        "features": _CRM_BASE | {"products", "billing", "invoices", "proposals"},
         "settings": {},
     },
     "full": {
@@ -45,20 +45,20 @@ PRESETS: Dict[str, dict] = {
     "agency": {
         "label": "Digital agency CRM",
         "description": "SerpHawk-style CRM: leads, clients, projects, inbox, follow-ups, email agent, billing, proposals.",
-        "features": _CRM_BASE | {"billing", "proposals"},
+        "features": _CRM_BASE | {"billing", "invoices", "proposals"},
         "settings": {},
     },
     "agency-voice": {
         "label": "Digital agency CRM + AI voice caller",
         "description": "The agency preset plus the outbound AI voice agent.",
-        "features": _CRM_BASE | {"billing", "proposals", "voice_agent"},
+        "features": _CRM_BASE | {"billing", "invoices", "proposals", "voice_agent"},
         "settings": {},
     },
     "bpo": {
         "label": "BPO / logistics",
         "description": "SCM BPO-style: CRM plus inventory, billing, proposals and the business suite "
                        "(lead sources, revenue and costs, ownership history, command center, AI reports).",
-        "features": _CRM_BASE | {"inventory", "billing", "proposals", "lead_sources", "finance_suite", "ownership",
+        "features": _CRM_BASE | {"inventory", "billing", "invoices", "proposals", "lead_sources", "lead_source_analytics", "finance_suite", "ownership",
                                  "stock_movements", "meeting_history", "command_center", "ai_reports",
                                  "dropped_clients", "proposals_portal", "followup_board", "lead_webhook"},
         "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "home_dashboard": "command_center",
@@ -69,8 +69,8 @@ PRESETS: Dict[str, dict] = {
         "label": "Training institute",
         "description": "SCM HB-style: leads and admissions tracking, students, courses, batches, enrollments and fees, "
                        "attendance, portals, reports, inbox, follow-ups and email agent.",
-        "features": {"leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
-                     "followups", "email_agent", "support", "institute", "lead_sources"},
+        "features": {"dashboard", "cases", "leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
+                     "followups", "email_agent", "support", "institute", "lead_sources", "lead_source_analytics"},
         "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "lead_assignment": "revenue",
                      "sales_scoping": True,
                      "lead_statuses": ["New", "Contacted", "Not Responded", "Follow-up", "Webinar Scheduled",
@@ -80,7 +80,7 @@ PRESETS: Dict[str, dict] = {
     "design-agency": {
         "label": "Design / marketing agency (Spanish-first)",
         "description": "DaPros-style CRM with MXN, +52 and Mexico City defaults.",
-        "features": _CRM_BASE | {"inventory", "products", "billing", "proposals", "marketplace"},
+        "features": _CRM_BASE | {"inventory", "products", "billing", "invoices", "proposals", "marketplace", "support_sh"},
         "settings": {
             "default_currency": "MXN", "default_dial_code": "+52", "timezone": "America/Mexico_City",
             "append_signature_on_replies": True,

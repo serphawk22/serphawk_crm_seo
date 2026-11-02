@@ -449,6 +449,7 @@ class ProjectTicketNote(SQLModel, table=True):
 
 
 class ClientProfile(SQLModel, table=True):
+    created_by: Optional[int] = Field(default=None, index=True)
     """
     Detailed profile for clients
     """
@@ -734,6 +735,7 @@ class EmailLog(SQLModel, table=True):
 
 
 class CallLog(SQLModel, table=True):
+    created_by: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
     """
     Logs incoming/outgoing calls with duration and optional summary
     """
@@ -755,6 +757,7 @@ class CallLog(SQLModel, table=True):
 
 
 class ScheduledCall(SQLModel, table=True):
+    created_by: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
     """
     Scheduled future calls with optional AI-generated pitch
     """
@@ -1409,6 +1412,7 @@ class Account(SQLModel, table=True):
     leads: List["Lead"] = Relationship(back_populates="account")
 
 class Lead(SQLModel, table=True):
+    created_by: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
     __tablename__ = "leads"
     follow_up_needed: bool = Field(default=False, sa_column_kwargs={"server_default": text("FALSE")})
     next_follow_up_at: Optional[datetime] = Field(default=None, index=True)
@@ -1458,6 +1462,7 @@ class LeadNote(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow)
 
 class Contact(SQLModel, table=True):
+    created_by: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
     __tablename__ = "contacts"
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -1768,6 +1773,19 @@ def create_db_and_tables():
     """
     # Create all tables if they don't exist
     SQLModel.metadata.create_all(engine)
+    # Additive ownership metadata for databases created before sales visibility rules.
+    from sqlalchemy import inspect as inspect_schema, text
+    for table_name in ("call_logs", "scheduled_calls", "client_profiles", "leads", "contacts"):
+        with engine.begin() as connection:
+            if "created_by" not in {column["name"] for column in inspect_schema(connection).get_columns(table_name)}:
+                connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN created_by INTEGER REFERENCES users(id)"))
+            connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table_name}_created_by ON {table_name} (created_by)"))
+    # Convert unambiguous legacy display-name assignments to stable account ids.
+    # Ambiguous names stay visible to Admins for manual reassignment.
+    for table_name in ("call_logs", "scheduled_calls"):
+        match = f"users.tenant_id = {table_name}.tenant_id AND (users.name = {table_name}.assigned_to OR users.email = {table_name}.assigned_to)"
+        with engine.begin() as connection:
+            connection.execute(text(f"UPDATE {table_name} SET assigned_to = CAST((SELECT MIN(users.id) FROM users WHERE {match}) AS VARCHAR) WHERE (SELECT COUNT(*) FROM users WHERE {match}) = 1"))
     from modules.conversation_store import ensure_conversation_schema
     ensure_conversation_schema(engine)
     

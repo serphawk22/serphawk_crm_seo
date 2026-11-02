@@ -609,7 +609,7 @@ function RemindersBoard() {
   const activeFollowups = counts.overdue + counts.pending + counts.upcoming;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 p-3 sm:p-5 md:p-8 space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-4 max-w-7xl mx-auto">
       {/* Toast */}
       {toast && (
         <div
@@ -623,104 +623,102 @@ function RemindersBoard() {
         </div>
       )}
 
-      {/* Top Header */}
-      <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-13 h-13 rounded-2xl bg-gradient-to-tr from-amber-500 via-orange-500 to-amber-600 p-3 shadow-lg shadow-amber-500/25 flex items-center justify-center shrink-0">
-              <Bell className="w-7 h-7 text-white" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-800 dark:text-zinc-100 tracking-tight">
-                  Follow-ups &amp; Reminders
-                </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                  {activeFollowups} Active
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-zinc-400 mt-1">
-                Auto-assigned to lead owners, instant status changer, timezone sync, and AI email assistant.
-              </p>
-            </div>
+      {/* Compact Executive Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#111111]/90 p-3 sm:px-4 sm:py-3 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+            <Bell className="w-4 h-4" />
           </div>
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <button
-              onClick={() => load()}
-              aria-label="Refresh follow-ups"
-              className="h-11 px-3.5 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-200/60 dark:hover:bg-zinc-700 transition flex items-center gap-2 text-xs font-bold"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-amber-500" : ""}`} />
-              <span className="hidden sm:inline">Refresh</span>
-            </button>
-
-            {/* View Mode Switcher */}
-            <div className="flex rounded-xl bg-slate-100 dark:bg-zinc-800 p-1 border border-slate-200 dark:border-zinc-700">
-              <button
-                onClick={() => setViewMode("cards")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
-                  viewMode === "cards" ? "bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                }`}
-                title="Cards view"
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Cards</span>
-              </button>
-              <button
-                onClick={() => setViewMode("table")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
-                  viewMode === "table" ? "bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                }`}
-                title="Compact table view"
-              >
-                <Table className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Table</span>
-              </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">
+                Follow-ups &amp; Reminders
+              </h1>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                {activeFollowups} Active
+              </span>
             </div>
-
-            <button
-              onClick={openCreate}
-              className="h-11 px-5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white text-xs sm:text-sm font-extrabold hover:opacity-95 shadow-lg shadow-orange-500/25 flex items-center gap-2 transition active:scale-[0.98]"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Schedule Follow-up</span>
-            </button>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+              Auto-assigned to lead owners, instant status changer, timezone sync, and AI email assistant
+            </p>
           </div>
         </div>
 
-        {/* Bucket KPI Tiles */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t border-slate-100 dark:border-zinc-800">
-          {TABS.map(t => {
-            const active = bucket === t.key;
-            return (
-              <button
-                key={t.key}
-                onClick={() => setBucket(t.key)}
-                aria-pressed={active}
-                className={`relative text-left rounded-2xl p-4 transition-all duration-200 border ${
-                  active
-                    ? `bg-white dark:bg-zinc-900 ${t.ring} ring-2 border-transparent shadow-md`
-                    : "bg-slate-50/70 dark:bg-zinc-800/50 border-slate-200/60 dark:border-zinc-800 hover:bg-white dark:hover:bg-zinc-800/80"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className={`p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 ${t.tone}`}>
-                    <t.icon className="w-4 h-4" />
-                  </div>
-                  <span className={`text-2xl font-black ${t.tone}`}>{loading ? "–" : counts[t.key]}</span>
-                </div>
-                <p className="mt-2 text-sm font-black text-slate-800 dark:text-zinc-100">{t.label}</p>
-                <p className="text-[11px] text-slate-400 dark:text-zinc-500 leading-tight truncate">{t.hint}</p>
-              </button>
-            );
-          })}
+        {/* Action buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => load()}
+            aria-label="Refresh follow-ups"
+            className="p-1.5 rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-200/90 dark:border-white/10 text-slate-600 dark:text-zinc-300 hover:text-amber-600 dark:hover:text-amber-400 transition"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-amber-500" : ""}`} />
+          </button>
+
+          {/* View Mode Switcher */}
+          <div className="flex rounded-lg bg-slate-100 dark:bg-white/5 p-0.5 border border-slate-200/90 dark:border-white/10">
+            <button
+              onClick={() => setViewMode("cards")}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
+                viewMode === "cards" ? "bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow-xs" : "text-slate-500 hover:text-slate-700 dark:text-zinc-400"
+              }`}
+              title="Cards view"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Cards</span>
+            </button>
+            <button
+              onClick={() => setViewMode("table")}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
+                viewMode === "table" ? "bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow-xs" : "text-slate-500 hover:text-slate-700 dark:text-zinc-400"
+              }`}
+              title="Compact table view"
+            >
+              <Table className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Table</span>
+            </button>
+          </div>
+
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold text-xs shadow-xs transition"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Schedule Follow-up</span>
+          </button>
         </div>
       </div>
 
+      {/* 4-KPI Metric Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
+        {TABS.map(t => {
+          const active = bucket === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setBucket(t.key)}
+              aria-pressed={active}
+              className={`flex items-center justify-between rounded-xl p-2.5 sm:px-3 text-left transition-all border shadow-xs ${
+                active
+                  ? `bg-white dark:bg-[#111111]/90 ${t.ring} ring-1 border-amber-500`
+                  : "bg-white dark:bg-[#111111]/90 border-slate-200/90 dark:border-white/10 hover:border-amber-500/60"
+              }`}
+            >
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">{t.label}</p>
+                <p className={`text-base sm:text-lg font-bold leading-tight mt-0.5 ${t.tone}`}>{loading ? "–" : counts[t.key]}</p>
+                <p className="text-[10px] text-slate-400 dark:text-zinc-500 leading-tight truncate mt-0.5">{t.hint}</p>
+              </div>
+              <div className={`p-1.5 rounded-lg bg-slate-50 dark:bg-white/5 ${t.tone}`}>
+                <t.icon className="w-3.5 h-3.5" />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Filter / Scope Toolbar */}
-      <div className="bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-3.5 shadow-sm space-y-3">
+      
+      <div className="bg-white dark:bg-[#111111]/90 border border-slate-200/90 dark:border-white/10 rounded-xl p-2 sm:px-3 shadow-xs space-y-2">
         <div className="flex flex-col md:flex-row items-center gap-3">
           {/* Search bar */}
           <div className="relative flex-1 w-full">
@@ -845,7 +843,7 @@ function RemindersBoard() {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(i, 8) * 0.03 }}
-                className={`bg-white dark:bg-zinc-900 border rounded-3xl shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between ${
+                className={`bg-white dark:bg-zinc-900 border rounded-xl shadow-xs hover:border-amber-500/60 transition-all duration-200 overflow-hidden flex flex-col justify-between ${
                   f.bucket === "overdue"
                     ? "border-rose-300/80 dark:border-rose-900/50 bg-gradient-to-b from-rose-500/[0.03] to-transparent"
                     : f.status === "Completed"
@@ -853,7 +851,7 @@ function RemindersBoard() {
                     : "border-slate-200/80 dark:border-zinc-800"
                 }`}
               >
-                <div className="p-5">
+                <div className="p-3.5">
                   {/* Card Header: 1-Click Checkbox + Title + Interactive Status Selector */}
                   <div className="flex items-start gap-3">
                     <button
@@ -864,7 +862,7 @@ function RemindersBoard() {
                       }
                       disabled={busy}
                       aria-label={f.status === "Completed" ? "Reopen follow-up" : "Mark completed"}
-                      className={`mt-0.5 w-10 h-10 shrink-0 rounded-2xl border-2 flex items-center justify-center transition-all ${
+                      className={`mt-0.5 w-7 h-7 shrink-0 rounded-lg border flex items-center justify-center transition-all ${
                         f.status === "Completed"
                           ? "bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/25"
                           : "border-slate-300 dark:border-zinc-600 text-transparent hover:border-emerald-500 hover:text-emerald-500"
@@ -873,14 +871,14 @@ function RemindersBoard() {
                       {busy ? (
                         <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
                       ) : (
-                        <Check className="w-5 h-5 stroke-[3]" />
+                        <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                       )}
                     </button>
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <h4
-                          className={`font-black text-slate-800 dark:text-zinc-100 text-base leading-snug break-words ${
+                          className={`font-black text-slate-800 dark:text-zinc-100 text-xs font-bold leading-snug break-words ${
                             f.status === "Completed" ? "line-through text-slate-400 dark:text-zinc-500" : ""
                           }`}
                         >
@@ -1002,7 +1000,7 @@ function RemindersBoard() {
                 </div>
 
                 {/* Bottom Card Action Bar */}
-                <div className="px-5 py-3 bg-slate-50/70 dark:bg-zinc-800/40 border-t border-slate-100 dark:border-zinc-800/80 flex items-center justify-between gap-2 flex-wrap">
+                <div className="px-3.5 py-2 bg-slate-50/60 dark:bg-white/5 border-t border-slate-100 dark:border-white/5 flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {f.status !== "Completed" && (
                       <>

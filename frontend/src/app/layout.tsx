@@ -37,9 +37,9 @@ function AdminMainContent({ children }: { children: React.ReactNode }) {
   const isClientDetail = pathname?.match(/^\/admin\/clients\/\d+$/);
 
   return (
-    <main className={`relative z-10 min-h-screen transition-all duration-300 ${collapsed ? "ml-[72px]" : "ml-[280px]"}`}>
+    <main className={`relative z-10 min-h-screen transition-[margin-left] duration-200 ease-in-out motion-reduce:transition-none ${collapsed ? "ml-[72px]" : "ml-[280px]"}`}>
       <TopRightControls />
-      <div className={isClientDetail ? "w-full h-full pr-20" : "pt-[76px] px-6 md:px-8 pb-6 md:pb-8 pr-20 md:pr-24 max-w-[1600px] mx-auto h-full"}>
+      <div className={isClientDetail ? "w-full h-full pr-4 sm:pr-20" : "pt-[76px] px-4 sm:px-6 md:px-8 pb-6 md:pb-8 pr-4 sm:pr-20 md:pr-24 max-w-[1600px] mx-auto h-full"}>
         {children}
       </div>
     </main>

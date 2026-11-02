@@ -74,7 +74,7 @@ class LeadCallStorage(TenantIsolationBase):
             s.refresh(user)
             uid = user.id
         r = self.client.get(f"/leads/{self.leads[2]}/calls", headers={"X-User-ID": str(uid)})
-        self.assertEqual(r.status_code, 403, r.text)
+        self.assertEqual(r.status_code, 404, r.text)
 
     def test_caller_cannot_forge_conversation_author(self):
         r = self.create_conversation(author_id=self.users[3], analyze=False)

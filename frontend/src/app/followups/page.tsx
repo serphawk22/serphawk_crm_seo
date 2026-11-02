@@ -9,6 +9,7 @@ import { followupsApi, type FollowUp, type FollowUpCounts, type FollowUpView } f
 import FollowUpList from '@/components/followups/FollowUpList';
 import { FollowUpFormDialog } from '@/components/followups/FollowUpDialogs';
 import { btn } from '@/components/followups/followupUi';
+import { cn } from '@/lib/utils';
 
 const TABS: { key: FollowUpView; label: string; count?: keyof FollowUpCounts }[] = [
   { key: 'overdue', label: 'Overdue', count: 'overdue' },
@@ -26,12 +27,17 @@ function StatCard({ label, value, hint, icon: Icon, tone, active, onClick }: {
 }) {
   return (
     <button onClick={onClick}
-      className={`flex items-center gap-3 rounded-2xl border bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:bg-zinc-900 ${active ? 'border-indigo-400 ring-2 ring-indigo-500/20' : 'border-slate-200 dark:border-zinc-700'}`}>
-      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tone}`}><Icon size={20} /></div>
-      <div className="min-w-0">
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500">{label}</p>
-        <p className="text-2xl font-black leading-tight text-slate-900 dark:text-white">{value}</p>
-        <p className="truncate text-[11px] text-slate-500 dark:text-zinc-400">{hint}</p>
+      className={cn(
+        "flex items-center justify-between rounded-xl border bg-white dark:bg-[#111111]/90 p-2.5 sm:px-3 text-left shadow-xs transition-all",
+        active ? "border-amber-500 ring-1 ring-amber-500/40" : "border-slate-200/90 dark:border-white/10 hover:border-amber-500/60"
+      )}>
+      <div>
+        <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">{label}</p>
+        <p className="text-base sm:text-lg font-bold leading-tight text-slate-900 dark:text-white mt-0.5">{value}</p>
+        <p className="truncate text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">{hint}</p>
+      </div>
+      <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", tone)}>
+        <Icon size={14} />
       </div>
     </button>
   );
@@ -76,8 +82,6 @@ export default function FollowUpsPage() {
     } finally {
       setLoading(false);
     }
-    // items.length only matters for "load more"
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, mine, search]);
 
   useEffect(() => {
@@ -90,59 +94,75 @@ export default function FollowUpsPage() {
   }, [q]);
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-500/30">
-            <CalendarClock size={20} />
+    <div className="space-y-4">
+      {/* Compact Executive Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#111111]/90 p-3 sm:px-4 sm:py-3 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+            <CalendarClock className="w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-900 dark:text-white">Follow-ups</h1>
-            <p className="text-xs text-slate-500 dark:text-zinc-400">Every promised next step with your leads and clients — with reminders, AI-prepared emails and full history.</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">Follow-ups</h1>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                {total} tasks
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+              Next steps with leads and clients — reminders, AI email preparation &amp; history
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-            <input type="checkbox" className="h-3.5 w-3.5 accent-indigo-600" checked={mine} onChange={(e) => setMine(e.target.checked)} />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 rounded-lg border border-slate-200/90 dark:border-white/10 bg-slate-50 dark:bg-white/5 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-zinc-300 cursor-pointer">
+            <input type="checkbox" className="h-3.5 w-3.5 accent-amber-500 rounded" checked={mine} onChange={(e) => setMine(e.target.checked)} />
             Only mine
           </label>
-          <button className={btn.secondary} onClick={() => load()} disabled={loading} title="Refresh">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <button className="p-1.5 rounded-lg border border-slate-200/90 dark:border-white/10 bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-600 dark:text-zinc-300 transition-colors" onClick={() => load()} disabled={loading} title="Refresh">
+            <RefreshCw size={14} className={loading ? 'animate-spin text-amber-500' : ''} />
           </button>
-          <button className={btn.primary} onClick={() => setCreating(true)}><Plus size={14} /> New follow-up</button>
+          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold text-xs shadow-xs transition" onClick={() => setCreating(true)}>
+            <Plus size={14} /> New follow-up
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* 4-KPI Metric Strip */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-4">
         <StatCard label="Overdue" value={counts?.overdue ?? '–'} hint="Past their follow-up date" icon={AlertTriangle}
-          tone="bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400" active={view === 'overdue'} onClick={() => setView('overdue')} />
-        <StatCard label="Due today" value={counts?.today ?? '–'} hint="Follow up before the day ends" icon={Clock}
-          tone="bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400" active={view === 'today'} onClick={() => setView('today')} />
-        <StatCard label="Upcoming" value={counts?.upcoming ?? '–'} hint={counts ? `${counts.upcoming_7d} in the next 7 days` : ' '} icon={CalendarClock}
-          tone="bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400" active={view === 'upcoming'} onClick={() => setView('upcoming')} />
-        <StatCard label="Completed" value={counts?.completed ?? '–'} hint={counts ? `${counts.completed_7d} this week` : ' '} icon={CheckCircle2}
-          tone="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" active={view === 'completed'} onClick={() => setView('completed')} />
+          tone="bg-red-500/10 text-red-600 dark:text-red-400" active={view === 'overdue'} onClick={() => setView('overdue')} />
+        <StatCard label="Due today" value={counts?.today ?? '–'} hint="Follow up before day ends" icon={Clock}
+          tone="bg-amber-500/10 text-amber-600 dark:text-amber-400" active={view === 'today'} onClick={() => setView('today')} />
+        <StatCard label="Upcoming" value={counts?.upcoming ?? '–'} hint={counts ? `${counts.upcoming_7d} in next 7 days` : 'Scheduled later'} icon={CalendarClock}
+          tone="bg-sky-500/10 text-sky-600 dark:text-sky-400" active={view === 'upcoming'} onClick={() => setView('upcoming')} />
+        <StatCard label="Completed" value={counts?.completed ?? '–'} hint={counts ? `${counts.completed_7d} this week` : 'Tasks finished'} icon={CheckCircle2}
+          tone="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" active={view === 'completed'} onClick={() => setView('completed')} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-zinc-800">
+      {/* Tabs and Search Toolbar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-white dark:bg-[#111111]/90 p-2 sm:px-3 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-xs">
+        <div className="flex flex-wrap gap-1 p-0.5 rounded-lg bg-slate-100 dark:bg-white/5">
           {TABS.map((t) => (
             <button key={t.key} onClick={() => setView(t.key)}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${view === t.key
-                ? 'bg-white text-slate-900 shadow-sm dark:bg-zinc-900 dark:text-white' : 'text-slate-500 hover:text-slate-800 dark:text-zinc-400'}`}>
+              className={cn("flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all",
+                view === t.key
+                  ? 'bg-white text-slate-900 shadow-xs dark:bg-white/10 dark:text-white'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-zinc-400')}>
               {t.label}
               {t.count && counts && counts[t.count] > 0 && (
-                <span className={`rounded-full px-1.5 text-[10px] font-black ${t.key === 'overdue' ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-600 dark:bg-zinc-700 dark:text-zinc-300'}`}>
+                <span className={cn("rounded-full px-1.5 text-[10px] font-bold",
+                  t.key === 'overdue' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-slate-200 text-slate-600 dark:bg-zinc-700 dark:text-zinc-300')}>
                   {counts[t.count]}
                 </span>
               )}
             </button>
           ))}
         </div>
-        <div className="relative ml-auto w-full sm:w-64">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <div className="relative w-full sm:w-64">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title, contact, company…"
-            className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-8 pr-3 text-sm outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" />
+            className="w-full rounded-lg border border-slate-200/80 bg-slate-50 py-1 pl-8 pr-3 text-xs outline-none focus:border-amber-400 dark:border-white/10 dark:bg-white/5 dark:text-zinc-100" />
         </div>
       </div>
 
@@ -159,8 +179,8 @@ export default function FollowUpsPage() {
           items={items}
           onChanged={() => load()}
           empty={!error && (
-            <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 py-14 text-center dark:border-zinc-700">
-              <CalendarCheck className="text-slate-300" size={36} />
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-14 text-center dark:border-white/10">
+              <CalendarCheck className="text-slate-300 dark:text-zinc-600" size={36} />
               <p className="text-sm font-bold text-slate-500 dark:text-zinc-400">
                 {view === 'overdue' ? 'Nothing overdue — nice work.' : view === 'today' ? 'No follow-ups due today.' : 'No follow-ups here.'}
               </p>

@@ -31,6 +31,7 @@ interface CallEntry {
   work_done: string | null;
   important_notes?: string | null;
   assigned_to: string | null;
+  assigned_to_name?: string | null;
   followup_needed: boolean;
   followup_date: string | null;
   outcome?: string | null;
@@ -49,6 +50,7 @@ interface ScheduledCall {
   pitch: string | null;
   notes: string | null;
   assigned_to: string | null;
+  assigned_to_name?: string | null;
   status: string;
   created_at: string;
   ai_call_status: string | null;
@@ -324,42 +326,48 @@ function CallCard({
   const showBot = isAiCall || !!call.summary?.startsWith("AI Call");
   const interested = isAiCall && call.outcome === "interested";
   return (
-    <motion.div variants={itemVariants}
-      className={cn("bg-white dark:bg-zinc-900/60 backdrop-blur-2xl border rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] p-6 transition-all",
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      className={cn("bg-white dark:bg-[#111111]/90 rounded-xl border p-2.5 sm:px-4 sm:py-2.5 transition-all shadow-xs group",
         selected
           ? (isAiCall ? "ring-2 ring-violet-400 border-violet-400" : "ring-2 ring-amber-400 border-amber-400")
           : interested
-            ? "ring-1 ring-emerald-300 border-emerald-300 dark:ring-emerald-700/60 dark:border-emerald-800/60"
-            : call.followup_needed ? "border-red-200 dark:border-red-900/50" : "border-slate-100 dark:border-zinc-800")}>
-      <div className="flex items-start gap-4">
+            ? "border-emerald-300 dark:border-emerald-500/40"
+            : call.followup_needed ? "border-rose-300 dark:border-rose-500/40" : "border-slate-200/90 dark:border-white/10 hover:border-amber-500/60 dark:hover:border-amber-500/50")}>
+      <div className="flex items-start sm:items-center gap-3">
         {selectable && (
           <input type="checkbox" checked={selected} onChange={onToggleSelect}
-            className={cn("mt-3.5 w-4 h-4 rounded cursor-pointer", isAiCall ? "text-violet-600 focus:ring-violet-500" : "text-amber-500 focus:ring-amber-500")} />
+            className={cn("mt-1 sm:mt-0 w-3.5 h-3.5 rounded cursor-pointer shrink-0", isAiCall ? "text-violet-600 focus:ring-violet-500" : "text-amber-500 focus:ring-amber-500")} />
         )}
-        <div className={cn("p-3 rounded-2xl shrink-0",
-          interested ? "bg-emerald-50 text-emerald-500" : showBot ? "bg-violet-50 text-violet-500" : call.summary ? "bg-emerald-50 text-emerald-500" : "bg-amber-50 text-amber-500")}>
-          {interested ? <CheckCircle className="w-5 h-5" /> : showBot ? <Bot className="w-5 h-5" /> : <PhoneCall className="w-5 h-5" />}
+        <div className={cn("w-7 h-7 rounded-lg shrink-0 flex items-center justify-center border",
+          interested ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 border-emerald-200 dark:border-emerald-500/20" :
+          showBot ? "bg-violet-50 dark:bg-violet-500/10 text-violet-600 border-violet-200 dark:border-violet-500/20" :
+          call.summary ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 border-emerald-200 dark:border-emerald-500/20" :
+          "bg-amber-50 dark:bg-amber-500/10 text-amber-600 border-amber-200 dark:border-amber-500/20")}>
+          {interested ? <CheckCircle className="w-3.5 h-3.5" /> : showBot ? <Bot className="w-3.5 h-3.5" /> : <PhoneCall className="w-3.5 h-3.5" />}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 flex-wrap mb-1">
-            <span className="font-black text-slate-800 dark:text-zinc-100 text-lg">{call.entity_name || call.phone_number}</span>
-            {call.entity_name && <span className="text-sm font-bold text-slate-400">({call.phone_number})</span>}
-            {interested && <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">{t("calls.badge_interested")}</span>}
-            {!call.summary && <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">{t("calls.needs_summary")}</span>}
-            {call.followup_needed && <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">{t("calls.followup_badge")}</span>}
-            {call.assigned_to && <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2.5 py-1 rounded-full">{call.assigned_to}</span>}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-slate-900 dark:text-white text-xs truncate">{call.entity_name || call.phone_number}</span>
+            {call.entity_name && <span className="text-[11px] text-slate-400 dark:text-zinc-500 font-mono">({call.phone_number})</span>}
+            {interested && <span className="text-[10px] bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 font-bold px-2 py-0.2 rounded-full uppercase tracking-wider">{t("calls.badge_interested")}</span>}
+            {!call.summary && <span className="text-[10px] bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 font-bold px-2 py-0.2 rounded-full uppercase tracking-wider animate-pulse">{t("calls.needs_summary")}</span>}
+            {call.followup_needed && <span className="text-[10px] bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20 font-bold px-2 py-0.2 rounded-full uppercase tracking-wider">{t("calls.followup_badge")}</span>}
+            {call.assigned_to && <span className="text-[10px] bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-zinc-300 font-semibold px-2 py-0.2 rounded-full border border-slate-200/60 dark:border-white/10">{call.assigned_to_name || call.assigned_to}</span>}
           </div>
-          <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-zinc-400 font-medium">
-            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDuration(call.duration_seconds)}</span>
+          <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5 flex-wrap">
+            <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-slate-400" />{formatDuration(call.duration_seconds)}</span>
             <span suppressHydrationWarning>{new Date(call.received_at).toLocaleString()}</span>
-            {call.followup_date && <span className="text-red-600 font-bold">Due: {call.followup_date}</span>}
+            {call.followup_date && <span className="text-rose-600 dark:text-rose-400 font-semibold">Due: {call.followup_date}</span>}
           </div>
           {call.summary && (
-            <p className="text-sm text-slate-600 dark:text-zinc-300 font-medium bg-slate-50 dark:bg-zinc-800 p-3 rounded-2xl border border-slate-100 dark:border-zinc-700 mt-3 line-clamp-2">{call.summary}</p>
+            <p className="text-xs text-slate-600 dark:text-zinc-300 bg-slate-50 dark:bg-white/5 px-2.5 py-1.5 rounded-lg border border-slate-200/60 dark:border-white/5 mt-1.5 line-clamp-1">{call.summary}</p>
           )}
         </div>
         <button onClick={onToggleExpand}
-          className="shrink-0 p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl transition-colors text-slate-500 dark:text-zinc-400">
+          className="shrink-0 p-1.5 hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200">
           {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
       </div>
@@ -658,55 +666,112 @@ export default function CallsPage() {
   return (
     <>
       <ToastContainer toasts={toasts} onRemove={removeToast} />
-      <motion.div initial="hidden" animate="show" variants={containerVariants} className="max-w-5xl mx-auto space-y-8 p-6">
+      <motion.div initial="hidden" animate="show" variants={containerVariants} className="space-y-4">
 
-        {/* Header */}
-        <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-900 via-amber-700 to-slate-900 dark:from-white dark:via-amber-400 dark:to-white tracking-tight">{t("calls.title")}</h1>
-            <p className="text-slate-500 dark:text-zinc-400 font-medium mt-1">
-              {loggedCalls.length} {t("calls.logged_suffix")} &middot; {scheduledCalls.filter((s) => s.status === "Scheduled").length} {t("calls.scheduled_suffix")} &middot; {aiCallLogs.length} {t("calls.ai_calls_suffix")}
-            </p>
+        {/* Compact Executive Header */}
+        <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#111111]/90 p-3 sm:px-4 sm:py-3 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+              <PhoneCall className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">{t("calls.title")}</h1>
+                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  {loggedCalls.length + scheduledCalls.length} calls
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+                {loggedCalls.length} logged · {scheduledCalls.filter((s) => s.status === "Scheduled").length} scheduled · {aiCallLogs.length} AI calls
+              </p>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2 shrink-0">
             <button onClick={() => setShowGenerateModal(true)}
-              className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-2xl font-bold text-sm hover:-translate-y-0.5 transition-all shadow-lg">
-              <Zap className="w-4 h-4" /> {t("calls.generate_pitch_call")}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg font-semibold text-xs shadow-xs transition">
+              <Zap className="w-3.5 h-3.5" /> <span>{t("calls.generate_pitch_call")}</span>
             </button>
             <button onClick={() => setShowScheduleModal(true)}
-              className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl font-bold shadow-lg hover:-translate-y-0.5 transition-all text-sm">
-              <CalendarClock className="w-4 h-4" /> {t("calls.schedule_call")}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold text-xs shadow-xs transition">
+              <CalendarClock className="w-3.5 h-3.5" /> <span>{t("calls.schedule_call")}</span>
             </button>
             <button onClick={() => setShowLogModal(true)}
-              className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-2xl font-bold shadow-[0_8px_20px_rgba(245,158,11,0.3)] hover:-translate-y-0.5 transition-all text-sm">
-              <Plus className="w-4 h-4" /> {t("calls.log_call")}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold text-xs shadow-xs transition">
+              <Plus className="w-3.5 h-3.5" /> <span>{t("calls.log_call")}</span>
             </button>
           </div>
         </motion.div>
 
-        {/* Tabs */}
-        <motion.div variants={itemVariants} className="flex bg-slate-100 dark:bg-zinc-900 p-1 rounded-2xl w-fit">
+        {/* 4-KPI Metric Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
+          <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
+            <div>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Logged Calls</p>
+              <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight mt-0.5">{loggedCalls.length}</p>
+            </div>
+            <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <PhoneCall className="w-3.5 h-3.5" />
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
+            <div>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Scheduled</p>
+              <p className="text-base sm:text-lg font-bold text-indigo-600 dark:text-indigo-400 leading-tight mt-0.5">
+                {scheduledCalls.filter((s) => s.status === "Scheduled").length}
+              </p>
+            </div>
+            <div className="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+              <CalendarClock className="w-3.5 h-3.5" />
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
+            <div>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">AI Voice Calls</p>
+              <p className="text-base sm:text-lg font-bold text-violet-600 dark:text-violet-400 leading-tight mt-0.5">{aiCallLogs.length}</p>
+            </div>
+            <div className="w-7 h-7 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
+              <Bot className="w-3.5 h-3.5" />
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
+            <div>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Follow-up Due</p>
+              <p className="text-base sm:text-lg font-bold text-rose-600 dark:text-rose-400 leading-tight mt-0.5">
+                {loggedCalls.filter(c => c.followup_needed).length}
+              </p>
+            </div>
+            <div className="w-7 h-7 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+              <Clock className="w-3.5 h-3.5" />
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs Toolbar */}
+        <motion.div variants={itemVariants} className="flex items-center gap-1 bg-white dark:bg-[#111111]/90 p-1.5 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-xs w-fit">
           <button onClick={() => setActiveTab("logged")}
-            className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all",
-              activeTab === "logged" ? "bg-white dark:bg-zinc-800 text-amber-600 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700")}>
-            <PhoneCall className="w-4 h-4" /> {t("calls.tab_logged")}
-            <span className={cn("text-xs px-2 py-0.5 rounded-full font-black",
-              activeTab === "logged" ? "bg-amber-100 text-amber-700" : "bg-slate-200 dark:bg-zinc-700 text-slate-500")}>{loggedCalls.length}</span>
+            className={cn("flex items-center gap-1.5 px-3 py-1 rounded-lg font-semibold text-xs transition",
+              activeTab === "logged" ? "bg-amber-500 text-white shadow-xs" : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-white/5")}>
+            <PhoneCall className="w-3.5 h-3.5" /> <span>{t("calls.tab_logged")}</span>
+            <span className={cn("text-[10px] px-1.5 py-0.2 rounded-full font-bold",
+              activeTab === "logged" ? "bg-white/20 text-white" : "bg-slate-200/70 dark:bg-white/10 text-slate-500 dark:text-zinc-400")}>{loggedCalls.length}</span>
           </button>
           <button onClick={() => setActiveTab("scheduled")}
-            className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all",
-              activeTab === "scheduled" ? "bg-white dark:bg-zinc-800 text-indigo-600 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700")}>
-            <CalendarClock className="w-4 h-4" /> {t("calls.tab_scheduled")}
-            <span className={cn("text-xs px-2 py-0.5 rounded-full font-black",
-              activeTab === "scheduled" ? "bg-indigo-100 text-indigo-700" : "bg-slate-200 dark:bg-zinc-700 text-slate-500")}>{scheduledCalls.filter((s) => s.status === "Scheduled").length}</span>
+            className={cn("flex items-center gap-1.5 px-3 py-1 rounded-lg font-semibold text-xs transition",
+              activeTab === "scheduled" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-white/5")}>
+            <CalendarClock className="w-3.5 h-3.5" /> <span>{t("calls.tab_scheduled")}</span>
+            <span className={cn("text-[10px] px-1.5 py-0.2 rounded-full font-bold",
+              activeTab === "scheduled" ? "bg-white/20 text-white" : "bg-slate-200/70 dark:bg-white/10 text-slate-500 dark:text-zinc-400")}>{scheduledCalls.filter((s) => s.status === "Scheduled").length}</span>
           </button>
           <button onClick={() => setActiveTab("ai-calls")}
-            className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all",
-              activeTab === "ai-calls" ? "bg-white dark:bg-zinc-800 text-violet-600 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700")}>
-            <Bot className="w-4 h-4" /> {t("calls.tab_ai")}
+            className={cn("flex items-center gap-1.5 px-3 py-1 rounded-lg font-semibold text-xs transition",
+              activeTab === "ai-calls" ? "bg-violet-600 text-white shadow-xs" : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-white/5")}>
+            <Bot className="w-3.5 h-3.5" /> <span>{t("calls.tab_ai")}</span>
             {aiCallLogs.length > 0 && (
-              <span className={cn("text-xs px-2 py-0.5 rounded-full font-black",
-                activeTab === "ai-calls" ? "bg-violet-100 text-violet-700" : "bg-slate-200 dark:bg-zinc-700 text-slate-500")}>{aiCallLogs.length}</span>
+              <span className={cn("text-[10px] px-1.5 py-0.2 rounded-full font-bold",
+                activeTab === "ai-calls" ? "bg-white/20 text-white" : "bg-slate-200/70 dark:bg-white/10 text-slate-500 dark:text-zinc-400")}>{aiCallLogs.length}</span>
             )}
           </button>
         </motion.div>
@@ -716,7 +781,7 @@ export default function CallsPage() {
 
           {/* Logged Calls */}
           {activeTab === "logged" && (
-            <motion.div key="logged" variants={containerVariants} initial="hidden" animate="show" exit="hidden" className="space-y-4">
+            <motion.div key="logged" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-1.5">
               {loggedCalls.length > 0 && !loading && (
                 <div className="flex items-center justify-between bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-2xl">
                   <label className="flex items-center gap-3 cursor-pointer pl-2">
@@ -758,7 +823,7 @@ export default function CallsPage() {
 
           {/* Scheduled Calls */}
           {activeTab === "scheduled" && (
-            <motion.div key="scheduled" variants={containerVariants} initial="hidden" animate="show" exit="hidden" className="space-y-4">
+            <motion.div key="scheduled" variants={containerVariants} initial="hidden" animate="show" exit="hidden" className="space-y-1.5">
               {loading ? (
                 <div className="flex justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
               ) : scheduledCalls.length === 0 ? (
@@ -770,41 +835,42 @@ export default function CallsPage() {
               ) : (
                 scheduledCalls.map((sc) => (
                   <motion.div key={sc.id} variants={itemVariants} initial="hidden" animate="show"
-                    className={cn("bg-white dark:bg-zinc-900/60 backdrop-blur-2xl border rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] p-6 transition-all",
-                      sc.status === "Completed" ? "border-emerald-100 dark:border-emerald-900/40 opacity-75" : "border-slate-100 dark:border-zinc-800")}>
-                    <div className="flex items-start gap-4">
-                      <div className={cn("p-3 rounded-2xl shrink-0", sc.status === "Completed" ? "bg-emerald-50 text-emerald-500" : "bg-indigo-50 text-indigo-500")}>
-                        {sc.status === "Completed" ? <CheckCircle className="w-5 h-5" /> : <CalendarClock className="w-5 h-5" />}
+                    className={cn("bg-white dark:bg-[#111111]/90 rounded-xl border p-2.5 sm:px-4 sm:py-2.5 transition-all shadow-xs group",
+                      sc.status === "Completed" ? "opacity-75 border-slate-200/80 dark:border-white/5" : "border-slate-200/90 dark:border-white/10 hover:border-indigo-500/60 dark:hover:border-indigo-500/50")}>
+                    <div className="flex items-start sm:items-center gap-3">
+                      <div className={cn("w-7 h-7 rounded-lg shrink-0 flex items-center justify-center border",
+                        sc.status === "Completed" ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 border-emerald-200 dark:border-emerald-500/20" : "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 border-indigo-200 dark:border-indigo-500/20")}>
+                        {sc.status === "Completed" ? <CheckCircle className="w-3.5 h-3.5" /> : <CalendarClock className="w-3.5 h-3.5" />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 flex-wrap mb-1">
-                          <span className="font-black text-slate-800 dark:text-zinc-100 text-lg">{sc.title}</span>
-                          <span className={cn("text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider",
-                            sc.status === "Completed" ? "bg-emerald-100 text-emerald-700" : "bg-indigo-100 text-indigo-700")}>{sc.status}</span>
-                          {sc.pitch && <span className="text-[10px] bg-purple-100 text-purple-700 font-bold px-2.5 py-1 rounded-full">{t("calls.pitch_ready")}</span>}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-slate-900 dark:text-white text-xs truncate">{sc.title}</span>
+                          <span className={cn("text-[10px] font-bold px-2 py-0.2 rounded-full uppercase tracking-wider border",
+                            sc.status === "Completed" ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20" : "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20")}>{sc.status}</span>
+                          {sc.pitch && <span className="text-[10px] bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20 font-bold px-2 py-0.2 rounded-full">{t("calls.pitch_ready")}</span>}
                           <AiCallStatusBadge status={sc.ai_call_status} />
                         </div>
-                        <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-zinc-400 font-medium flex-wrap">
-                          {sc.entity_name && <span className="flex items-center gap-1"><User className="w-3 h-3" />{sc.entity_name} ({sc.entity_type})</span>}
-                          {sc.scheduled_at && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /><span suppressHydrationWarning>{new Date(sc.scheduled_at).toLocaleString()}</span></span>}
-                          {sc.entity_email && <span className="flex items-center gap-1 text-indigo-500"><Mail className="w-3 h-3" />{sc.entity_email}</span>}
-                          {sc.assigned_to && <span className="flex items-center gap-1"><User className="w-3 h-3" />{sc.assigned_to}</span>}
+                        <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5 flex-wrap">
+                          {sc.entity_name && <span className="font-semibold text-slate-700 dark:text-zinc-200">{sc.entity_name} ({sc.entity_type})</span>}
+                          {sc.scheduled_at && <span suppressHydrationWarning>{new Date(sc.scheduled_at).toLocaleString()}</span>}
+                          {sc.entity_email && <span className="truncate max-w-[150px]">{sc.entity_email}</span>}
+                          {sc.assigned_to && <span className="text-slate-400">→ {sc.assigned_to_name || sc.assigned_to}</span>}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0">
                         {sc.status !== "Completed" && (
-                           <button onClick={() => handleMarkCompleted(sc.id)} title={t("calls.mark_completed")}
-                            className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-colors text-slate-400 hover:text-emerald-600">
-                            <CheckCircle className="w-4 h-4" />
+                          <button onClick={() => handleMarkCompleted(sc.id)} title={t("calls.mark_completed")}
+                            className="p-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors text-slate-400 hover:text-emerald-600">
+                            <CheckCircle className="w-3.5 h-3.5" />
                           </button>
                         )}
                         <button onClick={() => setExpandedSchedId(expandedSchedId === sc.id ? null : sc.id)}
-                          className="p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl transition-colors text-slate-500 dark:text-zinc-400">
-                          {expandedSchedId === sc.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-slate-600">
+                          {expandedSchedId === sc.id ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         </button>
                         <button onClick={() => handleDeleteScheduled(sc.id)}
-                          className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors text-slate-400 hover:text-red-500">
-                          <Trash2 className="w-4 h-4" />
+                          className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg transition-colors text-slate-400 hover:text-rose-500">
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -840,7 +906,7 @@ export default function CallsPage() {
 
           {/* AI Calls Tab */}
           {activeTab === "ai-calls" && (
-            <motion.div key="ai-calls" variants={containerVariants} initial="hidden" animate="show" exit="hidden" className="space-y-4">
+            <motion.div key="ai-calls" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="space-y-1.5">
               {loading ? (
                 <div className="flex justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-violet-500" /></div>
               ) : aiCallLogs.length === 0 ? (
@@ -913,7 +979,7 @@ export default function CallsPage() {
                       <select value={logForm.assigned_to} onChange={(e) => setLogForm({ ...logForm, assigned_to: e.target.value })}
                         className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-indigo-400/30">
                         <option value="">{t("calls.select_team_member")}</option>
-                        {teamUsers.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+                        {teamUsers.map((u) => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
                       </select>
                     </div>
                   </div>
@@ -1022,7 +1088,7 @@ export default function CallsPage() {
                     <select value={schedForm.assigned_to} onChange={(e) => setSchedForm({ ...schedForm, assigned_to: e.target.value })}
                       className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-indigo-400/30">
                       <option value="">{t("calls.select_team_member")}</option>
-                      {teamUsers.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+                      {teamUsers.map((u) => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
                     </select>
                   </div>
                   <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-950/20 rounded-2xl border border-amber-100 dark:border-amber-900/30">

@@ -1,20 +1,21 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Bell, Users, FolderOpen, CheckSquare, CheckCircle, Radar, Mail,
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
-  Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar,
+  Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar, X,
   Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Edit2, GripVertical, Check,
-  Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, BookOpen as BookOpenIcon
+  Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, LogOut
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRole, Role } from "@/context/RoleContext";
 import { useSidebar } from "@/context/SidebarContext";
 import { useTheme } from "@/context/ThemeContext";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { mergeSidebarSections, sidebarPathMatches } from "@/lib/sidebarPreferences";
 import { API_BASE_URL } from "@/config";
 import { useTranslation } from "react-i18next";
 import { useLanguage, Language } from "@/context/LanguageContext";
@@ -47,7 +48,7 @@ import BrandMark from "./BrandMark";
 const iconMap: Record<string, LucideIcon> = {
   LayoutDashboard, Bell, Users, FolderOpen, CheckSquare, CheckCircle, Radar, Mail,
   Zap, LayoutList, Globe, BarChart2, Activity, FileText, FileEdit, ShoppingBag, Settings,
-  Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar,
+  Moon, Sun, ChevronDown, ChevronRight, Search, PanelLeftClose, PanelLeftOpen, Calendar, X,
   Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb
 };
 
@@ -56,21 +57,23 @@ const INBOX_ROLES = ["Admin", "SalesManager", "Employee", "Demo", "SuperAdmin"];
 
 // Sidebar item -> feature (module) a tenant can switch off. Items not listed are always shown.
 const ITEM_FEATURE: Record<string, string> = {
+  "item-dashboard": "dashboard",
   "item-work-queue": "work_queue", "item-inbox": "inbox", "item-followups": "followups",
   "item-leads": "leads", "item-contacts": "contacts", "item-clients": "clients", "item-deals": "deals",
   "item-projects": "projects", "item-task-sheet": "task_sheet", "item-reports": "reports",
   "item-meetings": "meetings", "item-calls": "calls", "item-teams": "teams", "item-leaderboard": "leaderboard",
   "item-email-agent": "email_agent", "item-voice-agent": "voice_agent",
   "item-inventory": "inventory", "item-orders": "inventory", "item-products": "products",
-  "item-billing": "billing", "item-proposals": "proposals", "item-marketplace": "marketplace",
-  "item-cases": "support", "item-solutions": "support", "item-scmhub-cases": "scmhub_cases",
+  "item-billing": "billing", "item-invoices": "invoices", "item-proposals": "proposals", "item-marketplace": "marketplace",
+  "item-cases": "cases", "item-solutions": "support", "item-scmhub-cases": "scmhub_cases", "item-support-sh": "support_sh",
   "item-import": "import_data", "item-api-intelligence": "api_intelligence", "item-demo-accounts": "demo_accounts",
 };
 
 // Add-on modules (off unless the tenant has them): shown only once the tenant config says they are on.
 const ITEM_ADDON: Record<string, string> = {
+  "item-support-sh": "support_sh",
   "item-command-center": "command_center", "item-revenue": "finance_suite", "item-business-costs": "finance_suite",
-  "item-lead-sources": "lead_sources", "item-lead-source-analytics": "lead_sources", "item-ownership": "ownership",
+  "item-lead-sources": "lead_sources", "item-lead-source-analytics": "lead_source_analytics", "item-ownership": "ownership",
   "item-dropped-clients": "dropped_clients",
   "item-students": "institute", "item-courses": "institute", "item-batches": "institute", "item-instructors": "institute",
   "item-enrollments": "institute", "item-schedule": "institute", "item-institute-analytics": "institute",
@@ -161,7 +164,7 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-command-center", name: "Command Center", icon: "LayoutDashboard", href: "/command-center", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-revenue", name: "Revenue Dashboard", icon: "TrendingUp", href: "/revenue", roles: ["Admin"] },
       { id: "item-business-costs", name: "Business Costs", icon: "IndianRupee", href: "/business-costs", roles: ["Admin"] },
-      { id: "item-lead-sources", name: "Lead Sources", icon: "Zap", href: "/lead-sources", roles: ["Admin"] },
+      { id: "item-lead-sources", name: "Lead Sources", icon: "Zap", href: "/lead-sources", roles: ["Admin", "SalesManager", "Employee", "Sales"] },
       { id: "item-lead-source-analytics", name: "Lead Source Analytics", icon: "BarChart2", href: "/lead-source-analytics", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-ownership", name: "Ownership", icon: "Users", href: "/ownership", roles: ["Admin"] },
       { id: "item-dropped-clients", name: "Dropped Clients", icon: "Users", href: "/dropped-clients", roles: ["Admin", "SalesManager", "Demo"] },
@@ -183,6 +186,7 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-products", name: "Products Catalog", icon: "Package", href: "/products", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-orders", name: "Orders", icon: "ShoppingCart", href: "/orders", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-billing", name: "Billing", icon: "FileText", href: "/billing", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-invoices", name: "Invoices", icon: "FileText", href: "/invoices", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-proposals", name: "Proposals", icon: "FileEdit", href: "/proposals", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-marketplace", name: "Marketplace", icon: "ShoppingBag", href: "/admin/marketplace", roles: ["Admin", "SalesManager", "Demo"] },
     ],
@@ -191,7 +195,8 @@ const defaultSidebarSections: SidebarSection[] = [
     id: "section-support",
     heading: "SUPPORT",
     items: [
-      { id: "item-cases", name: "Cases", icon: "HeadphonesIcon", href: "/support/cases", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-support-sh", name: "Support @SH", icon: "HeadphonesIcon", href: "/support/helpdesk", roles: ["Admin", "SalesManager", "Sales", "Employee", "ProjectMember", "Demo"] },
+      { id: "item-cases", name: "Cases", icon: "HeadphonesIcon", href: "/support/cases", roles: ["Admin", "SalesManager", "Employee", "ProjectMember", "Demo"] },
       { id: "item-solutions", name: "Solutions", icon: "BookOpen", href: "/support/solutions", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-scmhub-cases", name: "SCMHub Cases", icon: "Cloud", href: "/support/scmhub-cases", roles: ["Admin", "SalesManager", "Demo"] },
     ],
@@ -205,7 +210,7 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-demo-accounts", name: "Demo Account Data", icon: "Users", href: "/admin/telemetry", roles: ["Admin", "SuperAdmin"] },
       { id: "item-client-management", name: "Client Management", icon: "Building2", href: "/superadmin/clients", roles: ["SuperAdmin"] },
       { id: "item-client-requests", name: "Client Requests", icon: "Inbox", href: "/superadmin/requests", roles: ["SuperAdmin"] },
-      { id: "item-branding", name: "Branding & Settings", icon: "Settings", href: "/admin/branding", roles: ["Admin"] },
+      { id: "item-branding", name: "Profile & Settings", icon: "Settings", href: "/settings", roles: ["Admin", "SuperAdmin", "SalesManager", "Sales", "Employee", "Demo", "Intern", "ProjectMember", "Developer"] },
       { id: "item-customization-requests", name: "Customization Requests", icon: "Lightbulb", href: "/requests", roles: ["Admin"] },
     ],
   },
@@ -242,7 +247,7 @@ interface SortableSectionProps {
 }
 
 function SortableSection({ section, role, pathname, collapsed, isEditMode, onRenameSection, unreadCount, inboxUnread, favourites, onToggleFavourite, searchQuery, isOpen, onToggleSection }: SortableSectionProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id, disabled: !isEditMode || collapsed });
   const { t } = useLanguage();
   const { hasFeature, isOn } = useTenantConfig();
   const itemLabel = (item: SidebarItem) => {
@@ -308,8 +313,8 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => onToggleSection(section.id)}
-                className="flex-1 text-[9px] font-bold tracking-[0.1em] uppercase flex justify-between items-center cursor-pointer select-none hover:opacity-80 transition-opacity"
-                style={{ color: "var(--text-secondary)" }}
+                aria-expanded={isOpen}
+                className="flex-1 text-[10px] font-bold tracking-wider uppercase flex justify-between items-center cursor-pointer select-none py-1 px-1.5 rounded-md text-slate-400 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-300 transition-colors"
               >
                 <span>{DEFAULT_HEADINGS.includes(section.heading || "") ? t(`sidebar.section_${sidebarSectionKey(section.id)}`) : section.heading}</span>
                 <div className="flex items-center gap-1">
@@ -320,7 +325,7 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                     animate={{ rotate: isOpen ? 180 : 0 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <ChevronDown className="w-3 h-3" style={{ color: "var(--text-secondary)" }} />
+                    <ChevronDown className="w-3 h-3 text-slate-400 dark:text-zinc-500" />
                   </motion.div>
                 </div>
               </motion.button>
@@ -340,7 +345,7 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
           >
             <div className="flex flex-col gap-[1px]">
               {visibleItems.map((item: SidebarItem) => {
-                const isActive = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href));
+                const isActive = sidebarPathMatches(pathname, item.href);
                 const IconComp = iconMap[item.icon] || LayoutDashboard;
                 const isFav = favourites?.includes(item.id);
                 const badge = badgeCount(item, unreadCount, inboxUnread);
@@ -348,17 +353,21 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                   <Link
                     key={item.href}
                     href={item.href}
+                    title={collapsed ? itemLabel(item) : undefined}
+                    aria-label={itemLabel(item)}
+                    aria-current={isActive ? "page" : undefined}
                     className={cn(
-                      "relative group flex items-center gap-2 rounded-[8px] transition-all duration-150 select-none shrink-0",
-                      collapsed ? "w-9 h-9 justify-center mx-auto" : "py-[4px] px-2 h-[28px]",
-                      !isActive && "hover:bg-gray-50 dark:hover:bg-slate-800/50"
+                      "relative group flex items-center gap-2.5 rounded-lg transition-all duration-150 select-none shrink-0 border",
+                      collapsed ? "w-9 h-9 justify-center mx-auto" : "py-1.5 px-2.5 min-h-[34px]",
+                      isActive
+                        ? "bg-indigo-50/80 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold border-indigo-200/70 dark:border-indigo-500/20 shadow-xs"
+                        : "border-transparent text-slate-600 dark:text-zinc-400 hover:bg-slate-100/70 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white"
                     )}
-                    style={isActive ? { background: "rgba(37,99,235,0.08)", color: "#2563eb" } : { color: "var(--sidebar-text)" }}
                   >
                     {isActive && !collapsed && (
-                      <motion.span layoutId="sidebar-active-indicator" className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-[18px] rounded-full bg-blue-600" />
+                      <motion.span layoutId="sidebar-active-indicator" className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-4 rounded-r-full bg-indigo-600 dark:bg-indigo-400" />
                     )}
-                    <IconComp className={cn("w-[16px] h-[16px] shrink-0 transition-colors", isActive ? "text-blue-600" : "group-hover:text-blue-500")} />
+                    <IconComp className={cn("w-4 h-4 shrink-0 transition-colors", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-zinc-500 group-hover:text-slate-700 dark:group-hover:text-zinc-200")} />
                     <AnimatePresence>
                       {!collapsed && (
                         <motion.span
@@ -366,14 +375,14 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                           animate={{ opacity: 1, x: 0 }}
                           exit={{ opacity: 0, x: -6 }}
                           transition={{ duration: 0.14 }}
-                          className={cn("flex-1 text-[13px] font-medium truncate", isActive && "font-semibold")}
+                          className={cn("flex-1 text-xs truncate", isActive ? "font-bold text-slate-900 dark:text-white" : "font-medium text-slate-700 dark:text-zinc-300")}
                         >
                           {itemLabel(item)}
                         </motion.span>
                       )}
                     </AnimatePresence>
                     {badge > 0 && !collapsed && (
-                      <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center">
+                      <span className="shrink-0 min-w-[18px] h-[18px] px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center shadow-xs">
                         {badge > 99 ? "99+" : badge}
                       </span>
                     )}
@@ -387,7 +396,7 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
                         }}
                         title={isFav ? t("sidebar.remove_favourite") : t("sidebar.add_favourite")}
                         className={cn(
-                          "p-0.5 rounded transition-all shrink-0 hover:scale-110",
+                          "p-0.5 rounded transition-all shrink-0 hover:scale-110 focus-visible:opacity-100",
                           isFav 
                             ? "opacity-100" 
                             : "opacity-0 group-hover:opacity-40 hover:!opacity-100"
@@ -415,9 +424,17 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
 }
 
 export function Sidebar({ role }: SidebarProps) {
-  const pathname = usePathname();
   const { user } = useRole();
-  const { hasFeature, brandName } = useTenantConfig();
+  return <SidebarContent key={user?.id || "anonymous"} role={role} />;
+}
+
+function SidebarContent({ role }: SidebarProps) {
+  const reducedMotion = useReducedMotion();
+  const pathname = usePathname();
+  const { user, logout } = useRole();
+  const { hasFeature, isOn, brandName } = useTenantConfig();
+  const preferenceVersion = useRef(0);
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const inboxEnabled = hasFeature("inbox");
   const userId = user?.id;
   const { collapsed, setCollapsed } = useSidebar();
@@ -431,7 +448,10 @@ export function Sidebar({ role }: SidebarProps) {
     if (typeof window === "undefined") return [];
     try {
       const cached = localStorage.getItem(`crm_favourites_${userId || 'default'}`);
-      if (cached) return JSON.parse(cached);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return [...new Set(parsed.filter(value => typeof value === "string"))];
+      }
     } catch {}
     return [];
   });
@@ -472,7 +492,10 @@ export function Sidebar({ role }: SidebarProps) {
     if (typeof window !== "undefined") {
       try {
         const saved = localStorage.getItem(`crm_sections_open_${userId || 'default'}`);
-        if (saved) return JSON.parse(saved);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return { ...initial, ...Object.fromEntries(Object.entries(parsed).filter(([, value]) => typeof value === "boolean").map(([key, value]) => [key, Boolean(value)])) };
+        }
       } catch {}
     }
     return initial;
@@ -494,7 +517,7 @@ export function Sidebar({ role }: SidebarProps) {
     for (const sec of sections) {
       if (sec.heading === null) continue;
       const hasActive = sec.items?.some((item: SidebarItem) =>
-        pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href))
+        sidebarPathMatches(pathname, item.href)
       );
       if (hasActive) {
         next[sec.id] = true;
@@ -516,6 +539,7 @@ export function Sidebar({ role }: SidebarProps) {
     let ignore = false;
 
     const loadSidebarPrefs = async () => {
+      const version = preferenceVersion.current;
       const localFavKey = `crm_favourites_${userId || 'default'}`;
 
       if (!userId) return;
@@ -525,52 +549,12 @@ export function Sidebar({ role }: SidebarProps) {
         const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
-          if (data.ok && data.sidebar_preferences) {
-            if (data.sidebar_preferences.sections) {
-              const savedSections = data.sidebar_preferences.sections as SidebarSection[];
-              const savedSectionIds = new Set<string>(savedSections.map((s: SidebarSection) => s.id));
-              const missingSections = defaultSidebarSections.filter(s => !savedSectionIds.has(s.id));
-              
-              const mergedSections = savedSections.map((savedSec: SidebarSection) => {
-                const updatedSavedItems = savedSec.items.map((savedItem: SidebarItem) => {
-                  let defaultItemRef: SidebarItem | null = null;
-                  for (const ds of defaultSidebarSections) {
-                    const found = ds.items.find(i => i.id === savedItem.id);
-                    if (found) { defaultItemRef = found; break; }
-                  }
-                  if (defaultItemRef) {
-                    return { ...savedItem, roles: defaultItemRef.roles, icon: defaultItemRef.icon, href: defaultItemRef.href, name: defaultItemRef.name } as SidebarItem;
-                  }
-                  return null;
-                }).filter(Boolean) as SidebarItem[];
-
-                const defaultSec = defaultSidebarSections.find(s => s.id === savedSec.id);
-                if (!defaultSec) return { ...savedSec, items: updatedSavedItems };
-                
-                const savedItemIds = new Set(updatedSavedItems.map((i: SidebarItem) => i.id));
-                const missingItems = defaultSec.items.filter(i => !savedItemIds.has(i.id));
-                
-                return { ...savedSec, items: [...updatedSavedItems, ...missingItems] };
-              });
-
-              const stripDisabled = (sec: SidebarSection): SidebarSection => ({
-                ...sec,
-                items: (sec.items || []).filter((i: SidebarItem) =>
-                  !String(i.id || "").toLowerCase().includes("automation") &&
-                  !String(i.href || "").toLowerCase().includes("automation")),
-              });
-              const mergedSectionsClean = mergedSections.map(stripDisabled);
-              
-              if (!ignore) {
-                if (missingSections.length > 0) {
-                  setSections([...mergedSectionsClean, ...missingSections.map(stripDisabled)]);
-                } else {
-                  setSections(mergedSectionsClean);
-                }
-              }
+          if (data.ok && data.sidebar_preferences && version === preferenceVersion.current) {
+            if (data.sidebar_preferences.sections && !ignore) {
+              setSections(mergeSidebarSections(defaultSidebarSections, data.sidebar_preferences.sections));
             }
             if (Array.isArray(data.sidebar_preferences.favourites)) {
-              if (!ignore) setFavourites(data.sidebar_preferences.favourites);
+              if (!ignore) setFavourites([...new Set<string>(data.sidebar_preferences.favourites.filter((value: unknown) => typeof value === "string"))]);
               try {
                 localStorage.setItem(localFavKey, JSON.stringify(data.sidebar_preferences.favourites));
               } catch {}
@@ -593,6 +577,7 @@ export function Sidebar({ role }: SidebarProps) {
   }, [userId]);
 
   const saveSidebarPrefs = async (newSections: SidebarSection[], newFavourites?: string[]) => {
+    preferenceVersion.current += 1;
     const favsToSave = newFavourites !== undefined ? newFavourites : favourites;
     const localFavKey = `crm_favourites_${user?.id || 'default'}`;
     try {
@@ -603,7 +588,7 @@ export function Sidebar({ role }: SidebarProps) {
 
     try {
       const url = `${API_BASE_URL}/users/me/sidebar-preferences?user_id=${user.id}`;
-      await fetch(url, {
+      saveQueue.current = saveQueue.current.catch(() => {}).then(() => fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -612,19 +597,17 @@ export function Sidebar({ role }: SidebarProps) {
             favourites: favsToSave 
           } 
         }),
-      });
+      }));
+      await saveQueue.current;
     } catch (e) {
       console.warn("Could not save sidebar preferences to server:", e);
     }
   };
 
   const handleToggleFavourite = (itemId: string) => {
-    setFavourites((prev) => {
-      const exists = prev.includes(itemId);
-      const updated = exists ? prev.filter((id) => id !== itemId) : [...prev, itemId];
-      saveSidebarPrefs(sections, updated);
-      return updated;
-    });
+    const updated = favourites.includes(itemId) ? favourites.filter(id => id !== itemId) : [...favourites, itemId];
+    setFavourites(updated);
+    void saveSidebarPrefs(sections, updated);
   };
 
   const handleRenameSection = (sectionId: string, newName: string) => {
@@ -646,6 +629,7 @@ export function Sidebar({ role }: SidebarProps) {
       const overId = String(over.id);
       const oldIndex = sections.findIndex(sec => sec.id === activeId);
       const newIndex = sections.findIndex(sec => sec.id === overId);
+      if (!isEditMode || oldIndex < 0 || newIndex < 0) return;
       const updated = arrayMove(sections, oldIndex, newIndex);
       setSections(updated);
       saveSidebarPrefs(updated);
@@ -671,7 +655,9 @@ export function Sidebar({ role }: SidebarProps) {
     .map(id => allItemsMap.get(id))
     .filter((item): item is SidebarItem => Boolean(item))
     .filter(item => role === 'SuperAdmin' || item.roles?.includes(role))
-    .filter(item => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    .filter(item => ((role === "SuperAdmin" && isPlatformManagementPage(item.href)) || hasFeature(ITEM_FEATURE[item.id])) && (!ITEM_ADDON[item.id] || isOn(ITEM_ADDON[item.id])))
+    .filter(item => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    .map(item => item.id === "item-followups" && isOn("followup_board") ? { ...item, href: "/follow-ups" } : item);
 
   const labelFor = (item: SidebarItem) => {
     const k = `sidebar.${sidebarItemKey(item.id)}`;
@@ -723,8 +709,8 @@ export function Sidebar({ role }: SidebarProps) {
       <motion.div
         initial={false}
         animate={{ width: collapsed ? 72 : 280 }}
-        transition={{ type: "spring", stiffness: 280, damping: 30 }}
-        className="fixed left-0 top-0 bottom-0 z-50 flex flex-col overflow-hidden"
+        transition={{ duration: reducedMotion ? 0 : 0.2, ease: "easeInOut" }}
+        className="app-sidebar fixed left-0 top-0 z-50 flex flex-col overflow-hidden"
         style={{
           background: "var(--sidebar-bg)",
           boxShadow: "4px 0 24px rgba(0,0,0,0.06)",
@@ -732,16 +718,18 @@ export function Sidebar({ role }: SidebarProps) {
         }}
       >
         {/* ── TOP BRANDING ── */}
-        <div className={cn("shrink-0 flex items-center py-2.5", collapsed ? "justify-center px-2" : "px-4 gap-3")}>
-          <BrandMark size={32} fallback={
-            <div className="shrink-0 w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md">
-              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4">
-                <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
-                <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.5" />
-                <circle cx="12" cy="12" r="2" fill="white" />
-              </svg>
-            </div>
-          } />
+        <div className={cn("shrink-0 flex items-center py-3 border-b border-slate-200/80 dark:border-white/10", collapsed ? "justify-center px-2" : "px-3.5 gap-2.5")}>
+          <div className="shrink-0 w-8 h-8 rounded-lg border border-slate-200/90 dark:border-white/10 shadow-xs flex items-center justify-center overflow-hidden bg-white dark:bg-zinc-900">
+            <BrandMark size={28} fallback={
+              <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4">
+                  <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" fill="white" fillOpacity="0.9" />
+                  <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="white" fillOpacity="0.5" />
+                  <circle cx="12" cy="12" r="2" fill="white" />
+                </svg>
+              </div>
+            } />
+          </div>
 
           <AnimatePresence>
             {!collapsed && (
@@ -752,21 +740,21 @@ export function Sidebar({ role }: SidebarProps) {
                 transition={{ duration: 0.15 }}
                 className="flex-1 min-w-0 overflow-hidden flex items-center justify-between"
               >
-                <div>
-                  <span className="block font-bold text-[14px] leading-tight tracking-tight truncate" style={{ color: "var(--text-primary)" }}>{brandName}</span>
-                  <span className="block text-[10px] font-medium truncate" style={{ color: "var(--text-secondary)" }}>{t("sidebar.corporate_hq")}</span>
+                <div className="min-w-0">
+                  <span className="block font-bold text-xs leading-tight tracking-tight text-slate-900 dark:text-white truncate">{brandName}</span>
+                  <span className="block text-[10px] font-medium text-slate-400 dark:text-zinc-500 truncate mt-0.5">{t("sidebar.corporate_hq")}</span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={toggleTheme}
-                    className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    className="p-1 rounded-lg border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-500 dark:text-zinc-400 transition-colors shadow-xs"
                     title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
                   >
-                    {theme === "dark" ? <Sun className="w-3.5 h-3.5 text-yellow-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-500" />}
+                    {theme === "dark" ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-500" />}
                   </button>
                   <button 
                     onClick={() => setIsEditMode(!isEditMode)} 
-                    className={cn("p-1.5 rounded-lg transition-colors", isEditMode ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800")}
+                    className={cn("p-1 rounded-lg border transition-colors shadow-xs", isEditMode ? "bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-400 dark:border-indigo-500/30" : "border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-white/10")}
                     title={t("sidebar.customize_sidebar")}
                   >
                     <Edit2 className="w-3.5 h-3.5" />
@@ -777,44 +765,39 @@ export function Sidebar({ role }: SidebarProps) {
           </AnimatePresence>
         </div>
 
-        {/* ── LANGUAGE TOGGLE (top-left, below branding) ── */}
-        <div className={cn("shrink-0 pb-1.5", collapsed ? "flex flex-col items-center gap-2 px-2" : "px-3")}>
+        {/* ── LANGUAGE TOGGLE ── */}
+        <div className={cn("shrink-0 py-2", collapsed ? "flex flex-col items-center gap-1.5 px-2" : "px-3")}>
           {collapsed ? (
             <>
-              {/* Collapsed: single flag, click cycles EN ↔ ES */}
               <button
                 onClick={() => switchLanguage(activeLang === "en" ? "es" : "en")}
                 title={activeLang === "en" ? t("sidebar.switch_es") : t("sidebar.switch_en")}
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-lg hover:bg-white/10 transition-all"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-sm border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 transition-all shadow-xs"
               >
                 {activeLang === "en" ? "🇺🇸" : "🇪🇸"}
               </button>
               
-              {/* Collapsed: Theme Toggle */}
               <button
                 onClick={toggleTheme}
                 title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
-                className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-white/10 transition-all"
+                className="w-8 h-8 rounded-lg flex items-center justify-center border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 transition-all shadow-xs"
               >
-                {theme === "dark" ? <Sun className="w-4 h-4 text-yellow-500" /> : <Moon className="w-4 h-4 text-indigo-500" />}
+                {theme === "dark" ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-500" />}
               </button>
             </>
           ) : (
-            // Expanded: full pill toggle
-            <div
-              className="flex items-center gap-0.5 p-0.5 rounded-xl border"
-              style={{ background: "var(--surface)", borderColor: "var(--border)" }}
-            >
+            <div className="flex items-center gap-1 p-0.5 rounded-lg border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 shadow-xs">
               <button
                 onClick={() => switchLanguage("en")}
                 title={t("sidebar.switch_en")}
                 className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-black transition-all duration-200",
-                  activeLang === "en" ? "bg-white shadow-sm" : "hover:opacity-70"
+                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold transition-all",
+                  activeLang === "en" 
+                    ? "bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/70 dark:border-white/10" 
+                    : "text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white"
                 )}
-                style={activeLang === "en" ? { color: "var(--accent)" } : { color: "var(--text-secondary)" }}
               >
-                <span className="text-[12px] leading-none">🇺🇸</span>
+                <span className="text-[11px] leading-none">🇺🇸</span>
                 <span>EN</span>
               </button>
 
@@ -822,12 +805,13 @@ export function Sidebar({ role }: SidebarProps) {
                 onClick={() => switchLanguage("es")}
                 title={t("sidebar.switch_es")}
                 className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-black transition-all duration-200",
-                  activeLang === "es" ? "bg-white shadow-sm" : "hover:opacity-70"
+                  "flex-1 flex items-center justify-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold transition-all",
+                  activeLang === "es" 
+                    ? "bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/70 dark:border-white/10" 
+                    : "text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white"
                 )}
-                style={activeLang === "es" ? { color: "var(--accent)" } : { color: "var(--text-secondary)" }}
               >
-                <span className="text-[12px] leading-none">🇪🇸</span>
+                <span className="text-[11px] leading-none">🇪🇸</span>
                 <span>ES</span>
               </button>
             </div>
@@ -841,24 +825,22 @@ export function Sidebar({ role }: SidebarProps) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="shrink-0 px-3 pb-1.5"
+              className="shrink-0 px-3 pb-2"
             >
-              <div
-                className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl border"
-                style={{ background: "var(--surface)", borderColor: "var(--border)" }}
-              >
-                <Search className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-secondary)" }} />
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200/80 dark:border-white/10 bg-slate-50/80 dark:bg-white/5 shadow-xs focus-within:border-indigo-400 dark:focus-within:border-indigo-500/50 transition-colors">
+                <Search className="w-3.5 h-3.5 shrink-0 text-slate-400 dark:text-zinc-500" />
                 <input
                   type="text"
                   placeholder={t("sidebar.search")}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="flex-1 bg-transparent text-[12px] outline-none placeholder-gray-400"
-                  style={{ color: "var(--text-primary)" }}
+                  className="flex-1 bg-transparent text-xs text-slate-800 dark:text-zinc-200 outline-none placeholder:text-slate-400 dark:placeholder:text-zinc-500"
                 />
-                <span className="text-[9px] font-medium px-1 rounded border shrink-0" style={{ color: "var(--text-secondary)", borderColor: "var(--border)", background: "var(--background)" }}>
-                  ⌘K
-                </span>
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery("")} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
               </div>
             </motion.div>
           )}
@@ -886,24 +868,28 @@ export function Sidebar({ role }: SidebarProps) {
               )}
               <div className="flex flex-col gap-[1px]">
                 {favouriteItems.map((item: SidebarItem) => {
-                  const isActive = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href));
+                  const isActive = sidebarPathMatches(pathname, item.href);
                   const IconComp = iconMap[item.icon] || LayoutDashboard;
                   const badge = badgeCount(item, unreadCount, inboxUnread);
                   return (
                     <Link
                       key={`fav-${item.id}-${item.href}`}
                       href={item.href}
+                      title={collapsed ? labelFor(item) : undefined}
+                      aria-label={labelFor(item)}
+                      aria-current={isActive ? "page" : undefined}
                       className={cn(
-                        "relative group flex items-center gap-2 rounded-[8px] transition-all duration-150 select-none shrink-0",
-                        collapsed ? "w-9 h-9 justify-center mx-auto" : "py-[4px] px-2 h-[28px]",
-                        !isActive && "hover:bg-gray-50 dark:hover:bg-slate-800/50"
+                        "relative group flex items-center gap-2.5 rounded-lg transition-all duration-150 select-none shrink-0 border",
+                        collapsed ? "w-9 h-9 justify-center mx-auto" : "py-1.5 px-2.5 min-h-[34px]",
+                        isActive
+                          ? "bg-indigo-50/80 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold border-indigo-200/70 dark:border-indigo-500/20 shadow-xs"
+                          : "border-transparent text-slate-600 dark:text-zinc-400 hover:bg-slate-100/70 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white"
                       )}
-                      style={isActive ? { background: "rgba(37,99,235,0.08)", color: "#2563eb" } : { color: "var(--sidebar-text)" }}
                     >
                       {isActive && !collapsed && (
-                        <motion.span layoutId="sidebar-fav-active-indicator" className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-[18px] rounded-full bg-blue-600" />
+                        <motion.span layoutId="sidebar-fav-active-indicator" className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-4 rounded-r-full bg-indigo-600 dark:bg-indigo-400" />
                       )}
-                      <IconComp className={cn("w-[16px] h-[16px] shrink-0 transition-colors", isActive ? "text-blue-600" : "group-hover:text-blue-500")} />
+                      <IconComp className={cn("w-4 h-4 shrink-0 transition-colors", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-zinc-500 group-hover:text-slate-700 dark:group-hover:text-zinc-200")} />
                       <AnimatePresence>
                         {!collapsed && (
                           <motion.span
@@ -911,14 +897,14 @@ export function Sidebar({ role }: SidebarProps) {
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -6 }}
                             transition={{ duration: 0.14 }}
-                            className={cn("flex-1 text-[13px] font-medium truncate", isActive && "font-semibold")}
+                            className={cn("flex-1 text-xs truncate", isActive ? "font-bold text-slate-900 dark:text-white" : "font-medium text-slate-700 dark:text-zinc-300")}
                           >
                             {labelFor(item)}
                           </motion.span>
                         )}
                       </AnimatePresence>
                       {badge > 0 && !collapsed && (
-                        <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center">
+                        <span className="shrink-0 min-w-[18px] h-[18px] px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center shadow-xs">
                           {badge > 99 ? "99+" : badge}
                         </span>
                       )}
@@ -959,7 +945,7 @@ export function Sidebar({ role }: SidebarProps) {
                   favourites={favourites}
                   onToggleFavourite={handleToggleFavourite}
                   searchQuery={searchQuery}
-                  isOpen={section.heading === null ? true : (openSections[section.id] ?? false)}
+                  isOpen={!!searchQuery.trim() || section.heading === null || (openSections[section.id] ?? false)}
                   onToggleSection={toggleSection}
                 />
               ))}
@@ -967,25 +953,57 @@ export function Sidebar({ role }: SidebarProps) {
           </DndContext>
         </nav>
 
-        {/* ── BOTTOM SECTION REMOVED ── */}
+        <div className={cn("flex shrink-0 items-center gap-2.5 border-t border-slate-200/80 dark:border-white/10 p-2.5 sm:px-3 bg-slate-50/50 dark:bg-white/5", collapsed && "justify-center p-2")}>
+          {!collapsed ? (
+            <>
+              <div className="relative shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-600 text-white font-bold text-xs flex items-center justify-center border border-indigo-400/40 shadow-xs">
+                  {(user?.name || user?.email || "U").charAt(0).toUpperCase()}
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-black" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-bold text-slate-900 dark:text-white leading-tight">
+                  {user?.name || user?.email || "User"}
+                </p>
+                <p className="truncate text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
+                  {role === "SalesManager" || role === "Employee" || role === "Sales" ? "Sales Manager" : role}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={logout}
+                title="Sign out"
+                aria-label="Sign out"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 dark:hover:text-rose-400 border border-transparent hover:border-rose-200 dark:hover:border-rose-500/20 transition-all shrink-0"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={logout}
+              title="Sign out"
+              aria-label="Sign out"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 dark:hover:text-rose-400 transition-all"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </motion.div>
 
       <motion.button
         animate={{ left: collapsed ? 72 : 280 }}
-        transition={{ type: "spring", stiffness: 280, damping: 30 }}
+        transition={{ duration: reducedMotion ? 0 : 0.2, ease: "easeInOut" }}
         onClick={() => setCollapsed(!collapsed)}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.92 }}
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.94 }}
         title={collapsed ? t("sidebar.expand_sidebar") : t("sidebar.collapse_sidebar")}
-        className="fixed top-[52px] z-[60] -translate-x-1/2 flex items-center justify-center w-7 h-7 rounded-full border-2 shadow-md transition-colors"
-        style={{
-          background: "var(--sidebar-bg)",
-          borderColor: "var(--border)",
-          color: "var(--text-secondary)",
-          boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
-        }}
+        className="fixed top-[52px] z-[60] -translate-x-1/2 flex items-center justify-center w-6 h-6 rounded-full border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#111111] text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white shadow-xs transition-colors"
       >
-        {collapsed ? <PanelLeftOpen className="w-3.5 h-3.5" /> : <PanelLeftClose className="w-3.5 h-3.5" />}
+        {collapsed ? <PanelLeftOpen className="w-3 h-3" /> : <PanelLeftClose className="w-3 h-3" />}
       </motion.button>
     </>
   );

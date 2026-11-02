@@ -22,7 +22,7 @@ _TTL_SECONDS = 30.0
 _cache: Dict[int, tuple] = {}
 
 _HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
-ROLES = {"SuperAdmin", "Admin", "SalesManager", "Employee", "Intern", "Client", "Supplier", "Demo",
+ROLES = {"SuperAdmin", "Admin", "SalesManager", "Sales", "Employee", "Intern", "Client", "Supplier", "Demo",
          "ProjectMember", "Developer"}
 
 
@@ -149,16 +149,29 @@ def _role_policy(v):
     return v
 
 
+def _sales_modules(v):
+    from modules.features import FEATURES
+    if v is None:
+        return None
+    if not isinstance(v, dict) or any(k not in FEATURES or not isinstance(value, bool) for k, value in v.items()):
+        raise ValueError("must map known module keys to true or false")
+    if v.get("teams"):
+        raise ValueError("Team Directory is available to Admins only")
+    return v
+
+
 ROLE_POLICY_AREAS = {"inbox": {"full_access", "scoped"}}
 
 # key -> (validator, default). A default of None means "no override: keep the built-in behaviour".
 SCHEMA: Dict[str, tuple] = {
+    "sales_module_access": (_sales_modules, None),
     "brand_name": (_str(120), None),
     "brand_logo_url": (_str(500), None),
     "brand_tagline": (_str(120), None),
     "primary_color": (_color, None),
     "website_url": (_url, None),
     "support_email": (_email, None),
+    "support_portal_url": (_url, None),
     "contact_name": (_str(120), None),
     "contact_phone": (_str(50), None),
     "contact_email": (_email, None),

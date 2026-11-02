@@ -15,7 +15,7 @@ interface Props {
   onError: (title: string, message: string) => void;
 }
 
-const EMPTY = { business_name: "", name: "", admin_name: "", admin_email: "", admin_password: "", country: "", industry: "", is_trial: false };
+const EMPTY = { business_name: "", name: "", admin_name: "", admin_email: "", admin_password: "", account_role: "Admin", country: "", industry: "", is_trial: false };
 const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -65,7 +65,7 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
     try {
       const body: Record<string, any> = {
         name: form.name.trim(), business_name: form.business_name.trim(), preset, admin_name: form.admin_name.trim(),
-        admin_email: form.admin_email.trim(), country: form.country || null, industry: form.industry || null, is_trial: form.is_trial,
+        admin_email: form.admin_email.trim(), account_role: form.account_role, country: form.country || null, industry: form.industry || null, is_trial: form.is_trial,
       };
       if (form.admin_password) body.admin_password = form.admin_password;
       const out = await call("/superadmin/tenants", { method: "POST", body: JSON.stringify(body) });
@@ -174,7 +174,11 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
           </section>
 
           <section>
-            <h3 className="mb-3 text-sm font-bold text-slate-900 dark:text-white">2. The admin&apos;s login</h3>
+            <h3 className="mb-3 text-sm font-bold text-slate-900 dark:text-white">2. The account login</h3>
+            <label className={labelCls}>Account role</label>
+            <select className={`${inputCls} mb-4`} value={form.account_role} onChange={e => set({ account_role: e.target.value })}>
+              <option value="Admin">Admin</option><option value="SalesManager">Sales Manager</option>
+            </select>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className={labelCls}>Admin name</label>

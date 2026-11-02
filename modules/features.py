@@ -41,20 +41,21 @@ def _f(*a, **kw) -> Feature:
 
 
 _FEATURES: List[Feature] = [
+    _f("dashboard", "Dashboard", "Work", "Role-specific CRM overview.", path_prefixes=("/dashboard-stats",)),
     # CRM / Work. Switching a module off closes it, not only its menu entry:
     #   * the page is closed in the app (frontend/src/lib/moduleRoutes.ts + components/ModuleGate.tsx), and
     #   * the module's own API is refused (403) where the endpoints belong to that module alone.
     # Leads, Clients and Calls close their data APIs too. Other shared endpoints
     # remain available to entitled dashboards and still enforce tenant scoping.
     _f("leads", "Leads", "CRM", "Lead list, research and conversion.", path_prefixes=("/leads",)),
-    _f("contacts", "Contacts", "CRM"),
+    _f("contacts", "Contacts", "CRM", path_prefixes=("/contacts",)),
     _f("clients", "Clients", "CRM", path_prefixes=("/clients",)),
     _f("deals", "Deals / pipeline", "CRM"),
     # Work
     _f("work_queue", "My Work Queue", "Work", path_prefixes=("/work-queue",)),
     _f("projects", "Projects", "Work"),
     _f("task_sheet", "Task Sheet", "Work", path_prefixes=("/task-sheet",)),
-    _f("reports", "Reports", "Work"),
+    _f("reports", "Reports", "Work", path_prefixes=("/reports",)),
     _f("meetings", "Meetings", "Work", path_prefixes=("/meetings",)),     # /meetings/history is the longer prefix: its own module
     _f("calls", "Calls", "Work", path_prefixes=("/calls", "/scheduled-calls"),
        path_regexes=(r"^/(clients|leads|contacts)/\d+/simulate-call$",)),
@@ -73,20 +74,25 @@ _FEATURES: List[Feature] = [
     _f("inventory", "Inventory & orders", "Sales operations", "Inventory, RFQs, purchase and sales orders.",
        path_prefixes=("/inventory", "/rfq", "/purchase-orders", "/sales-orders")),
     _f("products", "Products catalog", "Sales operations", path_prefixes=("/products",)),
-    _f("billing", "Billing", "Sales operations", "Invoices and quotes.", path_prefixes=("/invoices", "/quotes")),
+    _f("billing", "Quotes & billing", "Sales operations", "Quotes and the billing workspace.", path_prefixes=("/quotes",)),
+    _f("invoices", "Invoices", "Sales operations", "Create, track and export invoices.", default_on=False, path_prefixes=("/invoices",)),
     _f("proposals", "Proposals", "Sales operations", path_prefixes=("/proposals",)),
     _f("marketplace", "Marketplace", "Sales operations", path_prefixes=("/marketplace",)),
     # Support
-    _f("support", "Cases & solutions", "Support", path_prefixes=("/cases", "/solutions")),
+    _f("support", "Solutions", "Support", path_prefixes=("/solutions",)),
+    _f("cases", "Cases", "Support", "Track and manage support cases.", default_on=False, path_prefixes=("/cases",)),
+    _f("support_sh", "Support @SH", "Support", "Open the external support ticketing portal.", default_on=False, path_prefixes=("/support/helpdesk",)),
     _f("scmhub_cases", "SCMHub Cases", "Support", "Bridge to the external SCMHub ticketing database.",
        path_prefixes=("/scmhub-cases",)),
     # System
-    _f("import_data", "Import data", "System", path_prefixes=("/import",)),
+    _f("import_data", "Import data", "System", path_prefixes=("/import", "/api/import")),
     _f("api_intelligence", "API Intelligence", "System", path_prefixes=("/api-intelligence",)),
     _f("demo_accounts", "Demo account data", "System"),
     # Add-ons ported from client deployments (business_suite): off unless a preset or an admin enables them
-    _f("lead_sources", "Lead sources & analytics", "Business suite", "Configurable lead sources, UTM matching, cost per lead.",
-       default_on=False, path_prefixes=("/lead-sources", "/analytics/lead-sources")),
+    _f("lead_sources", "Lead sources", "Business suite", "Source catalog, acquisition overview and conversion tracking.",
+       default_on=False, path_prefixes=("/lead-sources",)),
+    _f("lead_source_analytics", "Lead source analytics", "Business suite", "Detailed source performance, funnels, revenue and cost analysis.",
+       default_on=False, path_prefixes=("/analytics/lead-sources",)),
     _f("finance_suite", "Revenue & business costs", "Business suite", "Won-deal revenue, salaries and costs, deal negotiation rounds.",
        default_on=False, path_prefixes=("/business-costs", "/revenue", "/deals-value-tracking"),
        path_regexes=(r"^/deals/\d+/negotiations",)),
@@ -160,6 +166,11 @@ def effective_features(tenant_id: Optional[int], use_cache: bool = True) -> Dict
 def _resolve(rows: Dict[str, bool]) -> Dict[str, bool]:
     """Entitlement rows -> effective on/off for every registered feature."""
     result = {key: True if feat.locked else rows.get(key, feat.default_on) for key, feat in FEATURES.items()}
+    if "lead_source_analytics" not in rows:
+        result["lead_source_analytics"] = rows.get("lead_sources", False)  # preserve existing combined entitlements
+    for key, parent in (("invoices", "billing"), ("cases", "support")):
+        if key not in rows:
+            result[key] = result[parent]
     if result.get("institute") and "voice_agent" not in rows:
         result["voice_agent"] = False  # admissions calling stays on hold until explicitly configured
     return result
@@ -198,12 +209,18 @@ def feature_for_path(path: str) -> Optional[str]:
 def gates_for_path(path: str) -> List[str]:
     key = feature_for_path(path)
     gates = [key] if key else []
+    if path.startswith("/import/leads/"):
+        gates.append("leads")
+    elif path.startswith("/import/clients/"):
+        gates.append("clients")
+    if path == "/leads/sources/analytics":
+        gates.append("lead_sources")
     if re.fullmatch(r"/leads/\d+/convert", path):
         gates.append("clients")
     # Specialized handlers still need their parent CRM section enabled. Public
     # intake resolves its tenant and entitlement in the handler itself.
     if path not in {"/leads/intake", "/leads/webhook", "/api/leads/webhook"}:
-        for prefix, parent in (("/leads", "leads"), ("/clients", "clients")):
+        for prefix, parent in (("/leads", "leads"), ("/clients", "clients"), ("/reports", "reports"), ("/calling-agent-logs", "calls")):
             if _matches(path, prefix) and parent not in gates:
                 gates.append(parent)
     return gates
@@ -216,6 +233,10 @@ def set_features(session: Session, tenant_id: int, changes: Dict[str, bool]) -> 
         raise ValueError(f"Unknown feature(s): {', '.join(sorted(unknown))}")
     existing = {r.feature_key: r for r in session.exec(
         select(TenantFeature).where(TenantFeature.tenant_id == tenant_id).execution_options(skip_tenant=True)).all()}
+    previous = _resolve({key: row.enabled for key, row in existing.items()})
+    for key in ("lead_source_analytics", "invoices", "cases"):
+        if key not in existing and key not in changes:
+            session.add(TenantFeature(tenant_id=tenant_id, feature_key=key, enabled=previous[key]))
     for key, enabled in changes.items():
         if FEATURES[key].locked:
             continue

@@ -202,6 +202,35 @@ def list_lead_sources(session: Session = Depends(get_session)):
     return {"sources": [_source_dict(s) for s in rows], "channels": ["Social", "Paid", "Organic", "Referral", "Event", "Direct", "Outbound", "Other"]}
 
 
+@router.get("/lead-sources/overview")
+def lead_source_overview(session: Session = Depends(get_session)):
+    """The SCMHB source overview, available independently of the Institute add-on."""
+    _require(session, {"Admin", "SalesManager", "Sales", "Employee", "Demo"})
+    leads = session.exec(select(Lead).where(Lead.tenant_id == _tid()).order_by(Lead.created_at.desc())).all()
+    buckets = {}
+    recent = []
+    catalog = {source.id: source.name for source in session.exec(select(LeadSource).where(LeadSource.tenant_id == _tid())).all()}
+    owners = {u.id: u.name for u in session.exec(select(User).where(User.tenant_id == _tid())).all()}
+    for lead in leads:
+        source = (catalog.get(lead.lead_source_id) or lead.source or "Other").strip() or "Other"
+        converted = bool(lead.is_converted or getattr(lead, "converted_student_id", None) or (lead.status or "").lower() in {"converted", "won"})
+        row = buckets.setdefault(source.casefold(), {"source": source, "total": 0, "converted": 0, "lost": 0, "active": 0})
+        row["total"] += 1
+        row["converted" if converted else "lost" if (lead.status or "").lower() == "lost" else "active"] += 1
+        if len(recent) < 25:
+            recent.append({"id": lead.id, "company_name": lead.company_name, "source": source, "status": lead.status,
+                           "is_converted": converted, "website": lead.website, "created_at": _iso(lead.created_at), "owner_name": owners.get(lead.owner_id)})
+    sources = sorted(buckets.values(), key=lambda row: -row["total"])
+    for row in sources:
+        row["win_rate"] = round(row["converted"] / row["total"] * 100, 1)
+        row["inquiry_share"] = round(row["total"] / len(leads) * 100, 1) if leads else 0
+    total_converted = sum(row["converted"] for row in sources)
+    return {"sources": sources, "recent": recent, "summary": {"total_leads": len(leads), "total_converted": total_converted,
+        "overall_win_rate": round(total_converted / len(leads) * 100, 1) if leads else 0,
+        "top_source": sources[0]["source"] if sources else "—",
+        "top_win_rate_source": max(sources, key=lambda row: (row["win_rate"], row["converted"]))["source"] if sources else "—"}}
+
+
 @router.post("/lead-sources")
 def create_lead_source(body: LeadSourceBody, session: Session = Depends(get_session)):
     _require(session, FINANCE_ROLES)

@@ -37,8 +37,8 @@ class CreateUser(TenantIsolationBase):
     def test_a_manager_cannot_create_admins_or_managers(self):
         for role in ("Admin", "SalesManager", "SuperAdmin"):
             self.assertEqual(self.create(self.mgr, role).status_code, 403, role)
-        self.assertEqual(self.create(self.mgr, "Employee").status_code, 200)
-        self.assertEqual(self.create(self.mgr, "Client", "client2@x.test").status_code, 200)
+        self.assertEqual(self.create(self.mgr, "Employee").status_code, 403)
+        self.assertEqual(self.create(self.mgr, "Client", "client2@x.test").status_code, 403)
 
     def test_an_admin_creates_staff_in_their_own_tenant_but_never_a_superadmin(self):
         r = self.create(self.users[2], "Admin", "second-admin@x.test")

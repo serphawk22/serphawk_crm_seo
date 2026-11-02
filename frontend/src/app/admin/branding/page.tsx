@@ -6,6 +6,8 @@ import { useTenantConfig } from "@/context/TenantConfigContext";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import LeadWebhookCard from "@/components/LeadWebhookCard";
 import SMTPSettingsTab from "@/app/admin/settings/components/SMTPSettingsTab";
+import SalesAccessSettings from "@/components/SalesAccessSettings";
+import SettingsRedirect from "@/components/SettingsRedirect";
 import { logoSrc } from "@/lib/brandLogo";
 import { Palette, Loader2, Check, Upload, Trash2, ArrowUp, ArrowDown, Plus, Sparkles, Mail, ListChecks, Receipt, PartyPopper } from "lucide-react";
 
@@ -30,6 +32,7 @@ const GROUPS: { title: string; fields: Field[] }[] = [
       { key: "contact_phone", label: "Phone" },
       { key: "contact_address", label: "Address" },
       { key: "support_email", label: "Support email" },
+      { key: "support_portal_url", label: "Support portal URL", hint: "https://projecthub.serphawk.in/client/login" },
     ],
   },
   {
@@ -92,6 +95,10 @@ function FieldInput({ f, value, onChange }: { f: Field; value: string; onChange:
 }
 
 export default function BrandingPage() {
+  return <SettingsRedirect href="/settings?tab=company" />;
+}
+
+export function CompanySettingsPanel({ embedded = false }: { embedded?: boolean }) {
   const { user } = useRole();
   const { refresh, settings: liveSettings, isOn } = useTenantConfig();
   const [intakeKey, setIntakeKey] = useState<string | null>(null);
@@ -277,11 +284,11 @@ export default function BrandingPage() {
   const currentLogo = logoSrc(liveSettings.brand_logo_url);
 
   return (
-    <div className="p-8 max-w-3xl mx-auto font-sans space-y-6">
-      <div>
+    <div className={`${embedded ? "py-2" : "p-8"} max-w-3xl mx-auto font-sans space-y-6`}>
+      {!embedded && <div>
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><Palette className="w-8 h-8 text-blue-600" /> Company profile and settings</h1>
         <p className="text-gray-500 mt-2">How your company appears in the app, on PDFs and in emails, and how your CRM is set up.</p>
-      </div>
+      </div>}
 
       {welcome && (
         <div className="rounded-xl border border-indigo-200 bg-indigo-50 dark:bg-indigo-950/30 dark:border-indigo-900 p-4 flex gap-3 text-sm text-indigo-900 dark:text-indigo-200">
@@ -291,6 +298,7 @@ export default function BrandingPage() {
       )}
 
       <OnboardingChecklist onLoaded={onChecklist} refreshKey={checkKey} />
+      <SalesAccessSettings />
 
       <section className={cardCls}>
         <h2 className="text-lg font-bold">Logo</h2>

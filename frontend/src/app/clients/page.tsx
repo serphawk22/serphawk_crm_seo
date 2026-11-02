@@ -154,12 +154,6 @@ export default function ClientsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'map' | 'kanban' | 'graph' | 'pivot'>('list');
   const [graphType, setGraphType] = useState<'status' | 'source' | 'industry'>('status');
-  const [isSheetImportOpen, setIsSheetImportOpen] = useState(false);
-  const [sheetUrl, setSheetUrl] = useState('');
-  const [sheetPreview, setSheetPreview] = useState<any[]>([]);
-  const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
-  const [sheetImportState, setSheetImportState] = useState<'idle' | 'fetching' | 'preview' | 'importing' | 'done'>('idle');
-  const [sheetImportResult, setSheetImportResult] = useState<{added: number; skipped: number; added_clients: any[]; skipped_clients: any[]} | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -497,6 +491,10 @@ export default function ClientsPage() {
           targetKeywords: ''
         });
         setPendingFormData(null);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setIsModalOpen(true);
+        alert(typeof data.detail === "string" ? data.detail : "Could not create client");
       }
     } catch (err) {
       console.error(err);
@@ -611,20 +609,30 @@ export default function ClientsPage() {
 
   return (
     <div className="flex flex-col h-full bg-[#f8fafc] dark:bg-[#0f172a]">
-      {/* Header */}
-      <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b]">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t("clients.title")}</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("clients.description")}</p>
+      {/* Compact Executive Header */}
+      <div className="px-3 sm:px-6 py-3 border-b border-slate-200 dark:border-white/10 bg-white dark:bg-[#111111]/90">
+        <div className="flex items-center justify-between flex-wrap gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center justify-center shrink-0">
+              <Building2 className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">{t("clients.title")}</h1>
+                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                  {totalCount} accounts
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{t("clients.description")}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {dropOn && (
             <Link
               href="/dropped-clients"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors shadow-sm"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/30 dark:text-rose-400 border border-rose-200/60 dark:border-rose-900/30 transition shadow-xs"
             >
-              <UserX className="w-4 h-4" /> Dropped Clients
+              <UserX className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Dropped</span>
             </Link>
             )}
             <button
@@ -649,35 +657,45 @@ export default function ClientsPage() {
                   alert("Failed to export clients.");
                 }
               }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-white/10 text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-white/5 transition"
             >
-              <Download className="w-4 h-4" /> Export CSV
+              <Download className="w-3.5 h-3.5" /> <span className="hidden sm:inline">CSV</span>
             </button>
-            <button onClick={() => { setIsSheetImportOpen(true); setSheetImportState('idle'); setSheetPreview([]); setSheetUrl(''); setSheetImportResult(null); }} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
-              <FileSpreadsheet className="w-4 h-4" /> Import Sheet
+            <button onClick={() => router.push('/import?target=clients')} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-white/10 text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-white/5 transition">
+              <FileSpreadsheet className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Import</span>
             </button>
-            <button onClick={() => setIsOCRModalOpen(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors">
-              <FileScan className="w-4 h-4" /> <span className="hidden sm:inline">{t("clients.ocr_scan")}</span>
+            <button onClick={() => setIsOCRModalOpen(true)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-white/10 text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-white/5 transition">
+              <FileScan className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t("clients.ocr_scan")}</span>
             </button>
-            <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all hover:shadow-md active:scale-95">
-              <Plus className="w-4 h-4" /> {t("clients.add_client")}
+            <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-xs transition">
+              <Plus className="w-3.5 h-3.5" /> <span>{t("clients.add_client")}</span>
             </button>
           </div>
         </div>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-500/10 border border-transparent">
-             <p className="text-xl font-black text-blue-600">{loading ? "—" : totalCount}</p>
-             <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">{t("clients.total_accounts")}</p>
+        {/* 4-KPI Metric Strip */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-2.5 mt-2.5">
+          <div className="bg-slate-50 dark:bg-white/5 rounded-xl p-2 sm:px-3 border border-slate-200/80 dark:border-white/10 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">{t("clients.total_accounts")}</p>
+              <p className="text-base sm:text-lg font-bold text-blue-600 leading-tight mt-0.5">{loading ? "—" : totalCount}</p>
+            </div>
+            <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
+              <Building2 className="w-3.5 h-3.5" />
+            </div>
           </div>
           {statuses.slice(0, 3).map((status, idx) => {
-            const colors = ["text-violet-600", "text-amber-600", "text-emerald-600"];
+            const colors = ["text-violet-600 dark:text-violet-400", "text-amber-600 dark:text-amber-400", "text-emerald-600 dark:text-emerald-400"];
             const bgs = ["bg-violet-500/10", "bg-amber-500/10", "bg-emerald-500/10"];
             return (
-              <div key={status.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl ${bgs[idx % 3]} border border-transparent`}>
-                <p className={`text-xl font-black ${colors[idx % 3]}`}>{loading ? "—" : clients.filter(c => c.status === status.name).length}</p>
-                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">{status.name}</p>
+              <div key={status.id} className="bg-slate-50 dark:bg-white/5 rounded-xl p-2 sm:px-3 border border-slate-200/80 dark:border-white/10 flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider truncate max-w-[120px]">{status.name}</p>
+                  <p className={`text-base sm:text-lg font-bold ${colors[idx % 3]} leading-tight mt-0.5`}>{loading ? "—" : clients.filter(c => c.status === status.name).length}</p>
+                </div>
+                <div className={`w-7 h-7 rounded-lg ${bgs[idx % 3]} flex items-center justify-center shrink-0`}>
+                  <Users className="w-3.5 h-3.5" />
+                </div>
               </div>
             )
           })}
@@ -1064,250 +1082,279 @@ export default function ClientsPage() {
               <ClientMapView clients={filteredClients} statuses={statuses} />
             </div>
           ) : (
-            <div className="overflow-x-auto w-full">
-              <table className="w-full text-left border-collapse min-w-[640px]">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-[13px] font-semibold text-slate-500 dark:text-slate-400">
-                  <th className="px-6 py-4 font-medium">Client</th>
-                  <th className="px-6 py-4 font-medium">Status</th>
-                  <th className="px-6 py-4 font-medium">Salesperson</th>
-                  <th className="px-6 py-4 font-medium">Website</th>
-                  <th className="px-6 py-4 font-medium">Last Activity</th>
-                  <th className="px-6 py-4 font-medium text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                <AnimatePresence>
-                  {filteredClients.map((client, idx) => (
-                    <React.Fragment key={client.id}>
-                      <motion.tr
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.02 }}
-                        className="hover:bg-slate-50 dark:hover:bg-slate-800/50 group transition-colors cursor-pointer"
-                        onClick={() => router.push(`/admin/clients/${client.id}`)}
-                      >
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-slate-900 dark:text-white text-sm group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1">
-                              {client.companyName || client.projectName || client.email || 'Unnamed Client'}
-                            </span>
-                            {client.email && (
-                              <span className="text-[12px] text-slate-500 flex items-center gap-1 mt-0.5">
-                                <Mail className="w-3 h-3" /> {client.email}
-                              </span>
-                            )}
+            <div className="p-3 space-y-2">
+              {/* Desktop Header */}
+              <div className="hidden md:grid grid-cols-12 gap-3 px-3 py-1.5 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
+                <div className="col-span-4">Client</div>
+                <div className="col-span-2">Status</div>
+                <div className="col-span-2">Salesperson</div>
+                <div className="col-span-2">Website & Activity</div>
+                <div className="col-span-2 text-right">Actions</div>
+              </div>
+
+              <AnimatePresence>
+                {filteredClients.map((client, idx) => (
+                  <motion.div
+                    key={client.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.015 }}
+                    onClick={() => router.push(`/admin/clients/${client.id}`)}
+                    className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-white/10 rounded-xl p-3 md:py-2.5 md:px-3 shadow-2xs hover:shadow-xs hover:border-blue-500/60 dark:hover:border-blue-500/50 transition-all duration-150 group cursor-pointer"
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3 items-center">
+                      {/* Client Info */}
+                      <div className="col-span-4 flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/40 text-blue-700 dark:text-blue-300 flex items-center justify-center text-xs font-bold shrink-0">
+                          {(client.companyName || client.projectName || client.email || 'C').charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-slate-900 dark:text-white text-[13px] leading-tight truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                            {client.companyName || client.projectName || client.email || 'Unnamed Client'}
                           </div>
-                        </td>
-                        <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
-                          <select
-                            value={client.status || "Product Demo Scheduled"}
-                            onChange={e => handleStatusChange(client.id, e.target.value)}
-                            className={`inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wide border cursor-pointer focus:outline-none transition-all shadow-sm ${CLIENT_STATUS_STYLE[client.status] || "bg-blue-500/10 text-blue-600 border-blue-500/20"}`}
-                            title="Change client stage"
-                          >
-                            {CLIENT_STAGES.map(st => (
-                              <option key={st} value={st} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-zinc-100 font-semibold">
-                                {st}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                          {isAdmin ? (
-                            <div className="flex items-center gap-1.5">
-                              <select
-                                value={client.assignedEmployeeId || ""}
-                                onChange={async (e) => {
-                                  const empId = e.target.value ? Number(e.target.value) : null;
-                                  const empName = employees.find(emp => emp.id === empId)?.name || undefined;
-                                  setClients(prev => prev.map(c => c.id === client.id ? { ...c, assignedEmployeeId: empId, assignedEmployeeName: empName } : c));
-                                  try {
-                                    await fetch(`${API_BASE_URL}/clients/${client.id}`, {
-                                      method: "PATCH",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ assignedEmployeeId: empId, employee_id: empId }),
-                                    });
-                                  } catch (err) {
-                                    fetchClients();
-                                  }
-                                }}
-                                className="text-[12px] font-medium bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-[145px]"
-                                title="Assign Salesperson"
-                              >
-                                <option value="">Unassigned</option>
-                                {employees.map(emp => (
-                                  <option key={emp.id} value={emp.id}>{emp.name}</option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                onClick={() => setReassignClient(client)}
-                                title="View reassignment audit history"
-                                className="p-1 rounded hover:bg-violet-100 dark:hover:bg-violet-900/30 text-violet-500 transition-colors"
-                              >
-                                <UserCheck className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 py-1">
-                              <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-[10px] font-bold shrink-0">
-                                {(client.assignedEmployeeName || 'U').charAt(0).toUpperCase()}
-                              </div>
-                              <span className="text-[12px] font-semibold text-slate-700 dark:text-zinc-300 truncate max-w-[130px]">
-                                {client.assignedEmployeeName || 'Unassigned'}
-                              </span>
+                          {client.email && (
+                            <div className="text-[11px] text-slate-500 dark:text-zinc-400 flex items-center gap-1 truncate mt-0.5">
+                              <Mail className="w-2.5 h-2.5 shrink-0" />
+                              <span className="truncate">{client.email}</span>
                             </div>
                           )}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-[13px] text-slate-600 dark:text-slate-300">
-                            {client.website || client.websiteUrl ? (client.website || client.websiteUrl || '').replace(/^https?:\/\//, '') : '—'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-[13px] text-slate-600 dark:text-slate-300">
-                            {client.lastActivity ? client.lastActivity : '—'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={(e) => { e.stopPropagation(); setExpandedRowId(p => p === client.id ? null : client.id); }} title="Quick Actions" className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors">
-                              <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", expandedRowId === client.id && "rotate-90")} />
-                            </button>
-                            <Link
-                              href={`/proposals?new=true&client_id=${client.id}`}
-                              onClick={e => e.stopPropagation()}
-                              title="Create Proposal"
-                              className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                            </Link>
-                            <Link
-                              href={`/meetings?new=true&client_id=${client.id}&title=${encodeURIComponent(`Meeting with ${client.companyName || client.projectName || client.email}`)}`}
-                              onClick={e => e.stopPropagation()}
-                              title="Schedule Meeting"
-                              className="p-1.5 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-slate-400 hover:text-indigo-600 transition-colors"
-                            >
-                              <Calendar className="w-3.5 h-3.5" />
-                            </Link>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setFollowUpTarget({
-                                  type: 'client',
-                                  id: client.id,
-                                  name: client.companyName || client.projectName || client.email || 'Client',
-                                  email: client.email,
-                                  salespersonName: client.assignedEmployeeName
-                                });
+                        </div>
+                      </div>
+
+                      {/* Status */}
+                      <div className="col-span-2 flex items-center" onClick={e => e.stopPropagation()}>
+                        <select
+                          value={client.status || "Product Demo Scheduled"}
+                          onChange={e => handleStatusChange(client.id, e.target.value)}
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wide border cursor-pointer focus:outline-none transition-all shadow-xs ${CLIENT_STATUS_STYLE[client.status] || "bg-blue-500/10 text-blue-600 border-blue-500/20"}`}
+                          title="Change client stage"
+                        >
+                          {CLIENT_STAGES.map(st => (
+                            <option key={st} value={st} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-zinc-100 font-semibold">
+                              {st}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Salesperson */}
+                      <div className="col-span-2 flex items-center" onClick={e => e.stopPropagation()}>
+                        {isAdmin ? (
+                          <div className="flex items-center gap-1">
+                            <select
+                              value={client.assignedEmployeeId || ""}
+                              onChange={async (e) => {
+                                const empId = e.target.value ? Number(e.target.value) : null;
+                                const empName = employees.find(emp => emp.id === empId)?.name || undefined;
+                                setClients(prev => prev.map(c => c.id === client.id ? { ...c, assignedEmployeeId: empId, assignedEmployeeName: empName } : c));
+                                try {
+                                  await fetch(`${API_BASE_URL}/clients/${client.id}`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ assignedEmployeeId: empId, employee_id: empId }),
+                                  });
+                                } catch (err) {
+                                  fetchClients();
+                                }
                               }}
-                              title="Add Follow-up"
-                              className="p-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/30 text-slate-400 hover:text-amber-600 transition-colors"
+                              className="text-[11px] font-medium bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-md px-1.5 py-0.5 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-[125px]"
+                              title="Assign Salesperson"
                             >
-                              <CalendarClock className="w-3.5 h-3.5" />
+                              <option value="">Unassigned</option>
+                              {employees.map(emp => (
+                                <option key={emp.id} value={emp.id}>{emp.name}</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => setReassignClient(client)}
+                              title="View reassignment audit history"
+                              className="p-1 rounded hover:bg-violet-100 dark:hover:bg-violet-900/30 text-violet-500 transition-colors"
+                            >
+                              <UserCheck className="w-3.5 h-3.5" />
                             </button>
-                            {isAdmin && (
-                              <button onClick={(e) => { e.stopPropagation(); setReassignClient(client); }} title="Reassign Salesperson" className="p-1.5 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-900/30 text-slate-400 hover:text-violet-600 transition-colors">
-                                <UserCheck className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                            <button disabled={actionLoading[client.id] === 'call'} onClick={(e) => { e.stopPropagation(); handleSimulateCall(client.id); }} title="AI Call Pitch" className="p-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600 transition-colors disabled:opacity-50">
-                              {actionLoading[client.id] === 'call' ? <Loader2 className="w-3.5 h-3.5 animate-spin text-green-500" /> : <Phone className="w-3.5 h-3.5" />}
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); setDropClientTarget(client); setIsDropModalOpen(true); }} title="Mark as Dropped" className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/30 text-slate-400 hover:text-rose-600 transition-colors">
-                              <UserX className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); window.open(`/admin/clients/${client.id}`, '_blank'); }} title="Open in New Tab" className="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors">
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </button>
-                            {isAdmin && (
-                              <button onClick={(e) => { e.stopPropagation(); handleDeleteClient(client.id); }} title="Delete Client" className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors">
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
                           </div>
-                        </td>
-                      </motion.tr>
-                      <AnimatePresence>
-                        {expandedRowId === client.id && (
-                          <motion.tr
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="bg-slate-50 dark:bg-[#1e293b] border-y border-slate-200 dark:border-slate-700 overflow-hidden"
-                          >
-                            <td colSpan={6} className="p-0">
-                              <div className="px-6 py-4 flex items-center gap-3 flex-wrap">
-                                <Link
-                                  href={`/proposals?new=true&client_id=${client.id}`}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors shadow-sm"
-                                >
-                                  <FileText className="w-4 h-4" />
-                                  Create Proposal
-                                </Link>
-                                <button
-                                  onClick={() => setFollowUpTarget({
-                                    type: 'client',
-                                    id: client.id,
-                                    name: client.companyName || client.projectName || client.email || 'Client',
-                                    email: client.email,
-                                    salespersonName: client.assignedEmployeeName
-                                  })}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-sm font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors shadow-sm"
-                                >
-                                  <CalendarClock className="w-4 h-4 text-amber-500" />
-                                  Add Follow-up
-                                </button>
-                                <button
-                                  onClick={() => setReassignClient(client)}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 text-sm font-semibold hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors shadow-sm"
-                                >
-                                  <UserCheck className="w-4 h-4 text-violet-500" />
-                                  Reassign Salesperson
-                                </button>
-                                <button
-                                  onClick={() => handleQuickAction(client.id, 'analyse')}
-                                  disabled={!!actionLoading[client.id]}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm"
-                                >
-                                  {actionLoading[client.id] === 'analyse' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4 text-slate-500" />}
-                                  Analyse Client
-                                </button>
-                                <button
-                                  onClick={() => handleQuickAction(client.id, 'extract')}
-                                  disabled={!!actionLoading[client.id]}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm"
-                                >
-                                  {actionLoading[client.id] === 'extract' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4 text-slate-500" />}
-                                  Extract Services
-                                </button>
-                                <button
-                                  onClick={() => handleQuickAction(client.id, 'email')}
-                                  disabled={!!actionLoading[client.id]}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 text-sm font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shadow-sm"
-                                >
-                                  {actionLoading[client.id] === 'email' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4 text-blue-500" />}
-                                  Email Outbound
-                                </button>
-                                <button
-                                  onClick={() => handleQuickAction(client.id, 'opportunity')}
-                                  disabled={!!actionLoading[client.id]}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ml-auto shadow-sm"
-                                >
-                                  <Briefcase className="w-4 h-4 text-slate-500" />
-                                  View Opportunity
-                                </button>
-                              </div>
-                            </td>
-                          </motion.tr>
+                        ) : (
+                          <div className="flex items-center gap-1.5 py-0.5">
+                            <div className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-[10px] font-bold shrink-0">
+                              {(client.assignedEmployeeName || 'U').charAt(0).toUpperCase()}
+                            </div>
+                            <span className="text-[12px] font-medium text-slate-700 dark:text-zinc-300 truncate max-w-[120px]">
+                              {client.assignedEmployeeName || 'Unassigned'}
+                            </span>
+                          </div>
                         )}
-                      </AnimatePresence>
-                    </React.Fragment>
-                  ))}
-                </AnimatePresence>
-              </tbody>
-            </table>
+                      </div>
+
+                      {/* Website & Last Activity */}
+                      <div className="col-span-2 flex flex-col justify-center text-[11px] leading-tight text-slate-500 dark:text-zinc-400 min-w-0">
+                        <span className="truncate font-medium text-slate-700 dark:text-zinc-300">
+                          {client.website || client.websiteUrl ? (client.website || client.websiteUrl || '').replace(/^https?:\/\//, '') : '—'}
+                        </span>
+                        <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">
+                          {client.lastActivity ? `Act: ${client.lastActivity}` : 'No recent activity'}
+                        </span>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="col-span-2 flex items-center justify-end gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setExpandedRowId(p => p === client.id ? null : client.id); }}
+                          title="Quick Actions"
+                          className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition-colors"
+                        >
+                          <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", expandedRowId === client.id && "rotate-90")} />
+                        </button>
+                        <Link
+                          href={`/proposals?new=true&client_id=${client.id}`}
+                          onClick={e => e.stopPropagation()}
+                          title="Create Proposal"
+                          className="p-1 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                        </Link>
+                        <Link
+                          href={`/meetings?new=true&client_id=${client.id}&title=${encodeURIComponent(`Meeting with ${client.companyName || client.projectName || client.email}`)}`}
+                          onClick={e => e.stopPropagation()}
+                          title="Schedule Meeting"
+                          className="p-1 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-slate-400 hover:text-indigo-600 transition-colors"
+                        >
+                          <Calendar className="w-3.5 h-3.5" />
+                        </Link>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFollowUpTarget({
+                              type: 'client',
+                              id: client.id,
+                              name: client.companyName || client.projectName || client.email || 'Client',
+                              email: client.email,
+                              salespersonName: client.assignedEmployeeName
+                            });
+                          }}
+                          title="Add Follow-up"
+                          className="p-1 rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/30 text-slate-400 hover:text-amber-600 transition-colors"
+                        >
+                          <CalendarClock className="w-3.5 h-3.5" />
+                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setReassignClient(client); }}
+                            title="Reassign Salesperson"
+                            className="p-1 rounded-md hover:bg-violet-50 dark:hover:bg-violet-900/30 text-slate-400 hover:text-violet-600 transition-colors"
+                          >
+                            <UserCheck className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          disabled={actionLoading[client.id] === 'call'}
+                          onClick={(e) => { e.stopPropagation(); handleSimulateCall(client.id); }}
+                          title="AI Call Pitch"
+                          className="p-1 rounded-md hover:bg-green-50 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600 transition-colors disabled:opacity-50"
+                        >
+                          {actionLoading[client.id] === 'call' ? <Loader2 className="w-3.5 h-3.5 animate-spin text-green-500" /> : <Phone className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDropClientTarget(client); setIsDropModalOpen(true); }}
+                          title="Mark as Dropped"
+                          className="p-1 rounded-md hover:bg-rose-50 dark:hover:bg-rose-900/30 text-slate-400 hover:text-rose-600 transition-colors"
+                        >
+                          <UserX className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); window.open(`/admin/clients/${client.id}`, '_blank'); }}
+                          title="Open in New Tab"
+                          className="p-1 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-600 transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteClient(client.id); }}
+                            title="Delete Client"
+                            className="p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Expandable Quick Actions Drawer */}
+                    <AnimatePresence>
+                      {expandedRowId === client.id && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="pt-2.5 mt-2.5 border-t border-slate-100 dark:border-white/5 flex items-center gap-2 flex-wrap"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <Link
+                            href={`/proposals?new=true&client_id=${client.id}`}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors shadow-2xs"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            Create Proposal
+                          </Link>
+                          <button
+                            onClick={() => setFollowUpTarget({
+                              type: 'client',
+                              id: client.id,
+                              name: client.companyName || client.projectName || client.email || 'Client',
+                              email: client.email,
+                              salespersonName: client.assignedEmployeeName
+                            })}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors shadow-2xs"
+                          >
+                            <CalendarClock className="w-3.5 h-3.5 text-amber-500" />
+                            Add Follow-up
+                          </button>
+                          <button
+                            onClick={() => setReassignClient(client)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 text-xs font-semibold hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors shadow-2xs"
+                          >
+                            <UserCheck className="w-3.5 h-3.5 text-violet-500" />
+                            Reassign Salesperson
+                          </button>
+                          <button
+                            onClick={() => handleQuickAction(client.id, 'analyse')}
+                            disabled={!!actionLoading[client.id]}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors shadow-2xs"
+                          >
+                            {actionLoading[client.id] === 'analyse' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5 text-slate-500" />}
+                            Analyse Client
+                          </button>
+                          <button
+                            onClick={() => handleQuickAction(client.id, 'extract')}
+                            disabled={!!actionLoading[client.id]}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors shadow-2xs"
+                          >
+                            {actionLoading[client.id] === 'extract' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5 text-slate-500" />}
+                            Extract Services
+                          </button>
+                          <button
+                            onClick={() => handleQuickAction(client.id, 'email')}
+                            disabled={!!actionLoading[client.id]}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shadow-2xs"
+                          >
+                            {actionLoading[client.id] === 'email' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5 text-blue-500" />}
+                            Email Outbound
+                          </button>
+                          <button
+                            onClick={() => handleQuickAction(client.id, 'opportunity')}
+                            disabled={!!actionLoading[client.id]}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors ml-auto shadow-2xs"
+                          >
+                            <Briefcase className="w-3.5 h-3.5 text-slate-500" />
+                            View Opportunity
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
           )}
           {/* Pagination Controls */}
@@ -1454,237 +1501,6 @@ export default function ClientsPage() {
                     <button type="submit" className="px-8 py-3 bg-gradient-to-r from-zinc-600 to-slate-600 text-white rounded-xl font-bold hover:shadow-[0_8px_30px_rgba(79,70,229,0.3)] shadow-[0_4px_15px_rgba(79,70,229,0.2)] hover:-translate-y-0.5 transition-all">{language === 'es' ? 'Crear Cliente' : 'Create Client'}</button>
                   </div>
                 </form>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Sheet Import Modal ─────────────────────────────────── */}
-      <AnimatePresence>
-        {isSheetImportOpen && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-              className="bg-zinc-950 border border-white/10 rounded-[2rem] shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
-            >
-              {/* Header */}
-              <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-slate-500/20 text-slate-400 rounded-xl">
-                    <FileSpreadsheet className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-black text-white">Import from Google Sheet / Excel</h2>
-                    <p className="text-xs text-slate-400 mt-0.5">Paste a public CSV URL (Google Sheet → File → Share → Publish to web → CSV)</p>
-                  </div>
-                </div>
-                <button onClick={() => setIsSheetImportOpen(false)} className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-400 hover:text-white transition-all text-lg">×</button>
-              </div>
-
-              <div className="overflow-y-auto flex-1 p-6 space-y-5 custom-scrollbar">
-
-                {/* ── Step 1: URL Input ── */}
-                {(sheetImportState === 'idle' || sheetImportState === 'fetching') && (
-                  <div className="space-y-4">
-                    <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Google Sheet CSV URL or paste raw CSV below</label>
-                      <div className="flex gap-2">
-                        <input
-                          value={sheetUrl}
-                          onChange={e => setSheetUrl(e.target.value)}
-                          placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv"
-                          className="flex-1 px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white placeholder-slate-500 text-sm outline-none focus:border-slate-500 transition-all"
-                        />
-                        <button
-                          onClick={async () => {
-                            if (!sheetUrl.trim()) return;
-                            setSheetImportState('fetching');
-                            try {
-                              const r = await fetch(`${API_BASE_URL}/clients/import-sheet`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ csv_url: sheetUrl })
-                              });
-                              // Actually just preview: fetch raw CSV separately for table display
-                              const rawR = await fetch(sheetUrl);
-                              const rawText = await rawR.text();
-                              const lines = rawText.trim().split('\n');
-                              if (lines.length < 2) { setSheetImportState('idle'); return; }
-                              const headers = lines[0].split(',').map(h => h.replace(/"/g,'').trim());
-                              const rows = lines.slice(1).map(l => {
-                                const vals = l.split(',').map(v => v.replace(/"/g,'').trim());
-                                const obj: any = {};
-                                headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
-                                return obj;
-                              });
-                              setSheetHeaders(headers);
-                              setSheetPreview(rows);
-                              setSheetImportState('preview');
-                            } catch (e) {
-                              console.error(e);
-                              setSheetImportState('idle');
-                            }
-                          }}
-                          disabled={sheetImportState === 'fetching'}
-                          className="px-5 py-3 bg-slate-500/20 border border-slate-500/30 text-slate-400 rounded-xl font-bold hover:bg-slate-500/30 transition-all flex items-center gap-2 text-sm disabled:opacity-50"
-                        >
-                          {sheetImportState === 'fetching' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                          Preview
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-slate-500 mt-2">Supported columns: S.No, Client Name, Website URL, Email, Contact, Country, Services, Market size, Description</p>
-                    </div>
-                    <div className="text-center text-slate-500 text-sm font-bold">— OR —</div>
-                    <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Paste raw CSV text</label>
-                      <textarea
-                        rows={8}
-                        placeholder="S.No,Client Name,Website URL,Email,Contact,Country,Services,Description&#10;1,Acme Corp,https://acme.com,..."
-                        className="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white placeholder-slate-600 text-xs font-mono outline-none focus:border-slate-500 transition-all resize-none"
-                        onChange={async e => {
-                          const text = e.target.value.trim();
-                          if (!text) return;
-                          const lines = text.split('\n');
-                          if (lines.length < 2) return;
-                          const headers = lines[0].split(',').map(h => h.replace(/"/g,'').trim());
-                          const rows = lines.slice(1).map(l => {
-                            const vals = l.split(',').map(v => v.replace(/"/g,'').trim());
-                            const obj: any = {};
-                            headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
-                            return obj;
-                          });
-                          setSheetHeaders(headers);
-                          setSheetPreview(rows);
-                          setSheetImportState('preview');
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Step 2: Preview Table ── */}
-                {sheetImportState === 'preview' && sheetPreview.length > 0 && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-white font-bold">
-                        <Sparkles className="w-4 h-4 text-slate-400" />
-                        {sheetPreview.length} rows detected – Preview (first 5 shown)
-                      </div>
-                      <button onClick={() => setSheetImportState('idle')} className="text-xs text-slate-400 hover:text-white">← Back</button>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-black/30 border-b border-white/10">
-                          <tr>
-                            {sheetHeaders.map(h => (
-                              <th key={h} className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                          {sheetPreview.slice(0, 5).map((row, i) => (
-                            <tr key={i} className="hover:bg-white/5">
-                              {sheetHeaders.map(h => (
-                                <td key={h} className="px-4 py-3 text-slate-300 truncate max-w-[180px]">{row[h] || '–'}</td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    {sheetPreview.length > 5 && (
-                      <p className="text-xs text-slate-500 text-center">...and {sheetPreview.length - 5} more rows will be imported</p>
-                    )}
-                    <div className="flex gap-3 pt-2">
-                      <button
-                        onClick={async () => {
-                          setSheetImportState('importing');
-                          try {
-                            const rawCsv = [sheetHeaders.join(','), ...sheetPreview.map(r => sheetHeaders.map(h => r[h] || '').join(','))].join('\n');
-                            const res = await fetch(`${API_BASE_URL}/clients/import-sheet`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ csv_text: rawCsv })
-                            });
-                            const data = await res.json();
-                            setSheetImportResult(data);
-                            setSheetImportState('done');
-                            fetchClients();
-                          } catch (e) {
-                            console.error(e);
-                            setSheetImportState('preview');
-                          }
-                        }}
-                        className="flex-1 py-3.5 bg-gradient-to-r from-slate-600 to-zinc-600 text-white rounded-xl font-black hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
-                      >
-                        <UploadCloud className="w-4 h-4" /> Import All {sheetPreview.length} Clients + Auto-Research
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Step 3: Importing spinner ── */}
-                {sheetImportState === 'importing' && (
-                  <div className="flex flex-col items-center justify-center py-16 gap-5">
-                    <div className="relative w-20 h-20">
-                      <div className="absolute inset-0 border-4 border-slate-500/20 rounded-full" />
-                      <div className="absolute inset-0 border-4 border-slate-400 border-t-transparent rounded-full animate-spin" />
-                      <FileSpreadsheet className="absolute inset-0 m-auto w-7 h-7 text-slate-400" />
-                    </div>
-                    <h3 className="text-xl font-black text-white">Importing & Running AI Research...</h3>
-                    <p className="text-slate-400 text-sm text-center max-w-sm">Adding all rows as new clients. Duplicate detection is active. AI will auto-research each website in the background.</p>
-                  </div>
-                )}
-
-                {/* ── Step 4: Done Summary ── */}
-                {sheetImportState === 'done' && sheetImportResult && (
-                  <div className="space-y-5">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-zinc-500/10 border border-zinc-500/30 rounded-2xl p-5 flex items-center gap-4">
-                        <CheckCircle2 className="w-8 h-8 text-zinc-400 shrink-0" />
-                        <div>
-                          <p className="text-3xl font-black text-zinc-400">{sheetImportResult.added}</p>
-                          <p className="text-xs text-zinc-400/70 font-bold uppercase tracking-wider mt-1">Clients Added</p>
-                        </div>
-                      </div>
-                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 flex items-center gap-4">
-                        <AlertCircle className="w-8 h-8 text-amber-400 shrink-0" />
-                        <div>
-                          <p className="text-3xl font-black text-amber-400">{sheetImportResult.skipped}</p>
-                          <p className="text-xs text-amber-400/70 font-bold uppercase tracking-wider mt-1">Duplicates Skipped</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-                      <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-slate-400" /> AI Auto-Research Running in Background</p>
-                      <p className="text-sm text-slate-300">Each imported client's website is being scraped and researched automatically. Company details, services, and opportunities will populate on each client page within moments.</p>
-                    </div>
-                    {sheetImportResult.added_clients.length > 0 && (
-                      <div className="rounded-2xl border border-white/10 overflow-hidden">
-                        <div className="bg-black/20 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Added Clients</div>
-                        <div className="divide-y divide-white/5 max-h-48 overflow-y-auto">
-                          {sheetImportResult.added_clients.map((c, i) => (
-                            <div key={i} className="px-4 py-2.5 flex items-center gap-3">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                              <span className="text-sm text-white font-medium">{c.company || c.website}</span>
-                              {c.website && <span className="text-xs text-slate-500 ml-auto truncate max-w-[180px]">{c.website}</span>}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    <div className="flex gap-3">
-                      <button onClick={() => { setIsSheetImportOpen(false); }} className="flex-1 py-3 bg-zinc-600 text-white rounded-xl font-bold hover:-translate-y-0.5 transition-all">
-                        View Client List
-                      </button>
-                    </div>
-                  </div>
-                )}
-
               </div>
             </motion.div>
           </motion.div>

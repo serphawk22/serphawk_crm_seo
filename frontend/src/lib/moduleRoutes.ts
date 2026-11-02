@@ -12,13 +12,13 @@ const PAGE_MODULES: ReadonlyArray<readonly [string, string]> = [
   ["/email-agent", "email_agent"], ["/voice-agent", "voice_agent"],
   // sales operations / support / system
   ["/inventory", "inventory"], ["/orders", "inventory"], ["/products", "products"],
-  ["/billing", "billing"], ["/invoices", "billing"], ["/quotes", "billing"], ["/proposals", "proposals"],
+  ["/billing", "billing"], ["/invoices", "invoices"], ["/quotes", "billing"], ["/proposals", "proposals"],
   ["/admin/marketplace", "marketplace"],
-  ["/support/cases", "support"], ["/support/solutions", "support"], ["/support/scmhub-cases", "scmhub_cases"],
+  ["/support/cases", "cases"], ["/support/solutions", "support"], ["/support/scmhub-cases", "scmhub_cases"], ["/support/helpdesk", "support_sh"],
   ["/import", "import_data"], ["/admin/api-intelligence", "api_intelligence"],
   // business suite
   ["/command-center", "command_center"], ["/revenue", "finance_suite"], ["/business-costs", "finance_suite"],
-  ["/lead-sources", "lead_sources"], ["/lead-source-analytics", "lead_sources"], ["/ownership", "ownership"],
+  ["/lead-sources", "lead_sources"], ["/lead-source-analytics", "lead_source_analytics"], ["/ownership", "ownership"],
   ["/dropped-clients", "dropped_clients"],
   // institute
   ["/students", "institute"], ["/courses", "institute"], ["/batches", "institute"], ["/instructors", "institute"],
@@ -41,7 +41,7 @@ const LABELS: Record<string, string> = {
   reports: "Reports", meetings: "Meetings", calls: "Calls", teams: "Team Directory", leaderboard: "Leaderboard",
   demo_accounts: "Demo account data", inbox: "Inbox", followups: "Follow-ups", followup_board: "Follow-up board",
   email_agent: "Email Agent", voice_agent: "AI Voice Caller", inventory: "Inventory & orders", products: "Products catalog",
-  billing: "Billing", proposals: "Proposals", marketplace: "Marketplace", support: "Cases & solutions", scmhub_cases: "SCMHub Cases",
+  billing: "Quotes & billing", invoices: "Invoices", cases: "Cases", support_sh: "Support @SH", proposals: "Proposals", marketplace: "Marketplace", support: "Solutions", scmhub_cases: "SCMHub Cases",
   import_data: "Import data", api_intelligence: "API Intelligence", command_center: "Command center", finance_suite: "Revenue & business costs",
   lead_sources: "Lead sources", ownership: "Ownership history", dropped_clients: "Dropped clients", institute: "Institute",
 };

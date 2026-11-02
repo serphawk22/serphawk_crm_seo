@@ -44,30 +44,32 @@ const monthStartStr = new Date(new Date().getFullYear(), new Date().getMonth(), 
 
 function ClassicStat({ label, value, icon, tone }: { label: string; value: string | number; icon: React.ReactNode; tone: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl text-white ${tone}`}>{icon}</div>
-      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
-      <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{value}</p>
+    <div className="rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#111111]/90 p-2 px-3 shadow-2xs flex items-center justify-between gap-2 hover:border-indigo-500/50 transition-colors">
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 whitespace-nowrap">{label}</p>
+        <p className="mt-0.5 text-sm sm:text-base font-bold text-slate-900 dark:text-white leading-tight truncate tabular-nums">{value}</p>
+      </div>
+      <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white shadow-2xs ${tone}`}>{icon}</div>
     </div>
   );
 }
 
 function ClassicTable({ headers, rows }: { headers: string[]; rows: React.ReactNode[][] }) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <table className="w-full text-left text-sm">
-        <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-zinc-800 dark:bg-zinc-950">
-          <tr>{headers.map(header => <th key={header} className="whitespace-nowrap px-4 py-3">{header}</th>)}</tr>
+    <div className="overflow-x-auto rounded-xl border border-slate-200/90 bg-white shadow-xs dark:border-white/10 dark:bg-[#111111]/90">
+      <table className="w-full text-left text-xs">
+        <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:border-white/10 dark:bg-zinc-950/40">
+          <tr>{headers.map(header => <th key={header} className="whitespace-nowrap px-3 py-2">{header}</th>)}</tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+        <tbody className="divide-y divide-slate-100 dark:divide-white/5">
           {rows.length ? rows.map((row, index) => (
-            <tr key={index} className="hover:bg-slate-50/80 dark:hover:bg-zinc-800/40">
+            <tr key={index} className="hover:bg-slate-50/80 dark:hover:bg-white/5 transition-colors">
               {row.map((cell, cellIndex) => (
-                <td key={cellIndex} className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-zinc-300">{cell}</td>
+                <td key={cellIndex} className="whitespace-nowrap px-3 py-2 text-slate-700 dark:text-zinc-300">{cell}</td>
               ))}
             </tr>
           )) : (
-            <tr><td colSpan={headers.length} className="px-4 py-12 text-center text-sm text-slate-400">No records found in this range.</td></tr>
+            <tr><td colSpan={headers.length} className="px-4 py-8 text-center text-xs text-slate-400">No records found in this range.</td></tr>
           )}
         </tbody>
       </table>
@@ -621,61 +623,64 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1550px] space-y-6 pb-16">
-      {/* ── TOP HEADER & VIEW MODE SELECTOR ───────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-5 dark:border-zinc-800">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
-              <Sparkles size={12} /> C-Suite Decision Intelligence
-            </span>
-            <span className="text-xs text-slate-400">•</span>
-            <span className="text-xs font-semibold text-slate-500">Live CRM & P&L Feed</span>
+    <div className="mx-auto max-w-[1550px] space-y-4 pb-12">
+      {/* ── COMPACT EXECUTIVE HEADER & MODE SWITCHER ───────────────────────── */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white dark:bg-[#111111]/90 p-3 sm:px-4 sm:py-2.5 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 flex items-center justify-center shrink-0">
+            <BarChart3 className="w-4 h-4" />
           </div>
-          <h1 className="mt-1.5 text-3xl font-black tracking-tight text-slate-900 dark:text-white">
-            Reports & Business Operations
-          </h1>
-          <p className="mt-0.5 text-sm text-slate-500 dark:text-zinc-400">
-            End-to-end operational visibility: sales rep dossiers, financials vs operating costs, lead attribution, and classic activity logs.
-          </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">
+                Reports & Analytics
+              </h1>
+              <span className="text-[10px] px-2 py-0.2 rounded-full font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                Decision Intelligence
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+              Sales rep dossiers, financials vs costs, lead attribution & activity
+            </p>
+          </div>
         </div>
 
         {/* Global Controls & Mode Switcher */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {/* VIEW MODE TOGGLE */}
-          <div className="flex items-center gap-1 rounded-2xl border border-slate-200 bg-slate-100 p-1 dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="flex items-center gap-1 rounded-lg border border-slate-200/80 bg-slate-100 p-1 dark:border-white/10 dark:bg-white/5">
             {execOn && (
             <button
               onClick={() => setViewMode("executive")}
-              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black transition-all ${
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all ${
                 viewMode === "executive"
-                  ? "bg-white text-indigo-600 shadow-sm dark:bg-zinc-800 dark:text-white"
+                  ? "bg-white text-indigo-600 shadow-xs dark:bg-zinc-800 dark:text-white"
                   : "text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"
               }`}
             >
-              <ShieldCheck size={15} /> Executive Owner Dossier
+              <ShieldCheck size={13} /> <span>Dossier</span>
             </button>
             )}
             <button
               onClick={() => setViewMode("classic")}
-              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black transition-all ${
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all ${
                 viewMode === "classic"
-                  ? "bg-white text-indigo-600 shadow-sm dark:bg-zinc-800 dark:text-white"
+                  ? "bg-white text-indigo-600 shadow-xs dark:bg-zinc-800 dark:text-white"
                   : "text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"
               }`}
             >
-              <FileSpreadsheet size={15} /> Classic Operations & Activity
+              <FileSpreadsheet size={13} /> <span>Operations</span>
             </button>
             {aiOn && (
             <button
               onClick={() => setViewMode("ai")}
-              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black transition-all ${
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all ${
                 viewMode === "ai"
-                  ? "bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/25"
+                  ? "bg-indigo-600 text-white shadow-xs"
                   : "text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"
               }`}
             >
-              <Sparkles size={15} className={viewMode === "ai" ? "animate-pulse" : "text-amber-500"} /> AI Reports
+              <Sparkles size={13} className={viewMode === "ai" ? "animate-pulse" : "text-amber-500"} /> <span>AI Reports</span>
             </button>
             )}
           </div>
@@ -1274,7 +1279,7 @@ export default function ReportsPage() {
           )}
 
           {/* Classic 10 KPI Stat Bar */}
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-5 xl:grid-cols-10">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
             <ClassicStat label="Leads" value={classicSummary.leads || 0} icon={<TrendingUp size={16} />} tone="bg-indigo-600" />
             <ClassicStat label="Onboarded" value={classicSummary.clients_onboarded || 0} icon={<Users size={16} />} tone="bg-emerald-600" />
             <ClassicStat label="Total clients" value={classicSummary.total_clients || 0} icon={<Users size={16} />} tone="bg-sky-600" />

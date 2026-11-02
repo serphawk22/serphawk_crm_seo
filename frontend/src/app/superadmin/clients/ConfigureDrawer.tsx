@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Crown, ExternalLink, Image as ImageIcon, Loader2, MonitorPlay, Palette, Plus, Puzzle, RotateCcw, Save, Search, Upload } from "lucide-react";
 import Drawer from "@/components/Drawer";
+import SalesAccessSettings from "@/components/SalesAccessSettings";
 import {
   Badge, CatalogFeature, ClientAvatar, CredentialsCard, PRESET_ORDER, Preset, RegionOptions, TenantOverview, call, displayName,
   ghostBtn, inputCls, labelCls, primaryBtn,
@@ -35,6 +36,7 @@ const TEXT_FIELDS: { key: string; label: string; placeholder?: string }[] = [
   { key: "brand_tagline", label: "Tagline", placeholder: "e.g. Freight forwarding since 2004" },
   { key: "website_url", label: "Website", placeholder: "https://" },
   { key: "support_email", label: "Support email", placeholder: "support@company.com" },
+  { key: "support_portal_url", label: "Support portal URL", placeholder: "https://projecthub.serphawk.in/client/login" },
   { key: "default_currency", label: "Currency", placeholder: "USD, INR, MXN" },
   { key: "timezone", label: "Time zone", placeholder: "Asia/Kolkata" },
   { key: "default_dial_code", label: "Default phone code", placeholder: "+91" },
@@ -247,6 +249,7 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
             </div>
           </div>
 
+          {id && <SalesAccessSettings tenantId={id} />}
           <div className="relative">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input className={`${inputCls} pl-10`} placeholder="Search modules..." value={query} onChange={(e) => setQuery(e.target.value)} />

@@ -244,7 +244,7 @@ export function Chatbot() {
   if (!isAllowed) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <div className="fixed bottom-[calc(var(--app-footer-height,48px)+1rem)] right-6 z-50">
       {/* Chat Window */}
       {isOpen && (
         <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-zinc-700 w-80 lg:w-96 mb-4 flex flex-col overflow-hidden" style={{ height: '540px' }}>

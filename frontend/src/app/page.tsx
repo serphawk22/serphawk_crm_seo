@@ -16,7 +16,8 @@ import { useLanguage } from "@/context/LanguageContext";
 import { cn } from "@/lib/utils";
 import PageGuide from '@/components/PageGuide';
 import { AdminDashboard } from "@/components/AdminDashboard";
-import CommandCenter from "@/components/CommandCenter";
+import FeatureAccessNotice from "@/components/FeatureAccessNotice";
+import { homeModule } from "@/lib/homeModule";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import { useTenantConfig } from "@/context/TenantConfigContext";
 import { DeveloperDashboard } from "@/components/DeveloperDashboard";
@@ -213,6 +214,8 @@ function StatCard({ title, value, sub, icon: Icon, gradient, href }: {
 export default function HomePage() {
   const { role, email, user, isAuthenticated, loading: authLoading } = useRole();
   const router = useRouter();
+  const { loaded, features } = useTenantConfig();
+  const home = homeModule(role, features);
 
   useEffect(() => {
     if (authLoading) return;
@@ -220,17 +223,18 @@ export default function HomePage() {
       router.replace("/showcase");
       return;
     }
-    if (role === "Employee") {
-      router.replace("/projects");
-    }
-  }, [authLoading, isAuthenticated, role, router]);
+    if (home === "platform") router.replace("/superadmin/clients");
+    if (loaded && home === "command_center") router.replace("/command-center");
+  }, [authLoading, isAuthenticated, home, loaded, router]);
 
   // Show landing page if not authenticated
   if (!authLoading && !isAuthenticated) {
     return null;
   }
 
-  // Show dashboard if authenticated
+  if (home === "platform" || !loaded || home === "command_center") return null;
+  if (home === "none") return <FeatureAccessNotice kind="module" feature="Dashboard" />;
+  // Mount only the enabled overview, so a disabled dashboard never fetches data.
   return <Dashboard />;
 }
 
@@ -245,9 +249,6 @@ function Dashboard() {
   useEffect(() => {
     if (role === "SuperAdmin") dashboardRouter.replace("/superadmin/clients");
   }, [role, dashboardRouter]);
-  const { isOn, settings: tenantSettings } = useTenantConfig();
-  // Tenants whose home page is the Command Center (BPO preset); everyone else keeps the standard dashboard.
-  const commandCenterHome = tenantSettings.home_dashboard === "command_center" && isOn("command_center");
 
   const NAV_CARDS = [
     { href: "/clients", icon: Users, gradient: "from-indigo-500 to-indigo-600", title: language === 'es' ? "Centro de Clientes" : "Clients Hub", description: language === 'es' ? "La Fundación: Gestione cada perfil de cliente, realice un seguimiento de los protocolos de crecimiento, hitos y mantenga relaciones profesionales en un solo lugar." : "The Foundation: Manage every client profile, track growth protocols, milestones, and maintain professional relationships in one central hub.", roles: ["Admin", "Employee", "SalesManager", "Demo"] },
@@ -355,10 +356,8 @@ function Dashboard() {
       {role === "ProjectMember" && <DeveloperDashboard />}
       {role === "SalesManager" && stats && <SalesManagerDashboard stats={stats as any} name={user?.name || email} />}
       {isAdmin && <OnboardingChecklist hideWhenDone />}
-      {isAdmin && commandCenterHome && <CommandCenter />}
-      {isAdmin && !commandCenterHome && adminStats && <AdminDashboard adminStats={adminStats} NAV_CARDS={NAV_CARDS} language={language} />}
-      {role === "Demo" && commandCenterHome && <CommandCenter />}
-      {role === "Demo" && !commandCenterHome && <AdminDashboard adminStats={adminStats} NAV_CARDS={visibleNavCards} language={language} isDemo={true} />}
+      {isAdmin && adminStats && <AdminDashboard adminStats={adminStats} NAV_CARDS={NAV_CARDS} language={language} />}
+      {role === "Demo" && <AdminDashboard adminStats={adminStats} NAV_CARDS={visibleNavCards} language={language} isDemo={true} />}
       {!isAdmin && role !== "Demo" && role !== "ProjectMember" && role !== "SalesManager" && (
         <ClientDashboard clientStats={clientStats} NAV_CARDS={visibleNavCards} language={language} />
       )}

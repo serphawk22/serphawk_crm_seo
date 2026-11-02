@@ -40,7 +40,7 @@ export default function QuickAddFab() {
   };
 
   return (
-    <div className="fixed bottom-6 right-[88px] z-[9000] flex flex-col items-end gap-3">
+    <div className="fixed bottom-[calc(var(--app-footer-height,48px)+1rem)] right-[88px] z-[9000] flex flex-col items-end gap-3">
       {isOpen && (
         <div className="flex flex-col items-end gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200 mb-2">
           {actions.map((action, idx) => (

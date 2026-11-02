@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:profile-settings": "node scripts/check-profile-settings.mjs",
+    "test:sidebar": "node scripts/check-sidebar.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

@@ -47,6 +47,7 @@ const emptyItem = {
   tags: [] as string[], photo_url: "", unit: "", min_stock: 0, current_stock: 0
 };
 const emptySupplier = {
+  supplier_user_id: null as number | null, existing_supplier_id: null as number | null,
   supplier_name: "", supplier_brand: "", supplier_email: "", lot_number: "",
   unit_cost: 0, currency: "USD", lead_time_days: 0, min_order_qty: 0,
   is_preferred: false, notes: ""
@@ -59,6 +60,7 @@ const CURRENCIES = ["USD", "EUR", "GBP", "INR", "AED", "SGD"];
 export default function InventoryPage() {
   const { t } = useLanguage();
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [supplierAccounts, setSupplierAccounts] = useState<{ id: number; name: string; email: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -80,9 +82,10 @@ export default function InventoryPage() {
   const [sendingCreds, setSendingCreds] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const dropdownSuppliers = Array.from(new Map(
-    items.flatMap(i => i.suppliers).map(s => [s.supplier_name, s])
-  ).values());
+  const dropdownSuppliers = Array.from(new Map([
+    ...supplierAccounts.map(account => ({ key: `account-${account.id}`, supplier_user_id: account.id, existing_supplier_id: null as number | null, supplier_name: account.name, supplier_email: account.email, supplier_brand: "", currency: "USD" })),
+    ...items.flatMap(item => item.suppliers).map(supplier => ({ key: supplier.supplier_user_id ? `account-${supplier.supplier_user_id}` : `link-${supplier.id}`, supplier_user_id: supplier.supplier_user_id || null, existing_supplier_id: supplier.id, supplier_name: supplier.supplier_name, supplier_email: supplier.supplier_email || "", supplier_brand: supplier.supplier_brand || "", currency: supplier.currency }))
+  ].map(supplier => [supplier.key, supplier])).values());
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -126,6 +129,8 @@ export default function InventoryPage() {
       if (res.ok) {
         const data = await res.json();
         setItems(data.items || []);
+        const accounts = await fetch(`${API_BASE_URL}/inventory/supplier-accounts`);
+        if (accounts.ok) setSupplierAccounts((await accounts.json()).suppliers || []);
       }
     } finally { setLoading(false); }
   };
@@ -204,6 +209,8 @@ export default function InventoryPage() {
       await fetchItems();
       if (data.credentials_created && data.login_email) {
         setNewCredentials({ supplier_id: data.id, email: data.login_email, password: data.login_password, name: supplierForm.supplier_name });
+      } else if (data.supplier_user_id) {
+        showToast(data.already_linked ? "This supplier is already assigned to the item." : "Existing supplier account assigned. Login details are unchanged.");
       } else {
         // No email → show popup with message to add email for portal access
         setNewCredentials({ supplier_id: data.id, email: "", password: "", name: supplierForm.supplier_name });
@@ -832,23 +839,23 @@ export default function InventoryPage() {
                       <div className="flex gap-2">
                         <select 
                           className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={supplierForm.supplier_name}
+                          value={supplierForm.supplier_user_id ? `account-${supplierForm.supplier_user_id}` : supplierForm.existing_supplier_id ? `link-${supplierForm.existing_supplier_id}` : ""}
                           onChange={e => {
                             const val = e.target.value;
                             if (val === "__NEW__") {
                               setIsNewSupplier(true);
-                              setSupplierForm(f => ({ ...f, supplier_name: "", supplier_brand: "", supplier_email: "" }));
+                              setSupplierForm(f => ({ ...f, supplier_user_id: null, existing_supplier_id: null, supplier_name: "", supplier_brand: "", supplier_email: "" }));
                             } else {
-                              const existing = dropdownSuppliers.find(s => s.supplier_name === val);
+                              const existing = dropdownSuppliers.find(s => s.key === val);
                               if (existing) {
-                                setSupplierForm(f => ({ ...f, supplier_name: existing.supplier_name, supplier_brand: existing.supplier_brand || "", supplier_email: existing.supplier_email || "", currency: existing.currency || "USD" }));
+                                setSupplierForm(f => ({ ...f, supplier_user_id: existing.supplier_user_id, existing_supplier_id: existing.existing_supplier_id, supplier_name: existing.supplier_name, supplier_brand: existing.supplier_brand || "", supplier_email: existing.supplier_email || "", currency: existing.currency || "USD" }));
                               }
                             }
                           }}
                         >
                           <option value="" disabled>Select a supplier...</option>
                           {dropdownSuppliers.map(s => (
-                            <option key={s.id} value={s.supplier_name}>{s.supplier_name}</option>
+                            <option key={s.key} value={s.key}>{s.supplier_name}{s.supplier_email ? ` (${s.supplier_email})` : ""}</option>
                           ))}
                           <option value="__NEW__" className="font-bold text-blue-600">+ Create New Supplier</option>
                         </select>
@@ -871,7 +878,7 @@ export default function InventoryPage() {
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("inventory.label_supplier_email")}</label>
-                  <input type="email" value={supplierForm.supplier_email} onChange={e => setSupplierForm(f => ({ ...f, supplier_email: e.target.value }))} placeholder="orders@supplier.com"
+                  <input type="email" readOnly={!!supplierForm.supplier_user_id || !!supplierForm.existing_supplier_id} value={supplierForm.supplier_email} onChange={e => setSupplierForm(f => ({ ...f, supplier_email: e.target.value }))} placeholder="orders@supplier.com"
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div className="grid grid-cols-3 gap-4">

@@ -1,5 +1,42 @@
 @import "tailwindcss";
 
+/* Fixed chrome shares the footer's measured height, including wrapped contacts. */
+body { padding-bottom: var(--app-footer-height, 48px); }
+.app-sidebar { bottom: var(--app-footer-height, 48px); }
+.team-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  max-height: none;
+}
+.team-dialog .team-field-label { margin-bottom: 0.25rem; font-size: 0.75rem; }
+.team-dialog .team-field { min-height: 40px; padding: 0.5rem 0.75rem; font-size: 0.875rem; }
+.team-dialog .team-field.pr-12 { padding-right: 2.75rem; }
+.team-member-fields > div { min-width: 0; }
+@media (min-width: 480px) {
+  .team-member-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 479px) {
+  .team-dialog .team-field { font-size: 1rem; }
+}
+@media (max-height: 600px) and (max-width: 479px) {
+  .team-member-fields { gap: 0.5rem; padding-block: 0.75rem; }
+  .team-member-actions { padding-block: 0.5rem; }
+}
+.team-field-label { display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; }
+.team-field {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--background);
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+.team-field:focus { outline: 2px solid #2563eb; outline-offset: 2px; }
+.team-field.pr-12 { padding-right: 3rem; }
+.team-field.pl-10 { padding-left: 2.5rem; }
+
 @variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* ═══════════════════════════════════════════════

@@ -64,6 +64,7 @@ class LeadSources(BusinessSuiteBase):
         rows = self.get("/lead-sources").json()
         rows = rows if isinstance(rows, list) else rows.get("sources", rows.get("items", []))
         self.assertTrue(any(r["name"] == "Facebook" for r in rows))
+        self.assertTrue({"Website", "Meta Ads", "Google Ads"}.issubset({r["name"] for r in rows}))
         fb = next(r for r in rows if r["name"] == "Facebook")
         r = self.post("/lead-sources/assign", {"entity_type": "lead", "entity_id": self.leads[2], "source_id": fb["id"]})
         self.assertEqual(r.status_code, 200, r.text)

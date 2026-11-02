@@ -14,6 +14,7 @@ function compile(path, imports, suffix = '', globals = {}) {
 }
 
 const routes = compile('src/lib/moduleRoutes.ts', () => { throw new Error('Unexpected import'); });
+const sidebarPreferences = compile('src/lib/sidebarPreferences.ts', () => { throw new Error('Unexpected import'); });
 
 // Run actual component render/effect handlers with controlled role, feature and
 // API responses. No local environment files, credentials or browser are needed.
@@ -37,6 +38,7 @@ function harness({ role = 'SuperAdmin', path = '/admin/telemetry', inspection, r
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
     if (name.endsWith('.module.css')) return { default: new Proxy({}, { get: (_, key) => String(key) }) };
     if (name === '@/lib/moduleRoutes') return routes;
+    if (name === '@/lib/sidebarPreferences') return sidebarPreferences;
     if (name === '@/components/FeatureAccessNotice') return compile('src/components/FeatureAccessNotice.tsx', imports);
     if (name === '@/context/RoleContext') return { useRole: () => ({ role, isAuthenticated: true, user: { role } }) };
     if (name === '@/context/TenantConfigContext') return { useTenantConfig: () => ({
@@ -91,7 +93,19 @@ test('client directory list keeps filtering, sorting and per-tenant configuratio
   const h = harness({ tenantRows });
   const page = compile('src/app/superadmin/clients/page.tsx', h.imports, '', h.globals).default;
   const render = () => h.render(page);
-  const rowIds = tree => find(tree, node => node.type === 'ul' && node.props?.['aria-label'] === 'Client workspaces')?.props.children.map(node => node.props['aria-labelledby']);
+  const rowIds = tree => {
+    const list = find(tree, node => node.props?.role === 'list' && node.props?.['aria-label'] === 'Client workspaces');
+    assert.ok(list, 'Both directory layouts retain a labelled workspace list');
+    const rows = [];
+    const visit = node => {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) { node.forEach(visit); return; }
+      if (node.props?.role === 'listitem') rows.push(node.props['aria-labelledby']);
+      else visit(node.props?.children);
+    };
+    visit(list);
+    return rows;
+  };
   const filter = label => find(render(), node => node.type === 'button' && 'aria-pressed' in node.props && nodeText(node).startsWith(label));
   render(); await h.loaded();
   assert.deepEqual(rowIds(render()), ['workspace-3', 'workspace-2']);
@@ -101,10 +115,16 @@ test('client directory list keeps filtering, sorting and per-tenant configuratio
   assert.ok(find(render(), node => node.props?.tenant?.id === 2));
   find(render(), node => node.props?.['aria-label'] === 'Search clients').props.onChange({ target: { value: 'Beta' } });
   assert.match(nodeText(render()), /No client matches/);
-  find(render(), node => node.type === 'button' && nodeText(node) === 'Clear filters').props.onClick();
+  find(render(), node => node.props?.['aria-label'] === 'Search clients').props.onChange({ target: { value: '' } });
+  filter('All').props.onClick();
   assert.deepEqual(rowIds(render()), ['workspace-3', 'workspace-2']);
   find(render(), node => node.props?.['aria-label'] === 'Sort clients').props.onChange({ target: { value: 'name' } });
   assert.deepEqual(rowIds(render()), ['workspace-2', 'workspace-3']);
+  find(render(), node => node.type === 'button' && node.props?.title === 'Cards view').props.onClick();
+  assert.deepEqual(rowIds(render()), ['workspace-2', 'workspace-3']);
+  find(render(), node => node.props?.['aria-label'] === 'Configure Beta').props.onClick();
+  assert.ok(find(render(), node => node.props?.tenant?.id === 3));
+  find(render(), node => node.type === 'button' && node.props?.title === 'List view').props.onClick();
   filter('Demo workspaces').props.onClick();
   assert.deepEqual(rowIds(render()), ['workspace-4']);
   assert.match(nodeText(render()), /Demo of Alpha/);

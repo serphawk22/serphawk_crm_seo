@@ -1,11 +1,22 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useTenantConfig } from "@/context/TenantConfigContext";
 
 export default function GlobalFooter() {
   const { settings } = useTenantConfig();
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const footer = ref.current;
+    if (!footer) return;
+    const update = () => document.documentElement.style.setProperty("--app-footer-height", `${footer.getBoundingClientRect().height}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(footer);
+    return () => { observer.disconnect(); document.documentElement.style.removeProperty("--app-footer-height"); };
+  }, []);
   return (
-    <footer className="fixed bottom-0 left-0 right-0 z-[80] border-t border-slate-200/80 bg-white/95 px-4 py-2 text-[10px] font-semibold text-slate-500 shadow-[0_-4px_16px_rgba(15,23,42,0.08)] backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95 dark:text-zinc-400">
+    <footer ref={ref} className="fixed bottom-0 left-0 right-0 z-[80] border-t border-slate-200/80 bg-white/95 px-4 py-2 text-[10px] font-semibold text-slate-500 shadow-[0_-4px_16px_rgba(15,23,42,0.08)] backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95 dark:text-zinc-400">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-1 max-w-[1600px] mx-auto">
         {/* Left: Dev credit */}
         <span className="shrink-0 flex items-center gap-1">
@@ -26,7 +37,7 @@ export default function GlobalFooter() {
         </span>
 
         {/* Right: Contact links */}
-        <span className="shrink-0 flex flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-right">
+        <span className="flex min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-right">
           <span className="text-slate-400 dark:text-zinc-500">Contact Relation Manager:</span>
           <a
             href="https://wa.me/917348947492"

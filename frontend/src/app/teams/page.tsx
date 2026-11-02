@@ -2,38 +2,60 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users, Plus, Check, X, Shield, Mail, Phone, Loader2, Briefcase, GraduationCap, Target, Ticket, CheckCircle, PlayCircle, Layers, Activity } from "lucide-react";
+import {
+  Users, Plus, X, Loader2, Briefcase, GraduationCap, Target,
+  Ticket, CheckCircle, PlayCircle, Layers, Activity, Search,
+  Eye, EyeOff, UserCheck, Shield
+} from "lucide-react";
 import { API_BASE_URL } from "@/config";
-import { cn } from "@/lib/utils";
+import ResponsiveDialog from "@/components/ResponsiveDialog";
 import PageGuide from "@/components/PageGuide";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTenantConfig } from "@/context/TenantConfigContext";
 import InstitutePeople from "@/components/InstitutePeople";
+import { useRole } from "@/context/RoleContext";
+
+interface TeamMember { id: number; name: string; email: string; role: string; }
+interface MemberStats {
+  type: string;
+  clients_handling?: number;
+  leads_converted?: number;
+  cases_assigned?: number;
+  total_tickets?: number;
+  in_dev?: number;
+  in_qa?: number;
+  in_prod?: number;
+  active_tasks?: { id: number; title: string; status: string; priority: string }[];
+}
 
 export default function TeamsPage() {
   const { loaded, isOn } = useTenantConfig();
-  if (!loaded) return <p role="status" className="p-6">Loading team configuration…</p>;
+  if (!loaded) return <p role="status" className="p-6 text-xs text-slate-500">Loading team configuration…</p>;
   return <StandardTeamsPage institute={isOn('institute')} />;
 }
 
 function StandardTeamsPage({ institute }: { institute: boolean }) {
+  const { user } = useRole();
   const { t } = useLanguage();
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  const [query, setQuery] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("Employee");
+  const [role, setRole] = useState("SalesManager");
 
-  const [selectedUser, setSelectedUser] = useState<any>(null);
-  const [userStats, setUserStats] = useState<any>(null);
+  const [selectedUser, setSelectedUser] = useState<TeamMember | null>(null);
+  const [userStats, setUserStats] = useState<MemberStats | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
 
-  const handleUserClick = async (u: any) => {
+  const handleUserClick = async (u: TeamMember) => {
     setSelectedUser(u);
     setUserStats(null);
     setLoadingStats(true);
@@ -49,8 +71,8 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
     }
   };
 
-
   const fetchUsers = async () => {
+    setLoadError(false);
     try {
       const res = await fetch(`${API_BASE_URL}/users`);
       if (!res.ok) throw new Error("Failed to fetch");
@@ -58,6 +80,7 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
       setUsers(data.users || []);
     } catch (error) {
       console.error("Error fetching users:", error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -75,7 +98,7 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
       const res = await fetch(`${API_BASE_URL}/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password, role }),
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), password, role }),
       });
 
       if (res.ok) {
@@ -84,7 +107,7 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
         setName("");
         setEmail("");
         setPassword("");
-        setRole("Employee");
+        setRole("SalesManager");
       } else {
         let msg = `Request failed (${res.status})`;
         try {
@@ -103,210 +126,384 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
     }
   };
 
-  const salesTeam = users.filter(u => ['Admin', 'SalesManager', 'Employee'].includes(u.role));
-  const devTeam = users.filter(u => ['ProjectMember', 'Intern'].includes(u.role));
+  const filteredUsers = users.filter(u =>
+    [u.name, u.email, u.role].some(value => value?.toLowerCase().includes(query.trim().toLowerCase()))
+  );
+  const salesTeam = filteredUsers.filter(u => ['Admin', 'SalesManager', 'Sales', 'Employee'].includes(u.role));
+  const devTeam = filteredUsers.filter(u => ['ProjectMember', 'Intern'].includes(u.role));
+
+  const removeMember = async (member: { id: number; name: string }) => {
+    if (!window.confirm(`Remove ${member.name || 'this team member'}? Their access will end and record history will be retained.`)) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/${member.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Could not remove member");
+      setSelectedUser(null);
+      await fetchUsers();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Could not remove member");
+    }
+  };
 
   if (loading) {
     return (
-      <div className="flex h-[80vh] items-center justify-center">
-        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">{t("teams.title")}</h1>
-          <p className="text-gray-500 dark:text-zinc-400 font-medium">{t("teams.subtitle")}</p>
+    <div className="space-y-4">
+      {/* Compact Executive Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#111111]/90 p-3 sm:px-4 sm:py-3 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center justify-center shrink-0">
+            <Users className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">{t("teams.title")}</h1>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                {users.length} members
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{t("teams.subtitle")}</p>
+          </div>
         </div>
-        <button 
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20"
+
+        <button
+          onClick={() => { setCreateError(null); setShowCreateModal(true); }}
+          className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold text-xs transition shadow-xs shrink-0"
         >
-          <Plus className="w-4 h-4" /> {t("teams.add_member")}
+          <Plus className="w-3.5 h-3.5" />
+          <span>{t("teams.add_member")}</span>
         </button>
       </div>
 
-      {institute ? <InstitutePeople key={users.length} /> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl shadow-sm overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50/50 dark:bg-zinc-950/50">
-            <h3 className="font-bold text-lg text-gray-900 dark:text-zinc-50 flex items-center gap-3">
-              <div className="p-2 bg-indigo-100 dark:bg-indigo-500/10 rounded-xl">
-                <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400"/>
-              </div>
-              {t("teams.sales_mgmt_team")}
-            </h3>
-            <span className="text-xs font-bold text-gray-400 bg-gray-100 dark:bg-zinc-800 px-3 py-1 rounded-full">{salesTeam.length} {t("teams.members")}</span>
-          </div>
-          <div className="divide-y divide-gray-100 dark:divide-zinc-800 flex-1">
-            {salesTeam.map(u => (
-              <div key={u.id} className="p-5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-zinc-950/50 transition-colors cursor-pointer"
-                onClick={() => handleUserClick(u)}>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-lg">
-                    {u.name?.charAt(0) || u.email?.charAt(0)}
-                  </div>
-                  <div>
-                    <p className="text-sm font-black text-gray-900 dark:text-zinc-50">{u.name || t("teams.unnamed")}</p>
-                    <p className="text-xs font-medium text-gray-500 dark:text-zinc-400 mt-0.5">{u.email}</p>
-                  </div>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-300 rounded-lg">
-                    {u.role}
-                  </span>
-                </div>
-              </div>
-            ))}
-            {salesTeam.length === 0 && (
-              <div className="p-10 text-center flex flex-col items-center">
-                <Users className="w-10 h-10 text-gray-300 dark:text-zinc-700 mb-3" />
-                <p className="text-sm font-medium text-gray-500 dark:text-zinc-400">{t("teams.no_members")}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-3xl shadow-sm overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50/50 dark:bg-zinc-950/50">
-            <h3 className="font-bold text-lg text-gray-900 dark:text-zinc-50 flex items-center gap-3">
-              <div className="p-2 bg-emerald-100 dark:bg-emerald-500/10 rounded-xl">
-                <GraduationCap className="w-5 h-5 text-emerald-600 dark:text-emerald-400"/>
-              </div>
-              {t("teams.dev_team")}
-            </h3>
-            <span className="text-xs font-bold text-gray-400 bg-gray-100 dark:bg-zinc-800 px-3 py-1 rounded-full">{devTeam.length} {t("teams.members")}</span>
-          </div>
-          <div className="divide-y divide-gray-100 dark:divide-zinc-800 flex-1">
-            {devTeam.map(u => (
-              <div key={u.id} className="p-5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-zinc-950/50 transition-colors cursor-pointer"
-                onClick={() => handleUserClick(u)}>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black text-lg">
-                    {u.name?.charAt(0) || u.email?.charAt(0)}
-                  </div>
-                  <div>
-                    <p className="text-sm font-black text-gray-900 dark:text-zinc-50">{u.name || t("teams.unnamed")}</p>
-                    <p className="text-xs font-medium text-gray-500 dark:text-zinc-400 mt-0.5">{u.email}</p>
-                  </div>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-300 rounded-lg">
-                    {u.role}
-                  </span>
-                </div>
-              </div>
-            ))}
-            {devTeam.length === 0 && (
-              <div className="p-10 text-center flex flex-col items-center">
-                <Users className="w-10 h-10 text-gray-300 dark:text-zinc-700 mb-3" />
-                <p className="text-sm font-medium text-gray-500 dark:text-zinc-400">{t("teams.no_members")}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      }
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-8 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50 dark:bg-zinc-950/50">
-              <div>
-                <h2 className="text-2xl font-black text-gray-900 dark:text-zinc-50 tracking-tight">{t("teams.modal_title")}</h2>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t("teams.modal_subtitle")}</p>
-              </div>
-              <button onClick={() => setShowCreateModal(false)} className="p-3 hover:bg-white dark:bg-zinc-900 rounded-2xl transition-all shadow-sm">
-                <X className="w-5 h-5 text-gray-400" />
-              </button>
+      {/* 4-KPI Metric Strip (When not institute) */}
+      {!institute && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
+          <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
+            <div>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Total Members</p>
+              <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight mt-0.5">{users.length}</p>
             </div>
-            
-            <form onSubmit={handleCreate} className="p-8 space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("teams.field_name")}</label>
-                <input 
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={t("teams.name_ph")} 
-                  className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-                />
-              </div>
+            <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+              <Users className="w-3.5 h-3.5" />
+            </div>
+          </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("teams.field_email")}</label>
-                <input 
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder={t("teams.email_ph")} 
-                  className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-                />
-              </div>
+          <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
+            <div>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Sales & Mgmt</p>
+              <p className="text-base sm:text-lg font-bold text-indigo-600 dark:text-indigo-400 leading-tight mt-0.5">{salesTeam.length}</p>
+            </div>
+            <div className="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+              <Briefcase className="w-3.5 h-3.5" />
+            </div>
+          </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("teams.field_password")}</label>
-                <input 
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={t("teams.password_ph")} 
-                  className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-                />
-              </div>
+          <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
+            <div>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Delivery Team</p>
+              <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 leading-tight mt-0.5">{devTeam.length}</p>
+            </div>
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <GraduationCap className="w-3.5 h-3.5" />
+            </div>
+          </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{t("teams.field_role")}</label>
-                <select 
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full px-6 py-4 bg-gray-50 dark:bg-zinc-950 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"
-                >
-                  <optgroup label={t("teams.optgroup_sales")}>
-                    <option value="Admin">Admin</option>
-                    <option value="SalesManager">{t("teams.opt_sales_manager")}</option>
-                    <option value="Employee">Salesperson</option>
-                  </optgroup>
-                  {!institute && <optgroup label={t("teams.optgroup_dev")}>
-                    <option value="ProjectMember">{t("teams.opt_project_member")}</option>
-                    <option value="Intern">{t("teams.opt_intern")}</option>
-                  </optgroup>}
-                </select>
-              </div>
-
-              {createError && (
-                <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 text-xs font-bold rounded-2xl px-4 py-3">
-                  {createError}
-                </div>
-              )}
-
-              <div className="pt-4 flex gap-4">
-                <button 
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="flex-1 px-6 py-4 bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-zinc-400 rounded-2xl font-bold text-sm hover:bg-gray-200 transition-all"
-                >
-                  {t("teams.cancel")}
-                </button>
-                <button 
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 px-6 py-4 bg-blue-600 text-white rounded-2xl font-bold text-sm hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2"
-                >
-                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  {t("teams.add_member_btn")}
-                </button>
-              </div>
-            </form>
+          <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
+            <div>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Admins</p>
+              <p className="text-base sm:text-lg font-bold text-amber-600 dark:text-amber-400 leading-tight mt-0.5">{users.filter(u => u.role === 'Admin').length}</p>
+            </div>
+            <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <Shield className="w-3.5 h-3.5" />
+            </div>
           </div>
         </div>
       )}
 
-      
+      {/* Search Toolbar */}
+      {!institute && (
+        <div className="bg-white dark:bg-[#111111]/90 p-2 sm:px-3 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-xs">
+          <div className="relative max-w-sm">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
+            <input
+              aria-label="Search team members"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search by name, email, or role..."
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+        </div>
+      )}
+
+      {loadError && (
+        <div role="alert" className="p-3 rounded-xl border border-rose-200 bg-rose-50 text-xs text-rose-700 flex items-center justify-between">
+          <span>Team accounts could not be loaded.</span>
+          <button type="button" onClick={fetchUsers} className="font-semibold underline ml-2">Try again</button>
+        </div>
+      )}
+
+      {institute ? (
+        <InstitutePeople key={users.length} />
+      ) : (
+        <div className="space-y-4">
+          {/* Sales & Management Team */}
+          <section className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded-md bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20">
+                  <Briefcase className="w-3.5 h-3.5" />
+                </span>
+                <h3 className="font-bold text-xs text-slate-900 dark:text-white">{t("teams.sales_mgmt_team")}</h3>
+              </div>
+              <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-full border border-slate-200/60 dark:border-white/10">
+                {salesTeam.length} {t("teams.members")}
+              </span>
+            </div>
+
+            {salesTeam.length === 0 ? (
+              <div className="p-8 text-center bg-white dark:bg-[#111111]/90 rounded-xl border border-slate-200/90 dark:border-white/10">
+                <Users className="w-8 h-8 text-slate-300 dark:text-zinc-600 mx-auto mb-2" />
+                <p className="text-xs text-slate-500 dark:text-zinc-400">{t("teams.no_members")}</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {salesTeam.map(u => (
+                  <div
+                    key={u.id}
+                    className="group relative flex items-center justify-between gap-3 p-2.5 sm:px-4 sm:py-2 bg-white dark:bg-[#111111]/90 rounded-xl border border-slate-200/90 dark:border-white/10 hover:border-indigo-500/60 dark:hover:border-indigo-500/50 hover:shadow-xs transition-all duration-150 cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={e => {
+                      if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        handleUserClick(u);
+                      }
+                    }}
+                    onClick={() => handleUserClick(u)}
+                  >
+                    <div className="flex min-w-0 items-center gap-2.5 flex-1">
+                      <div className="shrink-0 w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-400 flex items-center justify-center font-bold text-xs">
+                        {u.name?.charAt(0) || u.email?.charAt(0)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-xs text-slate-900 dark:text-white truncate">{u.name || t("teams.unnamed")}</p>
+                        <p className="text-[11px] text-slate-400 dark:text-zinc-500 truncate mt-0.5">{u.email}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {user?.id !== u.id && (
+                        <button
+                          type="button"
+                          className="text-[11px] text-rose-500 hover:underline mr-1"
+                          onClick={event => {
+                            event.stopPropagation();
+                            removeMember(u);
+                          }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-zinc-300 border border-slate-200/80 dark:border-white/10 rounded-full">
+                        {u.role}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Dev / Delivery Team */}
+          <section className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded-md bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+                  <GraduationCap className="w-3.5 h-3.5" />
+                </span>
+                <h3 className="font-bold text-xs text-slate-900 dark:text-white">{t("teams.dev_team")}</h3>
+              </div>
+              <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-full border border-slate-200/60 dark:border-white/10">
+                {devTeam.length} {t("teams.members")}
+              </span>
+            </div>
+
+            {devTeam.length === 0 ? (
+              <div className="p-8 text-center bg-white dark:bg-[#111111]/90 rounded-xl border border-slate-200/90 dark:border-white/10">
+                <Users className="w-8 h-8 text-slate-300 dark:text-zinc-600 mx-auto mb-2" />
+                <p className="text-xs text-slate-500 dark:text-zinc-400">{t("teams.no_members")}</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {devTeam.map(u => (
+                  <div
+                    key={u.id}
+                    className="group relative flex items-center justify-between gap-3 p-2.5 sm:px-4 sm:py-2 bg-white dark:bg-[#111111]/90 rounded-xl border border-slate-200/90 dark:border-white/10 hover:border-emerald-500/60 dark:hover:border-emerald-500/50 hover:shadow-xs transition-all duration-150 cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={e => {
+                      if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        handleUserClick(u);
+                      }
+                    }}
+                    onClick={() => handleUserClick(u)}
+                  >
+                    <div className="flex min-w-0 items-center gap-2.5 flex-1">
+                      <div className="shrink-0 w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 flex items-center justify-center font-bold text-xs">
+                        {u.name?.charAt(0) || u.email?.charAt(0)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-xs text-slate-900 dark:text-white truncate">{u.name || t("teams.unnamed")}</p>
+                        <p className="text-[11px] text-slate-400 dark:text-zinc-500 truncate mt-0.5">{u.email}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {user?.id !== u.id && (
+                        <button
+                          type="button"
+                          className="text-[11px] text-rose-500 hover:underline mr-1"
+                          onClick={event => {
+                            event.stopPropagation();
+                            removeMember(u);
+                          }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-zinc-300 border border-slate-200/80 dark:border-white/10 rounded-full">
+                        {u.role}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {/* Add Member Modal */}
+      {showCreateModal && (
+        <ResponsiveDialog
+          title={t("teams.modal_title")}
+          description={t("teams.modal_subtitle")}
+          onClose={() => { if (!isSubmitting) setShowCreateModal(false); }}
+        >
+          <form onSubmit={handleCreate} className="flex flex-col">
+            <fieldset disabled={isSubmitting} className="team-member-fields grid min-w-0 gap-3 p-4 disabled:opacity-60 text-xs">
+              <div>
+                <label htmlFor="member-name" className="team-field-label font-medium text-slate-700 dark:text-zinc-300">{t("teams.field_name")}</label>
+                <input
+                  autoFocus
+                  id="member-name"
+                  autoComplete="name"
+                  required
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder={t("teams.name_ph")}
+                  className="team-field mt-1"
+                />
+              </div>
+              <div>
+                <label htmlFor="member-email" className="team-field-label font-medium text-slate-700 dark:text-zinc-300">{t("teams.field_email")}</label>
+                <input
+                  id="member-email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder={t("teams.email_ph")}
+                  className="team-field mt-1"
+                />
+              </div>
+              <div>
+                <label htmlFor="member-password" className="team-field-label font-medium text-slate-700 dark:text-zinc-300">{t("teams.field_password")}</label>
+                <div className="relative mt-1">
+                  <input
+                    id="member-password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    required
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="team-field pr-10"
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="member-role" className="team-field-label font-medium text-slate-700 dark:text-zinc-300">{t("teams.field_role")}</label>
+                <select
+                  id="member-role"
+                  value={role}
+                  onChange={e => setRole(e.target.value)}
+                  className="team-field mt-1"
+                >
+                  <optgroup label={t("teams.optgroup_sales")}>
+                    <option value="Admin">Admin</option>
+                    <option value="SalesManager">{t("teams.opt_sales_manager")}</option>
+                  </optgroup>
+                  {!institute && (
+                    <optgroup label={t("teams.optgroup_dev")}>
+                      <option value="ProjectMember">{t("teams.opt_project_member")}</option>
+                      <option value="Intern">{t("teams.opt_intern")}</option>
+                    </optgroup>
+                  )}
+                </select>
+                <p className="mt-1 text-[11px] leading-snug text-slate-400 dark:text-zinc-500">
+                  {role === "Admin"
+                    ? "Administrators manage settings and team accounts."
+                    : role === "SalesManager"
+                    ? "Sales managers oversee leads and sales activity."
+                    : "Team members work on assigned projects and tasks."}
+                </p>
+              </div>
+              {createError && (
+                <div role="alert" className="col-span-full rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">
+                  {createError}
+                </div>
+              )}
+            </fieldset>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 bg-slate-50 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-950">
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => setShowCreateModal(false)}
+                className="rounded-lg border border-slate-200 px-4 py-1.5 text-xs font-semibold text-slate-700 dark:text-zinc-300 disabled:opacity-50 dark:border-zinc-700"
+              >
+                {t("teams.cancel")}
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
+              >
+                {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                <span>{isSubmitting ? "Creating account..." : t("teams.add_member_btn")}</span>
+              </button>
+            </div>
+          </form>
+        </ResponsiveDialog>
+      )}
+
       {/* User Stats Drawer */}
       <AnimatePresence>
         {selectedUser && (
@@ -316,92 +513,110 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setSelectedUser(null)}
-              className="fixed inset-0 z-[90] bg-black/20 backdrop-blur-sm"
+              className="fixed inset-0 z-[90] bg-black/30 backdrop-blur-xs"
             />
             <motion.div
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-zinc-950 border-l border-gray-200 dark:border-zinc-800 shadow-2xl z-[100] flex flex-col overflow-y-auto"
+              className="fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-zinc-950 border-l border-slate-200 dark:border-zinc-800 shadow-2xl z-[100] flex flex-col overflow-y-auto"
             >
-              <div className="p-6 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between sticky top-0 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md z-10">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black text-lg">
+              <div className="p-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between sticky top-0 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md z-10">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <div className="shrink-0 w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-sm">
                     {selectedUser.name?.charAt(0) || selectedUser.email?.charAt(0)}
                   </div>
                   <div>
-                    <h2 className="text-lg font-black text-gray-900 dark:text-white leading-none">
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-white leading-none truncate max-w-[220px]">
                       {selectedUser.name || "Unnamed Member"}
                     </h2>
-                    <p className="text-sm font-bold text-blue-600 dark:text-blue-400 mt-1">
+                    <p className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 mt-0.5">
                       {selectedUser.role}
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setSelectedUser(null)}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors text-slate-400"
                 >
-                  <X className="w-5 h-5 text-gray-500" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="p-6 flex-1">
+              <div className="p-4 flex-1">
+                {user?.id !== selectedUser.id && (
+                  <button
+                    type="button"
+                    onClick={() => removeMember(selectedUser)}
+                    className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs text-rose-600 font-medium hover:bg-rose-100 transition"
+                  >
+                    Remove member
+                  </button>
+                )}
+
                 {loadingStats ? (
-                  <div className="flex flex-col items-center justify-center h-48 space-y-4">
-                    <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                    <p className="text-sm font-bold text-gray-500 dark:text-zinc-400">Loading performance stats...</p>
+                  <div className="flex flex-col items-center justify-center h-48 space-y-2">
+                    <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+                    <p className="text-xs text-slate-500 dark:text-zinc-400">Loading performance stats...</p>
                   </div>
                 ) : userStats ? (
-                  <div className="space-y-8 animate-in fade-in duration-500">
+                  <div className="space-y-4">
                     {userStats.type === "sales" && (
                       <>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="bg-gray-50 dark:bg-zinc-900 rounded-2xl p-5 border border-gray-100 dark:border-zinc-800">
-                            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 mb-2">
-                              <Briefcase className="w-5 h-5" />
-                              <span className="text-xs font-black uppercase tracking-wider">Clients</span>
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div className="bg-slate-50 dark:bg-white/5 rounded-xl p-3 border border-slate-200/80 dark:border-white/10">
+                            <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 mb-1">
+                              <Briefcase className="w-4 h-4" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider">Clients</span>
                             </div>
-                            <p className="text-3xl font-black text-gray-900 dark:text-white">
+                            <p className="text-xl font-bold text-slate-900 dark:text-white tabular-nums">
                               {userStats.clients_handling}
                             </p>
-                            <p className="text-xs font-bold text-gray-400 mt-1">Active Accounts</p>
+                            <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Active Accounts</p>
                           </div>
-                          
-                          <div className="bg-emerald-50 dark:bg-emerald-500/5 rounded-2xl p-5 border border-emerald-100 dark:border-emerald-500/10">
-                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 mb-2">
-                              <Target className="w-5 h-5" />
-                              <span className="text-xs font-black uppercase tracking-wider">Leads</span>
+
+                          <div className="bg-emerald-50 dark:bg-emerald-500/5 rounded-xl p-3 border border-emerald-200/80 dark:border-emerald-500/20">
+                            <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 mb-1">
+                              <Target className="w-4 h-4" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider">Leads</span>
                             </div>
-                            <p className="text-3xl font-black text-gray-900 dark:text-white">
+                            <p className="text-xl font-bold text-slate-900 dark:text-white tabular-nums">
                               {userStats.leads_converted}
                             </p>
-                            <p className="text-xs font-bold text-gray-400 mt-1">Converted</p>
+                            <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Converted</p>
                           </div>
-                          <div className="bg-rose-50 dark:bg-rose-500/5 rounded-2xl p-5 border border-rose-100 dark:border-rose-500/10">
-                            <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 mb-2"><Ticket className="w-5 h-5" /><span className="text-xs font-black uppercase tracking-wider">Cases Assigned</span></div>
-                            <p className="text-3xl font-black text-gray-900 dark:text-white">{userStats.cases_assigned || 0}</p>
-                            <p className="text-xs font-bold text-gray-400 mt-1">Support ownership</p>
+
+                          <div className="bg-rose-50 dark:bg-rose-500/5 rounded-xl p-3 border border-rose-200/80 dark:border-rose-500/20 col-span-2">
+                            <div className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400 mb-1">
+                              <Ticket className="w-4 h-4" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider">Cases Assigned</span>
+                            </div>
+                            <p className="text-xl font-bold text-slate-900 dark:text-white tabular-nums">
+                              {userStats.cases_assigned || 0}
+                            </p>
+                            <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Support ownership</p>
                           </div>
                         </div>
 
                         <div>
-                          <h3 className="text-sm font-black text-gray-900 dark:text-zinc-100 uppercase tracking-widest mb-4 flex items-center gap-2">
-                            <Activity className="w-4 h-4 text-blue-500" /> Active Sales Tasks
+                          <h3 className="text-xs font-bold text-slate-900 dark:text-zinc-100 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <Activity className="w-3.5 h-3.5 text-blue-500" />
+                            <span>Active Sales Tasks</span>
                           </h3>
-                          {userStats.active_tasks?.length > 0 ? (
-                            <div className="space-y-3">
-                              {userStats.active_tasks.map((t: any) => (
-                                <div key={t.id} className="p-4 rounded-xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-sm">
-                                  <p className="font-bold text-sm text-gray-900 dark:text-white">{t.title}</p>
-                                  <div className="flex items-center gap-3 mt-2">
-                                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400">
+                          {!!userStats.active_tasks?.length ? (
+                            <div className="space-y-1.5">
+                              {userStats.active_tasks.map((t) => (
+                                <div key={t.id} className="p-2.5 rounded-xl bg-white dark:bg-[#111111]/90 border border-slate-200/90 dark:border-white/10 shadow-xs">
+                                  <p className="font-semibold text-xs text-slate-900 dark:text-white">{t.title}</p>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-zinc-400">
                                       {t.status}
                                     </span>
-                                    <span className={`text-xs font-bold ${
-                                      t.priority === 'High' || t.priority === 'Urgent' 
-                                      ? 'text-red-500' : 'text-blue-500'
+                                    <span className={`text-[10px] font-semibold ${
+                                      t.priority === 'High' || t.priority === 'Urgent'
+                                        ? 'text-rose-500'
+                                        : 'text-blue-500'
                                     }`}>
                                       {t.priority} Priority
                                     </span>
@@ -410,8 +625,8 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
                               ))}
                             </div>
                           ) : (
-                            <div className="p-6 text-center border-2 border-dashed border-gray-200 dark:border-zinc-800 rounded-2xl">
-                              <p className="text-sm font-bold text-gray-400">No active tasks</p>
+                            <div className="p-4 text-center border border-dashed border-slate-200 dark:border-zinc-800 rounded-xl">
+                              <p className="text-xs text-slate-400">No active tasks</p>
                             </div>
                           )}
                         </div>
@@ -419,46 +634,47 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
                     )}
 
                     {userStats.type === "dev" && (
-                      <div className="space-y-6">
-                        <div className="bg-indigo-50 dark:bg-indigo-500/5 rounded-3xl p-6 border border-indigo-100 dark:border-indigo-500/10 text-center">
-                          <h4 className="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-1">Total Assigned</h4>
-                          <p className="text-5xl font-black text-gray-900 dark:text-white">{userStats.total_tickets}</p>
+                      <div className="space-y-3">
+                        <div className="bg-indigo-50 dark:bg-indigo-500/5 rounded-xl p-3 border border-indigo-200/80 dark:border-indigo-500/20 text-center">
+                          <h4 className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-0.5">Total Assigned</h4>
+                          <p className="text-3xl font-bold text-slate-900 dark:text-white tabular-nums">{userStats.total_tickets}</p>
                         </div>
-                        
-                        <div className="grid grid-cols-1 gap-3">
-                          <div className="flex items-center justify-between p-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-sm">
-                            <div className="flex items-center gap-3 text-amber-600 dark:text-amber-400">
-                              <PlayCircle className="w-5 h-5" />
-                              <span className="font-bold text-sm">In Development</span>
+
+                        <div className="grid grid-cols-1 gap-1.5">
+                          <div className="flex items-center justify-between p-2.5 bg-white dark:bg-[#111111]/90 border border-slate-200/90 dark:border-white/10 rounded-xl shadow-xs">
+                            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                              <PlayCircle className="w-4 h-4" />
+                              <span className="font-semibold text-xs">In Development</span>
                             </div>
-                            <span className="font-black text-lg text-gray-900 dark:text-white">{userStats.in_dev}</span>
+                            <span className="font-bold text-xs text-slate-900 dark:text-white tabular-nums">{userStats.in_dev}</span>
                           </div>
-                          <div className="flex items-center justify-between p-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-sm">
-                            <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400"><Ticket className="w-5 h-5" /><span className="font-bold text-sm">Support Cases</span></div>
-                            <span className="font-black text-lg text-gray-900 dark:text-white">{userStats.cases_assigned || 0}</span>
-                          </div>
-                          
-                          <div className="flex items-center justify-between p-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-sm">
-                            <div className="flex items-center gap-3 text-blue-600 dark:text-blue-400">
-                              <Layers className="w-5 h-5" />
-                              <span className="font-bold text-sm">Given to QA</span>
+                          <div className="flex items-center justify-between p-2.5 bg-white dark:bg-[#111111]/90 border border-slate-200/90 dark:border-white/10 rounded-xl shadow-xs">
+                            <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+                              <Ticket className="w-4 h-4" />
+                              <span className="font-semibold text-xs">Support Cases</span>
                             </div>
-                            <span className="font-black text-lg text-gray-900 dark:text-white">{userStats.in_qa}</span>
+                            <span className="font-bold text-xs text-slate-900 dark:text-white tabular-nums">{userStats.cases_assigned || 0}</span>
                           </div>
-                          
-                          <div className="flex items-center justify-between p-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-sm">
-                            <div className="flex items-center gap-3 text-emerald-600 dark:text-emerald-400">
-                              <CheckCircle className="w-5 h-5" />
-                              <span className="font-bold text-sm">Prod Release</span>
+                          <div className="flex items-center justify-between p-2.5 bg-white dark:bg-[#111111]/90 border border-slate-200/90 dark:border-white/10 rounded-xl shadow-xs">
+                            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                              <Layers className="w-4 h-4" />
+                              <span className="font-semibold text-xs">Given to QA</span>
                             </div>
-                            <span className="font-black text-lg text-gray-900 dark:text-white">{userStats.in_prod}</span>
+                            <span className="font-bold text-xs text-slate-900 dark:text-white tabular-nums">{userStats.in_qa}</span>
+                          </div>
+                          <div className="flex items-center justify-between p-2.5 bg-white dark:bg-[#111111]/90 border border-slate-200/90 dark:border-white/10 rounded-xl shadow-xs">
+                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                              <CheckCircle className="w-4 h-4" />
+                              <span className="font-semibold text-xs">Prod Release</span>
+                            </div>
+                            <span className="font-bold text-xs text-slate-900 dark:text-white tabular-nums">{userStats.in_prod}</span>
                           </div>
                         </div>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <p className="text-sm font-medium text-gray-500">No data available.</p>
+                  <p className="text-xs text-slate-500">No data available.</p>
                 )}
               </div>
             </motion.div>
@@ -466,7 +682,7 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
         )}
       </AnimatePresence>
 
-      <PageGuide 
+      <PageGuide
         pageKey="teams-directory"
         title={t("teams.guide_title")}
         description={t("teams.guide_desc")}
