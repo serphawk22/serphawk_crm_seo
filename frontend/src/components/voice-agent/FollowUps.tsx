@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, CheckCircle2, BookPlus, RotateCcw, Calendar, MessageCircleQuestion } from "lucide-react";
@@ -83,8 +84,8 @@ export default function FollowUps({ notify, onChanged }: { notify: Notify; onCha
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 dark:border-zinc-800">
-                  <th className="py-2 pr-3">Question / concern</th><th className="py-2 pr-3">Prospect</th><th className="py-2 pr-3">Type</th>
-                  <th className="py-2 pr-3">Status</th><th className="py-2 pr-3">Follow-up</th><th className="py-2" />
+                  <th className="py-2 pr-3">Question / concern</th><th className="py-2 pr-3"><LocalizedText text={"Prospect"} /></th><th className="py-2 pr-3"><LocalizedText text={"Type"} /></th>
+                  <th className="py-2 pr-3"><LocalizedText text={"Status"} /></th><th className="py-2 pr-3"><LocalizedText text={"Follow-up"} /></th><th className="py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -129,7 +130,7 @@ export default function FollowUps({ notify, onChanged }: { notify: Notify; onCha
               {active.status === "resolved" ? (
                 <button onClick={() => save("open")} disabled={!!busy} className={ghostBtn}><RotateCcw className="w-4 h-4" /> Reopen</button>
               ) : (
-                <button onClick={() => save()} disabled={!!busy} className={ghostBtn}>{busy === "save" && <Loader2 className="w-4 h-4 animate-spin" />} Save</button>
+                <button onClick={() => save()} disabled={!!busy} className={ghostBtn}>{busy === "save" && <Loader2 className="w-4 h-4 animate-spin" />} <LocalizedText text={"Save"} /></button>
               )}
               <button onClick={toKnowledge} disabled={!!busy || !resolution.trim()} className={ghostBtn}>
                 {busy === "kb" ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookPlus className="w-4 h-4" />} Resolve & add to knowledge base

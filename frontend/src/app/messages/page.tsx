@@ -1,4 +1,5 @@
 'use client';
+import { createVisiblePoll } from "@/lib/visiblePoll";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Paperclip, Search, UserCheck, MessageCircle, RefreshCw, ArrowRight, CheckCheck, Check, Circle, Phone, Video, MoreHorizontal, Smile, Image, Mic } from 'lucide-react';
 import { API_BASE_URL } from '@/config';
@@ -88,12 +89,13 @@ export default function MessagesHubPage() {
   }, []);
 
   // ── Fetch threads whenever userId is ready ─────────────────────────────────
-  const fetchThreads = useCallback(async (silent = false) => {
+  const fetchThreads = useCallback(async (silent = false, signal?: AbortSignal) => {
     if (!userId) { setLoading(false); return; }
     if (!silent) setLoading(true);
     try {
-      const res  = await fetch(`${API_BASE_URL}/messages/${userId}`);
+      const res  = await fetch(`${API_BASE_URL}/messages/${userId}`, { signal });
       const data = await res.json();
+      if (signal?.aborted) return;
       const list: any[] = data.threads || [];
 
       // On silent polls, skip re-render if nothing changed
@@ -114,7 +116,7 @@ export default function MessagesHubPage() {
     }
   }, [userId, markRead]);
 
-  useEffect(() => { fetchThreads(); }, [fetchThreads]);
+  useEffect(() => { const controller = new AbortController(); void fetchThreads(false, controller.signal); return () => controller.abort(); }, [fetchThreads]);
 
   // ── WebSocket connection for active thread ─────────────────────────────
   const connectWs = useCallback((threadId: number) => {
@@ -187,8 +189,8 @@ export default function MessagesHubPage() {
 
   // ── Fallback poll every 30s (in case WS drops) ────────────────────────
   useEffect(() => {
-    const id = setInterval(() => fetchThreads(true), 30000);
-    return () => clearInterval(id);
+    const poll = createVisiblePoll(signal => fetchThreads(true, signal), 30000, false);
+    return () => poll.dispose();
   }, [fetchThreads]);
 
   const activeThread       = threads.find(t => t.thread_id === activeThreadId);

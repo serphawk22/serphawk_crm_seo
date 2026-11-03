@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
@@ -161,7 +162,7 @@ export default function LeadSourceAnalyticsPage() {
     return (
       <div className="p-8 text-center max-w-md mx-auto mt-12 rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-lg">
         <ShieldAlert className="w-12 h-12 text-rose-500 mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-[var(--text-primary)]">Access Restricted</h2>
+        <h2 className="text-xl font-bold text-[var(--text-primary)]"><LocalizedText text={"Access Restricted"} /></h2>
         <p className="text-sm text-[var(--text-secondary)] mt-2">
           You need Sales Manager or Admin privileges to view Lead Source Analytics.
         </p>
@@ -219,8 +220,7 @@ export default function LeadSourceAnalyticsPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--sidebar-hover)] transition-colors shadow-sm disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+            <LocalizedText text={"Refresh"} /> </button>
 
           <Link
             href="/lead-sources"
@@ -239,7 +239,7 @@ export default function LeadSourceAnalyticsPage() {
           <Calendar className="h-4 w-4 text-[var(--primary)]" />
           <span className="text-[var(--text-secondary)]">Custom Range:</span>
           <label className="flex items-center gap-1">
-            <span>From:</span>
+            <span><LocalizedText text={"From:"} /></span>
             <input
               type="date"
               value={customStart}
@@ -248,7 +248,7 @@ export default function LeadSourceAnalyticsPage() {
             />
           </label>
           <label className="flex items-center gap-1">
-            <span>To:</span>
+            <span><LocalizedText text={"To:"} /></span>
             <input
               type="date"
               value={customEnd}
@@ -260,8 +260,7 @@ export default function LeadSourceAnalyticsPage() {
             onClick={fetchData}
             className="px-3 py-1 rounded bg-[var(--primary)] text-white text-xs font-bold"
           >
-            Apply
-          </button>
+            <LocalizedText text={"Apply"} /> </button>
         </div>
       )}
 
@@ -271,7 +270,7 @@ export default function LeadSourceAnalyticsPage() {
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{error}</span>
           </div>
-          <button onClick={fetchData} className="underline text-xs font-bold">Retry</button>
+          <button onClick={fetchData} className="underline text-xs font-bold"><LocalizedText text={"Retry"} /></button>
         </div>
       )}
 
@@ -305,7 +304,7 @@ export default function LeadSourceAnalyticsPage() {
                     <Flame className="h-3.5 w-3.5 text-indigo-500" />
                   </div>
                   <p className="mt-1 text-sm font-extrabold text-[var(--text-primary)] truncate">{highlights.top_volume.source}</p>
-                  <p className="text-xl font-black text-indigo-500 mt-0.5">{num(highlights.top_volume.value)} leads</p>
+                  <p className="text-xl font-black text-indigo-500 mt-0.5">{num(highlights.top_volume.value)} <LocalizedText text={"leads"} /></p>
                 </Link>
               )}
 
@@ -440,7 +439,7 @@ export default function LeadSourceAnalyticsPage() {
               sub={`${num(totals.open_deals)} active deals`}
               icon={Target}
               tone="violet"
-              href="/pipeline"
+              href="/proposals"
             />
             <Tile
               label="Avg Deal Size"
@@ -448,7 +447,7 @@ export default function LeadSourceAnalyticsPage() {
               sub={`Rev/Lead: ${money(totals.revenue_per_lead, currency, true)}`}
               icon={Briefcase}
               tone="teal"
-              href="/pipeline"
+              href="/proposals"
             />
 
             {data?.can_see_finance && (
@@ -502,7 +501,7 @@ export default function LeadSourceAnalyticsPage() {
               sub="Lead created → Won deal"
               icon={Clock}
               tone="indigo"
-              href="/pipeline"
+              href="/proposals"
             />
           </div>
 
@@ -708,7 +707,7 @@ export default function LeadSourceAnalyticsPage() {
                   <div key={ch.channel} className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)]/50">
                     <div className="flex items-center justify-between text-xs font-bold">
                       <span className="text-[var(--text-primary)]">{ch.channel}</span>
-                      <span className="text-indigo-500">{num(ch.leads)} leads</span>
+                      <span className="text-indigo-500">{num(ch.leads)} <LocalizedText text={"leads"} /></span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-[var(--text-secondary)] mt-1">
                       <span>Conv: {pctf(ch.conversion_rate)}</span>
@@ -745,7 +744,7 @@ export default function LeadSourceAnalyticsPage() {
                       {ind.industry}
                     </span>
                     <div className="flex items-center gap-2">
-                      <span className="text-[var(--text-secondary)]">{ind.leads} leads</span>
+                      <span className="text-[var(--text-secondary)]">{ind.leads} <LocalizedText text={"leads"} /></span>
                       <span className="text-emerald-500 font-bold">{pctf(ind.conversion_rate)}</span>
                     </div>
                   </div>
@@ -812,17 +811,17 @@ export default function LeadSourceAnalyticsPage() {
                 <thead className="border-b border-[var(--border)] bg-[var(--sidebar-hover)]/40 text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)]">
                   <tr>
                     <th className="py-3 px-4 cursor-pointer" onClick={() => { setSortBy("source"); setSortAsc(!sortAsc); }}>
-                      <span className="flex items-center gap-1">Source <ArrowUpDown className="h-3 w-3" /></span>
+                      <span className="flex items-center gap-1"><LocalizedText text={"Source"} /> <ArrowUpDown className="h-3 w-3" /></span>
                     </th>
                     <th className="py-3 px-3">Channel</th>
 
                     {tableTab === "overview" && (
                       <>
                         <th className="py-3 px-3 text-right cursor-pointer" onClick={() => { setSortBy("leads"); setSortAsc(!sortAsc); }}>
-                          <span className="flex items-center justify-end gap-1">Leads <ArrowUpDown className="h-3 w-3" /></span>
+                          <span className="flex items-center justify-end gap-1"><LocalizedText text={"Leads"} /> <ArrowUpDown className="h-3 w-3" /></span>
                         </th>
                         <th className="py-3 px-3 text-right cursor-pointer" onClick={() => { setSortBy("converted"); setSortAsc(!sortAsc); }}>
-                          <span className="flex items-center justify-end gap-1">Converted <ArrowUpDown className="h-3 w-3" /></span>
+                          <span className="flex items-center justify-end gap-1"><LocalizedText text={"Converted"} /> <ArrowUpDown className="h-3 w-3" /></span>
                         </th>
                         <th className="py-3 px-3 text-right cursor-pointer" onClick={() => { setSortBy("conversion_rate"); setSortAsc(!sortAsc); }}>
                           <span className="flex items-center justify-end gap-1">Conv % <ArrowUpDown className="h-3 w-3" /></span>
@@ -840,23 +839,23 @@ export default function LeadSourceAnalyticsPage() {
 
                     {tableTab === "funnel" && (
                       <>
-                        <th className="py-3 px-3 text-right">Total Leads</th>
-                        <th className="py-3 px-3 text-right">New</th>
-                        <th className="py-3 px-3 text-right">Contacted</th>
+                        <th className="py-3 px-3 text-right"><LocalizedText text={"Total Leads"} /></th>
+                        <th className="py-3 px-3 text-right"><LocalizedText text={"New"} /></th>
+                        <th className="py-3 px-3 text-right"><LocalizedText text={"Contacted"} /></th>
                         <th className="py-3 px-3 text-right">Responded</th>
                         <th className="py-3 px-3 text-right">Positive</th>
                         <th className="py-3 px-3 text-right">Negative</th>
-                        <th className="py-3 px-3 text-right">Converted</th>
+                        <th className="py-3 px-3 text-right"><LocalizedText text={"Converted"} /></th>
                         <th className="py-3 px-3 text-right">Conv Rate</th>
                       </>
                     )}
 
                     {tableTab === "revenue" && (
                       <>
-                        <th className="py-3 px-3 text-right">Clients</th>
+                        <th className="py-3 px-3 text-right"><LocalizedText text={"Clients"} /></th>
                         <th className="py-3 px-3 text-right">Total Deals</th>
                         <th className="py-3 px-3 text-right">Won Deals</th>
-                        <th className="py-3 px-3 text-right">Win Rate</th>
+                        <th className="py-3 px-3 text-right"><LocalizedText text={"Win Rate"} /></th>
                         <th className="py-3 px-3 text-right">Won Revenue</th>
                         <th className="py-3 px-3 text-right">Avg Deal Size</th>
                         <th className="py-3 px-3 text-right">Pipeline Val</th>
@@ -876,7 +875,7 @@ export default function LeadSourceAnalyticsPage() {
                       </>
                     )}
 
-                    <th className="py-3 px-3 text-center">Action</th>
+                    <th className="py-3 px-3 text-center"><LocalizedText text={"Action"} /></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)] font-medium">
@@ -1074,8 +1073,7 @@ export default function LeadSourceAnalyticsPage() {
                       <div>
                         <p className="font-bold text-[var(--text-primary)]">{o.owner}</p>
                         <p className="text-[10px] text-[var(--text-secondary)]">
-                          Top: {o.top_source || "None"} • {o.leads} leads
-                        </p>
+                          Top: {o.top_source || "None"} • {o.leads} <LocalizedText text={"leads"} /> </p>
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-emerald-600">{pctf(o.conversion_rate)} conv</p>

@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect } from "react";
 import {
@@ -25,7 +26,7 @@ interface RankEntry {
 interface Client { id: number; companyName?: string; name?: string; }
 
 function positionBadge(pos?: number) {
-  if (!pos) return <span className="text-gray-400 text-sm">N/A</span>;
+  if (!pos) return <span className="text-gray-400 text-sm"><LocalizedText text={"N/A"} /></span>;
   const color = pos <= 3 ? "text-emerald-700 bg-emerald-100" :
     pos <= 10 ? "text-blue-700 bg-blue-100" :
     pos <= 20 ? "text-amber-700 bg-amber-100" : "text-red-700 bg-red-100";

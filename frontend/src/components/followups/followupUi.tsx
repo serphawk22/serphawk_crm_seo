@@ -1,5 +1,7 @@
 'use client';
 
+import { useLanguage } from "@/context/LanguageContext";
+import { translate } from "@/lib/translate";
 import React from 'react';
 import Link from 'next/link';
 import {
@@ -27,39 +29,41 @@ export const CHANNEL_META: Record<Channel, { label: string; icon: LucideIcon }> 
 };
 
 export function StateChip({ state }: { state: FollowUpState }) {
+  const { t } = useLanguage();
   const m = STATE_META[state];
   const Icon = m.icon;
-  return <span className={`${chip} ${m.className}`}><Icon size={10} /> {m.label}</span>;
+  return <span className={`${chip} ${m.className}`}><Icon size={10} /> {t(m.label)}</span>;
 }
 
 export function SourceChip({ f }: { f: FollowUp }) {
+  const { t } = useLanguage();
   if (f.source === 'ai_auto' || f.source === 'ai_suggested') {
     return (
       <span className={`${chip} border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300`}
-        title={f.source === 'ai_auto' ? 'Created automatically by AI from a note or conversation' : 'Suggested by AI from previous notes'}>
-        <Bot size={10} /> AI
+        title={t(f.source === 'ai_auto' ? 'Created automatically by AI from a note or conversation' : 'Suggested by AI from previous notes')}>
+        <Bot size={10} /> {t("AI")}
       </span>
     );
   }
   if (f.source === 'campaign') {
-    return <span className={`${chip} border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300`}><Send size={10} /> Campaign</span>;
+    return <span className={`${chip} border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300`}><Send size={10} /> {t("Campaign")}</span>;
   }
   return null;
 }
 
 /** "in 3 days", "2 days ago", "today 14:30" — relative to now in the viewer's timezone. */
-export function relativeDue(iso: string): string {
+export function relativeDue(iso: string, language = "en"): string {
   const d = new Date(iso);
   const now = new Date();
   const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const days = Math.round((startOf(d) - startOf(now)) / 86400000);
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (days === 0) return `Today ${time}`;
-  if (days === 1) return `Tomorrow ${time}`;
-  if (days === -1) return `Yesterday ${time}`;
-  if (days < 0) return `${-days} days ago`;
-  if (days < 7) return d.toLocaleDateString([], { weekday: 'long' }) + ` ${time}`;
-  return d.toLocaleDateString([], { day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
+  const time = d.toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' });
+  if (days === 0) return `${translate("Today", language)} ${time}`;
+  if (days === 1) return `${translate("Tomorrow", language)} ${time}`;
+  if (days === -1) return `${translate("Yesterday", language)} ${time}`;
+  if (days < 0) return new Intl.RelativeTimeFormat(language, { numeric: "auto" }).format(days, "day");
+  if (days < 7) return d.toLocaleDateString(language, { weekday: 'long' }) + ` ${time}`;
+  return d.toLocaleDateString(language, { day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
 }
 
 export function fullDate(iso?: string | null): string {
@@ -97,6 +101,7 @@ export function recordLink(f: Pick<FollowUp, 'lead' | 'client'>, tab = 'followup
 }
 
 export function RecordChip({ f }: { f: FollowUp }) {
+  const { t } = useLanguage();
   const href = recordLink(f);
   const ref = f.client || f.lead;
   if (!href || !ref) return null;
@@ -105,7 +110,7 @@ export function RecordChip({ f }: { f: FollowUp }) {
     ? 'border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-teal-300'
     : 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100 dark:border-fuchsia-500/30 dark:bg-fuchsia-500/10 dark:text-fuchsia-300';
   return (
-    <Link href={href} onClick={(e) => e.stopPropagation()} className={`${chip} ${cls}`} title={f.client ? 'Open client' : 'Open lead'}>
+    <Link href={href} onClick={(e) => e.stopPropagation()} className={`${chip} ${cls}`} title={t(f.client ? 'Open client' : 'Open lead')}>
       <Icon size={10} /> {ref.name}
     </Link>
   );

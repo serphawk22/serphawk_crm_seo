@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import LocalizedText from "@/components/LocalizedText";
 import { ReactNode, useCallback, useEffect, useState } from "react";
 import { ArrowUpRight, TrendingDown, TrendingUp, Minus, IndianRupee } from "lucide-react";
 
@@ -106,7 +107,7 @@ export function Tile({
   const body = (
     <div className={`group relative h-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] ${compact ? "p-3" : "p-4"} shadow-sm transition-all ${href ? `cursor-pointer hover:-translate-y-0.5 hover:shadow-md ${t.ring}` : ""}`}>
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)] leading-tight">{label}</p>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)] leading-tight"><LocalizedText text={label} /></p>
         {Icon ? <div className={`shrink-0 rounded-lg p-1.5 ${t.bg}`}><Icon className={`h-3.5 w-3.5 ${t.icon}`} /></div> : null}
       </div>
       <div className="mt-1.5 flex items-end justify-between gap-2">
@@ -132,13 +133,13 @@ export function Card({
       <header className="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--sidebar-hover)]/30 px-4 py-3">
         <h3 className="flex min-w-0 items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
           {Icon ? <Icon className={`h-4 w-4 shrink-0 ${t.icon}`} /> : null}
-          <span className="truncate">{title}</span>
+          <span className="truncate">{typeof title === "string" ? <LocalizedText text={title} /> : title}</span>
         </h3>
         <div className="flex shrink-0 items-center gap-3">
           {right}
           {href ? (
             <Link href={href} className="inline-flex items-center gap-1 text-[11px] font-bold text-[var(--primary)] hover:underline">
-              {linkLabel} <ArrowUpRight className="h-3 w-3" />
+              <LocalizedText text={linkLabel} /> <ArrowUpRight className="h-3 w-3" />
             </Link>
           ) : null}
         </div>
@@ -155,9 +156,9 @@ export function SectionTitle({ icon: Icon, title, subtitle, tone = "indigo", rig
       <div>
         <h2 className="flex items-center gap-2 text-base font-extrabold tracking-tight text-[var(--text-primary)]">
           {Icon ? <span className={`rounded-lg p-1.5 ${t.bg}`}><Icon className={`h-4 w-4 ${t.icon}`} /></span> : null}
-          {title}
+          <LocalizedText text={title} />
         </h2>
-        {subtitle ? <p className="mt-0.5 text-xs font-medium text-[var(--text-secondary)]">{subtitle}</p> : null}
+        {subtitle ? <p className="mt-0.5 text-xs font-medium text-[var(--text-secondary)]"><LocalizedText text={subtitle} /></p> : null}
       </div>
       {right}
     </div>
@@ -177,7 +178,7 @@ export function Empty({ text = "No data yet", icon: Icon }: { text?: string; ico
   return (
     <div className="flex h-full min-h-[110px] flex-col items-center justify-center gap-2 py-6 text-center text-[var(--text-secondary)]">
       {Icon ? <Icon className="h-6 w-6 opacity-40" /> : null}
-      <p className="text-xs font-semibold">{text}</p>
+      <p className="text-xs font-semibold"><LocalizedText text={text} /></p>
     </div>
   );
 }
@@ -221,20 +222,25 @@ export function Segmented<T extends string | number>({ value, options, onChange 
           onClick={() => onChange(o.value)}
           className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${value === o.value ? "bg-[var(--primary)] text-white shadow" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
         >
-          {o.label}
+          <LocalizedText text={o.label} />
         </button>
       ))}
     </div>
   );
 }
 
-export function relTime(iso?: string | null): string {
+export function relTime(iso?: string | null, language = "en"): string {
   if (!iso) return "—";
   const t = new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z").getTime();
   if (isNaN(t)) return "—";
   const diff = Date.now() - t;
   const abs = Math.abs(diff);
   const m = Math.round(abs / 60000);
+  if (language !== "en") {
+    const format = new Intl.RelativeTimeFormat(language, { numeric: "auto", style: "short" });
+    const sign = diff >= 0 ? -1 : 1;
+    return m < 1 ? format.format(0, "second") : m < 60 ? format.format(sign * m, "minute") : m < 1440 ? format.format(sign * Math.round(m / 60), "hour") : format.format(sign * Math.round(m / 1440), "day");
+  }
   const label = m < 1 ? "just now" : m < 60 ? `${m}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`;
   if (label === "just now") return label;
   return diff >= 0 ? `${label} ago` : `in ${label}`;

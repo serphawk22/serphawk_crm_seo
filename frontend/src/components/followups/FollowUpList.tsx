@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useState } from 'react';
 import {
@@ -47,7 +48,7 @@ function FollowUpRow({ f, showRecord, onAction }: {
           <div className="flex flex-wrap items-center gap-1.5">
             <StateChip state={f.state} />
             <SourceChip f={f} />
-            {f.priority === 'high' && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-black uppercase text-white">High</span>}
+            {f.priority === 'high' && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-black uppercase text-white"><LocalizedText text={"High"} /></span>}
             {f.auto_send && pending && !f.email_sent_at && (
               <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
                 <Clock3 size={10} /> Auto-send
@@ -74,8 +75,8 @@ function FollowUpRow({ f, showRecord, onAction }: {
         <div className="flex shrink-0 flex-wrap items-center gap-1">
           {pending ? (
             <>
-              <button className={btn.ghost} onClick={() => onAction('email', f)} title="Write / send the follow-up email"><Mail size={13} /> Email</button>
-              <button className={btn.ghost} onClick={() => onAction('complete', f)} title="Mark completed"><CheckCircle2 size={13} /> Done</button>
+              <button className={btn.ghost} onClick={() => onAction('email', f)} title="Write / send the follow-up email"><Mail size={13} /> <LocalizedText text={"Email"} /></button>
+              <button className={btn.ghost} onClick={() => onAction('complete', f)} title="Mark completed"><CheckCircle2 size={13} /> <LocalizedText text={"Done"} /></button>
               <div className="relative">
                 <button className={btn.ghost} onClick={() => setMenu((m) => !m)} disabled={busy}><Clock3 size={13} /> Snooze <ChevronDown size={11} /></button>
                 {menu && (
@@ -120,7 +121,7 @@ function FollowUpRow({ f, showRecord, onAction }: {
             </div>
           )}
           <p className="text-[10.5px] text-slate-400">
-            Created {fullDate(f.created_at)}{f.created_by ? ` by ${f.created_by.name}` : ''}
+            <LocalizedText text={"Created"} /> {fullDate(f.created_at)}{f.created_by ? ` by ${f.created_by.name}` : ''}
             {f.reminder_sent_at ? ` · reminder sent ${fullDate(f.reminder_sent_at)}` : ''}
             {f.completed_at ? ` · ${f.status.toLowerCase()} ${fullDate(f.completed_at)}${f.completed_by ? ` by ${f.completed_by.name}` : ''}` : ''}
           </p>
@@ -132,8 +133,7 @@ function FollowUpRow({ f, showRecord, onAction }: {
             )}
             <button className={`${btn.ghost} text-red-500 hover:text-red-700`} disabled={busy}
               onClick={() => { if (window.confirm('Delete this follow-up permanently?')) run(() => followupsApi.remove(f.id)); }}>
-              <Trash2 size={13} /> Delete
-            </button>
+              <Trash2 size={13} /> <LocalizedText text={"Delete"} /> </button>
           </div>
         </div>
       )}

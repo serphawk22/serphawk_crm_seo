@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/context/LanguageContext";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -20,6 +22,7 @@ interface SMTPSettings {
 }
 
 export default function SMTPSettingsTab() {
+  const { t } = useLanguage();
   const [settings, setSettings] = useState<SMTPSettings>({
     smtp_host: "smtp.gmail.com",
     smtp_port: 587,
@@ -171,8 +174,8 @@ export default function SMTPSettingsTab() {
             <Server size={20} />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">SMTP Configuration</h2>
-            <p className="text-sm text-slate-500 dark:text-zinc-400">Configure your email server settings for outgoing emails.</p>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t("SMTP Configuration")}</h2>
+            <p className="text-sm text-slate-500 dark:text-zinc-400">{t("Configure your email server settings for outgoing emails.")}</p>
           </div>
         </div>
 
@@ -183,11 +186,9 @@ export default function SMTPSettingsTab() {
               <Shield className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               <div>
                 <p className="font-bold text-sm text-blue-800 dark:text-blue-300">
-                  Email verification required
-                </p>
+                  {t("Email verification required")}{" "}</p>
                 <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                  Enter your "From Email" address below, then click "Send OTP" to verify before saving.
-                </p>
+                  {t("Enter your \"From Email\" address below, then click \"Send OTP\" to verify before saving.")}{" "}</p>
               </div>
             </div>
           </div>
@@ -197,8 +198,7 @@ export default function SMTPSettingsTab() {
           <div className="mb-6 flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg w-fit">
             <Check className="w-4 h-4 text-emerald-500" />
             <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
-              Email verified
-            </span>
+              {t("Email verified")}{" "}</span>
           </div>
         )}
 
@@ -206,8 +206,7 @@ export default function SMTPSettingsTab() {
           {/* SMTP Host */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 text-slate-500 dark:text-zinc-400">
-              SMTP Host
-            </label>
+              {t("SMTP Host")}{" "}</label>
             <div className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
               <Server className="w-4 h-4 text-slate-400" />
               <input
@@ -223,8 +222,7 @@ export default function SMTPSettingsTab() {
           {/* SMTP Port */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 text-slate-500 dark:text-zinc-400">
-              SMTP Port
-            </label>
+              {t("SMTP Port")}{" "}</label>
             <div className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
               <span className="text-slate-400 font-mono text-sm">#</span>
               <input
@@ -240,8 +238,7 @@ export default function SMTPSettingsTab() {
           {/* SMTP User */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 text-slate-500 dark:text-zinc-400">
-              SMTP Username
-            </label>
+              {t("SMTP Username")}{" "}</label>
             <div className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
               <User className="w-4 h-4 text-slate-400" />
               <input
@@ -257,15 +254,14 @@ export default function SMTPSettingsTab() {
           {/* SMTP Password */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 text-slate-500 dark:text-zinc-400">
-              SMTP Password / App Password
-            </label>
+              {t("SMTP Password / App Password")}{" "}</label>
             <div className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
               <Key className="w-4 h-4 text-slate-400" />
               <input
                 type={showPassword ? "text" : "password"}
                 value={settings.smtp_pass}
                 onChange={(e) => setSettings({ ...settings, smtp_pass: e.target.value })}
-                placeholder={settings.has_password ? "Saved. Leave blank to keep it" : "Enter app password"}
+                placeholder={t(settings.has_password ? "Saved. Leave blank to keep it" : "Enter app password")}
                 className="flex-1 bg-transparent text-[13.5px] outline-none text-slate-800 dark:text-zinc-100"
               />
               <button
@@ -273,7 +269,7 @@ export default function SMTPSettingsTab() {
                 onClick={() => setShowPassword(!showPassword)}
                 className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"
               >
-                {showPassword ? "Hide" : "Show"}
+                {t(showPassword ? "Hide" : "Show")}
               </button>
             </div>
           </div>
@@ -281,15 +277,14 @@ export default function SMTPSettingsTab() {
           {/* From Name */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 text-slate-500 dark:text-zinc-400">
-              From Name
-            </label>
+              {t("From Name")}{" "}</label>
             <div className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
               <Mail className="w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 value={settings.from_name}
                 onChange={(e) => setSettings({ ...settings, from_name: e.target.value })}
-                placeholder="Your Company Name"
+                placeholder={t("Your Company Name")}
                 className="flex-1 bg-transparent text-[13.5px] outline-none text-slate-800 dark:text-zinc-100"
               />
             </div>
@@ -298,7 +293,7 @@ export default function SMTPSettingsTab() {
           {/* From Email */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 text-slate-500 dark:text-zinc-400">
-              From Email <span className="text-red-500">*</span>
+              {t("From Email")}{" "}<span className="text-red-500">*</span>
             </label>
             <div className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
               <Mail className="w-4 h-4 text-slate-400" />
@@ -318,13 +313,12 @@ export default function SMTPSettingsTab() {
 
         {settings.has_password && settings.encrypted === false && (
           <p className="mt-4 text-xs text-amber-600">
-            The saved password is stored without encryption. Enter it again and save to store it encrypted.
-          </p>
+            {t("The saved password is stored without encryption. Enter it again and save to store it encrypted.")}{" "}</p>
         )}
         {testResult && (
           <div className={`mt-4 flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm border ${testResult.ok ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-600"}`}>
             {testResult.ok ? <Check className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
-            {testResult.message}
+            {t(testResult.message)}
           </div>
         )}
 
@@ -338,7 +332,7 @@ export default function SMTPSettingsTab() {
               className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm mt-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400"
             >
               <AlertCircle className="w-4 h-4 shrink-0" />
-              {error}
+              {t(error)}
             </motion.div>
           )}
         </AnimatePresence>
@@ -351,8 +345,7 @@ export default function SMTPSettingsTab() {
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-sm"
             >
               <Shield size={16} />
-              Send OTP to Verify
-            </button>
+              {t("Send OTP to Verify")}{" "}</button>
           )}
           <button
             onClick={testConnection}
@@ -360,8 +353,7 @@ export default function SMTPSettingsTab() {
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm border border-slate-300 dark:border-zinc-600 text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
           >
             {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Server size={16} />}
-            Test connection
-          </button>
+            {t("Test connection")}{" "}</button>
           <button
             onClick={handleSave}
             disabled={saving || (!otpVerified && !!settings.from_email)}
@@ -371,11 +363,11 @@ export default function SMTPSettingsTab() {
             }}
           >
             {saving ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+              <><Loader2 className="w-4 h-4 animate-spin" /> <LocalizedText text={"Saving..."} /></>
             ) : saved ? (
-              <><Check className="w-4 h-4" /> Saved!</>
+              <><Check className="w-4 h-4" /> <LocalizedText text={"Saved!"} /></>
             ) : (
-              <><Send className="w-4 h-4" /> Save SMTP Settings</>
+              <><Send className="w-4 h-4" /> {t("Save SMTP Settings")}</>
             )}
           </button>
         </div>

@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { FileText, Plus, X, Search, Loader2, Trash2, ChevronDown, Building2, AlertCircle } from "lucide-react";
@@ -169,7 +170,7 @@ export default function QuotesPage() {
         <div className={`px-4 py-3 rounded-xl text-sm font-semibold border ${emailStatus.ok ? "bg-emerald-500/10 text-emerald-700 border-emerald-300 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-700" : "bg-red-500/10 text-red-700 border-red-300 dark:bg-red-500/10 dark:text-red-300 dark:border-red-700"}`}>
           <div className="flex items-center justify-between gap-3">
             <span>{emailStatus.msg}</span>
-            <button onClick={() => setEmailStatus(null)} className="text-xs underline opacity-70 hover:opacity-100">OK</button>
+            <button onClick={() => setEmailStatus(null)} className="text-xs underline opacity-70 hover:opacity-100"><LocalizedText text={"OK"} /></button>
           </div>
         </div>
       )}

@@ -1,9 +1,11 @@
 "use client";
 
+import { useLanguage } from "@/context/LanguageContext";
 import { useEffect, useRef } from "react";
 import { useTenantConfig } from "@/context/TenantConfigContext";
 
 export default function GlobalFooter() {
+  const { t } = useLanguage();
   const { settings } = useTenantConfig();
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -20,7 +22,7 @@ export default function GlobalFooter() {
       <div className="flex flex-col sm:flex-row items-center justify-between gap-1 max-w-[1600px] mx-auto">
         {/* Left: Dev credit */}
         <span className="shrink-0 flex items-center gap-1">
-          <span className="text-slate-400 dark:text-zinc-500">Contact Dev:</span>
+          <span className="text-slate-400 dark:text-zinc-500">{t("Contact Dev")}:</span>
           <a
             href="https://wa.me/919502901416"
             target="_blank"
@@ -33,12 +35,12 @@ export default function GlobalFooter() {
 
         {/* Center: Copyright */}
         <span className="shrink-0">
-          {settings.brand_name ? <>{settings.brand_name} &copy; {new Date().getFullYear()}</> : <>A SERPHawk&apos;s Product &copy; {new Date().getFullYear()}</>}
+          {settings.brand_name ? <>{settings.brand_name} &copy; {new Date().getFullYear()}</> : <>{t("A SERPHawk product")} &copy; {new Date().getFullYear()}</>}
         </span>
 
         {/* Right: Contact links */}
         <span className="flex min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-right">
-          <span className="text-slate-400 dark:text-zinc-500">Contact Relation Manager:</span>
+          <span className="text-slate-400 dark:text-zinc-500">{t("Contact Relation Manager")}:</span>
           <a
             href="https://wa.me/917348947492"
             target="_blank"
@@ -48,7 +50,7 @@ export default function GlobalFooter() {
             V K Anjali
           </a>
           <span className="text-slate-300 dark:text-zinc-700">|</span>
-          <span className="text-slate-400 dark:text-zinc-500">Contact Admin:</span>
+          <span className="text-slate-400 dark:text-zinc-500">{t("Contact Admin")}:</span>
           <a
             href="https://wa.me/919066003330"
             target="_blank"

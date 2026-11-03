@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
@@ -710,8 +711,7 @@ export default function ReportsPage() {
                 disabled={!aiReport || aiLoading}
                 className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
               >
-                <Download size={14} /> Export PDF
-              </button>
+                <Download size={14} /> <LocalizedText text={"Export PDF"} /> </button>
               <button
                 onClick={() => {
                   if (aiReport?.detailed_markdown) {
@@ -796,7 +796,7 @@ export default function ReportsPage() {
                   onChange={e => setCustomStart(e.target.value)}
                   className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold dark:border-zinc-700 dark:bg-zinc-800"
                 />
-                <span className="text-xs text-slate-400">to</span>
+                <span className="text-xs text-slate-400"><LocalizedText text={"to"} /></span>
                 <input
                   type="date"
                   value={customEnd}
@@ -807,8 +807,7 @@ export default function ReportsPage() {
                   onClick={() => { setRangePreset("custom"); loadExecutiveData(); }}
                   className="rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-black text-white hover:bg-indigo-700"
                 >
-                  Apply
-                </button>
+                  <LocalizedText text={"Apply"} /> </button>
               </div>
             )}
 
@@ -816,8 +815,7 @@ export default function ReportsPage() {
               onClick={loadExecutiveData}
               className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
             >
-              <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
-            </button>
+              <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> <LocalizedText text={"Refresh"} /> </button>
           </div>
 
           {error && (
@@ -965,7 +963,7 @@ export default function ReportsPage() {
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Win Rate</p>
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400"><LocalizedText text={"Win Rate"} /></p>
                           <p className="text-lg font-black text-slate-900 dark:text-white">
                             {rep.results?.win_rate || 0}%
                           </p>
@@ -987,8 +985,7 @@ export default function ReportsPage() {
                             <Flame size={14} className="text-amber-500" /> Doing Right Now (Live Load)
                           </span>
                           <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700 dark:bg-amber-950/50 dark:text-amber-400">
-                            Active
-                          </span>
+                            <LocalizedText text={"Active"} /> </span>
                         </div>
                         <div className="space-y-3">
                           <div className="flex items-center justify-between rounded-xl bg-slate-50 p-2.5 dark:bg-zinc-800/50">
@@ -1155,7 +1152,7 @@ export default function ReportsPage() {
                   <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-zinc-800 dark:bg-zinc-950">
                     <tr>
                       <th className="px-5 py-3.5">Acquisition Channel</th>
-                      <th className="px-5 py-3.5">Total Leads</th>
+                      <th className="px-5 py-3.5"><LocalizedText text={"Total Leads"} /></th>
                       <th className="px-5 py-3.5">Clients Converted</th>
                       <th className="px-5 py-3.5">Conv %</th>
                       <th className="px-5 py-3.5">Spend</th>
@@ -1230,7 +1227,7 @@ export default function ReportsPage() {
                   className="bg-transparent outline-none"
                 />
               </label>
-              <span className="text-xs font-bold text-slate-400">to</span>
+              <span className="text-xs font-bold text-slate-400"><LocalizedText text={"to"} /></span>
               <input
                 type="date"
                 value={classicEnd}
@@ -1268,7 +1265,7 @@ export default function ReportsPage() {
             </div>
 
             <div className="text-xs text-slate-500 dark:text-zinc-400">
-              Showing records from <strong>{classicStart}</strong> to <strong>{classicEnd}</strong>
+              Showing records from <strong>{classicStart}</strong> <LocalizedText text={"to"} /> <strong>{classicEnd}</strong>
             </div>
           </div>
 
@@ -1417,7 +1414,7 @@ export default function ReportsPage() {
                           Staff Performance Activity & Workload
                         </h3>
                         <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-                          Complete operational production across calls, meetings, follow-ups, leads, and closed revenue for <strong>{classicStart}</strong> to <strong>{classicEnd}</strong>.
+                          Complete operational production across calls, meetings, follow-ups, leads, and closed revenue for <strong>{classicStart}</strong> <LocalizedText text={"to"} /> <strong>{classicEnd}</strong>.
                         </p>
                       </div>
                     </div>
@@ -1448,12 +1445,12 @@ export default function ReportsPage() {
                       <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-zinc-800 dark:bg-zinc-950">
                         <tr>
                           <th className="px-4 py-3.5">Staff Member</th>
-                          <th className="px-4 py-3.5">Role</th>
+                          <th className="px-4 py-3.5"><LocalizedText text={"Role"} /></th>
                           <th className="px-4 py-3.5 text-center">Total Work</th>
                           <th className="px-4 py-3.5 text-right">Won Revenue</th>
-                          <th className="px-4 py-3.5 text-center">Deals Won</th>
-                          <th className="px-4 py-3.5 text-center">Calls</th>
-                          <th className="px-4 py-3.5 text-center">Meetings</th>
+                          <th className="px-4 py-3.5 text-center"><LocalizedText text={"Deals Won"} /></th>
+                          <th className="px-4 py-3.5 text-center"><LocalizedText text={"Calls"} /></th>
+                          <th className="px-4 py-3.5 text-center"><LocalizedText text={"Meetings"} /></th>
                           <th className="px-4 py-3.5">Follow-ups (Channels)</th>
                           <th className="px-4 py-3.5 text-center">Leads Handled</th>
                           <th className="px-4 py-3.5 text-center">Tasks Done</th>
@@ -1550,7 +1547,7 @@ export default function ReportsPage() {
                         )) : (
                           <tr>
                             <td colSpan={11} className="px-4 py-12 text-center text-sm text-slate-400">
-                              No staff records found for the selected date range ({classicStart} to {classicEnd}).
+                              No staff records found for the selected date range ({classicStart} <LocalizedText text={"to"} /> {classicEnd}).
                             </td>
                           </tr>
                         )}
@@ -1578,7 +1575,7 @@ export default function ReportsPage() {
                                 </span>
                               </div>
                               <p className="text-xs text-slate-500 dark:text-zinc-400">
-                                Entire Activity Log from <strong>{classicStart}</strong> to <strong>{classicEnd}</strong> • {selectedStaffMember.email}
+                                Entire Activity Log from <strong>{classicStart}</strong> <LocalizedText text={"to"} /> <strong>{classicEnd}</strong> • {selectedStaffMember.email}
                               </p>
                             </div>
                           </div>
@@ -1593,7 +1590,7 @@ export default function ReportsPage() {
                         {/* Quick KPI Strip inside Drawer */}
                         <div className="grid grid-cols-2 gap-3 border-b border-slate-100 bg-white p-4 sm:grid-cols-4 dark:border-zinc-800 dark:bg-zinc-900">
                           <div className="rounded-xl bg-slate-50 p-3 dark:bg-zinc-800/60">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Activities</span>
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400"><LocalizedText text={"Total Activities"} /></span>
                             <p className="text-xl font-black text-indigo-600 dark:text-indigo-400">
                               {selectedStaffMember.total_work || 0}
                             </p>
@@ -1611,7 +1608,7 @@ export default function ReportsPage() {
                             </p>
                           </div>
                           <div className="rounded-xl bg-slate-50 p-3 dark:bg-zinc-800/60">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Follow-ups</span>
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400"><LocalizedText text={"Follow-ups"} /></span>
                             <p className="text-xl font-black text-amber-600 dark:text-amber-400">
                               {selectedStaffMember.followups || 0}
                             </p>
@@ -1692,7 +1689,7 @@ export default function ReportsPage() {
                             </div>
                           ) : (
                             <div className="rounded-2xl border-2 border-dashed border-slate-200 p-8 text-center text-xs text-slate-400 dark:border-zinc-800">
-                              No activity recorded for {selectedStaffMember.name} in this date range ({classicStart} to {classicEnd}).
+                              No activity recorded for {selectedStaffMember.name} in this date range ({classicStart} <LocalizedText text={"to"} /> {classicEnd}).
                               Try adjusting the date range or clicking a preset above.
                             </div>
                           )}
@@ -1707,8 +1704,7 @@ export default function ReportsPage() {
                             onClick={() => setSelectedStaffMember(null)}
                             className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900"
                           >
-                            Close
-                          </button>
+                            <LocalizedText text={"Close"} /> </button>
                         </div>
                       </div>
                     </div>
@@ -1804,9 +1800,9 @@ export default function ReportsPage() {
                     <option value="all">All Time</option>
                     <option value="12m">Past 12 Months</option>
                     <option value="6m">Past 6 Months</option>
-                    <option value="this_month">This Month</option>
+                    <option value="this_month"><LocalizedText text={"This Month"} /></option>
                     <option value="30d">Last 30 Days</option>
-                    <option value="7d">Last 7 Days</option>
+                    <option value="7d"><LocalizedText text={"Last 7 Days"} /></option>
                   </select>
                 </div>
               </div>
@@ -1836,7 +1832,7 @@ export default function ReportsPage() {
                   {aiLoading ? (
                     <>
                       <RefreshCw size={14} className="animate-spin" />
-                      <span>Analyzing...</span>
+                      <span><LocalizedText text={"Analyzing..."} /></span>
                     </>
                   ) : (
                     <>
@@ -2173,9 +2169,9 @@ export default function ReportsPage() {
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                         <span className="text-slate-500 dark:text-zinc-400">Distribution of Won, In-Negotiation (Open), and Lost opportunities:</span>
                         <div className="flex items-center gap-3 font-bold text-[11px]">
-                          <span className="flex items-center gap-1 text-emerald-600"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500"></span> Won</span>
+                          <span className="flex items-center gap-1 text-emerald-600"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500"></span> <LocalizedText text={"Won"} /></span>
                           <span className="flex items-center gap-1 text-indigo-600"><span className="h-2.5 w-2.5 rounded-full bg-indigo-500"></span> In Negotiation</span>
-                          <span className="flex items-center gap-1 text-rose-500"><span className="h-2.5 w-2.5 rounded-full bg-rose-400"></span> Lost</span>
+                          <span className="flex items-center gap-1 text-rose-500"><span className="h-2.5 w-2.5 rounded-full bg-rose-400"></span> <LocalizedText text={"Lost"} /></span>
                         </div>
                       </div>
                       <div className="space-y-3">

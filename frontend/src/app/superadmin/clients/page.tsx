@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { AlertCircle, ArrowRight, Building2, CheckCircle2, Inbox, Layers, Plus, RefreshCw, Search, Settings2, Users, UsersRound, LayoutList, LayoutGrid } from "lucide-react";
@@ -137,7 +138,7 @@ export default function ClientManagementPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate">Client Management</h1>
+              <h1 className="text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate"><LocalizedText text={"Client Management"} /></h1>
               <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200/60 dark:border-zinc-700">
                 {tenants.length} tenants
               </span>
@@ -193,7 +194,7 @@ export default function ClientManagementPage() {
             <option value="newest">Newest first</option><option value="name">Name A to Z</option><option value="users">Most users</option>
           </select>
 
-          {hasFilters && <button type="button" className="px-2 py-1 text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400" onClick={clearFilters}>Clear</button>}
+          {hasFilters && <button type="button" className="px-2 py-1 text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400" onClick={clearFilters}><LocalizedText text={"Clear"} /></button>}
 
           {/* View Switcher: List vs Cards */}
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-zinc-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-white/5">
@@ -252,7 +253,7 @@ export default function ClientManagementPage() {
             <div className="hidden md:grid grid-cols-12 gap-3 px-3 py-1.5 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
               <div className="col-span-5">Workspace & Details</div>
               <div className="col-span-4">Metrics (Users · Leads · Clients · Modules)</div>
-              <div className="col-span-3 text-right">Actions</div>
+              <div className="col-span-3 text-right"><LocalizedText text={"Actions"} /></div>
             </div>
 
             {visible.map((t, i) => {
@@ -342,15 +343,15 @@ export default function ClientManagementPage() {
 
                     <div className="grid grid-cols-4 gap-1 p-2 bg-slate-50 dark:bg-zinc-800/60 rounded-lg border border-slate-100 dark:border-zinc-800 my-2 text-center">
                       <div>
-                        <div className="text-[9px] uppercase font-semibold text-slate-400">Users</div>
+                        <div className="text-[9px] uppercase font-semibold text-slate-400"><LocalizedText text={"Users"} /></div>
                         <div className="text-xs font-bold text-slate-800 dark:text-zinc-200 mt-0.5">{t.users}</div>
                       </div>
                       <div>
-                        <div className="text-[9px] uppercase font-semibold text-slate-400">Leads</div>
+                        <div className="text-[9px] uppercase font-semibold text-slate-400"><LocalizedText text={"Leads"} /></div>
                         <div className="text-xs font-bold text-slate-800 dark:text-zinc-200 mt-0.5">{t.leads}</div>
                       </div>
                       <div>
-                        <div className="text-[9px] uppercase font-semibold text-slate-400">Clients</div>
+                        <div className="text-[9px] uppercase font-semibold text-slate-400"><LocalizedText text={"Clients"} /></div>
                         <div className="text-xs font-bold text-slate-800 dark:text-zinc-200 mt-0.5">{t.clients}</div>
                       </div>
                       <div>

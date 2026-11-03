@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import React, { useState, useEffect } from "react";
 import { API_BASE_URL } from "@/config";
 import { motion, AnimatePresence } from "framer-motion";
@@ -105,15 +106,12 @@ export default function InstructorsPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                Instructors
-              </h1>
+                <LocalizedText text={"Instructors"} /></h1>
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-zinc-300 border border-slate-200/80 dark:border-white/5">
-                {instructors.length} total
-              </span>
+                {instructors.length} <LocalizedText text={"total"} /> </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-zinc-400">
-              Manage faculty, course instructors, and teaching performance
-            </p>
+              <LocalizedText text={"Manage faculty, course instructors, and teaching performance"} /></p>
           </div>
         </div>
 
@@ -121,8 +119,7 @@ export default function InstructorsPage() {
           onClick={openCreate}
           className="flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-xs shadow-amber-500/20 transition-all hover:opacity-95 active:scale-95"
         >
-          <Plus className="w-4 h-4" /> Add Instructor
-        </button>
+          <Plus className="w-4 h-4" /> <LocalizedText text={"Add Instructor"} /></button>
       </div>
 
       {/* High-density Compact Metrics Strip */}
@@ -196,17 +193,17 @@ export default function InstructorsPage() {
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-[#111111]/90 rounded-xl border border-slate-200/90 dark:border-white/10 text-center">
           <UserCog className="w-10 h-10 text-slate-300 dark:text-zinc-600 mb-2" />
-          <p className="text-slate-600 dark:text-zinc-400 font-semibold text-sm">No instructors found</p>
+          <p className="text-slate-600 dark:text-zinc-400 font-semibold text-sm"><LocalizedText text={"No instructors found"} /></p>
         </div>
       ) : viewMode === "list" ? (
         <div className="space-y-2">
           {/* Subtle column headers for desktop */}
           <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-            <div className="col-span-3">Instructor & Expertise</div>
-            <div className="col-span-3">Contact & Qualification</div>
-            <div className="col-span-3">Batches & Students</div>
-            <div className="col-span-1">Rating</div>
-            <div className="col-span-2 text-right">Actions</div>
+            <div className="col-span-3"><LocalizedText text={"Instructor & Expertise"} /></div>
+            <div className="col-span-3"><LocalizedText text={"Contact & Qualification"} /></div>
+            <div className="col-span-3"><LocalizedText text={"Batches & Students"} /></div>
+            <div className="col-span-1"><LocalizedText text={"Rating"} /></div>
+            <div className="col-span-2 text-right"><LocalizedText text={"Actions"} /></div>
           </div>
 
           {filtered.map((ins, i) => (
@@ -238,10 +235,10 @@ export default function InstructorsPage() {
                           {ins.expertise}
                         </span>
                       ) : (
-                        <span className="text-slate-400 dark:text-zinc-500">General</span>
+                        <span className="text-slate-400 dark:text-zinc-500"><LocalizedText text={"General"} /></span>
                       )}
                       {!ins.is_active && (
-                        <span className="text-[10px] text-rose-500 font-semibold px-1 rounded bg-rose-50 dark:bg-rose-950/40">Inactive</span>
+                        <span className="text-[10px] text-rose-500 font-semibold px-1 rounded bg-rose-50 dark:bg-rose-950/40"><LocalizedText text={"Inactive"} /></span>
                       )}
                     </div>
                   </div>
@@ -263,7 +260,7 @@ export default function InstructorsPage() {
                       </span>
                     )}
                     {ins.experience_years ? (
-                      <span>• {ins.experience_years} yrs exp</span>
+                      <span>• {ins.experience_years} <LocalizedText text={"yrs exp"} /></span>
                     ) : null}
                   </div>
                 </div>
@@ -273,11 +270,11 @@ export default function InstructorsPage() {
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-zinc-300 border border-slate-200/60 dark:border-white/5">
                       <Layers className="w-2.5 h-2.5 text-amber-500" />
-                      <span>{ins.active_batches} active</span>
+                      <span>{ins.active_batches} <LocalizedText text={"active"} /></span>
                     </span>
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
                       <Users className="w-2.5 h-2.5 text-blue-500" />
-                      <span>{ins.total_students} students</span>
+                      <span>{ins.total_students} <LocalizedText text={"students"} /></span>
                     </span>
                   </div>
                 </div>
@@ -352,9 +349,9 @@ export default function InstructorsPage() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-1.5 p-2 rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200/60 dark:border-white/5 text-center mb-2.5">
-                  <div><p className="text-sm font-bold text-slate-900 dark:text-white">{ins.active_batches}</p><p className="text-[10px] text-slate-400">Active</p></div>
-                  <div><p className="text-sm font-bold text-slate-900 dark:text-white">{ins.upcoming_batches}</p><p className="text-[10px] text-slate-400">Upcoming</p></div>
-                  <div><p className="text-sm font-bold text-slate-900 dark:text-white">{ins.total_students}</p><p className="text-[10px] text-slate-400">Students</p></div>
+                  <div><p className="text-sm font-bold text-slate-900 dark:text-white">{ins.active_batches}</p><p className="text-[10px] text-slate-400"><LocalizedText text={"Active"} /></p></div>
+                  <div><p className="text-sm font-bold text-slate-900 dark:text-white">{ins.upcoming_batches}</p><p className="text-[10px] text-slate-400"><LocalizedText text={"Upcoming"} /></p></div>
+                  <div><p className="text-sm font-bold text-slate-900 dark:text-white">{ins.total_students}</p><p className="text-[10px] text-slate-400"><LocalizedText text={"Students"} /></p></div>
                 </div>
 
                 <div className="space-y-1 text-xs text-slate-600 dark:text-zinc-300 mb-2.5">
@@ -406,16 +403,16 @@ export default function InstructorsPage() {
                   </div>
                 ))}
                 <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-300 mb-1">Bio</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-300 mb-1"><LocalizedText text={"Bio"} /></label>
                   <textarea value={form.bio} onChange={e => setForm({ ...form, bio: e.target.value })} rows={2} placeholder="Short bio..." className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-amber-500 resize-none" />
                 </div>
                 <div className="col-span-2 flex items-center gap-2">
                   <input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="w-4 h-4 accent-amber-500" />
-                  <span className="text-xs font-semibold text-slate-700 dark:text-zinc-300">Instructor is Active</span>
+                  <span className="text-xs font-semibold text-slate-700 dark:text-zinc-300"><LocalizedText text={"Instructor is Active"} /></span>
                 </div>
               </div>
               <div className="flex gap-2.5 mt-5">
-                <button onClick={() => setShowModal(false)} className="flex-1 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-semibold text-xs sm:text-sm hover:bg-slate-200">Cancel</button>
+                <button onClick={() => setShowModal(false)} className="flex-1 py-2 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-semibold text-xs sm:text-sm hover:bg-slate-200"><LocalizedText text={"Cancel"} /></button>
                 <button onClick={handleSave} disabled={saving} className="flex-1 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 text-white font-semibold text-xs sm:text-sm hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 shadow-xs">
                   {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   {editInstructor ? "Update" : "Add Instructor"}

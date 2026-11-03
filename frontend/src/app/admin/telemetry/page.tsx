@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -783,10 +784,10 @@ function AccountGrid({ onSelect }: { onSelect: (a: DemoAccount) => void }) {
           {/* Desktop Table Header */}
           <div className="hidden md:grid grid-cols-12 gap-3 px-3 py-1.5 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
             <div className="col-span-4">Account</div>
-            <div className="col-span-2">Type</div>
+            <div className="col-span-2"><LocalizedText text={"Type"} /></div>
             <div className="col-span-2">Records</div>
             <div className="col-span-2">Activity</div>
-            <div className="col-span-2 text-right">Action</div>
+            <div className="col-span-2 text-right"><LocalizedText text={"Action"} /></div>
           </div>
 
           {filtered.map(a => (

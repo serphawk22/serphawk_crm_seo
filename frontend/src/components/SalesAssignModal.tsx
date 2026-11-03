@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -322,16 +323,15 @@ export default function SalesAssignModal({
                           <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-zinc-400 mb-2">
                             <span className="flex items-center gap-1.5">
                               <Briefcase size={11} className="text-blue-400" />
-                              <span><strong className="text-slate-700 dark:text-zinc-200">{emp.active_clients}</strong> clients</span>
+                              <span><strong className="text-slate-700 dark:text-zinc-200">{emp.active_clients}</strong> <LocalizedText text={"clients"} /></span>
                             </span>
                             <span className="flex items-center gap-1.5">
                               <TrendingUp size={11} className="text-violet-400" />
-                              <span><strong className="text-slate-700 dark:text-zinc-200">{emp.active_leads}</strong> leads</span>
+                              <span><strong className="text-slate-700 dark:text-zinc-200">{emp.active_leads}</strong> <LocalizedText text={"leads"} /></span>
                             </span>
                             <span className="ml-auto flex items-center gap-1 text-[10px] font-black text-slate-400">
                               <BarChart2 size={11} />
-                              {emp.total_active} total
-                            </span>
+                              {emp.total_active} <LocalizedText text={"total"} /> </span>
                           </div>
 
                           {/* Workload bar */}
@@ -374,7 +374,7 @@ export default function SalesAssignModal({
                       {isReassign ? 'Reassignment Reason' : 'Assignment Note'}
                       {isReassign && <span className="text-rose-500 font-black">*</span>}
                     </label>
-                    {isReassign && <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider">Required</span>}
+                    {isReassign && <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider"><LocalizedText text={"Required"} /></span>}
                   </div>
                   <input
                     type="text"

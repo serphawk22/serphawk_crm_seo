@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -279,8 +280,7 @@ export default function StudentDetailsPage() {
         className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
       >
         <ArrowLeft className="h-4 w-4" />
-        Students
-      </Link>
+        <LocalizedText text={"Students"} /></Link>
 
       <header className="flex flex-col justify-between gap-5 border-b border-[var(--border)] pb-6 sm:flex-row sm:items-end">
         <div className="flex min-w-0 items-center gap-4">
@@ -377,7 +377,7 @@ export default function StudentDetailsPage() {
             </p>
           </div>
           <span className="text-sm font-medium text-[var(--text-secondary)]">
-            {completedTasksCount} of {tasks.length} tasks completed
+            {completedTasksCount} <LocalizedText text={"of"} /> {tasks.length} tasks completed
           </span>
         </div>
 
@@ -409,8 +409,7 @@ export default function StudentDetailsPage() {
                       >
                         {isDone ? (
                           <>
-                            <CheckCircle2 className="h-3 w-3" /> Completed
-                          </>
+                            <CheckCircle2 className="h-3 w-3" /> <LocalizedText text={"Completed"} /> </>
                         ) : (
                           <>
                             <Clock className="h-3 w-3" /> Pending Submission
@@ -429,7 +428,7 @@ export default function StudentDetailsPage() {
 
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-[var(--text-secondary)]">
                       {task.batch_name && <span>Batch: {task.batch_name}</span>}
-                      {task.due_date && <span>Due: {task.due_date}</span>}
+                      {task.due_date && <span><LocalizedText text={"Due:"} /> {task.due_date}</span>}
                     </div>
 
                     {/* Submission Details if already submitted */}
@@ -570,8 +569,7 @@ export default function StudentDetailsPage() {
                 onClick={() => setSubmittingTaskId(null)}
                 className="rounded-md border border-[var(--border)] px-3 py-2 text-sm"
               >
-                Cancel
-              </button>
+                <LocalizedText text={"Cancel"} /> </button>
               <button
                 type="submit"
                 disabled={submitting}
@@ -648,7 +646,7 @@ export default function StudentDetailsPage() {
                     <p className="mt-1 font-semibold">₹{item.total_fee.toLocaleString()}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-[var(--text-secondary)]">Paid</p>
+                    <p className="text-xs text-[var(--text-secondary)]"><LocalizedText text={"Paid"} /></p>
                     <p className="mt-1 font-semibold text-emerald-800 dark:text-emerald-300">
                       ₹{item.amount_paid.toLocaleString()}
                     </p>
@@ -712,7 +710,7 @@ export default function StudentDetailsPage() {
                 </div>
               ))}
               <div>
-                <dt className="text-xs text-[var(--text-secondary)]">Added</dt>
+                <dt className="text-xs text-[var(--text-secondary)]"><LocalizedText text={"Added"} /></dt>
                 <dd className="mt-1 inline-flex items-center gap-2">
                   <CalendarDays className="h-4 w-4" />
                   {new Date(student.created_at).toLocaleDateString()}
@@ -803,8 +801,7 @@ function SalespersonPanel({
           className="inline-flex items-center gap-1.5 rounded-md bg-sky-800 px-3 text-xs font-semibold text-white disabled:opacity-50 hover:bg-sky-700"
         >
           {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-          Assign
-        </button>
+          <LocalizedText text={"Assign"} /> </button>
       </div>
       <p className="text-xs text-[var(--text-secondary)]">The assigned salesperson can view this student's full profile, follow up on payments, and manage enrollments.</p>
     </div>
@@ -861,7 +858,7 @@ function PaymentReminderPanel({
           <Phone className="h-4 w-4" />
           Payment reminder call
         </h2>
-        <span className="text-sm font-bold text-amber-800 dark:text-amber-300">₹{totalDue.toLocaleString()} due</span>
+        <span className="text-sm font-bold text-amber-800 dark:text-amber-300">₹{totalDue.toLocaleString()} <LocalizedText text={"due"} /></span>
       </div>
       <p className="text-xs text-amber-800 dark:text-amber-300">Log a reminder call to {studentName} for the outstanding balance. This will appear in the student's activity notes.</p>
       {studentPhone && (

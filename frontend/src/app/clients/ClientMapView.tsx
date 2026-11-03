@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
@@ -140,8 +141,7 @@ export default function ClientMapView({ clients, statuses }: ClientMapViewProps)
                       onClick={(e) => { e.stopPropagation(); router.push(`/admin/clients/${client.id}`); }}
                       className="flex-1 bg-indigo-50 text-indigo-700 py-2 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors"
                     >
-                      Open Client
-                    </button>
+                      <LocalizedText text={"Open Client"} /> </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); router.push(`/admin/clients/${client.id}/competitors`); }}
                       className="flex-[1.5] bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-2 rounded-lg text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1"

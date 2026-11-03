@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
+import { createVisiblePoll } from "@/lib/visiblePoll";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 
@@ -36,35 +37,32 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const fetchNotifications = useCallback(async () => {
+  const poll = useRef<ReturnType<typeof createVisiblePoll> | null>(null);
+  const fetchNotifications = useCallback(async (signal: AbortSignal) => {
     if (!userId) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/notifications/${userId}`);
+      const res = await fetch(`${API_BASE_URL}/notifications/${userId}`, { signal });
       if (!res.ok) return;
       const data = await res.json();
-      setNotifications(data.notifications || []);
+      if (!signal.aborted) setNotifications(data.notifications || []);
     } catch (e) {
       // silently fail — notifications are non-critical
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }, [userId]);
 
-  // Initial fetch + re-fetch when user changes
+  // One request at a time; cancel old-account results and pause hidden tabs.
   useEffect(() => {
+    setNotifications([]);
     if (userId) {
       setLoading(true);
-      fetchNotifications();
+      const active = createVisiblePoll(fetchNotifications, POLL_INTERVAL);
+      poll.current = active;
+      return () => { active.dispose(); poll.current = null; };
     } else {
-      setNotifications([]);
+      setLoading(false);
     }
-  }, [userId, fetchNotifications]);
-
-  // Polling every 15s
-  useEffect(() => {
-    if (!userId) return;
-    const timer = setInterval(fetchNotifications, POLL_INTERVAL);
-    return () => clearInterval(timer);
   }, [userId, fetchNotifications]);
 
   const markRead = useCallback(async (id: number) => {
@@ -97,7 +95,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         notifications,
         unreadCount,
         loading,
-        refresh: fetchNotifications,
+        refresh: () => { void poll.current?.refresh(); },
         markRead,
         markAllRead,
         deleteNotification,

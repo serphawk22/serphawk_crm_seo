@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
@@ -197,9 +198,9 @@ export default function PublicProposalPage() {
                 <table className="w-full text-left text-sm">
                   <thead className="bg-slate-100 dark:bg-zinc-800 border-b border-slate-200 dark:border-zinc-700">
                     <tr>
-                      <th className="px-6 py-4 font-bold text-slate-500 uppercase tracking-wider text-xs">Description</th>
-                      <th className="px-6 py-4 font-bold text-slate-500 uppercase tracking-wider text-xs text-center">Qty</th>
-                      <th className="px-6 py-4 font-bold text-slate-500 uppercase tracking-wider text-xs text-right">Unit Price</th>
+                      <th className="px-6 py-4 font-bold text-slate-500 uppercase tracking-wider text-xs"><LocalizedText text={"Description"} /></th>
+                      <th className="px-6 py-4 font-bold text-slate-500 uppercase tracking-wider text-xs text-center"><LocalizedText text={"Qty"} /></th>
+                      <th className="px-6 py-4 font-bold text-slate-500 uppercase tracking-wider text-xs text-right"><LocalizedText text={"Unit Price"} /></th>
                       <th className="px-6 py-4 font-bold text-slate-500 uppercase tracking-wider text-xs text-right">Total</th>
                     </tr>
                   </thead>
@@ -230,7 +231,7 @@ export default function PublicProposalPage() {
               <div className="py-8 border-t border-slate-100 dark:border-zinc-800">
                 {proposal.notes && (
                   <div className="mb-6">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Notes</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2"><LocalizedText text={"Notes"} /></p>
                     <p className="text-sm text-slate-600 dark:text-zinc-400 whitespace-pre-wrap">{proposal.notes}</p>
                   </div>
                 )}
@@ -248,7 +249,7 @@ export default function PublicProposalPage() {
         {/* SIDEBAR: ACTIONS & NEGOTIATION */}
         <div className="space-y-6">
           <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl p-6 border border-slate-200 dark:border-zinc-800">
-            <h3 className="text-lg font-bold mb-4">Actions</h3>
+            <h3 className="text-lg font-bold mb-4"><LocalizedText text={"Actions"} /></h3>
             {!isAccepted ? (
               <button 
                 onClick={handleAccept}
@@ -267,8 +268,7 @@ export default function PublicProposalPage() {
               disabled={downloading || !proposal?.id}
               className="w-full mt-3 flex items-center justify-center gap-2 bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 font-bold py-3 px-4 rounded-xl border border-slate-200 dark:border-zinc-700 shadow-sm transition-all active:scale-95 disabled:opacity-60 disabled:active:scale-100"
             >
-              {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Download PDF
-            </button>
+              {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} <LocalizedText text={"Download PDF"} /> </button>
           </div>
 
           <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-slate-200 dark:border-zinc-800 flex flex-col h-[500px]">

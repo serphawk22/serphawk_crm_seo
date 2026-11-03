@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import React, { useState, useEffect, useMemo } from "react";
 import { API_BASE_URL } from "@/config";
 import { motion, AnimatePresence } from "framer-motion";
@@ -302,12 +303,11 @@ export default function EnrollmentsPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">Enrollments</h1>
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none"><LocalizedText text={"Enrollments"} /></h1>
               <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                {enrollments.length} total
-              </span>
+                {enrollments.length} <LocalizedText text={"total"} /> </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Manage student enrollments, fee balances and billing slips</p>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5"><LocalizedText text={"Manage student enrollments, fee balances and billing slips"} /></p>
           </div>
         </div>
 
@@ -318,14 +318,14 @@ export default function EnrollmentsPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-white/10 text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-white/5 transition"
           >
             <Download className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
-            <span>Export CSV</span>
+            <span><LocalizedText text={"Export CSV"} /></span>
           </button>
           <button
             onClick={() => { setFormError(""); setShowModal(true); }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>New Enrollment</span>
+            <span><LocalizedText text={"New Enrollment"} /></span>
           </button>
         </div>
       </div>
@@ -334,7 +334,7 @@ export default function EnrollmentsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
         <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
           <div>
-            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Total Enrolled</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider"><LocalizedText text={"Total Enrolled"} /></p>
             <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight mt-0.5">{enrollments.length}</p>
           </div>
           <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
@@ -344,7 +344,7 @@ export default function EnrollmentsPage() {
 
         <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
           <div>
-            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Active</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider"><LocalizedText text={"Active"} /></p>
             <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 leading-tight mt-0.5">{activeCount}</p>
           </div>
           <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
@@ -354,7 +354,7 @@ export default function EnrollmentsPage() {
 
         <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
           <div>
-            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Revenue Collected</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider"><LocalizedText text={"Revenue Collected"} /></p>
             <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight mt-0.5">₹{totalRevenue.toLocaleString()}</p>
           </div>
           <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
@@ -364,7 +364,7 @@ export default function EnrollmentsPage() {
 
         <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
           <div>
-            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Pending Balance</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider"><LocalizedText text={"Pending Balance"} /></p>
             <p className="text-base sm:text-lg font-bold text-rose-600 dark:text-rose-400 leading-tight mt-0.5">₹{totalDue.toLocaleString()}</p>
           </div>
           <div className="w-7 h-7 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
@@ -416,11 +416,11 @@ export default function EnrollmentsPage() {
 
       {/* Desktop Column Header */}
       <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-        <div className="col-span-4">Student & Slip</div>
-        <div className="col-span-3">Course / Batch</div>
-        <div className="col-span-2 text-right">Fee Breakdown</div>
-        <div className="col-span-1 text-center">Status</div>
-        <div className="col-span-2 text-right">Slips & Actions</div>
+        <div className="col-span-4"><LocalizedText text={"Student & Slip"} /></div>
+        <div className="col-span-3"><LocalizedText text={"Course / Batch"} /></div>
+        <div className="col-span-2 text-right"><LocalizedText text={"Fee Breakdown"} /></div>
+        <div className="col-span-1 text-center"><LocalizedText text={"Status"} /></div>
+        <div className="col-span-2 text-right"><LocalizedText text={"Slips & Actions"} /></div>
       </div>
 
       {/* Premium List Cards */}
@@ -431,8 +431,8 @@ export default function EnrollmentsPage() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 bg-white dark:bg-[#111111]/90 rounded-xl border border-slate-200/90 dark:border-white/10">
           <FileText className="w-8 h-8 mx-auto mb-2 text-slate-400 dark:text-zinc-600" />
-          <p className="text-xs font-semibold text-slate-700 dark:text-zinc-300">No enrollments found</p>
-          <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Try adjusting your search or create a new student enrollment</p>
+          <p className="text-xs font-semibold text-slate-700 dark:text-zinc-300"><LocalizedText text={"No enrollments found"} /></p>
+          <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5"><LocalizedText text={"Try adjusting your search or create a new student enrollment"} /></p>
         </div>
       ) : (
         <div className="space-y-1.5">
@@ -500,15 +500,15 @@ export default function EnrollmentsPage() {
                 {/* Fee Breakdown */}
                 <div className="col-span-2 text-left lg:text-right w-full">
                   <div className="flex lg:justify-end items-center gap-2 text-xs">
-                    <span className="text-slate-400 dark:text-zinc-500 text-[11px]">Fee:</span>
+                    <span className="text-slate-400 dark:text-zinc-500 text-[11px]"><LocalizedText text={"Fee:"} /></span>
                     <span className="font-semibold text-slate-800 dark:text-zinc-200">₹{(e.total_fee || 0).toLocaleString()}</span>
                   </div>
                   <div className="flex lg:justify-end items-center gap-2 text-[11px] mt-0.5">
-                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">₹{(e.amount_paid || 0).toLocaleString()} paid</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">₹{(e.amount_paid || 0).toLocaleString()} <LocalizedText text={"paid"} /></span>
                     {e.amount_due > 0 ? (
-                      <span className="text-rose-600 dark:text-rose-400 font-medium">• ₹{e.amount_due.toLocaleString()} due</span>
+                      <span className="text-rose-600 dark:text-rose-400 font-medium">• ₹{e.amount_due.toLocaleString()} <LocalizedText text={"due"} /></span>
                     ) : (
-                      <span className="text-slate-400 dark:text-zinc-500">• Cleared</span>
+                      <span className="text-slate-400 dark:text-zinc-500"><LocalizedText text={"• Cleared"} /></span>
                     )}
                   </div>
                 </div>
@@ -565,8 +565,7 @@ export default function EnrollmentsPage() {
                     <FileText className="w-4 h-4" />
                   </div>
                   <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {slipType === "admission" ? "Admission" : "Advance"} Slip Generated
-                  </h2>
+                    {slipType === "admission" ? "Admission" : "Advance"} <LocalizedText text={"Slip Generated"} /></h2>
                 </div>
                 <button onClick={() => setSlipData(null)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 dark:text-zinc-400">
                   <X className="w-4 h-4" />
@@ -574,22 +573,20 @@ export default function EnrollmentsPage() {
               </div>
 
               <div className="bg-slate-50 dark:bg-white/5 rounded-xl p-3.5 space-y-2 mb-4 border border-slate-100 dark:border-white/5 text-xs">
-                <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400">Slip No.</span><span className="text-slate-900 dark:text-white font-mono font-bold">{slipData.slip_number}</span></div>
-                <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400">Student</span><span className="text-slate-900 dark:text-white font-medium">{slipData.student_name}</span></div>
-                <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400">Course</span><span className="text-slate-900 dark:text-white font-medium">{slipData.course_title}</span></div>
-                <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400">Batch</span><span className="text-slate-900 dark:text-white">{slipData.batch_name}</span></div>
-                {slipData.total_fee && <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400">Total Fee</span><span className="text-slate-900 dark:text-white">₹{slipData.total_fee?.toLocaleString()}</span></div>}
-                <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400">Amount Paid</span><span className="text-emerald-600 dark:text-emerald-400 font-bold">₹{slipData.amount_paid?.toLocaleString()}</span></div>
-                {slipData.amount_due !== undefined && <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400">Balance Due</span><span className="text-rose-600 dark:text-rose-400 font-bold">₹{slipData.amount_due?.toLocaleString()}</span></div>}
+                <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400"><LocalizedText text={"Slip No."} /></span><span className="text-slate-900 dark:text-white font-mono font-bold">{slipData.slip_number}</span></div>
+                <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400"><LocalizedText text={"Student"} /></span><span className="text-slate-900 dark:text-white font-medium">{slipData.student_name}</span></div>
+                <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400"><LocalizedText text={"Course"} /></span><span className="text-slate-900 dark:text-white font-medium">{slipData.course_title}</span></div>
+                <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400"><LocalizedText text={"Batch"} /></span><span className="text-slate-900 dark:text-white">{slipData.batch_name}</span></div>
+                {slipData.total_fee && <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400"><LocalizedText text={"Total Fee"} /></span><span className="text-slate-900 dark:text-white">₹{slipData.total_fee?.toLocaleString()}</span></div>}
+                <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400"><LocalizedText text={"Amount Paid"} /></span><span className="text-emerald-600 dark:text-emerald-400 font-bold">₹{slipData.amount_paid?.toLocaleString()}</span></div>
+                {slipData.amount_due !== undefined && <div className="flex justify-between items-center"><span className="text-slate-500 dark:text-zinc-400"><LocalizedText text={"Balance Due"} /></span><span className="text-rose-600 dark:text-rose-400 font-bold">₹{slipData.amount_due?.toLocaleString()}</span></div>}
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={downloadSlip} className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 py-2 font-semibold text-xs text-white shadow-xs transition">
-                  <Download className="h-3.5 w-3.5" /> Download PDF
-                </button>
+                  <Download className="h-3.5 w-3.5" /> <LocalizedText text={"Download PDF"} /> </button>
                 <button onClick={printSlip} className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/10 py-2 font-semibold text-xs text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-white/5 transition">
-                  <Printer className="h-3.5 w-3.5 text-slate-500 dark:text-zinc-400" /> Print Slip
-                </button>
+                  <Printer className="h-3.5 w-3.5 text-slate-500 dark:text-zinc-400" /> <LocalizedText text={"Print Slip"} /></button>
               </div>
             </motion.div>
           </motion.div>
@@ -606,7 +603,7 @@ export default function EnrollmentsPage() {
                   <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                     <Plus className="w-4 h-4" />
                   </div>
-                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">New Enrollment</h2>
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white"><LocalizedText text={"New Enrollment"} /></h2>
                 </div>
                 <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 dark:text-zinc-400">
                   <X className="w-4 h-4" />
@@ -617,7 +614,7 @@ export default function EnrollmentsPage() {
 
               <div className="space-y-3 text-xs">
                 <div>
-                  <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium">Student *</label>
+                  <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium"><LocalizedText text={"Student *"} /></label>
                   <select
                     value={form.student_id}
                     onChange={e => setForm({ ...form, student_id: e.target.value })}
@@ -629,7 +626,7 @@ export default function EnrollmentsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium">Batch *</label>
+                  <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium"><LocalizedText text={"Batch *"} /></label>
                   <select
                     value={form.batch_id}
                     onChange={e => onBatchChange(e.target.value)}
@@ -642,7 +639,7 @@ export default function EnrollmentsPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium">Total Fee (₹)</label>
+                    <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium"><LocalizedText text={"Total Fee (₹)"} /></label>
                     <input
                       type="number"
                       value={form.total_fee}
@@ -651,7 +648,7 @@ export default function EnrollmentsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium">Amount Paid Now (₹)</label>
+                    <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium"><LocalizedText text={"Amount Paid Now (₹)"} /></label>
                     <input
                       type="number"
                       value={form.amount_paid}
@@ -660,7 +657,7 @@ export default function EnrollmentsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium">Payment Mode</label>
+                    <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium"><LocalizedText text={"Payment Mode"} /></label>
                     <select
                       value={form.payment_mode}
                       onChange={e => setForm({ ...form, payment_mode: e.target.value })}
@@ -674,7 +671,7 @@ export default function EnrollmentsPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium">Discount (₹)</label>
+                    <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium"><LocalizedText text={"Discount (₹)"} /></label>
                     <input
                       type="number"
                       value={form.discount}
@@ -685,7 +682,7 @@ export default function EnrollmentsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium">Discount Reason</label>
+                  <label className="block text-slate-600 dark:text-zinc-400 mb-1 font-medium"><LocalizedText text={"Discount Reason"} /></label>
                   <input
                     value={form.discount_reason}
                     onChange={e => setForm({ ...form, discount_reason: e.target.value })}
@@ -696,11 +693,11 @@ export default function EnrollmentsPage() {
 
                 {form.total_fee && form.amount_paid && (
                   <div className="bg-slate-50 dark:bg-white/5 rounded-xl p-3 space-y-1 border border-slate-100 dark:border-white/5 text-xs">
-                    <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Total Fee</span><span className="text-slate-900 dark:text-white font-medium">₹{parseFloat(form.total_fee).toLocaleString()}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Discount</span><span className="text-emerald-600 dark:text-emerald-400 font-medium">- ₹{parseFloat(form.discount || "0").toLocaleString()}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400">Paid Now</span><span className="text-emerald-600 dark:text-emerald-400 font-semibold">₹{parseFloat(form.amount_paid).toLocaleString()}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400"><LocalizedText text={"Total Fee"} /></span><span className="text-slate-900 dark:text-white font-medium">₹{parseFloat(form.total_fee).toLocaleString()}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400"><LocalizedText text={"Discount"} /></span><span className="text-emerald-600 dark:text-emerald-400 font-medium">- ₹{parseFloat(form.discount || "0").toLocaleString()}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500 dark:text-zinc-400"><LocalizedText text={"Paid Now"} /></span><span className="text-emerald-600 dark:text-emerald-400 font-semibold">₹{parseFloat(form.amount_paid).toLocaleString()}</span></div>
                     <div className="flex justify-between font-semibold border-t border-slate-200 dark:border-white/10 pt-1 mt-1">
-                      <span className="text-slate-700 dark:text-zinc-300">Balance Due</span>
+                      <span className="text-slate-700 dark:text-zinc-300"><LocalizedText text={"Balance Due"} /></span>
                       <span className="text-rose-600 dark:text-rose-400">
                         ₹{Math.max(0, parseFloat(form.total_fee || "0") - parseFloat(form.amount_paid || "0") - parseFloat(form.discount || "0")).toLocaleString()}
                       </span>
@@ -714,15 +711,14 @@ export default function EnrollmentsPage() {
                   onClick={() => setShowModal(false)}
                   className="flex-1 py-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs font-semibold text-slate-700 dark:text-zinc-300 hover:bg-slate-200/60 dark:hover:bg-white/10 transition"
                 >
-                  Cancel
-                </button>
+                  <LocalizedText text={"Cancel"} /> </button>
                 <button
                   onClick={handleSave}
                   disabled={saving}
                   className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-xs transition"
                 >
                   {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Enroll Student</span>
+                  <span><LocalizedText text={"Enroll Student"} /></span>
                 </button>
               </div>
             </motion.div>

@@ -32,12 +32,12 @@ class SupportInvoiceModules(TenantIsolationBase):
             response = self.client.get(path, headers=self.as_tenant(2))
             self.assertEqual(response.status_code, status, response.text)
 
-    def test_external_portal_uses_tenant_setting_and_case_creation_stays_external(self):
+    def test_external_portal_uses_tenant_setting_and_cases_are_independent(self):
         self.set_modules(support_sh=True, cases=True)
         with Session(S.ENGINE) as session: tenant_settings.update_settings(session, 2, {"support_portal_url": "https://support.example.test/login"})
         response = self.client.get("/support/helpdesk", headers=self.as_tenant(2))
         self.assertEqual(response.json()["url"], "https://support.example.test/login")
-        self.assertEqual(self.client.post("/cases", json={"subject": "External only"}, headers=self.as_tenant(2)).status_code, 403)
+        self.assertEqual(self.client.post("/cases", json={"subject": "Internal issue", "case_type": "Issue"}, headers=self.as_tenant(2)).status_code, 200)
 
     def test_sales_case_queries_and_mutations_are_assignment_scoped(self):
         headers = {"X-User-ID": str(self.manager)}

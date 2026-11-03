@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useEffect, useState } from 'react';
 import { Bot, CalendarPlus, CheckCircle2, Loader2, Mail, Save, Send, Sparkles } from 'lucide-react';
@@ -97,7 +98,7 @@ export function FollowUpFormDialog({ initial, record, defaults, onClose, onSaved
       subtitle={record ? `${record.kind === 'lead' ? 'Lead' : 'Client'}: ${record.name}` : initial ? (initial.company_name || initial.contact_email || '') : 'Follow up with a contact'}
       onClose={onClose}
       footer={<>
-        <button className={btn.secondary} onClick={onClose}>Cancel</button>
+        <button className={btn.secondary} onClick={onClose}><LocalizedText text={"Cancel"} /></button>
         <button className={btn.primary} onClick={save} disabled={saving}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {editing ? 'Save changes' : 'Create follow-up'}
         </button>
@@ -134,9 +135,9 @@ export function FollowUpFormDialog({ initial, record, defaults, onClose, onSaved
               </select>
             </div>
             <div>
-              <label className={label}>Priority</label>
+              <label className={label}><LocalizedText text={"Priority"} /></label>
               <select className={input} value={f.priority} onChange={(e) => set('priority', e.target.value as Priority)}>
-                <option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+                <option value="high"><LocalizedText text={"High"} /></option><option value="medium"><LocalizedText text={"Medium"} /></option><option value="low"><LocalizedText text={"Low"} /></option>
               </select>
             </div>
           </div>
@@ -152,18 +153,18 @@ export function FollowUpFormDialog({ initial, record, defaults, onClose, onSaved
             <input className={input} value={f.contact_name} onChange={(e) => set('contact_name', e.target.value)} placeholder="Jane Doe" />
           </div>
           <div>
-            <label className={label}>Contact email</label>
+            <label className={label}><LocalizedText text={"Contact email"} /></label>
             <input type="email" className={input} value={f.contact_email} onChange={(e) => set('contact_email', e.target.value)} placeholder="jane@company.com" />
           </div>
           {!record && !editing && (
             <div>
-              <label className={label}>Company</label>
+              <label className={label}><LocalizedText text={"Company"} /></label>
               <input className={input} value={f.company_name} onChange={(e) => set('company_name', e.target.value)} placeholder="Company name" />
             </div>
           )}
           {users.length > 1 && (
             <div>
-              <label className={label}>Assigned to</label>
+              <label className={label}><LocalizedText text={"Assigned to"} /></label>
               <select className={input} value={f.assigned_to ?? ''} onChange={(e) => set('assigned_to', e.target.value ? Number(e.target.value) : null)}>
                 <option value="">{record ? 'Record owner' : 'Me'}</option>
                 {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -221,7 +222,7 @@ export function CompleteDialog({ fu, onClose, onDone }: { fu: FollowUp; onClose:
 
   return (
     <Modal title="Complete follow-up" subtitle={fu.title} onClose={onClose} footer={<>
-      <button className={btn.secondary} onClick={onClose}>Cancel</button>
+      <button className={btn.secondary} onClick={onClose}><LocalizedText text={"Cancel"} /></button>
       <button className={btn.success} onClick={submit} disabled={busy}>
         {busy ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Mark completed
       </button>
@@ -323,7 +324,7 @@ export function FollowUpEmailDialog({ fu, onClose, onChanged }: { fu: FollowUp; 
 
   return (
     <Modal wide title="Follow-up email" subtitle={`${fu.title}${fu.company_name ? ` · ${fu.company_name}` : ''}`} onClose={onClose} footer={<>
-      <button className={btn.secondary} onClick={onClose}>Close</button>
+      <button className={btn.secondary} onClick={onClose}><LocalizedText text={"Close"} /></button>
       {dueInFuture && fu.status === 'Pending' && (
         <button className={btn.secondary} onClick={schedule} disabled={!!busy || !body.trim() || !sender?.configured}
           title="Save this email and send it automatically when the follow-up is due">
@@ -368,12 +369,12 @@ export function FollowUpEmailDialog({ fu, onClose, onChanged }: { fu: FollowUp; 
             <input type="email" className={input} value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div>
-            <label className={label}>Subject</label>
+            <label className={label}><LocalizedText text={"Subject"} /></label>
             <input className={input} value={subject} onChange={(e) => setSubject(e.target.value)} />
           </div>
         </div>
         <div>
-          <label className={label}>Message</label>
+          <label className={label}><LocalizedText text={"Message"} /></label>
           {busy === 'draft' && !body ? (
             <div className="flex h-48 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 text-xs text-slate-500 dark:border-zinc-700">
               <Loader2 size={14} className="animate-spin" /> Reading previous notes and drafting…

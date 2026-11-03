@@ -156,9 +156,15 @@ def classify_batch(items: list, tenant_id=None) -> dict:
     return results
 
 
+from modules.job_runtime import exclusive, assert_ownership, tally
+
+
+@exclusive("inbox-classification")
 def classify_pending(engine=None, limit: int = 30, batch_size: int = 10, *, tenant_id=None, mailbox=None) -> int:
     """Triage the newest not-yet-classified inbound messages. Returns how many were classified."""
-    from database import ClientProfile, InboxMessage, Lead, engine as default_engine
+    from database import ClientProfile, InboxMessage, Lead, UserEmailIntegration, engine as default_engine
+    from modules.demo_usage import background_restricted
+    from sqlalchemy import func
 
     engine = engine or default_engine
     # Read everything up front and close the session: no DB transaction (and no table locks) may stay
@@ -180,7 +186,17 @@ def classify_pending(engine=None, limit: int = 30, batch_size: int = 10, *, tena
         lead_names = dict(session.exec(select(Lead.id, Lead.company_name).where(Lead.id.in_(lead_ids)).execution_options(skip_tenant=True)).all()) if lead_ids else {}
         client_names = dict(session.exec(select(ClientProfile.id, ClientProfile.companyName).where(ClientProfile.id.in_(client_ids)).execution_options(skip_tenant=True)).all()) if client_ids else {}
         items = []
+        restricted_mailboxes = {}
         for r in rows:
+            mailbox_key = (r.tenant_id, r.mailbox)
+            if mailbox_key not in restricted_mailboxes:
+                owner_id = session.exec(select(UserEmailIntegration.user_id).where(
+                    UserEmailIntegration.tenant_id == r.tenant_id,
+                    func.lower(UserEmailIntegration.email) == (r.mailbox or "").lower())
+                    .execution_options(skip_tenant=True)).first()
+                restricted_mailboxes[mailbox_key] = background_restricted(session, r.tenant_id, owner_id)
+            if restricted_mailboxes[mailbox_key]:
+                continue  # demos use explicit AI actions; automatic triage must not spend paid credits
             linked = None
             if r.client_id:
                 linked = f"client: {client_names.get(r.client_id) or 'existing client'}"
@@ -196,6 +212,7 @@ def classify_pending(engine=None, limit: int = 30, batch_size: int = 10, *, tena
                 "tenant_id": r.tenant_id,
             })
 
+    tally(examined=len(rows))
     # One persona per tenant: never mix two tenants' mail in the same prompt.
     by_tenant: dict = {}
     for it in items:
@@ -205,6 +222,7 @@ def classify_pending(engine=None, limit: int = 30, batch_size: int = 10, *, tena
 
     done = 0
     for tid, batch in batches:
+        assert_ownership()
         results = classify_batch(batch, tenant_id=tid)  # EmailAIError propagates: stop this pass, retry next cycle
         now = datetime.now(timezone.utc)
         with Session(engine) as session:
@@ -222,6 +240,7 @@ def classify_pending(engine=None, limit: int = 30, batch_size: int = 10, *, tena
                 session.add(row)
             session.commit()
         done += len(batch)
+    tally(changed=done)
     return done
 
 

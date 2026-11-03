@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import { API_BASE_URL } from "@/config";
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -438,19 +439,19 @@ export default function SupplierPortalPage() {
                 </div>
                 
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Description</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block"><LocalizedText text={"Description"} /></label>
                   <textarea value={addItemForm.description} onChange={e => setAddItemForm(f => ({ ...f, description: e.target.value }))} rows={2}
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Unit Cost</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block"><LocalizedText text={"Unit Cost"} /></label>
                     <input type="number" value={addItemForm.unit_cost} onChange={e => setAddItemForm(f => ({ ...f, unit_cost: parseFloat(e.target.value) || 0 }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Currency</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block"><LocalizedText text={"Currency"} /></label>
                     <select value={addItemForm.currency} onChange={e => setAddItemForm(f => ({ ...f, currency: e.target.value }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
                       {CURRENCIES.map(c => <option key={c}>{c}</option>)}
@@ -472,13 +473,11 @@ export default function SupplierPortalPage() {
               <div className="flex gap-3 px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 rounded-b-2xl">
                 <button onClick={() => setShowAddItem(false)}
                   className="flex-1 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-sm hover:bg-slate-100 transition-all">
-                  Cancel
-                </button>
+                  <LocalizedText text={"Cancel"} /> </button>
                 <button onClick={handleAddItem} disabled={saving}
                   className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/20">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Save Item
-                </button>
+                  <LocalizedText text={"Save Item"} /> </button>
               </div>
             </motion.div>
           </motion.div>

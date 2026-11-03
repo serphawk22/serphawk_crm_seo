@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -246,7 +247,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate">Invoices</h1>
+                <h1 className="text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate"><LocalizedText text={"Invoices"} /></h1>
                 <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200/60 dark:border-zinc-700">
                   {invoices.length}
                 </span>
@@ -256,8 +257,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
           </div>
           <button onClick={openCreate}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 shadow-2xs transition-colors shrink-0">
-            <Plus className="w-3.5 h-3.5" /> New Invoice
-          </button>
+            <Plus className="w-3.5 h-3.5" /> <LocalizedText text={"New Invoice"} /> </button>
         </div>
       )}
 
@@ -277,7 +277,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
             <FileText className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Pending</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Pending"} /></div>
             <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{loading ? "—" : invoices.filter(i => ["Draft", "Sent"].includes(i.status)).length}</div>
           </div>
         </div>
@@ -286,7 +286,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
             <CheckCircle className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Paid</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Paid"} /></div>
             <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{loading ? "—" : invoices.filter(i => i.status === "Paid").length}</div>
           </div>
         </div>
@@ -295,7 +295,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
             <FileText className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Total Value</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Total Value"} /></div>
             <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5 truncate">{loading ? "—" : `₹${filtered.reduce((s, i) => s + (i.total || 0), 0).toFixed(0)}`}</div>
           </div>
         </div>
@@ -332,13 +332,13 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
       {/* Premium List Cards */}
       <div className="space-y-1.5">
         <div className="hidden md:grid grid-cols-[120px_1.5fr_1fr_1fr_1fr_1fr_auto] gap-3 px-3 py-1.5 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-          <div>Invoice #</div>
-          <div>Client</div>
-          <div>Amount</div>
-          <div>Tax</div>
+          <div><LocalizedText text={"Invoice #"} /></div>
+          <div><LocalizedText text={"Client"} /></div>
+          <div><LocalizedText text={"Amount"} /></div>
+          <div><LocalizedText text={"Tax"} /></div>
           <div>Total</div>
-          <div>Status</div>
-          <div className="text-right">Actions</div>
+          <div><LocalizedText text={"Status"} /></div>
+          <div className="text-right"><LocalizedText text={"Actions"} /></div>
         </div>
 
         {loading ? (
@@ -367,7 +367,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
               <div className="flex items-center gap-1.5 min-w-0">
                 <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <span className="text-xs font-semibold text-slate-800 dark:text-zinc-200 truncate">
-                  {inv.client_name || <span className="text-slate-400 italic">No client</span>}
+                  {inv.client_name || <span className="text-slate-400 italic"><LocalizedText text={"No client"} /></span>}
                 </span>
               </div>
               <span className="text-xs font-medium text-slate-600 dark:text-zinc-300">{fmtMoney(inv.amount, inv.currency || "MXN")}</span>
@@ -424,7 +424,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
 
               {/* Modal header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-zinc-700">
-                <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100">New Invoice</h2>
+                <h2 className="text-lg font-bold text-slate-800 dark:text-zinc-100"><LocalizedText text={"New Invoice"} /></h2>
                 <button onClick={() => setShowCreate(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors">
                   <X className="w-5 h-5 text-slate-500" />
                 </button>
@@ -440,7 +440,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 mb-1 block">Client *</label>
+                    <label className="text-xs font-semibold text-slate-500 mb-1 block"><LocalizedText text={"Client *"} /></label>
                     <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm">
                       <option value="">Select client…</option>
@@ -448,7 +448,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 mb-1 block">Currency</label>
+                    <label className="text-xs font-semibold text-slate-500 mb-1 block"><LocalizedText text={"Currency"} /></label>
                     <select value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm">
                                             <option value="EUR">EUR (€)</option>
@@ -458,12 +458,12 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 mb-1 block">Due Date</label>
+                    <label className="text-xs font-semibold text-slate-500 mb-1 block"><LocalizedText text={"Due Date"} /></label>
                     <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 mb-1 block">Tax</label>
+                    <label className="text-xs font-semibold text-slate-500 mb-1 block"><LocalizedText text={"Tax"} /></label>
                     <input type="number" step="0.01" value={form.tax} onChange={e => setForm(f => ({ ...f, tax: e.target.value }))}
                       placeholder="0.00"
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm" />
@@ -471,7 +471,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Notes</label>
+                  <label className="text-xs font-semibold text-slate-500 mb-1 block"><LocalizedText text={"Notes"} /></label>
                   <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                     rows={2} placeholder="Optional notes…"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm" />
@@ -508,7 +508,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
                 {/* Summary */}
                 <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-xl p-4 flex flex-col gap-1 text-sm">
                   <div className="flex justify-between"><span className="text-slate-500">Subtotal</span><span className="font-semibold">{fmtMoney(computedAmount, form.currency)}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Tax</span><span className="font-semibold">{fmtMoney(computedTax, form.currency)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500"><LocalizedText text={"Tax"} /></span><span className="font-semibold">{fmtMoney(computedTax, form.currency)}</span></div>
                   <div className="flex justify-between border-t border-slate-200 dark:border-zinc-700 pt-1 mt-1">
                     <span className="font-bold text-slate-800 dark:text-zinc-100">Total</span>
                     <span className="font-black text-blue-600">{fmtMoney(computedTotal, form.currency)}</span>
@@ -520,13 +520,11 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 dark:border-zinc-700">
                 <button onClick={() => setShowCreate(false)}
                   className="px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 text-sm font-semibold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all">
-                  Cancel
-                </button>
+                  <LocalizedText text={"Cancel"} /> </button>
                 <button onClick={handleCreate} disabled={saving}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:opacity-90 shadow-md transition-all active:scale-95 disabled:opacity-50">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                  Create Invoice
-                </button>
+                  <LocalizedText text={"Create Invoice"} /> </button>
               </div>
             </motion.div>
           </motion.div>
@@ -553,8 +551,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
                 <div className="flex items-center gap-3">
                   <button onClick={() => handleDownloadPDF(previewInv)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-semibold hover:bg-blue-600 transition-all">
-                    <Download className="w-3.5 h-3.5" /> Download PDF
-                  </button>
+                    <Download className="w-3.5 h-3.5" /> <LocalizedText text={"Download PDF"} /> </button>
                   <select value={previewInv.status} onChange={e => {
                     handleStatus(previewInv, e.target.value);
                     setPreviewInv({ ...previewInv, status: e.target.value });
@@ -571,11 +568,11 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
                 {/* Summary */}
                 <div className="grid grid-cols-3 gap-4">
                   <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-xl p-3">
-                    <p className="text-xs text-slate-500">Amount</p>
+                    <p className="text-xs text-slate-500"><LocalizedText text={"Amount"} /></p>
                     <p className="text-lg font-black text-slate-800 dark:text-zinc-100">{fmtMoney(previewInv.amount, previewInv.currency || "MXN")}</p>
                   </div>
                   <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-xl p-3">
-                    <p className="text-xs text-slate-500">Tax</p>
+                    <p className="text-xs text-slate-500"><LocalizedText text={"Tax"} /></p>
                     <p className="text-lg font-black text-slate-800 dark:text-zinc-100">{fmtMoney(previewInv.tax, previewInv.currency || "MXN")}</p>
                   </div>
                   <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3">
@@ -589,7 +586,7 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
                   <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Line Items</p>
                   <div className="border border-slate-200 dark:border-zinc-700 rounded-xl overflow-hidden">
                     <div className="grid grid-cols-[2fr_1fr_1fr] gap-2 px-4 py-2 bg-slate-50 dark:bg-zinc-800/50 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                      <span>Description</span><span className="text-right">Provider</span><span className="text-right">Amount</span>
+                      <span><LocalizedText text={"Description"} /></span><span className="text-right"><LocalizedText text={"Provider"} /></span><span className="text-right"><LocalizedText text={"Amount"} /></span>
                     </div>
                     {(previewInv.line_items || []).map((li, idx) => (
                       <div key={idx} className="grid grid-cols-[2fr_1fr_1fr] gap-2 px-4 py-2.5 border-t border-slate-100 dark:border-zinc-800 text-sm">
@@ -604,12 +601,12 @@ const Invoices = forwardRef<InvoicesHandle, { embedded?: boolean }>(function Inv
                 {/* Meta */}
                 {previewInv.notes && (
                   <div>
-                    <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">Notes</p>
+                    <p className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider"><LocalizedText text={"Notes"} /></p>
                     <p className="text-sm text-slate-600 dark:text-zinc-300">{previewInv.notes}</p>
                   </div>
                 )}
                 <div className="flex gap-6 text-xs text-slate-500">
-                  <span>Due: {previewInv.due_date || "—"}</span>
+                  <span><LocalizedText text={"Due:"} /> {previewInv.due_date || "—"}</span>
                   <span>Created: {new Date(previewInv.created_at).toLocaleDateString()}</span>
                 </div>
               </div>

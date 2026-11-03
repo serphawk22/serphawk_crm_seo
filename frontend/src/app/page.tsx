@@ -7,7 +7,7 @@ import {
   Users, Send, Clock, Briefcase, Target, Zap, Activity,
   Globe, CheckCircle, FolderKanban, Mail, ArrowUpRight,
   Bot, UserCheck, GraduationCap, Phone, Sparkles, FileText, ChevronRight, MessageCircle,
-  Shield, Lock, FileCheck, Bell, DollarSign, TrendingUp, Eye, Download, AlertTriangle, CheckCircle2, Circle, Timer, Rocket, Kanban
+  Shield, Lock, FileCheck, Bell, DollarSign, TrendingUp, Eye, Download, AlertTriangle, CheckCircle2, Circle, Timer, Rocket
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { fetchWithCache } from "@/lib/cache";
@@ -15,8 +15,10 @@ import { useRole } from "@/context/RoleContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { cn } from "@/lib/utils";
 import PageGuide from '@/components/PageGuide';
+import DashboardSection from "@/components/DashboardSection";
 import { AdminDashboard } from "@/components/AdminDashboard";
 import FeatureAccessNotice from "@/components/FeatureAccessNotice";
+import { moduleForPath } from "@/lib/moduleRoutes";
 import { homeModule } from "@/lib/homeModule";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import { useTenantConfig } from "@/context/TenantConfigContext";
@@ -239,6 +241,7 @@ export default function HomePage() {
 }
 
 function Dashboard() {
+  const { hasFeature } = useTenantConfig();
   const { role, email, user } = useRole();
   const { t, language } = useLanguage();
   const [stats, setStats] = useState<StatsData>(null);
@@ -264,7 +267,6 @@ function Dashboard() {
     { href: "/messages", icon: Send, gradient: "from-violet-500 to-purple-600", title: language === 'es' ? "Centro de Comunicación" : "Team Comm Hub", description: language === 'es' ? "Comunicación directa con especialistas SEO, archivos compartidos y colas prioritarias." : "Direct communication with your assigned SEO specialists, shared files, and priority queues.", roles: ["Client", "Admin", "Employee", "Demo"] },
     { href: "/monitor", icon: Target, gradient: "from-amber-500 to-orange-600", title: language === 'es' ? "Monitor en Vivo" : "Live Monitor", description: language === 'es' ? "Rastreador de clasificación en tiempo real y análisis de rendimiento sincronizado con GA4 y GSC." : "Real-time ranking tracker and performance analytics synced with GA4 and GSC.", roles: ["Client"] },
     { href: "/store", icon: Briefcase, gradient: "from-indigo-500 to-violet-600", title: language === 'es' ? "Servicios de Crecimiento" : "Growth Services", description: language === 'es' ? "Explore nuestro catálogo exclusivo de servicios de crecimiento. Solicite cualquier cosa y reciba una cotización personalizada." : "Explore our exclusive catalog of growth services. Request anything and receive a personalized quote from your dedicated team.", roles: ["Client"] },
-    { href: "/pipeline", icon: Kanban, gradient: "from-blue-500 to-indigo-600", title: language === 'es' ? "Pipeline de Ventas" : "Sales Pipeline", description: language === 'es' ? "Pipeline visual Kanban." : "Visual drag-and-drop Kanban board for managing deals.", roles: ["Admin", "Employee", "SalesManager", "Demo"] },
   ];
 
   useEffect(() => {
@@ -342,7 +344,7 @@ function Dashboard() {
 
   const adminStats = (isAdmin || role === "Demo") ? (stats as AdminStats) : null;
   const clientStats = (!isAdmin && role !== "Demo") ? (stats as ClientStats) : null;
-  const visibleNavCards = NAV_CARDS.filter(c => c.roles.includes(role));
+  const visibleNavCards = NAV_CARDS.filter(c => c.roles.includes(role) && hasFeature(moduleForPath(c.href) || undefined));
 
   if (role === "Supplier") {
     if (typeof window !== 'undefined') {
@@ -353,9 +355,9 @@ function Dashboard() {
 
   return (
     <motion.div initial="hidden" animate="show" variants={containerVariants} className={cn(isAdmin || role === 'ProjectMember' || role === 'Demo' ? "space-y-6" : "")}>
-      {role === "ProjectMember" && <DeveloperDashboard />}
+      {role === "ProjectMember" && <DashboardSection name="developer_work" module="projects"><DeveloperDashboard /></DashboardSection>}
       {role === "SalesManager" && stats && <SalesManagerDashboard stats={stats as any} name={user?.name || email} />}
-      {isAdmin && <OnboardingChecklist hideWhenDone />}
+      {isAdmin && <DashboardSection name="onboarding"><OnboardingChecklist hideWhenDone /></DashboardSection>}
       {isAdmin && adminStats && <AdminDashboard adminStats={adminStats} NAV_CARDS={NAV_CARDS} language={language} />}
       {role === "Demo" && <AdminDashboard adminStats={adminStats} NAV_CARDS={visibleNavCards} language={language} isDemo={true} />}
       {!isAdmin && role !== "Demo" && role !== "ProjectMember" && role !== "SalesManager" && (

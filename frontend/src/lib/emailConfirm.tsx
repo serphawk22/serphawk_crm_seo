@@ -1,3 +1,4 @@
+import LocalizedText from "@/components/LocalizedText";
 import { createRoot } from "react-dom/client";
 import { API_BASE_URL } from "@/config";
 
@@ -209,7 +210,7 @@ function ConfirmModal({ req }: { req: EmailConfirmRequest }) {
           )}
           {req.subject && (
             <div>
-              <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 mb-1">Subject</p>
+              <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 mb-1"><LocalizedText text={"Subject"} /></p>
               <p className="text-sm text-slate-700 dark:text-zinc-300">{req.subject}</p>
             </div>
           )}
@@ -218,8 +219,7 @@ function ConfirmModal({ req }: { req: EmailConfirmRequest }) {
         <div className="flex gap-3 px-6 py-4 border-t border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/40">
           <button onClick={() => resolveConfirm(false)}
             className="flex-1 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 font-semibold text-sm hover:bg-slate-100 dark:hover:bg-zinc-700 transition-all">
-            Cancel
-          </button>
+            <LocalizedText text={"Cancel"} /> </button>
           <button onClick={() => resolveConfirm(true)}
             className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold text-sm hover:opacity-90 transition-all shadow-md">
             Confirm & Send

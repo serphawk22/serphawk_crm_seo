@@ -1,3 +1,4 @@
+import LocalizedText from "@/components/LocalizedText";
 import { useState, useEffect, useMemo } from "react";
 import { Plus, X, AlignLeft, Calendar, User, GitBranch, Link as LinkIcon, History, Clock, FileText, ArrowDownAZ, ArrowRight, ArrowLeft } from "lucide-react";
 import { API_BASE_URL } from "@/config";
@@ -228,10 +229,10 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
           <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl px-3 py-2 shadow-sm">
             <ArrowDownAZ size={16} className="text-slate-400" />
             <select className="bg-transparent text-sm font-bold text-slate-700 dark:text-zinc-300 outline-none" value={sortOption} onChange={(e) => setSortOption(e.target.value as any)}>
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-              <option value="fastest">Fastest (Age)</option>
-              <option value="longest">Longest (Age)</option>
+              <option value="newest"><LocalizedText text={"Newest First"} /></option>
+              <option value="oldest"><LocalizedText text={"Oldest First"} /></option>
+              <option value="fastest"><LocalizedText text={"Fastest (Age)"} /></option>
+              <option value="longest"><LocalizedText text={"Longest (Age)"} /></option>
             </select>
           </div>
           <button 
@@ -242,8 +243,7 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
             }}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors"
           >
-            <Plus size={16} /> New Ticket
-          </button>
+            <Plus size={16} /> <LocalizedText text={"New Ticket"} /> </button>
         </div>
       </div>
 
@@ -370,15 +370,13 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                   onClick={() => setActiveTab('details')}
                   className={`pb-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'details' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-900'}`}
                 >
-                  Details
-                </button>
+                  <LocalizedText text={"Details"} /> </button>
                 <button 
                   type="button"
                   onClick={() => setActiveTab('history')}
                   className={`pb-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'history' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-900'}`}
                 >
-                  History & Metrics
-                </button>
+                  <LocalizedText text={"History & Metrics"} /> </button>
               </div>
             )}
             
@@ -389,39 +387,39 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                 {/* Left Column */}
                 <div className="space-y-5">
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Ticket Title (Task)</label>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2"><LocalizedText text={"Ticket Title (Task)"} /></label>
                     <input required type="text" value={form.task} onChange={e => setForm({...form, task: e.target.value})} className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Category</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2"><LocalizedText text={"Category"} /></label>
                       <input type="text" value={form.category || ''} onChange={e => setForm({...form, category: e.target.value})} className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Competitor</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2"><LocalizedText text={"Competitor"} /></label>
                       <input type="text" value={form.competitor || ''} onChange={e => setForm({...form, competitor: e.target.value})} className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">GitHub Link</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2"><LocalizedText text={"GitHub Link"} /></label>
                       <input type="url" value={form.github_link || ''} onChange={e => setForm({...form, github_link: e.target.value})} className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Prod URL</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2"><LocalizedText text={"Prod URL"} /></label>
                       <input type="url" value={form.production_url || ''} onChange={e => setForm({...form, production_url: e.target.value})} className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Requested By</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2"><LocalizedText text={"Requested By"} /></label>
                       <input type="text" value={form.requested_by || ''} onChange={e => setForm({...form, requested_by: e.target.value})} className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Requested Date</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2"><LocalizedText text={"Requested Date"} /></label>
                       <input type="date" value={form.requested_date || ''} onChange={e => setForm({...form, requested_date: e.target.value})} className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                     </div>
                   </div>
@@ -448,35 +446,35 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                       )}
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Owner Role</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2"><LocalizedText text={"Owner Role"} /></label>
                       <input type="text" value={form.current_owner_role || ''} onChange={e => setForm({...form, current_owner_role: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                     </div>
                   </div>
                   
                   <div className="pt-4 border-t border-slate-200 dark:border-zinc-800 grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Dev Start</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2"><LocalizedText text={"Dev Start"} /></label>
                       <input type="date" value={form.date_dev_start || ''} onChange={e => setForm({...form, date_dev_start: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Dev Complete</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2"><LocalizedText text={"Dev Complete"} /></label>
                       <input type="date" value={form.date_dev_complete || ''} onChange={e => setForm({...form, date_dev_complete: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">QA Start</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2"><LocalizedText text={"QA Start"} /></label>
                       <input type="date" value={form.date_qa_start || ''} onChange={e => setForm({...form, date_qa_start: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">QA Complete</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2"><LocalizedText text={"QA Complete"} /></label>
                       <input type="date" value={form.date_qa_complete || ''} onChange={e => setForm({...form, date_qa_complete: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                     </div>
                   </div>
                   
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Prod Release Date</label>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2"><LocalizedText text={"Prod Release Date"} /></label>
                     <input type="date" value={form.date_release_prod || ''} onChange={e => setForm({...form, date_release_prod: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
                   </div>
                 </div>
@@ -491,7 +489,7 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                         <Clock size={20} />
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-indigo-900 dark:text-indigo-100">Time Spent in Dev</h4>
+                        <h4 className="text-sm font-bold text-indigo-900 dark:text-indigo-100"><LocalizedText text={"Time Spent in Dev"} /></h4>
                         <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1">
                           {Math.max(1, Math.ceil((new Date(form.date_dev_complete).getTime() - new Date(form.date_dev_start).getTime()) / (1000 * 60 * 60 * 24)))} Days
                         </p>
@@ -505,7 +503,7 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                         <Clock size={20} />
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-purple-900 dark:text-purple-100">Time Spent in QA</h4>
+                        <h4 className="text-sm font-bold text-purple-900 dark:text-purple-100"><LocalizedText text={"Time Spent in QA"} /></h4>
                         <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
                           {Math.max(1, Math.ceil((new Date(form.date_qa_complete).getTime() - new Date(form.date_qa_start).getTime()) / (1000 * 60 * 60 * 24)))} Days
                         </p>
@@ -519,10 +517,9 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                         <Calendar size={20} />
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-emerald-900 dark:text-emerald-100">Task Age</h4>
+                        <h4 className="text-sm font-bold text-emerald-900 dark:text-emerald-100"><LocalizedText text={"Task Age"} /></h4>
                         <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">
-                          {Math.max(1, Math.ceil((new Date().getTime() - new Date(form.requested_date).getTime()) / (1000 * 60 * 60 * 24)))} Days Since Request
-                        </p>
+                          {Math.max(1, Math.ceil((new Date().getTime() - new Date(form.requested_date).getTime()) / (1000 * 60 * 60 * 24)))} <LocalizedText text={"Days Since Request"} /> </p>
                       </div>
                     </div>
                   )}
@@ -535,9 +532,9 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                         </div>
                         <p className="text-sm text-slate-800 dark:text-zinc-200">
                           {log.old_state === 'Given to QA' && log.new_state === 'In Dev' ? (
-                            <><span className="font-bold">{log.user_name || 'QA'}</span> <span className="text-red-500 font-bold">reverted back to Dev</span></>
+                            <><span className="font-bold">{log.user_name || 'QA'}</span> <span className="text-red-500 font-bold"><LocalizedText text={"reverted back to Dev"} /></span></>
                           ) : (
-                            <><span className="font-bold">{log.user_name || 'Someone'}</span> moved this ticket from <span className="font-bold text-slate-500 dark:text-zinc-400">{log.old_state}</span> to <span className="font-bold text-slate-900 dark:text-white">{log.new_state}</span></>
+                            <><span className="font-bold">{log.user_name || 'Someone'}</span> <LocalizedText text={"moved this ticket from"} /> <span className="font-bold text-slate-500 dark:text-zinc-400">{log.old_state}</span> <LocalizedText text={"to"} /> <span className="font-bold text-slate-900 dark:text-white">{log.new_state}</span></>
                           )}
                         </p>
                         <p className="text-xs text-slate-400 mt-1">
@@ -546,7 +543,7 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                       </div>
                     ))}
                     {historyLogs.length === 0 && (
-                      <p className="text-sm text-slate-500 italic">No history available for this ticket yet.</p>
+                      <p className="text-sm text-slate-500 italic"><LocalizedText text={"No history available for this ticket yet."} /></p>
                     )}
                   </div>
                 </div>
@@ -564,7 +561,7 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                         <p className="text-sm text-slate-700 dark:text-zinc-300 whitespace-pre-wrap">{n.note}</p>
                       </div>
                     ))}
-                    {ticketNotes.length === 0 && <p className="text-sm text-slate-500 italic">No notes added yet.</p>}
+                    {ticketNotes.length === 0 && <p className="text-sm text-slate-500 italic"><LocalizedText text={"No notes added yet."} /></p>}
                   </div>
                   <div className="flex gap-3">
                     <input 
@@ -574,7 +571,7 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                       placeholder="Add a new note or requirements..." 
                       className="flex-1 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
-                    <button type="button" onClick={submitNote} disabled={!newNote.trim()} className="px-5 py-2.5 bg-indigo-600 disabled:opacity-50 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors">Post Note</button>
+                    <button type="button" onClick={submitNote} disabled={!newNote.trim()} className="px-5 py-2.5 bg-indigo-600 disabled:opacity-50 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors"><LocalizedText text={"Post Note"} /></button>
                   </div>
                 </div>
               )}
@@ -592,15 +589,12 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
                       }
                     }}
                   >
-                    Delete Ticket
-                  </button>
+                    <LocalizedText text={"Delete Ticket"} /> </button>
                 )}
                 <button type="button" onClick={() => setShowModal(false)} className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors">
-                  Cancel
-                </button>
+                  <LocalizedText text={"Cancel"} /> </button>
                 <button type="submit" className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors shadow-md">
-                  Save Ticket
-                </button>
+                  <LocalizedText text={"Save Ticket"} /> </button>
               </div>
             </form>
           </div>
@@ -611,8 +605,8 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
       {revertPrompt.isOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-zinc-900 w-full max-w-lg p-6 rounded-3xl shadow-2xl">
-            <h3 className="text-lg font-black text-slate-900 dark:text-white mb-2 text-red-500">Revert to Developer</h3>
-            <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4">You are reverting <strong>"{revertPrompt.task}"</strong> back to Dev. Please provide the requirements or reason for revert.</p>
+            <h3 className="text-lg font-black text-slate-900 dark:text-white mb-2 text-red-500"><LocalizedText text={"Revert to Developer"} /></h3>
+            <p className="text-sm text-slate-500 dark:text-zinc-400 mb-4"><LocalizedText text={"You are reverting"} /> <strong>"{revertPrompt.task}"</strong> <LocalizedText text={"back to Dev. Please provide the requirements or reason for revert."} /></p>
             <textarea 
               autoFocus
               className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl p-4 text-sm focus:ring-2 focus:ring-red-500 outline-none min-h-[100px] mb-4"
@@ -621,14 +615,14 @@ export default function KanbanTab({ projectId }: { projectId: string }) {
               onChange={e => setRevertPrompt({...revertPrompt, reason: e.target.value})}
             />
             <div className="flex justify-end gap-3">
-              <button onClick={() => setRevertPrompt({isOpen: false, reason: ""})} className="px-4 py-2 font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors">Cancel</button>
+              <button onClick={() => setRevertPrompt({isOpen: false, reason: ""})} className="px-4 py-2 font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors"><LocalizedText text={"Cancel"} /></button>
               <button 
                 disabled={!revertPrompt.reason.trim()}
                 onClick={() => {
                   executeStatusUpdate(revertPrompt.ticketId!, revertPrompt.newStatus!, tickets.find(t=>t.id===revertPrompt.ticketId), revertPrompt.reason);
                   setRevertPrompt({isOpen: false, reason: ""});
                 }}
-                className="px-4 py-2 font-bold bg-red-600 text-white hover:bg-red-700 rounded-xl disabled:opacity-50 transition-colors">Submit Revert & Note</button>
+                className="px-4 py-2 font-bold bg-red-600 text-white hover:bg-red-700 rounded-xl disabled:opacity-50 transition-colors"><LocalizedText text={"Submit Revert & Note"} /></button>
             </div>
           </div>
         </div>

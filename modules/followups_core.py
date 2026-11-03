@@ -24,7 +24,8 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import and_, func, or_, update
+from sqlalchemy import and_, func, or_, update, cast, String, exists, literal
+from modules.job_runtime import run_recurring, assert_ownership, tally, OwnershipLost
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -241,10 +242,11 @@ def process_due_reminders(engine=None, now: Optional[datetime] = None, limit: in
         due = session.exec(
             select(FollowUp).where(
                 FollowUp.status.in_(OPEN_STATES), FollowUp.reminder_sent_at.is_(None),
-                or_(FollowUp.remind_at <= now, and_(FollowUp.remind_at.is_(None), FollowUp.due_at <= now)),
+                func.coalesce(FollowUp.remind_at, FollowUp.due_at) <= now,
             ).order_by(FollowUp.due_at).limit(limit).execution_options(skip_tenant=True)
         ).all()
         for fu in due:
+            assert_ownership()
             if not _claim(session, fu.id, FollowUp.reminder_sent_at, now):
                 continue
             session.refresh(fu)
@@ -260,8 +262,12 @@ def process_due_reminders(engine=None, now: Optional[datetime] = None, limit: in
                 try:
                     account = company_mailer.resolve_account(session, user.id, fu.tenant_id, allow_server_fallback=True)
                     subject, body = reminder_email(fu, user, info)
+                    recipient = user.email
                     session.commit()  # don't hold a transaction open across SMTP
-                    send_email(account, to=user.email, subject=subject, body=body)
+                    assert_ownership()
+                    send_email(account, to=recipient, subject=subject, body=body)
+                except OwnershipLost:
+                    raise
                 except Exception as e:
                     print(f"[Follow-ups] reminder email for follow-up {fu.id} failed: {company_mailer.friendly_smtp_error(e)}")
     return reminded
@@ -285,6 +291,7 @@ def process_overdue_notices(engine=None, now: Optional[datetime] = None, limit: 
             .execution_options(skip_tenant=True)
         ).all()
         for fu in due:
+            assert_ownership()
             if not features.is_enabled(fu.tenant_id, "followup_board"):
                 continue
             if not _claim(session, fu.id, FollowUp.overdue_notified_at, now):
@@ -304,8 +311,12 @@ def process_overdue_notices(engine=None, now: Optional[datetime] = None, limit: 
                     body = (f"Hi {(user.name or '').split()[0] if user.name else 'there'},\n\n"
                             f"This follow-up is overdue: {fu.title}\nWith: {who}\nWas due: {_fmt_local(fu.due_at)}\n\n"
                             f"Open in the CRM: {frontend_url()}{record_path(fu.lead_id, fu.client_id)}")
+                    recipient, subject = user.email, f"Overdue follow-up: {fu.title}"[:300]
                     session.commit()
-                    send_email(account, to=user.email, subject=f"Overdue follow-up: {fu.title}"[:300], body=body)
+                    assert_ownership()
+                    send_email(account, to=recipient, subject=subject, body=body)
+                except OwnershipLost:
+                    raise
                 except Exception as e:
                     print(f"[Follow-ups] overdue email for follow-up {fu.id} failed: {company_mailer.friendly_smtp_error(e)}")
     return noticed
@@ -327,11 +338,13 @@ def process_auto_sends(engine=None, now: Optional[datetime] = None, limit: int =
             ).order_by(FollowUp.due_at).limit(limit).execution_options(skip_tenant=True)
         ).all()
         for fu in due:
+            assert_ownership()
             if not _claim(session, fu.id, FollowUp.email_sent_at, now):
                 continue
             session.refresh(fu)
             actor_id = fu.assigned_to or fu.created_by
             actor = session.get(User, actor_id) if actor_id else None
+            follow_up_id = fu.id
             try:
                 account = company_mailer.resolve_account(session, actor_id, fu.tenant_id)
                 body = company_mailer.apply_signature(fu.email_body, company_mailer.user_signature(session, actor_id))
@@ -347,6 +360,16 @@ def process_auto_sends(engine=None, now: Optional[datetime] = None, limit: int =
                                 complete=True, outcome=f"Follow-up email sent automatically to {fu.contact_email}.")
                 session.commit()
                 sent_count += 1
+            except OwnershipLost:
+                # Ownership is checked before SMTP. Release only our unsent
+                # claim, so a replacement scheduler can retry without disabling it.
+                session.rollback()
+                session.execute(update(FollowUp).where(
+                    FollowUp.id == follow_up_id, FollowUp.email_sent_at == now,
+                    FollowUp.status.in_(OPEN_STATES),
+                ).values(email_sent_at=None).execution_options(skip_tenant=True))
+                session.commit()
+                raise
             except Exception as e:
                 session.rollback()
                 fu = session.get(FollowUp, fu.id)
@@ -380,16 +403,25 @@ def _is_auto_logged_email(session: Session, conv: ConversationLog) -> bool:
     return session.exec(stmt.limit(1)).first() is not None
 
 
-def _note_items(session: Session, cutoff: datetime, lead_id=None, client_id=None, per_source: int = 40) -> list:
+def _note_items(session: Session, cutoff: datetime, lead_id=None, client_id=None, per_source: int = 40, tenant_id=None) -> list:
     """Candidate texts: [(key, tenant_id, lead_id, client_id, author_id, written_at, text)] newest first."""
     items = []
 
     def scoped(stmt, model, lead_attr="lead_id", client_attr="client_id"):
+        prefix = {ClientNote: "note-", LeadNote: "leadnote-", ConversationLog: "conv-", Remark: "remark-"}[model]
+        stmt = pending(stmt, model, prefix)
         if lead_id:
             stmt = stmt.where(getattr(model, lead_attr) == lead_id)
         if client_id:
             stmt = stmt.where(getattr(model, client_attr) == client_id)
         return stmt.execution_options(skip_tenant=True).limit(per_source)
+
+    def pending(stmt, model, prefix, tenant_column=None):
+        stmt = stmt.where(~exists(select(FollowUpNoteScan.id).where(
+            FollowUpNoteScan.source_key == literal(prefix) + cast(model.id, String))))
+        if tenant_id is not None:
+            stmt = stmt.where((tenant_column if tenant_column is not None else model.tenant_id) == tenant_id)
+        return stmt
 
     for n in session.exec(scoped(select(ClientNote).where(ClientNote.created_at >= cutoff)
                                  .order_by(ClientNote.created_at.desc()), ClientNote)).all():
@@ -411,6 +443,7 @@ def _note_items(session: Session, cutoff: datetime, lead_id=None, client_id=None
         reply_stmt = reply_stmt.where(ConversationLog.lead_id == lead_id)
     if client_id:
         reply_stmt = reply_stmt.where(ConversationLog.client_id == client_id)
+    reply_stmt = pending(reply_stmt, ConversationReply, "convreply-", func.coalesce(ConversationReply.tenant_id, ConversationLog.tenant_id))
     for r, c in session.exec(reply_stmt.execution_options(skip_tenant=True).limit(per_source)).all():
         items.append((f"convreply-{r.id}", r.tenant_id or c.tenant_id, c.lead_id, c.client_id, r.author_id,
                       r.created_at, f"Reply on “{c.title}”: {r.content}"))
@@ -425,6 +458,7 @@ def _note_items(session: Session, cutoff: datetime, lead_id=None, client_id=None
         inbox_stmt = inbox_stmt.where(InboxMessage.lead_id == lead_id)
     if client_id:
         inbox_stmt = inbox_stmt.where(InboxMessage.client_id == client_id)
+    inbox_stmt = pending(inbox_stmt, InboxMessage, "inbox-")
     for m in session.exec(inbox_stmt.execution_options(skip_tenant=True).limit(per_source)).all():
         if (m.ai_category or "") in ("spam", "promotional"):
             continue
@@ -528,12 +562,17 @@ def scan_notes(engine=None, *, lead_id: Optional[int] = None, client_id: Optiona
     min_conf = float(os.getenv("FOLLOWUP_AI_MIN_CONFIDENCE", "0.5"))
     result = {"scanned": 0, "created": [], "matched": []}
     with Session(engine) as session:
-        items = _note_items(session, cutoff, lead_id=lead_id, client_id=client_id)
+        items = _note_items(session, cutoff, lead_id=lead_id, client_id=client_id, tenant_id=tenant_id)
         if tenant_id is not None:
             items = [i for i in items if i[1] == tenant_id]
-        done = _already_scanned(session, [i[0] for i in items])
+        restrictions = {}
         for key, tid, l_id, c_id, author_id, written_at, text in items:
-            if key in done:
+            assert_ownership()
+            from modules.demo_usage import background_restricted
+            restriction_key = (tid, author_id)
+            if restriction_key not in restrictions:
+                restrictions[restriction_key] = background_restricted(session, tid, author_id)
+            if restrictions[restriction_key]:
                 continue
             if result["scanned"] >= budget:
                 break
@@ -550,7 +589,12 @@ def scan_notes(engine=None, *, lead_id: Optional[int] = None, client_id: Optiona
             written = (as_utc(written_at) or now)
             session.commit()  # release before the AI call
             try:
+                assert_ownership()
                 s = extractor(text, written.date(), now.date(), info.get("label", ""))
+            except OwnershipLost:
+                session.delete(mark)
+                session.commit()
+                raise
             except Exception as e:
                 print(f"[Follow-ups] AI scan of {key} failed: {e}")
                 continue
@@ -612,6 +656,7 @@ def scan_notes(engine=None, *, lead_id: Optional[int] = None, client_id: Optiona
                     result["matched"].append(existing.id)
                 continue
             result["created"].append(fu.id)
+    tally(examined=result["scanned"], changed=len(result["created"]) + len(result["matched"]))
     return result
 
 
@@ -625,12 +670,18 @@ def run_cycle(engine=None) -> dict:
     for name, step in (("reminders", process_due_reminders), ("overdue", process_overdue_notices),
                        ("auto_sent", process_auto_sends)):
         try:
+            assert_ownership()
             out[name] = step(engine)
+            tally(changed=out[name])
+        except OwnershipLost:
+            raise
         except Exception as e:
             print(f"[Follow-ups] {name} step failed: {e}")
     if os.getenv("FOLLOWUP_AI_SCAN", "1") != "0":
         try:
             out["scan"] = scan_notes(engine)
+        except OwnershipLost:
+            raise
         except Exception as e:
             print(f"[Follow-ups] AI scan step failed: {e}")
     try:
@@ -642,13 +693,7 @@ def run_cycle(engine=None) -> dict:
 
 
 def _loop(interval_seconds: int):
-    time.sleep(40)  # let startup migrations and the other pollers settle first
-    while True:
-        try:
-            run_cycle()
-        except Exception as e:
-            print(f"[Follow-ups] scheduler error: {e}")
-        time.sleep(interval_seconds)
+    run_recurring("followups", run_cycle, interval_seconds, initial_delay=40)
 
 
 def start_followup_scheduler_thread():

@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useState } from "react";
 import { AlertCircle, Plus, Save, Trash2, X } from "lucide-react";
@@ -121,7 +122,7 @@ export default function BackgroundDetailsEditor({ resource, profileId, details }
       </div>)}
       <div className="flex flex-wrap justify-between gap-2">
         <button type="button" onClick={() => setFields(current => [...current, { label: "", value: "" }])} disabled={fields.length >= 50} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-sm font-medium hover:bg-[var(--background)] disabled:opacity-50"><Plus className="h-4 w-4" />Add field</button>
-        <div className="flex gap-2"><button type="button" onClick={cancelEdit} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-sm"><X className="h-4 w-4" />Cancel</button><button type="button" onClick={() => void save()} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md bg-emerald-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"><Save className="h-4 w-4" />{saving ? "Saving…" : "Save details"}</button></div>
+        <div className="flex gap-2"><button type="button" onClick={cancelEdit} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-2 text-sm"><X className="h-4 w-4" /><LocalizedText text={"Cancel"} /></button><button type="button" onClick={() => void save()} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md bg-emerald-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"><Save className="h-4 w-4" />{saving ? "Saving…" : "Save details"}</button></div>
       </div>
     </div> : <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
       {Object.entries(savedDetails).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-xs font-medium text-[var(--text-secondary)]">{label}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm">{value || "Not recorded"}</dd></div>)}

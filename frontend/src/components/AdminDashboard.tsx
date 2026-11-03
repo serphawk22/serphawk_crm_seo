@@ -1,28 +1,26 @@
 "use client";
-
+import LocalizedText from "@/components/LocalizedText";
+import { useLanguage } from "@/context/LanguageContext";
 import { motion, AnimatePresence } from "framer-motion";
-import type { Variants } from "framer-motion";
-import { Users, Send, Briefcase, Target, Activity, Phone, GraduationCap, ArrowUpRight, CheckCircle2, TrendingUp, DollarSign, Timer, AlertTriangle, Sparkles, Loader2, Printer, Plus, ChevronUp, ChevronDown, Bot, X, MapPin, Zap, Mail, Globe, Trophy, Lightbulb, BarChart2, FolderKanban } from "lucide-react";
-import Link from "next/link";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell, RadialBarChart, RadialBar } from "recharts";
-import { cn } from "@/lib/utils";
+
+import { Briefcase, Phone, CheckCircle2, Sparkles, Loader2, ChevronUp, ChevronDown, Bot, X, Zap, Mail, Globe, Trophy, Lightbulb } from "lucide-react";
 
 import { useEffect, useState } from "react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
-import { useLanguage } from "@/context/LanguageContext";
-import { ShieldAlert, LockKeyhole } from "lucide-react";
-import FollowUpsWidget from "@/components/followups/FollowUpsWidget";
+
+import OperationsDashboard, { OverviewStats } from "@/components/OperationsDashboard";
 
 // ─── Agent Data Pretty Viewer ──────────────────────────────────────────────────
 function AgentDataViewer({ data, overview }: { data?: string | null; overview?: string | null }) {
+  const { t } = useLanguage();
   let parsed: any = null;
   if (data) {
     try { parsed = typeof data === "string" ? JSON.parse(data) : data; } catch {}
   }
 
   if (!parsed && !overview) {
-    return <p className="text-sm text-[var(--text-secondary)] italic">No agent data available for this lead.</p>;
+    return <p className="text-sm text-[var(--text-secondary)] italic"><LocalizedText text={"No agent data available for this lead."} /></p>;
   }
 
   const Section = ({ title, icon, children }: any) => (
@@ -40,32 +38,32 @@ function AgentDataViewer({ data, overview }: { data?: string | null; overview?: 
     <div className="bg-white/60 dark:bg-black/20 rounded-xl p-4 space-y-3 text-sm">
       {/* Overview */}
       {(overview || parsed?.company_overview) && (
-        <Section title="Company Overview" icon={<Globe className="w-3 h-3" />}>
+        <Section title={t("Company Overview")} icon={<Globe className="w-3 h-3" />}>
           <p className="text-[var(--text-secondary)] leading-relaxed">{overview || parsed.company_overview}</p>
         </Section>
       )}
 
       {/* Industry & Business Model */}
       {(parsed?.industry || parsed?.business_model) && (
-        <Section title="Business" icon={<Briefcase className="w-3 h-3" />}>
-          {parsed.industry && <p className="text-[var(--text-secondary)]"><span className="font-semibold text-[var(--text-primary)]">Industry:</span> {parsed.industry}</p>}
-          {parsed.business_model && <p className="text-[var(--text-secondary)] mt-1"><span className="font-semibold text-[var(--text-primary)]">Model:</span> {parsed.business_model}</p>}
-          {parsed.company_size_estimate && <p className="text-[var(--text-secondary)] mt-1"><span className="font-semibold text-[var(--text-primary)]">Size:</span> {parsed.company_size_estimate}</p>}
+        <Section title={t("Business")} icon={<Briefcase className="w-3 h-3" />}>
+          {parsed.industry && <p className="text-[var(--text-secondary)]"><span className="font-semibold text-[var(--text-primary)]"><LocalizedText text={"Industry:"} /></span> {parsed.industry}</p>}
+          {parsed.business_model && <p className="text-[var(--text-secondary)] mt-1"><span className="font-semibold text-[var(--text-primary)]"><LocalizedText text={"Model:"} /></span> {parsed.business_model}</p>}
+          {parsed.company_size_estimate && <p className="text-[var(--text-secondary)] mt-1"><span className="font-semibold text-[var(--text-primary)]"><LocalizedText text={"Size:"} /></span> {parsed.company_size_estimate}</p>}
         </Section>
       )}
 
       {/* Key Weaknesses & Opportunities */}
       {(parsed?.key_weaknesses?.length || parsed?.biggest_opportunities?.length) && (
-        <Section title="Insights" icon={<Lightbulb className="w-3 h-3" />}>
+        <Section title={t("Insights")} icon={<Lightbulb className="w-3 h-3" />}>
           {parsed.key_weaknesses?.length > 0 && (
             <div className="mb-2">
-              <p className="text-[11px] font-bold text-red-500 uppercase mb-1">Weaknesses</p>
+              <p className="text-[11px] font-bold text-red-500 uppercase mb-1"><LocalizedText text={"Weaknesses"} /></p>
               {parsed.key_weaknesses.map((w: string, i: number) => <p key={i} className="text-[var(--text-secondary)] text-xs flex gap-1.5"><span className="text-red-400 shrink-0">•</span>{w}</p>)}
             </div>
           )}
           {parsed.biggest_opportunities?.length > 0 && (
             <div>
-              <p className="text-[11px] font-bold text-emerald-500 uppercase mb-1">Opportunities</p>
+              <p className="text-[11px] font-bold text-emerald-500 uppercase mb-1"><LocalizedText text={"Opportunities"} /></p>
               {parsed.biggest_opportunities.map((o: string, i: number) => <p key={i} className="text-[var(--text-secondary)] text-xs flex gap-1.5"><span className="text-emerald-400 shrink-0">•</span>{o}</p>)}
             </div>
           )}
@@ -74,10 +72,10 @@ function AgentDataViewer({ data, overview }: { data?: string | null; overview?: 
 
       {/* SerpHawk Opportunity */}
       {parsed?.serphawk_opportunity && (
-        <Section title="SerpHawk Opportunity" icon={<Trophy className="w-3 h-3" />}>
+        <Section title={t("SerpHawk Opportunity")} icon={<Trophy className="w-3 h-3" />}>
           <div className="flex items-center gap-2 mb-2">
             <span className="text-lg font-black text-indigo-600">{parsed.serphawk_opportunity.fit_score}/10</span>
-            <span className="text-xs text-[var(--text-secondary)]">Fit Score</span>
+            <span className="text-xs text-[var(--text-secondary)]"><LocalizedText text={"Fit Score"} /></span>
             {parsed.serphawk_opportunity.estimated_deal_value && (
               <span className="ml-auto text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-md">{parsed.serphawk_opportunity.estimated_deal_value}</span>
             )}
@@ -91,11 +89,11 @@ function AgentDataViewer({ data, overview }: { data?: string | null; overview?: 
 
       {/* Contacts */}
       {parsed?.contacts?.length > 0 && parsed.contacts[0]?.phone_number && (
-        <Section title="Contacts" icon={<Phone className="w-3 h-3" />}>
+        <Section title={t("Contacts")} icon={<Phone className="w-3 h-3" />}>
           {parsed.contacts.filter((c: any) => c.phone_number || c.email).map((c: any, i: number) => (
             <div key={i} className="text-[var(--text-secondary)] text-xs space-y-0.5">
-              {c.phone_number && <p><span className="font-semibold text-[var(--text-primary)]">Phone:</span> {c.phone_number}</p>}
-              {c.email && <p><span className="font-semibold text-[var(--text-primary)]">Email:</span> {c.email}</p>}
+              {c.phone_number && <p><span className="font-semibold text-[var(--text-primary)]"><LocalizedText text={"Phone:"} /></span> {c.phone_number}</p>}
+              {c.email && <p><span className="font-semibold text-[var(--text-primary)]"><LocalizedText text={"Email:"} /></span> {c.email}</p>}
             </div>
           ))}
         </Section>
@@ -103,7 +101,7 @@ function AgentDataViewer({ data, overview }: { data?: string | null; overview?: 
 
       {/* GTM Quick Wins */}
       {parsed?.gtm_recommendations?.quick_wins?.length > 0 && (
-        <Section title="Quick Wins" icon={<Zap className="w-3 h-3" />}>
+        <Section title={t("Quick Wins")} icon={<Zap className="w-3 h-3" />}>
           {parsed.gtm_recommendations.quick_wins.map((w: string, i: number) => (
             <p key={i} className="text-[var(--text-secondary)] text-xs flex gap-1.5"><span className="text-amber-400 shrink-0">⚡</span>{w}</p>
           ))}
@@ -112,9 +110,9 @@ function AgentDataViewer({ data, overview }: { data?: string | null; overview?: 
 
       {/* Draft email */}
       {parsed?.draft?.english_body && (
-        <Section title="Suggested Email Draft" icon={<Mail className="w-3 h-3" />}>
+        <Section title={t("Suggested Email Draft")} icon={<Mail className="w-3 h-3" />}>
           <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-lg p-3 text-xs text-[var(--text-secondary)] whitespace-pre-line">
-            <p className="font-bold text-[var(--text-primary)] mb-1">Subject: {parsed.draft.subject}</p>
+            <p className="font-bold text-[var(--text-primary)] mb-1"><LocalizedText text={"Subject:"} /> {parsed.draft.subject}</p>
             {parsed.draft.english_body}
           </div>
         </Section>
@@ -124,496 +122,9 @@ function AgentDataViewer({ data, overview }: { data?: string | null; overview?: 
 }
 
 // Data comes from adminStats from the backend
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 100 } }
-};
 
-
-export function AdminDashboard({ adminStats, NAV_CARDS, language, isDemo }: any) {
-  const { role, user } = useRole();
-  const { t } = useLanguage();
-  const [users, setUsers] = useState<any[]>([]);
-  const [myClients, setMyClients] = useState<any[]>([]);
-  const [myLeads, setMyLeads] = useState<any[]>([]);
-  const [upgradeRequested, setUpgradeRequested] = useState(false);
-  const [upgrading, setUpgrading] = useState(false);
-
-  const handleUpgrade = async () => {
-    setUpgrading(true);
-    try {
-      const email = user?.email || "";
-      const res = await fetch(`${API_BASE_URL}/demo/request-upgrade`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email })
-      });
-      if (res.ok) setUpgradeRequested(true);
-    } catch (e) {}
-    setUpgrading(false);
-  };
-
-  useEffect(() => {
-    fetch(`${API_BASE_URL}/users`).then(r => r.json()).then(d => setUsers(d.users || []));
-    if (role === 'SalesManager' || role === 'Employee' || role === 'Admin' || role === 'Demo') {
-      fetch(`${API_BASE_URL}/clients`).then(r => r.json()).then(d => {
-        const list = d.clients || [];
-        setMyClients(list);
-      });
-      fetch(`${API_BASE_URL}/leads`).then(r => r.json()).then(d => {
-        setMyLeads(d.leads || []);
-      });
-    }
-  }, [role]);
-
-  const salesTeam = users.filter(u => ['Admin', 'SalesManager', 'Employee'].includes(u.role));
-  const devTeam = users.filter(u => ['ProjectMember', 'Intern'].includes(u.role));
-  const isSales = role === 'SalesManager' || role === 'Employee' || role === 'Admin' || role === 'Demo';
-
-  return (
-    <div className="space-y-6 max-w-[1600px] mx-auto w-full">
-      {/* DEMO BANNER */}
-      {isDemo && (
-        <motion.div variants={itemVariants} className="bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 border border-amber-500/30 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-500/20 rounded-lg">
-              <ShieldAlert className="w-6 h-6 text-amber-600 dark:text-amber-500" />
-            </div>
-            <div>
-              <h3 className="font-bold text-amber-800 dark:text-amber-500 text-sm tracking-wide uppercase">{t("admin_dashboard.demo_banner_title")}</h3>
-              <p className="text-sm font-medium text-amber-700/80 dark:text-amber-500/80">{t("admin_dashboard.demo_banner_desc")}</p>
-            </div>
-          </div>
-          {!upgradeRequested ? (
-            <button
-              onClick={handleUpgrade}
-              disabled={upgrading}
-              className="shrink-0 px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-lg transition-all text-sm flex items-center gap-2"
-            >
-              {upgrading ? t("admin_dashboard.sending") : t("admin_dashboard.request_full_access")}
-              {!upgrading && <LockKeyhole className="w-4 h-4" />}
-            </button>
-          ) : (
-            <div className="shrink-0 px-6 py-2.5 bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold rounded-xl text-sm">
-              ✓ {t("admin_dashboard.upgrade_sent")}
-            </div>
-          )}
-        </motion.div>
-      )}
-
-      {/* HEADER SECTION */}
-      <motion.div variants={itemVariants} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">{t("admin_dashboard.title")}</h1>
-          <p className="text-sm font-medium text-[var(--text-secondary)] mt-1">
-            {t("admin_dashboard.subtitle")}
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <Link href="/clients" className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl shadow-sm text-sm font-bold hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center gap-2">
-            <Plus className="w-4 h-4" /> {t("admin_dashboard.add_new_client")}
-          </Link>
-        </div>
-      </motion.div>
-
-      {/* KPI METRICS ROW */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { title: t("admin_dashboard.kpi_total_revenue"), value: adminStats?.revenue != null ? `$${adminStats.revenue.toLocaleString()}` : "$0", trend: t("admin_dashboard.kpi_trend_revenue"), icon: DollarSign, color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-500/10" },
-          { title: t("admin_dashboard.kpi_active_clients"), value: adminStats?.total || 0, trend: t("admin_dashboard.kpi_trend_clients"), icon: Users, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-500/10" },
-          { title: t("admin_dashboard.kpi_pipeline_value"), value: adminStats?.pipelineValue != null ? `$${adminStats.pipelineValue.toLocaleString()}` : "$0", trend: t("admin_dashboard.kpi_trend_pipeline"), icon: Target, color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-500/10" },
-          { title: t("admin_dashboard.kpi_pending_tasks"), value: adminStats?.pending || 0, trend: t("admin_dashboard.kpi_trend_pending"), icon: Timer, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-500/10" },
-        ].map((kpi, idx) => (
-          <motion.div key={idx} variants={itemVariants} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm flex items-center gap-4">
-            <div className={`p-3 rounded-xl ${kpi.bg}`}>
-              <kpi.icon className={`w-6 h-6 ${kpi.color}`} />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1">{kpi.title}</p>
-              <h3 className="text-2xl font-bold text-slate-900 dark:text-white leading-none">{kpi.value}</h3>
-              <p className="text-[11px] font-medium text-slate-400 dark:text-zinc-500 mt-2">{kpi.trend}</p>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* FOLLOW-UPS: pending / overdue / due today / completed */}
-      <motion.div variants={itemVariants}>
-        <FollowUpsWidget />
-      </motion.div>
-
-      {/* CALL PITCH WIDGET */}
-      <CallPitchWidget />
-
-
-      {/* FINANCIAL & PIPELINE CHARTS */}
-      <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* REVENUE CHART */}
-        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden flex flex-col h-[400px]">
-          <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
-            <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-emerald-500"/> {t("admin_dashboard.financial_overview")}
-            </h3>
-            <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-500/10 text-emerald-600 rounded-md">{t("admin_dashboard.last_6_months")}</span>
-          </div>
-          <div className="p-5 flex-1 w-full h-full min-h-0">
-            {adminStats?.revenueData?.length && adminStats.revenueData.some((d: any) => d.revenue || d.expenses) ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={adminStats.revenueData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="colorExp" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} tickFormatter={(val) => `$${val/1000}k`} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 'bold' }} 
-                    itemStyle={{ color: 'var(--text-primary)' }}
-                    formatter={(value: any) => [`$${value.toLocaleString()}`, '']}
-                  />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
-                  <Area type="monotone" dataKey="revenue" name={t("admin_dashboard.revenue")} stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
-                  <Area type="monotone" dataKey="expenses" name={t("admin_dashboard.expenses")} stroke="#ef4444" strokeWidth={3} fillOpacity={1} fill="url(#colorExp)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-secondary)]">
-                <AlertTriangle className="w-8 h-8 mb-2 opacity-50" />
-                <p className="text-sm font-medium">{t("admin_dashboard.no_financial_data")}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* PIPELINE CHART */}
-        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden flex flex-col h-[400px]">
-          <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
-            <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <Target className="w-5 h-5 text-indigo-500"/> {t("admin_dashboard.sales_pipeline")}
-            </h3>
-            <span className="text-xs font-semibold px-2.5 py-1 bg-indigo-500/10 text-indigo-600 rounded-md">{t("admin_dashboard.active_deals")}</span>
-          </div>
-          <div className="p-5 flex-1 w-full h-full min-h-0">
-            {adminStats?.pipelineData?.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={adminStats.pipelineData} layout="vertical" margin={{ top: 0, right: 20, left: 20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="var(--border)" />
-                  <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} />
-                  <YAxis dataKey="stage" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-primary)', fontWeight: 600 }} width={90} />
-                  <Tooltip 
-                    cursor={{ fill: 'var(--sidebar-hover)' }}
-                    contentStyle={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 'bold' }} 
-                  />
-                  <Bar dataKey="count" name={t("admin_dashboard.deals")} fill="#6366f1" radius={[0, 4, 4, 0]} barSize={24} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-secondary)]">
-                <AlertTriangle className="w-8 h-8 mb-2 opacity-50" />
-                <p className="text-sm font-medium">{t("admin_dashboard.no_pipeline_data")}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </motion.div>
-
-      {/* DEALS & REPORTS SECTION */}
-      <motion.div variants={itemVariants} className="space-y-4">
-        {/* Section Header */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
-            <BarChart2 className="w-5 h-5 text-violet-500" />
-            Deals &amp; Reports
-          </h2>
-          <span className="text-xs font-semibold px-2.5 py-1 bg-violet-500/10 text-violet-600 rounded-md">Live Data</span>
-        </div>
-
-        {/* Deal KPI mini-cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            {
-              label: "Total Deals",
-              value: adminStats?.pipelineData?.reduce((sum: number, d: any) => sum + (d.count || 0), 0) ?? 0,
-              icon: Target,
-              color: "text-violet-500",
-              bg: "bg-violet-50 dark:bg-violet-500/10",
-            },
-            {
-              label: "Won Deals",
-              value: adminStats?.pipelineData?.find((d: any) => /won|closed/i.test(d.stage))?.count ?? 0,
-              icon: CheckCircle2,
-              color: "text-emerald-500",
-              bg: "bg-emerald-50 dark:bg-emerald-500/10",
-            },
-            {
-              label: "Pipeline Value",
-              value: adminStats?.pipelineValue != null ? `$${adminStats.pipelineValue.toLocaleString()}` : "$0",
-              icon: DollarSign,
-              color: "text-indigo-500",
-              bg: "bg-indigo-50 dark:bg-indigo-500/10",
-            },
-            {
-              label: "Win Rate",
-              value: (() => {
-                const total = adminStats?.pipelineData?.reduce((s: number, d: any) => s + (d.count || 0), 0) || 0;
-                const won = adminStats?.pipelineData?.find((d: any) => /won|closed/i.test(d.stage))?.count || 0;
-                return total > 0 ? `${Math.round((won / total) * 100)}%` : "—";
-              })(),
-              icon: TrendingUp,
-              color: "text-amber-500",
-              bg: "bg-amber-50 dark:bg-amber-500/10",
-            },
-          ].map((kpi, idx) => (
-            <div key={idx} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 flex items-center gap-3 shadow-sm">
-              <div className={`p-2.5 rounded-xl ${kpi.bg}`}>
-                <kpi.icon className={`w-5 h-5 ${kpi.color}`} />
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-0.5">{kpi.label}</p>
-                <p className="text-xl font-black text-[var(--text-primary)]">{String(kpi.value)}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Charts row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Deals by Stage — Bar Chart */}
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden flex flex-col h-[320px]">
-            <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
-              <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <BarChart2 className="w-4 h-4 text-violet-500" /> Deals by Stage
-              </h3>
-              <span className="text-xs font-semibold px-2 py-0.5 bg-violet-500/10 text-violet-600 rounded-md">Pipeline Breakdown</span>
-            </div>
-            <div className="p-4 flex-1 w-full h-full min-h-0">
-              {adminStats?.pipelineData?.length ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={adminStats.pipelineData} margin={{ top: 5, right: 15, left: -20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                    <XAxis dataKey="stage" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--text-secondary)", fontWeight: 600 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--text-secondary)" }} allowDecimals={false} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", borderRadius: "8px", color: "var(--text-primary)", fontSize: "12px", fontWeight: "bold" }}
-                    />
-                    <Bar dataKey="count" name="Deals" radius={[4, 4, 0, 0]} barSize={32}>
-                      {adminStats.pipelineData.map((_: any, index: number) => {
-                        const COLORS = ["#6366f1", "#3b82f6", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6"];
-                        return <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />;
-                      })}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-secondary)]">
-                  <AlertTriangle className="w-8 h-8 mb-2 opacity-50" />
-                  <p className="text-sm font-medium">No deal stage data available</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Deal Distribution — Donut / Pie Chart */}
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden flex flex-col h-[320px]">
-            <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
-              <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <Target className="w-4 h-4 text-indigo-500" /> Deal Distribution
-              </h3>
-              <span className="text-xs font-semibold px-2 py-0.5 bg-indigo-500/10 text-indigo-600 rounded-md">% Share by Stage</span>
-            </div>
-            <div className="p-4 flex-1 w-full h-full min-h-0 flex items-center">
-              {adminStats?.pipelineData?.length ? (
-                <div className="flex w-full h-full items-center gap-4">
-                  <ResponsiveContainer width="55%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={adminStats.pipelineData}
-                        dataKey="count"
-                        nameKey="stage"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius="50%"
-                        outerRadius="80%"
-                        paddingAngle={3}
-                      >
-                        {adminStats.pipelineData.map((_: any, index: number) => {
-                          const COLORS = ["#6366f1", "#3b82f6", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6"];
-                          return <Cell key={`cell-pie-${index}`} fill={COLORS[index % COLORS.length]} />;
-                        })}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", borderRadius: "8px", color: "var(--text-primary)", fontSize: "12px", fontWeight: "bold" }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  {/* Legend */}
-                  <div className="flex-1 flex flex-col gap-2 overflow-y-auto max-h-full pr-1">
-                    {adminStats.pipelineData.map((d: any, index: number) => {
-                      const COLORS = ["#6366f1", "#3b82f6", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6"];
-                      const total = adminStats.pipelineData.reduce((s: number, x: any) => s + (x.count || 0), 0);
-                      const pct = total > 0 ? Math.round((d.count / total) * 100) : 0;
-                      return (
-                        <div key={index} className="flex items-center gap-2">
-                          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
-                          <span className="text-[11px] font-semibold text-[var(--text-primary)] flex-1 truncate">{d.stage}</span>
-                          <span className="text-[11px] font-bold text-[var(--text-secondary)] shrink-0">{d.count} <span className="text-[10px]">({pct}%)</span></span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-secondary)]">
-                  <AlertTriangle className="w-8 h-8 mb-2 opacity-50" />
-                  <p className="text-sm font-medium">No distribution data available</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* PROJECTS PROGRESS */}
-      {adminStats?.projectsData?.length > 0 && (
-        <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
-          <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
-            <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <FolderKanban className="w-5 h-5 text-sky-500" /> Projects Progress
-            </h3>
-            <Link href="/projects" className="text-xs font-semibold text-[var(--primary)] hover:underline flex items-center gap-1">
-              View All <ArrowUpRight className="w-3 h-3" />
-            </Link>
-          </div>
-          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {adminStats.projectsData.map((proj: any) => {
-              const statusColor: Record<string, string> = {
-                Planning: "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400",
-                "In Progress": "bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400",
-                Completed: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400",
-                "On Hold": "bg-slate-100 text-slate-600 dark:bg-zinc-700 dark:text-zinc-300",
-              };
-              const barColor = proj.progress >= 100 ? "bg-emerald-500" : proj.progress >= 50 ? "bg-blue-500" : "bg-amber-500";
-              return (
-                <Link key={proj.id} href={`/projects/${proj.id}`} className="group block p-4 border border-[var(--border)] rounded-xl hover:border-sky-400/50 hover:shadow-md transition-all">
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <p className="text-sm font-bold text-[var(--text-primary)] leading-tight line-clamp-2 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">{proj.name}</p>
-                    <span className={`shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${statusColor[proj.status] ?? "bg-slate-100 text-slate-600"}`}>
-                      {proj.status}
-                    </span>
-                  </div>
-                  {/* Progress bar */}
-                  <div className="mb-2">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">Progress</span>
-                      <span className="text-xs font-black text-[var(--text-primary)]">{proj.progress}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-700 ${barColor}`}
-                        style={{ width: `${proj.progress}%` }}
-                      />
-                    </div>
-                  </div>
-                  {/* Ticket counts */}
-                  <div className="flex items-center gap-3 text-[10px] font-semibold text-[var(--text-secondary)] mt-2">
-                    <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-emerald-500" />{proj.ticket_done} done</span>
-                    <span className="flex items-center gap-1"><Timer className="w-3 h-3 text-amber-500" />{proj.ticket_in_progress} active</span>
-                    <span className="flex items-center gap-1 ml-auto opacity-60">{proj.ticket_total} total</span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </motion.div>
-      )}
-
-      {/* TEAM ENGAGEMENT & ACTIVITY */}
-      <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* ENGAGEMENT CHART (Takes 2 columns) */}
-        <div className="lg:col-span-2 bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden flex flex-col h-[350px]">
-          <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30">
-            <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <Activity className="w-5 h-5 text-blue-500"/> {t("admin_dashboard.team_engagement")}
-            </h3>
-            <span className="text-xs font-semibold px-2.5 py-1 bg-blue-500/10 text-blue-600 rounded-md">{t("admin_dashboard.last_7_days")}</span>
-          </div>
-          <div className="p-5 flex-1 w-full h-full min-h-0">
-            {adminStats?.chartLabels?.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={adminStats.chartLabels.map((label: string, i: number) => ({
-                  name: label,
-                  activities: adminStats.activityChart?.[i] || 0,
-                  emails: adminStats.emailChart?.[i] || 0,
-                  calls: adminStats.callChart?.[i] || 0
-                }))} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorAct" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 'bold' }} 
-                  />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                  <Area type="monotone" dataKey="activities" name={t("admin_dashboard.total_activities")} stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorAct)" />
-                  <Area type="step" dataKey="emails" name={t("admin_dashboard.emails_sent")} stroke="#f59e0b" strokeWidth={2} fill="transparent" strokeDasharray="4 4" />
-                  <Area type="step" dataKey="calls" name={t("admin_dashboard.calls_made")} stroke="#8b5cf6" strokeWidth={2} fill="transparent" />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-secondary)]">
-                <AlertTriangle className="w-8 h-8 mb-2 opacity-50" />
-                <p className="text-sm font-medium">{t("admin_dashboard.no_activity_data")}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* RECENT ACTIVITY LIST (Takes 1 column) */}
-        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm flex flex-col h-[350px] overflow-hidden">
-          <div className="p-5 border-b border-[var(--border)] flex justify-between items-center bg-[var(--sidebar-hover)]/30 shrink-0">
-            <h3 className="font-bold text-[var(--text-primary)]">{t("admin_dashboard.recent_activity")}</h3>
-            <Link href="/email-agent" className="text-xs font-semibold text-[var(--primary)] hover:underline">{t("admin_dashboard.view_all")}</Link>
-          </div>
-          <div className="overflow-y-auto flex-1">
-            {(adminStats?.recentActivities?.length ?? 0) === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] opacity-60 p-8 text-center">
-                <Timer className="w-8 h-8 mb-2" />
-                <p className="text-sm">{t("admin_dashboard.no_activities")}</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-[var(--border)]">
-                {adminStats.recentActivities.slice(0, 10).map((act: any) => (
-                  <div key={act.id} className="p-4 flex gap-4 hover:bg-[var(--sidebar-hover)] transition-colors">
-                    <div className="w-8 h-8 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center shrink-0 mt-0.5">
-                      <Activity className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-[var(--text-primary)] leading-tight">{act.action}</p>
-                      <p className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2 leading-relaxed">{act.content}</p>
-                      <p className="text-[10px] text-[var(--text-secondary)]/60 mt-1.5 font-semibold uppercase tracking-wider">{act.createdAt ? new Date(act.createdAt).toLocaleString() : ""}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
+export function AdminDashboard({ adminStats, isDemo }: { adminStats: OverviewStats | null; NAV_CARDS?: unknown; language?: string; isDemo?: boolean }) {
+  return <OperationsDashboard stats={adminStats} isDemo={isDemo} callPitch={<CallPitchWidget />} />;
 }
 
 export function CallPitchWidget() {
@@ -716,7 +227,7 @@ export function CallPitchWidget() {
             className="flex items-center gap-1.5 text-xs font-semibold text-indigo-500 hover:text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors"
           >
             {isAgentDataExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            {isAgentDataExpanded ? "Hide Agent Data" : "Expand Agent Data"}
+            {isAgentDataExpanded ? t("Hide Agent Data") : t("Expand Agent Data")}
           </button>
         </div>
         
@@ -726,8 +237,7 @@ export function CallPitchWidget() {
           className="shrink-0 flex items-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-5 py-3 rounded-lg font-bold shadow-md transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:hover:translate-y-0"
         >
           {markingDone ? <Loader2 className="w-5 h-5 animate-spin" /> : <Phone className="w-5 h-5" />}
-          I made this call
-        </button>
+          <LocalizedText text={"I made this call"} />{" "}</button>
       </div>
 
       <AnimatePresence>
@@ -741,8 +251,7 @@ export function CallPitchWidget() {
             <div className="pt-4 border-t border-indigo-500/10">
               <h4 className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
                 <Bot className="w-4 h-4 text-indigo-500" />
-                Related Agent Data
-              </h4>
+                <LocalizedText text={"Related Agent Data"} />{" "}</h4>
               <AgentDataViewer data={pitchData.agent_data} overview={pitchData.deep_research} />
             </div>
           </motion.div>
@@ -759,19 +268,18 @@ export function CallPitchWidget() {
               className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
             >
               <div className="p-5 border-b border-[var(--border)] flex justify-between items-center">
-                <h3 className="font-bold text-lg text-[var(--text-primary)]">Call Outcome Feedback</h3>
+                <h3 className="font-bold text-lg text-[var(--text-primary)]"><LocalizedText text={"Call Outcome Feedback"} /></h3>
                 <button onClick={() => setIsFeedbackOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <div className="p-5">
                 <p className="text-sm text-[var(--text-secondary)] mb-4">
-                  Please provide a brief summary of how the call went before marking it as done. This helps us refine future pitches!
-                </p>
+                  <LocalizedText text={"Please provide a brief summary of how the call went before marking it as done. This helps us refine future pitches!"} />{" "}</p>
                 <textarea
                   value={feedbackText}
                   onChange={e => setFeedbackText(e.target.value)}
-                  placeholder="e.g., Left voicemail, interested but needs time..."
+                  placeholder={t("e.g., Left voicemail, interested but needs time...")}
                   className="w-full h-32 p-3 bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700 rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none"
                 />
               </div>
@@ -780,16 +288,14 @@ export function CallPitchWidget() {
                   onClick={() => setIsFeedbackOpen(false)}
                   className="px-4 py-2 font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
                 >
-                  Cancel
-                </button>
+                  <LocalizedText text={"Cancel"} /> </button>
                 <button 
                   onClick={handleSubmitFeedback}
                   disabled={markingDone || !feedbackText.trim()}
                   className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-lg shadow-sm disabled:opacity-50 transition-colors flex items-center gap-2"
                 >
                   {markingDone ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                  Submit & Mark Done
-                </button>
+                  <LocalizedText text={"Submit & Mark Done"} />{" "}</button>
               </div>
             </motion.div>
           </div>

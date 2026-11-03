@@ -7,6 +7,8 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 // Add new languages by dropping a folder under /locales and importing below.
 import enCommon from '@/locales/en/common.json';
 import esCommon from '@/locales/es/common.json';
+import enLegacy from '@/translations/en.json';
+import esLegacy from '@/translations/es.json';
 
 export const SUPPORTED_LANGUAGES = [
   { code: 'en', name: 'English',  nativeName: 'English',  flag: '🇺🇸', dir: 'ltr' },
@@ -20,8 +22,8 @@ export const SUPPORTED_LANGUAGES = [
 export type SupportedLocale = (typeof SUPPORTED_LANGUAGES)[number]['code'];
 
 const resources = {
-  en: { common: enCommon },
-  es: { common: esCommon },
+  en: { common: enCommon, legacy: enLegacy },
+  es: { common: esCommon, legacy: esLegacy },
 };
 
 if (!i18n.isInitialized) {
@@ -31,6 +33,7 @@ if (!i18n.isInitialized) {
     .init({
       resources,
       defaultNS: 'common',
+      fallbackNS: 'legacy',
       fallbackLng: 'en',
       supportedLngs: ['en', 'es'],
       interpolation: {

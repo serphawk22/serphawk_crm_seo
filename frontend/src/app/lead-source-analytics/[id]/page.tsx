@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -161,7 +162,7 @@ export default function LeadSourceDetailPage() {
           sub={`Rev/lead: ${money(s.revenue_per_lead, currency, true)}`}
           icon={Briefcase}
           tone="violet"
-          href="/pipeline"
+          href="/proposals"
         />
         <Tile
           label="Pipeline Value"
@@ -169,7 +170,7 @@ export default function LeadSourceDetailPage() {
           sub={`${s.open_deals || 0} active open deals`}
           icon={Target}
           tone="sky"
-          href="/pipeline"
+          href="/proposals"
         />
         <Tile
           label="Sales Cycle"
@@ -264,7 +265,7 @@ export default function LeadSourceDetailPage() {
                     <span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusColor(st.status) }} />
                     <span className="font-semibold text-[var(--text-primary)]">{st.status}</span>
                   </div>
-                  <span className="font-bold text-[var(--text-secondary)]">{st.count} leads</span>
+                  <span className="font-bold text-[var(--text-secondary)]">{st.count} <LocalizedText text={"leads"} /></span>
                 </div>
               ))}
             </div>
@@ -275,7 +276,7 @@ export default function LeadSourceDetailPage() {
               {(data.owners || []).map((o: any) => (
                 <div key={o.owner} className="flex items-center justify-between text-xs py-1 border-b border-[var(--border)] last:border-0">
                   <span className="font-semibold text-[var(--text-primary)] truncate">{o.owner}</span>
-                  <span className="text-indigo-500 font-bold">{o.leads} leads</span>
+                  <span className="text-indigo-500 font-bold">{o.leads} <LocalizedText text={"leads"} /></span>
                 </div>
               ))}
             </div>
@@ -310,13 +311,13 @@ export default function LeadSourceDetailPage() {
               <thead className="border-b border-[var(--border)] bg-[var(--sidebar-hover)]/40 text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)]">
                 <tr>
                   <th className="py-2.5 px-4">Lead / Company</th>
-                  <th className="py-2.5 px-3">Industry</th>
-                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3"><LocalizedText text={"Industry"} /></th>
+                  <th className="py-2.5 px-3"><LocalizedText text={"Status"} /></th>
                   <th className="py-2.5 px-3">Assigned Rep</th>
                   <th className="py-2.5 px-3 text-right">Won Deal Value</th>
                   <th className="py-2.5 px-3 text-right">Open Pipeline</th>
-                  <th className="py-2.5 px-3 text-right">Created</th>
-                  <th className="py-2.5 px-3 text-center">Action</th>
+                  <th className="py-2.5 px-3 text-right"><LocalizedText text={"Created"} /></th>
+                  <th className="py-2.5 px-3 text-center"><LocalizedText text={"Action"} /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)] font-medium">
@@ -368,12 +369,12 @@ export default function LeadSourceDetailPage() {
             <table className="w-full text-left text-xs">
               <thead className="border-b border-[var(--border)] bg-[var(--sidebar-hover)]/40 text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)]">
                 <tr>
-                  <th className="py-2.5 px-4">Deal Title</th>
-                  <th className="py-2.5 px-3">Client</th>
-                  <th className="py-2.5 px-3">Stage</th>
-                  <th className="py-2.5 px-3 text-right">Amount</th>
+                  <th className="py-2.5 px-4"><LocalizedText text={"Deal Title"} /></th>
+                  <th className="py-2.5 px-3"><LocalizedText text={"Client"} /></th>
+                  <th className="py-2.5 px-3"><LocalizedText text={"Stage"} /></th>
+                  <th className="py-2.5 px-3 text-right"><LocalizedText text={"Amount"} /></th>
                   <th className="py-2.5 px-3">Owner</th>
-                  <th className="py-2.5 px-3 text-center">Action</th>
+                  <th className="py-2.5 px-3 text-center"><LocalizedText text={"Action"} /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)] font-medium">
@@ -386,7 +387,7 @@ export default function LeadSourceDetailPage() {
                     <tr
                       key={d.id}
                       className="hover:bg-[var(--sidebar-hover)]/60 cursor-pointer transition-colors"
-                      onClick={() => router.push(d.client_id ? `/clients/${d.client_id}` : `/pipeline`)}
+                      onClick={() => router.push(d.client_id ? `/clients/${d.client_id}` : `/proposals`)}
                     >
                       <td className="py-2.5 px-4 font-bold text-[var(--text-primary)]">{d.title}</td>
                       <td className="py-2.5 px-3 text-[var(--text-secondary)]">{d.client || "—"}</td>
@@ -399,7 +400,7 @@ export default function LeadSourceDetailPage() {
                       <td className="py-2.5 px-3 text-[var(--text-secondary)]">{d.owner}</td>
                       <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                         <Link
-                          href={d.client_id ? `/clients/${d.client_id}` : `/pipeline`}
+                          href={d.client_id ? `/clients/${d.client_id}` : `/proposals`}
                           className="p-1 rounded hover:bg-[var(--primary)]/10 text-[var(--primary)] inline-flex items-center"
                         >
                           <ChevronRight className="h-4 w-4" />
@@ -416,12 +417,12 @@ export default function LeadSourceDetailPage() {
             <table className="w-full text-left text-xs">
               <thead className="border-b border-[var(--border)] bg-[var(--sidebar-hover)]/40 text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)]">
                 <tr>
-                  <th className="py-2.5 px-4">Proposal</th>
-                  <th className="py-2.5 px-3">Client</th>
-                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-4"><LocalizedText text={"Proposal"} /></th>
+                  <th className="py-2.5 px-3"><LocalizedText text={"Client"} /></th>
+                  <th className="py-2.5 px-3"><LocalizedText text={"Status"} /></th>
                   <th className="py-2.5 px-3 text-right">Value</th>
-                  <th className="py-2.5 px-3 text-right">Sent</th>
-                  <th className="py-2.5 px-3 text-center">Action</th>
+                  <th className="py-2.5 px-3 text-right"><LocalizedText text={"Sent"} /></th>
+                  <th className="py-2.5 px-3 text-center"><LocalizedText text={"Action"} /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)] font-medium">

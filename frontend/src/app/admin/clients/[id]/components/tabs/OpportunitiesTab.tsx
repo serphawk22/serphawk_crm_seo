@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -311,11 +312,11 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
         <div className="p-6 bg-white dark:bg-zinc-900 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-zinc-700 dark:border-slate-800 shadow-sm">
           <div className="flex justify-between items-start mb-6">
             <div>
-              <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100 dark:text-slate-200 tracking-tight">Sales Pipeline</h3>
+              <h3 className="text-xl font-black text-slate-800 dark:text-zinc-100 dark:text-slate-200 tracking-tight"><LocalizedText text={"Sales Pipeline"} /></h3>
               <p className="text-sm text-slate-500 dark:text-zinc-400 dark:text-slate-400 mt-1">Current deal stage and progression.</p>
             </div>
             <div className="text-right">
-              <span className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 dark:text-slate-500 mb-1">Deal Value</span>
+              <span className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 dark:text-slate-500 mb-1"><LocalizedText text={"Deal Value"} /></span>
               <span className="text-lg font-black text-emerald-600 dark:text-emerald-500">{dealValue}</span>
             </div>
           </div>
@@ -357,7 +358,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
               <div className="p-2 bg-indigo-600 rounded-xl text-white">
                 <Brain size={16} />
               </div>
-              <h4 className="text-lg font-black text-slate-800 dark:text-zinc-100 dark:text-white">Pre-Sales Research</h4>
+              <h4 className="text-lg font-black text-slate-800 dark:text-zinc-100 dark:text-white"><LocalizedText text={"Pre-Sales Research"} /></h4>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -406,7 +407,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
 
               {eaData?.company_overview && eaData?.executive_verdict && (
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Company Overview</p>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1"><LocalizedText text={"Company Overview"} /></p>
                   <p className="text-sm text-slate-600 dark:text-zinc-300 leading-relaxed">{eaData.company_overview}</p>
                 </div>
               )}
@@ -414,8 +415,8 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
               {/* Key Stats Row */}
               {eaData && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {eaData.industry && <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 text-center"><p className="text-[9px] font-black uppercase text-slate-400 mb-1">Industry</p><p className="text-xs font-bold text-slate-700 dark:text-zinc-200">{eaData.industry}</p></div>}
-                  {eaData.business_model && <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 text-center"><p className="text-[9px] font-black uppercase text-slate-400 mb-1">Model</p><p className="text-xs font-bold text-slate-700 dark:text-zinc-200">{eaData.business_model}</p></div>}
+                  {eaData.industry && <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 text-center"><p className="text-[9px] font-black uppercase text-slate-400 mb-1"><LocalizedText text={"Industry"} /></p><p className="text-xs font-bold text-slate-700 dark:text-zinc-200">{eaData.industry}</p></div>}
+                  {eaData.business_model && <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 text-center"><p className="text-[9px] font-black uppercase text-slate-400 mb-1"><LocalizedText text={"Model"} /></p><p className="text-xs font-bold text-slate-700 dark:text-zinc-200">{eaData.business_model}</p></div>}
                   {eaData.years_in_business && <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 text-center"><p className="text-[9px] font-black uppercase text-slate-400 mb-1">Years Active</p><p className="text-xs font-bold text-slate-700 dark:text-zinc-200">{eaData.years_in_business}</p></div>}
                   {eaData.geographic_presence && <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-100 dark:border-zinc-800 text-center"><p className="text-[9px] font-black uppercase text-slate-400 mb-1">Geography</p><p className="text-xs font-bold text-slate-700 dark:text-zinc-200">{eaData.geographic_presence}</p></div>}
                 </div>
@@ -573,19 +574,19 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {research.pain_points && (
                     <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-amber-500 mb-1">Pain Points</p>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-amber-500 mb-1"><LocalizedText text={"Pain Points"} /></p>
                       <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300">{research.pain_points}</p>
                     </div>
                   )}
                   {research.competitors && (
                     <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-rose-500 mb-1">Competitors</p>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-rose-500 mb-1"><LocalizedText text={"Competitors"} /></p>
                       <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300">{research.competitors}</p>
                     </div>
                   )}
                   {research.business_goals && (
                     <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30 md:col-span-2">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-emerald-500 mb-1">Business Goals</p>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-emerald-500 mb-1"><LocalizedText text={"Business Goals"} /></p>
                       <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300">{research.business_goals}</p>
                     </div>
                   )}
@@ -710,8 +711,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
             </div>
             <h4 className="text-lg font-black text-slate-800 dark:text-zinc-100 dark:text-white">Outbound Communications</h4>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 ml-auto">
-              {emails.length} Emails
-            </span>
+              {emails.length} <LocalizedText text={"Emails"} /> </span>
           </div>
           
           <div className="space-y-3">
@@ -751,12 +751,12 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                     ) : (
                       <div className={`mt-4 grid grid-cols-1 gap-4 ${whatsappDraft ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
                         <div className="p-3 bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700 rounded-xl">
-                          <p className="text-[10px] font-black uppercase text-blue-600 mb-2">English</p>
+                          <p className="text-[10px] font-black uppercase text-blue-600 mb-2"><LocalizedText text={"English"} /></p>
                           <p className="text-xs text-slate-600 dark:text-zinc-300 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">{em.english_body}</p>
                         </div>
                         {em.spanish_body && (
                           <div className="p-3 bg-white dark:bg-zinc-900 dark:bg-slate-900 border border-slate-200 dark:border-zinc-700 dark:border-slate-700 rounded-xl">
-                            <p className="text-[10px] font-black uppercase text-blue-600 mb-2">Spanish</p>
+                            <p className="text-[10px] font-black uppercase text-blue-600 mb-2"><LocalizedText text={"Spanish"} /></p>
                             <p className="text-xs text-slate-600 dark:text-zinc-300 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">{em.spanish_body}</p>
                           </div>
                         )}
@@ -765,8 +765,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
                             <p className="text-[10px] font-black uppercase text-emerald-600 mb-2">WhatsApp Draft</p>
                             <p className="text-xs text-slate-600 dark:text-zinc-300 dark:text-slate-300 whitespace-pre-wrap font-mono leading-relaxed mb-10 flex-1">{whatsappDraft}</p>
                             <a href={waLink} target="_blank" rel="noopener noreferrer" className="absolute bottom-3 right-3 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold uppercase rounded-lg transition-colors flex items-center gap-1.5" onClick={(e) => { e.stopPropagation(); }}>
-                              <MessageCircle size={12} /> Send
-                            </a>
+                              <MessageCircle size={12} /> <LocalizedText text={"Send"} /> </a>
                           </div>
                         )}
                       </div>
@@ -798,7 +797,7 @@ export default function OpportunitiesTab({ client, timeline, serviceRequests, re
             className={`px-6 py-2.5 rounded-xl text-white font-bold text-sm shadow-sm transition-all flex items-center gap-2 ${isGeneratingDraft ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
           >
             {isGeneratingDraft ? (
-              <><Loader2 size={16} className="animate-spin" /> Generating...</>
+              <><Loader2 size={16} className="animate-spin" /> <LocalizedText text={"Generating..."} /></>
             ) : (
               <><Wand2 size={16} /> Trigger Email Agent</>
             )}

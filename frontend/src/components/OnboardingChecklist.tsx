@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/context/LanguageContext";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -30,6 +32,7 @@ interface Props {
 
 /** "What is left to set up" for a company Admin; computed on the server from live data. */
 export default function OnboardingChecklist({ hideWhenDone, onLoaded, refreshKey = 0 }: Props) {
+  const { t } = useLanguage();
   const [data, setData] = useState<Checklist | null>(null);
 
   const load = useCallback(async () => {
@@ -54,8 +57,8 @@ export default function OnboardingChecklist({ hideWhenDone, onLoaded, refreshKey
   return (
     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
       <div className="flex items-center justify-between gap-4 mb-3">
-        <h2 className="text-lg font-bold flex items-center gap-2"><Rocket className="w-5 h-5 text-indigo-600" /> Get your workspace ready</h2>
-        <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">{data.completed} of {data.total} done</span>
+        <h2 className="text-lg font-bold flex items-center gap-2"><Rocket className="w-5 h-5 text-indigo-600" /> {t("Get your workspace ready")}</h2>
+        <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">{data.completed} <LocalizedText text={"of"} /> {data.total} {t("done")}</span>
       </div>
       <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden mb-4" role="progressbar" aria-valuenow={data.percent} aria-valuemin={0} aria-valuemax={100}>
         <div className="h-full bg-indigo-600 transition-all" style={{ width: `${data.percent}%` }} />
@@ -65,10 +68,10 @@ export default function OnboardingChecklist({ hideWhenDone, onLoaded, refreshKey
           <li key={i.key} className="flex items-center gap-2 text-sm">
             {i.done ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> : <Circle className="w-4 h-4 text-gray-300 shrink-0" />}
             {i.done ? (
-              <span className="text-gray-500 line-through">{i.title}</span>
+              <span className="text-gray-500 line-through">{t(i.title)}</span>
             ) : (
               <Link href={i.link} className="text-gray-800 dark:text-gray-100 hover:text-indigo-600">
-                {i.title}{i.optional ? <span className="text-gray-400"> (optional)</span> : null}
+                {t(i.title)}{i.optional ? <span className="text-gray-400"> {t("(optional)")}</span> : null}
               </Link>
             )}
           </li>

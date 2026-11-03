@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { ReactNode, useState } from "react";
 import { Check, Copy } from "lucide-react";
@@ -144,12 +145,12 @@ export function CredentialsCard({ title, email, password, loginUrl }: { title: s
       <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">{title}</p>
       <dl className="mt-3 space-y-2 text-sm">
         <div className="flex items-center justify-between gap-3">
-          <dt className="text-slate-500 dark:text-zinc-400">Email</dt>
+          <dt className="text-slate-500 dark:text-zinc-400"><LocalizedText text={"Email"} /></dt>
           <dd className="flex items-center gap-2 font-mono text-slate-900 dark:text-zinc-100">{email}<CopyButton text={email} /></dd>
         </div>
         {password && (
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-slate-500 dark:text-zinc-400">Password</dt>
+            <dt className="text-slate-500 dark:text-zinc-400"><LocalizedText text={"Password"} /></dt>
             <dd className="flex items-center gap-2 font-mono text-slate-900 dark:text-zinc-100">{password}<CopyButton text={password} /></dd>
           </div>
         )}

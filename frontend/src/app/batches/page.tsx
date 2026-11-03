@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import React, { useState, useEffect } from "react";
 import { API_BASE_URL } from "@/config";
 import { motion, AnimatePresence } from "framer-motion";
@@ -117,15 +118,12 @@ export default function BatchesPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                Course Batches
-              </h1>
+                <LocalizedText text={"Course Batches"} /></h1>
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-zinc-300 border border-slate-200/80 dark:border-white/5">
-                {batches.length} total
-              </span>
+                {batches.length} <LocalizedText text={"total"} /> </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-zinc-400">
-              Manage student cohorts, class timings, and seat availability
-            </p>
+              <LocalizedText text={"Manage student cohorts, class timings, and seat availability"} /></p>
           </div>
         </div>
 
@@ -133,8 +131,7 @@ export default function BatchesPage() {
           onClick={openCreate}
           className="flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-xs shadow-blue-500/20 transition-all hover:opacity-95 active:scale-95"
         >
-          <Plus className="w-4 h-4" /> Create Batch
-        </button>
+          <Plus className="w-4 h-4" /> <LocalizedText text={"Create Batch"} /></button>
       </div>
 
       {/* High-density Compact Metrics Strip */}
@@ -232,17 +229,17 @@ export default function BatchesPage() {
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-[#111111]/90 rounded-xl border border-slate-200/90 dark:border-white/10 text-center">
           <Layers className="w-10 h-10 text-slate-300 dark:text-zinc-600 mb-2" />
-          <p className="text-slate-600 dark:text-zinc-400 font-semibold text-sm">No batches found matching criteria</p>
+          <p className="text-slate-600 dark:text-zinc-400 font-semibold text-sm"><LocalizedText text={"No batches found matching criteria"} /></p>
         </div>
       ) : viewMode === "list" ? (
         <div className="space-y-2">
           {/* Subtle column headers for desktop */}
           <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-            <div className="col-span-3">Batch & Course</div>
-            <div className="col-span-3">Faculty & Mode</div>
-            <div className="col-span-2">Schedule & Timing</div>
-            <div className="col-span-2">Capacity & Fill Rate</div>
-            <div className="col-span-2 text-right">Status & Actions</div>
+            <div className="col-span-3"><LocalizedText text={"Batch & Course"} /></div>
+            <div className="col-span-3"><LocalizedText text={"Faculty & Mode"} /></div>
+            <div className="col-span-2"><LocalizedText text={"Schedule & Timing"} /></div>
+            <div className="col-span-2"><LocalizedText text={"Capacity & Fill Rate"} /></div>
+            <div className="col-span-2 text-right"><LocalizedText text={"Status & Actions"} /></div>
           </div>
 
           {filtered.map((b, i) => {
@@ -299,7 +296,7 @@ export default function BatchesPage() {
                           {b.instructor_name}
                         </span>
                       ) : (
-                        <span className="text-xs text-slate-400 italic">No instructor</span>
+                        <span className="text-xs text-slate-400 italic"><LocalizedText text={"No instructor"} /></span>
                       )}
                     </div>
                   </div>
@@ -314,17 +311,17 @@ export default function BatchesPage() {
                     ) : b.start_date ? (
                       <p className="text-xs text-slate-500 truncate flex items-center gap-1">
                         <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
-                        <span>Starts {new Date(b.start_date).toLocaleDateString()}</span>
+                        <span><LocalizedText text={"Starts"} />{new Date(b.start_date).toLocaleDateString()}</span>
                       </p>
                     ) : (
-                      <span className="text-xs text-slate-400 italic">Flexible timing</span>
+                      <span className="text-xs text-slate-400 italic"><LocalizedText text={"Flexible timing"} /></span>
                     )}
                   </div>
 
                   {/* Capacity & Fill Rate */}
                   <div className="col-span-1 lg:col-span-2 min-w-0">
                     <div className="flex items-center justify-between text-[11px] font-semibold text-slate-700 dark:text-zinc-300 mb-1">
-                      <span>{b.enrolled_count}/{b.max_seats} seats</span>
+                      <span>{b.enrolled_count}/{b.max_seats} <LocalizedText text={"seats"} /></span>
                       <span className={fr >= 90 ? "text-rose-600 font-bold" : fr >= 70 ? "text-amber-600" : "text-blue-600"}>{fr}%</span>
                     </div>
                     <div className="h-1.5 bg-slate-100 dark:bg-white/10 rounded-full overflow-hidden">
@@ -399,14 +396,14 @@ export default function BatchesPage() {
                   </div>
 
                   <div className="space-y-1 text-xs text-slate-500 dark:text-zinc-400 py-2 border-y border-slate-100 dark:border-white/5 mb-3">
-                    {b.instructor_name && <p className="truncate">Instructor: <span className="font-medium text-slate-800 dark:text-zinc-200">{b.instructor_name}</span></p>}
+                    {b.instructor_name && <p className="truncate"><LocalizedText text={"Instructor:"} /><span className="font-medium text-slate-800 dark:text-zinc-200">{b.instructor_name}</span></p>}
                     {b.schedule && <p className="flex items-center gap-1 truncate"><Clock className="w-3 h-3" />{b.schedule}</p>}
                   </div>
 
                   <div className="mb-3">
                     <div className="flex justify-between text-[11px] text-slate-500 mb-1">
-                      <span>{b.enrolled_count} / {b.max_seats} seats</span>
-                      <span className="font-semibold">{fr}% full</span>
+                      <span>{b.enrolled_count} / {b.max_seats} <LocalizedText text={"seats"} /></span>
+                      <span className="font-semibold">{fr}<LocalizedText text={"% full"} /></span>
                     </div>
                     <div className="h-1.5 bg-slate-100 dark:bg-white/10 rounded-full overflow-hidden">
                       <div className={`h-full rounded-full ${fr >= 90 ? "bg-rose-500" : fr >= 70 ? "bg-amber-500" : "bg-blue-500"}`} style={{ width: `${fr}%` }} />
@@ -415,8 +412,7 @@ export default function BatchesPage() {
                 </div>
 
                 <Link href={`/batches/${b.id}`} className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300 text-xs font-semibold transition">
-                  <Eye className="w-3.5 h-3.5" /> View Students
-                </Link>
+                  <Eye className="w-3.5 h-3.5" /> <LocalizedText text={"View Students"} /></Link>
               </motion.div>
             );
           })}
@@ -434,37 +430,37 @@ export default function BatchesPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Course *</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Course *"} /></label>
                   <select value={form.course_id} onChange={e => setForm({ ...form, course_id: e.target.value })} className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-zinc-800 dark:text-white focus:outline-none focus:border-blue-500">
                     <option value="">Select course</option>
                     {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Instructor</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Instructor"} /></label>
                   <select value={form.instructor_id} disabled={!editBatch && form.auto_assign_instructor} onChange={e => setForm({ ...form, instructor_id: e.target.value })} className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-zinc-800 dark:text-white focus:outline-none focus:border-blue-500 disabled:opacity-50">
                     <option value="">{form.auto_assign_instructor && !editBatch ? "Assigned automatically" : "Select instructor"}</option>
                     {instructors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Batch Name *</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Batch Name *"} /></label>
                   <input value={form.batch_name} onChange={e => setForm({ ...form, batch_name: e.target.value })} placeholder="e.g. Batch Jan 2025" className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Batch Code</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Batch Code"} /></label>
                   <input value={form.batch_code} onChange={e => setForm({ ...form, batch_code: e.target.value })} placeholder="e.g. WD-JAN-25" className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Start Date</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Start Date"} /></label>
                   <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">End Date</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"End Date"} /></label>
                   <input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Mode</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Mode"} /></label>
                   <select value={form.mode} onChange={e => setForm({ ...form, mode: e.target.value })} className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-zinc-800 dark:text-white focus:outline-none focus:border-blue-500">
                     <option>Online</option>
                     <option>Offline</option>
@@ -472,25 +468,25 @@ export default function BatchesPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Max Seats</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Max Seats"} /></label>
                   <input type="number" value={form.max_seats} onChange={e => setForm({ ...form, max_seats: e.target.value })} className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Status</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Status"} /></label>
                   <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-zinc-800 dark:text-white focus:outline-none focus:border-blue-500">
                     <option>Upcoming</option>
-                    <option>Active</option>
-                    <option>Completed</option>
-                    <option>Cancelled</option>
+                    <option value={"Active"}><LocalizedText text={"Active"} /></option>
+                    <option value={"Completed"}><LocalizedText text={"Completed"} /></option>
+                    <option value={"Cancelled"}><LocalizedText text={"Cancelled"} /></option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Schedule</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Schedule"} /></label>
                   <input value={form.schedule} onChange={e => setForm({ ...form, schedule: e.target.value })} placeholder="e.g. Mon-Wed-Fri 10am-12pm" className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-blue-500" />
                 </div>
               </div>
               <div className="flex gap-2.5 mt-5">
-                <button onClick={() => setShowModal(false)} className="flex-1 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300 transition text-xs sm:text-sm font-semibold">Cancel</button>
+                <button onClick={() => setShowModal(false)} className="flex-1 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300 transition text-xs sm:text-sm font-semibold"><LocalizedText text={"Cancel"} /></button>
                 <button onClick={handleSave} disabled={saving} className="flex-1 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold hover:opacity-95 transition disabled:opacity-50 flex items-center justify-center gap-2 text-xs sm:text-sm shadow-xs">
                   {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   {editBatch ? "Update" : "Create Batch"}

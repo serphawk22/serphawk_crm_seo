@@ -81,7 +81,7 @@ class Signup(DemoBase):
         self.assertNotIn(user.tenant_id, (1, 2, 3))
         self.assertTrue(t.is_trial)
         self.assertIsNone(t.demo_of_tenant_id)
-        self.assertEqual((t.limit_clients, t.limit_emails, t.limit_calls), (15, 5, 5))
+        self.assertEqual((t.limit_clients, t.limit_emails, t.limit_calls), (15, 5, 2))
         with Session(S.ENGINE) as s:
             rows = s.exec(select(TenantFeature).where(TenantFeature.tenant_id == t.id).execution_options(skip_tenant=True)).all()
         self.assertTrue(rows, "the demo preset writes explicit module rows")

@@ -1,4 +1,6 @@
-'use client';
+"use client";
+import { useLanguage } from "@/context/LanguageContext";
+import LocalizedText from "@/components/LocalizedText";
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, ChevronLeft, HelpCircle, X, Sparkles } from 'lucide-react';
@@ -19,6 +21,7 @@ interface PageGuideProps {
 }
 
 export default function PageGuide({ pageKey, title, description, steps, buttonClassName, iconClassName }: PageGuideProps) {
+  const { t } = useLanguage();
   const storageKey = `tour_v2_${pageKey}`;
   const [isOpen, setIsOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
@@ -87,7 +90,7 @@ export default function PageGuide({ pageKey, title, description, steps, buttonCl
             transition={{ type: 'spring', damping: 20, stiffness: 300 }}
             onClick={restart}
             className={buttonClassName || "fixed bottom-24 right-5 z-[90] group"}
-            aria-label="Restart page tour"
+            aria-label={t("Restart page tour")}
           >
             <span className={iconClassName || "flex items-center justify-center w-11 h-11 rounded-full bg-black text-white shadow-lg shadow-black/25 transition-transform group-hover:scale-110"}>
               <HelpCircle className="w-5 h-5" />
@@ -138,7 +141,7 @@ export default function PageGuide({ pageKey, title, description, steps, buttonCl
               {/* Step label */}
               <div className="px-7 pt-6">
                 <span className="text-[11px] font-bold text-black dark:text-white uppercase tracking-widest">
-                  Step {currentStep + 1} of {totalSteps}
+                  <LocalizedText text={"Step"} />{" "}{currentStep + 1} <LocalizedText text={"of"} /> {totalSteps}
                 </span>
               </div>
 
@@ -160,8 +163,8 @@ export default function PageGuide({ pageKey, title, description, steps, buttonCl
                         <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gray-100 dark:bg-zinc-800 mb-4">
                           <Sparkles className="w-8 h-8 text-black dark:text-white" />
                         </div>
-                        <h2 className="text-lg font-bold text-gray-900 dark:text-zinc-50 mb-2">{title}</h2>
-                        <p className="text-[13px] text-gray-500 dark:text-zinc-400 leading-relaxed max-w-xs mx-auto">{description}</p>
+                        <h2 className="text-lg font-bold text-gray-900 dark:text-zinc-50 mb-2">{t(title)}</h2>
+                        <p className="text-[13px] text-gray-500 dark:text-zinc-400 leading-relaxed max-w-xs mx-auto">{t(description)}</p>
                       </>
                     ) : (
                       <>
@@ -174,7 +177,7 @@ export default function PageGuide({ pageKey, title, description, steps, buttonCl
                             </div>
                           )}
                         </div>
-                        <p className="text-[13px] text-gray-700 dark:text-zinc-200 leading-relaxed max-w-xs mx-auto font-medium">{steps[currentStep - 1].text}</p>
+                        <p className="text-[13px] text-gray-700 dark:text-zinc-200 leading-relaxed max-w-xs mx-auto font-medium">{t(steps[currentStep - 1].text)}</p>
                       </>
                     )}
                   </motion.div>
@@ -189,7 +192,7 @@ export default function PageGuide({ pageKey, title, description, steps, buttonCl
                     <button
                       key={i}
                       onClick={() => jumpTo(i)}
-                      aria-label={`Go to step ${i + 1}`}
+                      aria-label={t("Go to step {{value0}}", { value0: i + 1 })}
                       className={`h-2 rounded-full transition-all duration-300 ${
                         i === currentStep
                           ? 'w-7 bg-black'
@@ -208,8 +211,7 @@ export default function PageGuide({ pageKey, title, description, steps, buttonCl
                       onClick={finish}
                       className="px-3 py-2 text-xs font-medium text-gray-400 hover:text-gray-600 dark:text-zinc-300 rounded-xl transition-colors"
                     >
-                      Skip tour
-                    </button>
+                      <LocalizedText text={"Skip tour"} />{" "}</button>
                   ) : (
                     <button
                       onClick={handleBack}
@@ -222,7 +224,7 @@ export default function PageGuide({ pageKey, title, description, steps, buttonCl
                     onClick={handleNext}
                     className="px-5 py-2.5 text-xs font-bold bg-black text-white rounded-xl hover:bg-gray-800 transition-all flex items-center gap-1 shadow-md shadow-black/20"
                   >
-                    {currentStep === totalSteps - 1 ? 'Get Started' : 'Next'}
+                    {currentStep === totalSteps - 1 ? t("Get Started") : t("Next")}
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </div>

@@ -1,4 +1,5 @@
 "use client";
+import { useLanguage } from "@/context/LanguageContext";
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -6,6 +7,7 @@ import { X, AlertCircle, Rocket, CheckCircle2 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 
 export function GlobalLimitModal() {
+  const { t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const [limitType, setLimitType] = useState<string>("feature");
   const [message, setMessage] = useState<string>("You have reached the limit for this feature.");
@@ -79,11 +81,10 @@ export function GlobalLimitModal() {
                 </div>
                 
                 <h2 className="text-2xl font-black text-slate-900 dark:text-zinc-100 mb-2">
-                  Trial Limit Reached
-                </h2>
+                  {t("Trial Limit Reached")}{" "}</h2>
                 
                 <p className="text-slate-500 dark:text-zinc-400 mb-8 max-w-sm">
-                  {message}
+                  {t(message)}
                 </p>
 
                 <button
@@ -96,8 +97,7 @@ export function GlobalLimitModal() {
                 </button>
                 
                 <p className="text-xs text-slate-400 dark:text-zinc-500 mt-4">
-                  Our team will be notified and will reach out to help you upgrade your account limits.
-                </p>
+                  {t("Our team will be notified and will reach out to help you upgrade your account limits.")}{" "}</p>
               </div>
             ) : (
               <div className="flex flex-col items-center text-center mt-4 py-6 relative z-10">
@@ -105,11 +105,9 @@ export function GlobalLimitModal() {
                   <CheckCircle2 className="w-10 h-10 text-emerald-500" />
                 </div>
                 <h2 className="text-2xl font-black text-slate-900 dark:text-zinc-100 mb-2">
-                  Request Sent!
-                </h2>
+                  {t("Request Sent!")}{" "}</h2>
                 <p className="text-slate-500 dark:text-zinc-400 max-w-sm">
-                  Your upgrade request has been sent to our team. We'll be in touch shortly to assist you.
-                </p>
+                  {t("Your upgrade request has been sent to our team. We'll be in touch shortly to assist you.")}{" "}</p>
               </div>
             )}
           </motion.div>

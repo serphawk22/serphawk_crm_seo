@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
@@ -247,8 +248,7 @@ export default function WorkQueuePage() {
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate">{t("work_queue.title")}</h1>
               <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200/60 dark:border-zinc-700">
-                {combinedCount} items
-              </span>
+                {combinedCount} <LocalizedText text={"items"} /> </span>
             </div>
             <p className="text-[11px] text-slate-400 dark:text-zinc-500 leading-none mt-0.5 truncate">{t("work_queue.subtitle")}</p>
           </div>
@@ -279,7 +279,7 @@ export default function WorkQueuePage() {
             <CheckSquare className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Tasks</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Tasks"} /></div>
             <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{data.tasks?.length || 0}</div>
           </div>
         </div>
@@ -297,7 +297,7 @@ export default function WorkQueuePage() {
             <Calendar className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Meetings</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Meetings"} /></div>
             <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{data.meetings?.length || 0}</div>
           </div>
         </div>
@@ -306,7 +306,7 @@ export default function WorkQueuePage() {
             <PhoneCall className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Calls</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Calls"} /></div>
             <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{data.calls?.length || 0}</div>
           </div>
         </div>

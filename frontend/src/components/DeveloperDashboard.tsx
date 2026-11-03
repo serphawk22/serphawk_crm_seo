@@ -1,8 +1,10 @@
+"use client";
+import LocalizedText from "@/components/LocalizedText";
+import { useLanguage } from "@/context/LanguageContext";
 import { useState, useEffect, useMemo } from "react";
 import { Plus, X, AlignLeft, Calendar, User, GitBranch, Link as LinkIcon, History, Clock, FileText, ArrowDownAZ } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
-import { useLanguage } from "@/context/LanguageContext";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 
 type ProjectTicket = {
@@ -36,7 +38,7 @@ function computeDays(start?: string, end?: string) {
 }
 
 export function DeveloperDashboard() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user } = useRole();
   const [tickets, setTickets] = useState<ProjectTicket[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
@@ -168,7 +170,7 @@ export function DeveloperDashboard() {
     
     // Create new ticket needs a project_id
     if (!isEditing && !form.project_id) {
-      alert("Please select a project");
+      alert(t("Please select a project"));
       return;
     }
     
@@ -195,7 +197,7 @@ export function DeveloperDashboard() {
       setForm({ task: "", current_state: "Planning" });
     } catch (error) {
       console.error(error);
-      alert("Failed to save ticket");
+      alert(t("Failed to save ticket"));
     }
   };
 
@@ -283,8 +285,8 @@ export function DeveloperDashboard() {
           {projectGroups.map(project => (
             <section key={project.id} className="rounded-3xl border border-slate-200/70 bg-white/50 p-4 dark:border-zinc-800/70 dark:bg-zinc-950/30">
               <div className="mb-4 flex items-center justify-between px-2">
-                <div><p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Assigned project</p><h4 className="text-lg font-black text-slate-900 dark:text-white">{project.name}</h4></div>
-                <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">{tickets.filter(ticket => ticket.project_id === project.id).length} tickets</span>
+                <div><p className="text-[10px] font-black uppercase tracking-widest text-indigo-500"><LocalizedText text={"Assigned project"} /></p><h4 className="text-lg font-black text-slate-900 dark:text-white">{project.name}</h4></div>
+                <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">{tickets.filter(ticket => ticket.project_id === project.id).length} <LocalizedText text={"tickets"} /></span>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4 items-start">
           {KANBAN_COLUMNS.map(col => (
@@ -296,7 +298,7 @@ export function DeveloperDashboard() {
                   className="bg-slate-100/50 dark:bg-zinc-900/40 backdrop-blur-xl border border-slate-200/50 dark:border-zinc-800/50 p-4 rounded-3xl min-h-[500px] min-w-[300px] shadow-inner"
                 >
                   <h4 className="text-xs font-black text-slate-600 dark:text-zinc-400 mb-5 px-2 uppercase tracking-widest flex items-center justify-between">
-                    {col}
+                    {t(col)}
                     <span className="bg-white/60 dark:bg-zinc-800/60 text-indigo-600 dark:text-indigo-400 px-2.5 py-1 rounded-full text-[10px] shadow-sm border border-slate-200 dark:border-zinc-700">
                       {sortedTickets.filter(t => t.project_id === project.id && t.current_state === col).length}
                     </span>
@@ -328,7 +330,7 @@ export function DeveloperDashboard() {
                             
                             {ticket.competitor && (
                               <p className="text-xs text-slate-500 dark:text-zinc-400 mb-2 truncate">
-                                Competitor: {ticket.competitor}
+                                <LocalizedText text={"Competitor:"} />{" "}{ticket.competitor}
                               </p>
                             )}
                             
@@ -338,18 +340,15 @@ export function DeveloperDashboard() {
                               </span>
                               {ticket.requested_date && (
                                 <span className="flex items-center gap-1 text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded">
-                                  Age: {computeDays(ticket.requested_date, ticket.date_release_prod)}d
-                                </span>
+                                  <LocalizedText text={"Age:"} />{" "}{computeDays(ticket.requested_date, ticket.date_release_prod)}<LocalizedText text={"d"} />{" "}</span>
                               )}
                               {ticket.date_dev_start && (
                                 <span className="flex items-center gap-1 text-[10px] bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded">
-                                  Dev: {computeDays(ticket.date_dev_start, ticket.date_dev_complete)}d
-                                </span>
+                                  <LocalizedText text={"Dev:"} />{" "}{computeDays(ticket.date_dev_start, ticket.date_dev_complete)}<LocalizedText text={"d"} />{" "}</span>
                               )}
                               {ticket.date_qa_start && (
                                 <span className="flex items-center gap-1 text-[10px] bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded">
-                                  QA: {computeDays(ticket.date_qa_start, ticket.date_qa_complete)}d
-                                </span>
+                                  <LocalizedText text={"QA:"} />{" "}{computeDays(ticket.date_qa_start, ticket.date_qa_complete)}<LocalizedText text={"d"} />{" "}</span>
                               )}
                             </div>
                           </div>
@@ -522,8 +521,7 @@ export function DeveloperDashboard() {
                       <div>
                         <h4 className="text-sm font-bold text-indigo-900 dark:text-indigo-100">{t("dev_dashboard.time_spent_dev")}</h4>
                         <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1">
-                          {Math.max(1, Math.ceil((new Date(form.date_dev_complete).getTime() - new Date(form.date_dev_start).getTime()) / (1000 * 60 * 60 * 24)))} Days
-                        </p>
+                          {Math.max(1, Math.ceil((new Date(form.date_dev_complete).getTime() - new Date(form.date_dev_start).getTime()) / (1000 * 60 * 60 * 24)))} <LocalizedText text={"Days"} />{" "}</p>
                       </div>
                     </div>
                   )}
@@ -536,8 +534,7 @@ export function DeveloperDashboard() {
                       <div>
                         <h4 className="text-sm font-bold text-purple-900 dark:text-purple-100">{t("dev_dashboard.time_spent_qa")}</h4>
                         <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
-                          {Math.max(1, Math.ceil((new Date(form.date_qa_complete).getTime() - new Date(form.date_qa_start).getTime()) / (1000 * 60 * 60 * 24)))} Days
-                        </p>
+                          {Math.max(1, Math.ceil((new Date(form.date_qa_complete).getTime() - new Date(form.date_qa_start).getTime()) / (1000 * 60 * 60 * 24)))} <LocalizedText text={"Days"} />{" "}</p>
                       </div>
                     </div>
                   )}
@@ -564,13 +561,13 @@ export function DeveloperDashboard() {
                         </div>
                         <p className="text-sm text-slate-800 dark:text-zinc-200">
                           {log.old_state === 'Given to QA' && log.new_state === 'In Dev' ? (
-                            <><span className="font-bold">{log.user_name || 'QA'}</span> <span className="text-red-500 font-bold">{t("dev_dashboard.reverted_back_to_dev")}</span></>
+                            <><span className="font-bold">{log.user_name || t("QA")}</span> <span className="text-red-500 font-bold">{t("dev_dashboard.reverted_back_to_dev")}</span></>
                           ) : (
-                            <><span className="font-bold">{log.user_name || 'Someone'}</span> {t("dev_dashboard.moved_from")} <span className="font-bold text-slate-500 dark:text-zinc-400">{log.old_state}</span> {t("dev_dashboard.to")} <span className="font-bold text-slate-900 dark:text-white">{log.new_state}</span></>
+                            <><span className="font-bold">{log.user_name || t("Someone")}</span> {t("dev_dashboard.moved_from")} <span className="font-bold text-slate-500 dark:text-zinc-400">{t(log.old_state)}</span> {t("dev_dashboard.to")} <span className="font-bold text-slate-900 dark:text-white">{t(log.new_state)}</span></>
                           )}
                         </p>
                         <p className="text-xs text-slate-400 mt-1">
-                          {new Date(log.moved_at).toLocaleString()}
+                          {new Date(log.moved_at).toLocaleString(language)}
                         </p>
                       </div>
                     ))}
@@ -614,7 +611,7 @@ export function DeveloperDashboard() {
                     type="button" 
                     className="mr-auto px-5 py-2.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl text-sm font-bold hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
                     onClick={async () => {
-                      if (confirm("Delete this ticket?")) {
+                      if (confirm(t("Delete this ticket?"))) {
                         await fetch(`${API_BASE_URL}/projects/tickets/${selectedTicket.id}`, { method: "DELETE" });
                         setShowModal(false);
                         fetchTicketsAndProjects();

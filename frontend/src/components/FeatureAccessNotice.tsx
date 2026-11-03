@@ -1,5 +1,6 @@
 "use client";
-
+import LocalizedText from "@/components/LocalizedText";
+import { useLanguage } from "@/context/LanguageContext";
 import { useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -13,15 +14,16 @@ interface FeatureAccessNoticeProps {
 
 /** Shared access explanation. Navigation never changes roles or opens client records. */
 export default function FeatureAccessNotice({ feature, kind }: FeatureAccessNoticeProps) {
+  const { t } = useLanguage();
   const [showHelp, setShowHelp] = useState(false);
   const reducedMotion = useReducedMotion();
   const platform = kind === "superadmin";
   const steps = platform ? [
     ["Keep this dashboard open", "Open a private browser window for your client testing session."],
     ["Sign in as the company Admin", "Use the Admin account for the company you want to test."],
-    ["Open this feature", `Choose ${feature} in that workspace to work with its records.`],
+    ["Open this feature", t("Choose {{feature}} in that workspace to work with its records.", { feature: t(feature) })],
   ] : [
-    ["Contact your company Admin", `Ask whether ${feature} is included in your company’s plan.`],
+    ["Contact your company Admin", t("Ask whether {{feature}} is included in your company’s plan.", { feature: t(feature) })],
     ["Confirm the module is enabled", "Your Admin can coordinate the change with the platform team."],
     ["Return when it’s ready", "Refresh this page after your company’s access has been updated."],
   ];
@@ -50,38 +52,38 @@ export default function FeatureAccessNotice({ feature, kind }: FeatureAccessNoti
               <motion.div animate={reducedMotion ? {} : { y: [0, -5, 0] }} transition={{ duration: 5, delay: 0.5, repeat: Infinity, ease: "easeInOut" }}
                 className="absolute bottom-5 right-0 flex h-12 w-12 items-center justify-center rounded-2xl border border-white bg-white/90 text-violet-500 shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-violet-300 sm:bottom-8"><Users className="h-5 w-5" /></motion.div>
             </div>
-            <div className="absolute bottom-4 flex items-center gap-1.5 text-[11px] font-medium text-indigo-500 dark:text-indigo-300 lg:bottom-8"><ShieldCheck className="h-3.5 w-3.5" /> A separate workspace for every client</div>
+            <div className="absolute bottom-4 flex items-center gap-1.5 text-[11px] font-medium text-indigo-500 dark:text-indigo-300 lg:bottom-8"><ShieldCheck className="h-3.5 w-3.5" /> <LocalizedText text={"A separate workspace for every client"} /></div>
           </div>
 
           <div className={styles.content}>
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300"><LockKeyhole className="h-3.5 w-3.5" /> {platform ? "SuperAdmin access" : "Company plan"}</span>
-              <span className="rounded-full border border-slate-200 px-3 py-1.5 text-slate-500 dark:border-zinc-700 dark:text-zinc-400">{feature}</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300"><LockKeyhole className="h-3.5 w-3.5" /> {platform ? t("SuperAdmin access") : t("Company plan")}</span>
+              <span className="rounded-full border border-slate-200 px-3 py-1.5 text-slate-500 dark:border-zinc-700 dark:text-zinc-400">{t(feature)}</span>
             </div>
             <h1 id="feature-access-title" className={`${styles.title} mt-4 max-w-lg text-2xl font-bold leading-tight tracking-tight text-slate-900 dark:text-zinc-50`}>
-              {platform ? "Open your client workspace" : `${feature} is not enabled yet`}
+              {platform ? t("Open your client workspace") : t("{{feature}} is not enabled yet", { feature: t(feature) })}
             </h1>
             <p className={`${styles.description} mt-3 text-sm leading-6 text-slate-600 dark:text-zinc-400`}>
-              {platform ? <>You’re signed in as SuperAdmin. Use the company Admin account to access <strong className="font-semibold text-slate-800 dark:text-zinc-200">{feature}</strong>.</>
-                : <>This module isn’t currently included in your company’s enabled features. Your company Admin can help arrange access.</>}
+              {platform ? <><LocalizedText text={"You’re signed in as SuperAdmin. Use the company Admin account to access"} />{" "}<strong className="font-semibold text-slate-800 dark:text-zinc-200">{t(feature)}</strong>.</>
+                : <><LocalizedText text={"This module isn’t currently included in your company’s enabled features. Your company Admin can help arrange access."} /></>}
             </p>
             <div className={`${styles.privacy} mt-4 flex items-start gap-2.5 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500 dark:bg-zinc-800/60 dark:text-zinc-400`}>
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <span>{platform ? "Client data stays within its own workspace." : "Your other enabled features remain available from the dashboard."}</span>
+              <span>{platform ? t("Client data stays within its own workspace.") : t("Your other enabled features remain available from the dashboard.")}</span>
             </div>
             <div className={`${styles.actions} mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap`}>
               <Link href={platform ? "/superadmin/clients" : "/"}
                 className="group inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-500 motion-safe:transition-transform motion-safe:hover:-translate-y-0.5">
                 {platform ? <Building2 className="h-4 w-4" /> : <LayoutDashboard className="h-4 w-4" />}
-                {platform ? "Client Management" : "Back to dashboard"}
+                {platform ? t("Client Management") : t("Back to dashboard")}
                 <ArrowRight className="h-4 w-4 motion-safe:transition-transform motion-safe:group-hover:translate-x-0.5" />
               </Link>
-              {platform && <Link href="/admin/telemetry" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-500 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"><Users className="h-4 w-4" /> Manage demo accounts</Link>}
+              {platform && <Link href="/admin/telemetry" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-500 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"><Users className="h-4 w-4" /> <LocalizedText text={"Manage demo accounts"} /></Link>}
             </div>
             <div className={`${styles.help} mt-4 border-t border-slate-100 pt-2 dark:border-zinc-800`}>
               <button type="button" aria-expanded={showHelp} aria-controls={helpId} onClick={() => setShowHelp(value => !value)}
                 className="flex min-h-11 w-full items-center gap-2 rounded-lg text-left text-sm font-medium text-slate-600 transition-colors hover:text-indigo-600 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-indigo-500 dark:text-zinc-400 dark:hover:text-indigo-300">
-                <CircleHelp className="h-4 w-4" /> {platform ? "How do I test this feature?" : "What can I do next?"}
+                <CircleHelp className="h-4 w-4" /> {platform ? t("How do I test this feature?") : t("What can I do next?")}
                 <ChevronDown className={`ml-auto h-4 w-4 motion-safe:transition-transform ${showHelp ? "rotate-180" : ""}`} />
               </button>
               <AnimatePresence initial={false}>
@@ -89,7 +91,7 @@ export default function FeatureAccessNotice({ feature, kind }: FeatureAccessNoti
                   <ol className="space-y-4 pb-1 pt-4">
                     {steps.map(([title, description], index) => <li key={title} className="flex gap-3">
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[11px] font-bold text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300">{index + 1}</span>
-                      <div><p className="text-xs font-semibold text-slate-800 dark:text-zinc-200">{title}</p><p className="mt-1 text-xs leading-5 text-slate-500 dark:text-zinc-400">{description}</p></div>
+                      <div><p className="text-xs font-semibold text-slate-800 dark:text-zinc-200">{t(title)}</p><p className="mt-1 text-xs leading-5 text-slate-500 dark:text-zinc-400">{t(description)}</p></div>
                     </li>)}
                   </ol>
                 </motion.div>}

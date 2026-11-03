@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import React, { useState, useEffect, useMemo } from "react";
 import { API_BASE_URL } from "@/config";
 import { motion, AnimatePresence } from "framer-motion";
@@ -213,7 +214,7 @@ export default function InstituteAnalyticsPage() {
       <div className="flex items-center justify-center h-96">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="w-10 h-10 animate-spin text-violet-400" />
-          <p className="text-zinc-500 text-sm">Loading your analytics…</p>
+          <p className="text-zinc-500 text-sm"><LocalizedText text={"Loading your analytics…"} /></p>
         </div>
       </div>
     );
@@ -242,7 +243,7 @@ export default function InstituteAnalyticsPage() {
         <>
           <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
             className="px-2 py-1 rounded-lg text-xs bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-zinc-300 focus:outline-none focus:border-violet-500" />
-          <span className="text-slate-400 text-xs">to</span>
+          <span className="text-slate-400 text-xs"><LocalizedText text={"to"} /></span>
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
             className="px-2 py-1 rounded-lg text-xs bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-zinc-300 focus:outline-none focus:border-violet-500" />
         </>
@@ -293,7 +294,7 @@ export default function InstituteAnalyticsPage() {
           ) : !salesData ? (
             <div className="text-center text-zinc-500 py-20">
               <AlertCircle className="w-10 h-10 mx-auto mb-3 text-zinc-400" />
-              <p>Could not load your analytics. Try refreshing.</p>
+              <p><LocalizedText text={"Could not load your analytics. Try refreshing."} /></p>
             </div>
           ) : (
             <>
@@ -316,13 +317,12 @@ export default function InstituteAnalyticsPage() {
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
                   className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
                   <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-1 flex items-center gap-2">
-                    <PieChartIcon className="w-5 h-5 text-violet-500" /> My Lead Source Distribution
-                  </h2>
-                  <p className="text-xs text-zinc-500 mb-5">Where your leads are coming from</p>
+                    <PieChartIcon className="w-5 h-5 text-violet-500" /> <LocalizedText text={"My Lead Source Distribution"} /></h2>
+                  <p className="text-xs text-zinc-500 mb-5"><LocalizedText text={"Where your leads are coming from"} /></p>
                   {sourceData.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-56 text-zinc-500">
                       <PieChartIcon className="w-10 h-10 mb-3 text-zinc-400" />
-                      <p className="text-sm">No lead source data for this period</p>
+                      <p className="text-sm"><LocalizedText text={"No lead source data for this period"} /></p>
                     </div>
                   ) : (
                     <>
@@ -352,13 +352,12 @@ export default function InstituteAnalyticsPage() {
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
                   className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
                   <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-1 flex items-center gap-2">
-                    <Target className="w-5 h-5 text-emerald-500" /> Source Performance
-                  </h2>
-                  <p className="text-xs text-zinc-500 mb-5">Leads vs conversions by source channel</p>
+                    <Target className="w-5 h-5 text-emerald-500" /> <LocalizedText text={"Source Performance"} /></h2>
+                  <p className="text-xs text-zinc-500 mb-5"><LocalizedText text={"Leads vs conversions by source channel"} /></p>
                   {sourceData.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-56 text-zinc-500">
                       <AlertCircle className="w-10 h-10 mb-3 text-zinc-400" />
-                      <p className="text-sm">No data for selected period</p>
+                      <p className="text-sm"><LocalizedText text={"No data for selected period"} /></p>
                     </div>
                   ) : (
                     <div className="space-y-3 overflow-y-auto max-h-[280px] pr-1">
@@ -372,8 +371,8 @@ export default function InstituteAnalyticsPage() {
                             <span className="text-xs font-bold text-emerald-500">{s.conversion_rate}%</span>
                           </div>
                           <div className="flex items-center gap-4 text-xs text-zinc-500">
-                            <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {s.total_leads} leads</span>
-                            <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> {s.converted_students} enrolled</span>
+                            <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {s.total_leads} <LocalizedText text={"leads"} /></span>
+                            <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> {s.converted_students} <LocalizedText text={"enrolled"} /></span>
                           </div>
                           <div className="mt-2 bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
                             <div className="h-1.5 rounded-full" style={{ width: `${Math.min(s.conversion_rate, 100)}%`, background: COLORS[i % COLORS.length] }} />
@@ -389,11 +388,10 @@ export default function InstituteAnalyticsPage() {
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
                 className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
                 <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-1 flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-blue-500" /> My Lead Pipeline
-                </h2>
-                <p className="text-xs text-zinc-500 mb-5">How your leads are distributed across stages</p>
+                  <Activity className="w-5 h-5 text-blue-500" /> <LocalizedText text={"My Lead Pipeline"} /></h2>
+                <p className="text-xs text-zinc-500 mb-5"><LocalizedText text={"How your leads are distributed across stages"} /></p>
                 {pipelineData.length === 0 ? (
-                  <div className="flex items-center justify-center h-48 text-zinc-500">No pipeline data for this period</div>
+                  <div className="flex items-center justify-center h-48 text-zinc-500"><LocalizedText text={"No pipeline data for this period"} /></div>
                 ) : (
                   <>
                     <ResponsiveContainer width="100%" height={200}>
@@ -427,8 +425,7 @@ export default function InstituteAnalyticsPage() {
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
                   className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
                   <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-5 flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-violet-500" /> Monthly Activity Trend
-                  </h2>
+                    <TrendingUp className="w-5 h-5 text-violet-500" /> <LocalizedText text={"Monthly Activity Trend"} /></h2>
                   <ResponsiveContainer width="100%" height={200}>
                     <AreaChart data={monthlyTrends} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
                       <defs>
@@ -462,15 +459,13 @@ export default function InstituteAnalyticsPage() {
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
                 className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
                 <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-1 flex items-center gap-2">
-                  <Award className="w-5 h-5 text-amber-500" /> Self-Assessment & Evaluation
-                </h2>
-                <p className="text-xs text-zinc-500 mb-5">How you're performing against key targets</p>
+                  <Award className="w-5 h-5 text-amber-500" /> <LocalizedText text={"Self-Assessment & Evaluation"} /></h2>
+                <p className="text-xs text-zinc-500 mb-5"><LocalizedText text={"How you're performing against key targets"} /></p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
                   {/* Conversion health */}
                   <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
                     <p className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      <Target className="w-4 h-4 text-emerald-500" /> Conversion Health
-                    </p>
+                      <Target className="w-4 h-4 text-emerald-500" /> <LocalizedText text={"Conversion Health"} /></p>
                     {[
                       { label: "Lead → Student", value: overview?.conversion_rate ?? 0, threshold: 20, unit: "%" },
                       { label: "Demo success rate", value: overview?.demo_success_rate ?? 0, threshold: 50, unit: "%" },
@@ -494,8 +489,7 @@ export default function InstituteAnalyticsPage() {
                   {/* Activity */}
                   <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
                     <p className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      <Activity className="w-4 h-4 text-blue-500" /> Activity Metrics
-                    </p>
+                      <Activity className="w-4 h-4 text-blue-500" /> <LocalizedText text={"Activity Metrics"} /></p>
                     {[
                       { label: "Demos scheduled", value: overview?.demos_scheduled ?? 0, target: 10 },
                       { label: "Follow-ups done", value: overview?.followups_count ?? 0, target: 20 },
@@ -519,35 +513,33 @@ export default function InstituteAnalyticsPage() {
                   {/* Revenue */}
                   <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
                     <p className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      <DollarSign className="w-4 h-4 text-green-500" /> Revenue Contribution
-                    </p>
+                      <DollarSign className="w-4 h-4 text-green-500" /> <LocalizedText text={"Revenue Contribution"} /></p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
-                        <span className="text-zinc-500">Tuition Booked</span>
+                        <span className="text-zinc-500"><LocalizedText text={"Tuition Booked"} /></span>
                         <span className="font-bold text-violet-400">₹{(overview?.tuition_booked ?? 0).toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-zinc-500">Advance Collected</span>
+                        <span className="text-zinc-500"><LocalizedText text={"Advance Collected"} /></span>
                         <span className="font-bold text-emerald-400">₹{(overview?.advance_collected ?? 0).toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-zinc-500">Still Pending</span>
+                        <span className="text-zinc-500"><LocalizedText text={"Still Pending"} /></span>
                         <span className="font-bold text-rose-400">₹{(overview?.pending_due ?? 0).toLocaleString()}</span>
                       </div>
                       <div className="mt-3 pt-3 border-t border-white/10">
                         {(overview?.advance_collected ?? 0) + (overview?.pending_due ?? 0) > 0 ? (
                           <>
-                            <p className="text-xs text-zinc-500 mb-1">Collection progress</p>
+                            <p className="text-xs text-zinc-500 mb-1"><LocalizedText text={"Collection progress"} /></p>
                             <div className="bg-slate-200 dark:bg-slate-700 rounded-full h-2">
                               <div className="h-2 rounded-full bg-emerald-500" style={{
                                 width: `${Math.min(((overview?.advance_collected ?? 0) / ((overview?.advance_collected ?? 0) + (overview?.pending_due ?? 0))) * 100, 100).toFixed(0)}%`
                               }} />
                             </div>
                             <p className="text-xs text-emerald-400 mt-1">
-                              {Math.min(((overview?.advance_collected ?? 0) / ((overview?.advance_collected ?? 0) + (overview?.pending_due ?? 0))) * 100, 100).toFixed(1)}% collected
-                            </p>
+                              {Math.min(((overview?.advance_collected ?? 0) / ((overview?.advance_collected ?? 0) + (overview?.pending_due ?? 0))) * 100, 100).toFixed(1)}<LocalizedText text={"% collected"} /></p>
                           </>
-                        ) : <p className="text-xs text-zinc-500">No revenue data yet</p>}
+                        ) : <p className="text-xs text-zinc-500"><LocalizedText text={"No revenue data yet"} /></p>}
                       </div>
                     </div>
                   </div>
@@ -593,9 +585,8 @@ export default function InstituteAnalyticsPage() {
                   <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
                     className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
                     <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-1 flex items-center gap-2">
-                      <PieChartIcon className="w-5 h-5 text-violet-500" /> Lead Source Distribution
-                    </h2>
-                    <p className="text-xs text-zinc-500 mb-5">All institute leads by acquisition channel</p>
+                      <PieChartIcon className="w-5 h-5 text-violet-500" /> <LocalizedText text={"Lead Source Distribution"} /></h2>
+                    <p className="text-xs text-zinc-500 mb-5"><LocalizedText text={"All institute leads by acquisition channel"} /></p>
                     <ResponsiveContainer width="100%" height={180}>
                       <PieChart>
                         <Pie data={sourceData} dataKey="total_leads" nameKey="source" cx="50%" cy="50%"
@@ -619,11 +610,10 @@ export default function InstituteAnalyticsPage() {
                   <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
                     className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
                     <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-1 flex items-center gap-2">
-                      <BarChart2 className="w-5 h-5 text-blue-500" /> Pipeline Stages
-                    </h2>
-                    <p className="text-xs text-zinc-500 mb-5">Lead distribution across all pipeline stages</p>
+                      <BarChart2 className="w-5 h-5 text-blue-500" /> <LocalizedText text={"Pipeline Stages"} /></h2>
+                    <p className="text-xs text-zinc-500 mb-5"><LocalizedText text={"Lead distribution across all pipeline stages"} /></p>
                     {pipelineData.length === 0 ? (
-                      <div className="flex items-center justify-center h-48 text-zinc-500 text-sm">No data</div>
+                      <div className="flex items-center justify-center h-48 text-zinc-500 text-sm"><LocalizedText text={"No data"} /></div>
                     ) : (
                       <ResponsiveContainer width="100%" height={180}>
                         <BarChart data={pipelineData} layout="vertical" margin={{ left: 10, right: 10 }}>
@@ -649,8 +639,7 @@ export default function InstituteAnalyticsPage() {
                   <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
                     className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
                     <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-4 flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5 text-violet-500" /> Monthly Revenue Trend
-                    </h2>
+                      <TrendingUp className="w-5 h-5 text-violet-500" /> <LocalizedText text={"Monthly Revenue Trend"} /></h2>
                     <ResponsiveContainer width="100%" height={200}>
                       <LineChart data={instData?.monthly_revenue || []}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
@@ -667,10 +656,9 @@ export default function InstituteAnalyticsPage() {
                   <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
                     className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
                     <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-4 flex items-center gap-2">
-                      <BookOpen className="w-5 h-5 text-amber-500" /> Revenue by Course
-                    </h2>
+                      <BookOpen className="w-5 h-5 text-amber-500" /> <LocalizedText text={"Revenue by Course"} /></h2>
                     {(instData?.revenue_by_course || []).length === 0 ? (
-                      <div className="flex items-center justify-center h-56 text-zinc-500"><p>No data yet</p></div>
+                      <div className="flex items-center justify-center h-56 text-zinc-500"><p><LocalizedText text={"No data yet"} /></p></div>
                     ) : (
                       <ResponsiveContainer width="100%" height={200}>
                         <BarChart data={instData?.revenue_by_course || []} layout="vertical">
@@ -691,16 +679,15 @@ export default function InstituteAnalyticsPage() {
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
                   className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
                   <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-4 flex items-center gap-2">
-                    <UserCog className="w-5 h-5 text-amber-500" /> Instructor Performance
-                  </h2>
+                    <UserCog className="w-5 h-5 text-amber-500" /> <LocalizedText text={"Instructor Performance"} /></h2>
                   <div className="space-y-3">
-                    {(instData?.instructor_stats || []).length === 0 ? <p className="text-zinc-500 text-center py-8">No instructors yet</p> :
+                    {(instData?.instructor_stats || []).length === 0 ? <p className="text-zinc-500 text-center py-8"><LocalizedText text={"No instructors yet"} /></p> :
                       (instData?.instructor_stats || []).map((ins) => (
                         <div key={ins.id} className="flex items-center gap-2.5 p-2 sm:px-3 sm:py-2 bg-slate-50 dark:bg-white/5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:border-amber-500/40 transition">
                           <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">{ins.name[0]}</div>
                           <div className="flex-1 min-w-0">
                             <p className="text-slate-900 dark:text-white font-bold text-xs truncate">{ins.name}</p>
-                            <p className="text-slate-400 dark:text-zinc-500 text-[11px] truncate mt-0.2">{ins.batches} batches · {ins.students} students</p>
+                            <p className="text-slate-400 dark:text-zinc-500 text-[11px] truncate mt-0.2">{ins.batches} <LocalizedText text={"batches ·"} />{ins.students} <LocalizedText text={"students"} /></p>
                           </div>
                           <div className="text-right shrink-0">
                             <div className="flex items-center gap-1 justify-end"><Star className="w-3 h-3 text-amber-400 fill-amber-400" /><span className="text-amber-500 dark:text-amber-400 font-bold text-xs">{ins.avg_rating || "—"}</span></div>
@@ -713,20 +700,19 @@ export default function InstituteAnalyticsPage() {
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
                   className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
                   <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-4 flex items-center gap-2">
-                    <Target className="w-5 h-5 text-green-500" /> Sales Team Performance
-                  </h2>
+                    <Target className="w-5 h-5 text-green-500" /> <LocalizedText text={"Sales Team Performance"} /></h2>
                   <div className="space-y-3">
-                    {(instData?.sales_stats || []).length === 0 ? <p className="text-zinc-500 text-center py-8">No sales data yet</p> :
+                    {(instData?.sales_stats || []).length === 0 ? <p className="text-zinc-500 text-center py-8"><LocalizedText text={"No sales data yet"} /></p> :
                       (instData?.sales_stats || []).map((s) => (
                         <div key={s.user_id} className="flex items-center gap-2.5 p-2 sm:px-3 sm:py-2 bg-slate-50 dark:bg-white/5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:border-emerald-500/40 transition">
                           <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">{(s.name || "?")[0]}</div>
                           <div className="flex-1 min-w-0">
                             <p className="text-slate-900 dark:text-white font-bold text-xs truncate">{s.name || "Unknown"}</p>
-                            <p className="text-slate-400 dark:text-zinc-500 text-[11px] truncate mt-0.2">{s.leads_assigned} leads · {s.leads_converted} converted</p>
+                            <p className="text-slate-400 dark:text-zinc-500 text-[11px] truncate mt-0.2">{s.leads_assigned} <LocalizedText text={"leads ·"} />{s.leads_converted} <LocalizedText text={"converted"} /></p>
                           </div>
                           <div className="text-right shrink-0">
                             <p className="text-emerald-600 dark:text-emerald-400 font-bold text-xs tabular-nums">{s.conversion_rate}%</p>
-                            <p className="text-slate-400 dark:text-zinc-500 text-[10px]">conversion</p>
+                            <p className="text-slate-400 dark:text-zinc-500 text-[10px]"><LocalizedText text={"conversion"} /></p>
                           </div>
                         </div>
                       ))}

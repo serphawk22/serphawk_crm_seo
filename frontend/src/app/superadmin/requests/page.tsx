@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import React, { useCallback, useEffect, useState, useMemo } from "react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
@@ -211,7 +212,7 @@ export default function ClientRequestsPage() {
                 <Layers className="w-3.5 h-3.5" />
               </div>
               <div className="min-w-0">
-                <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Total Requests</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Total Requests"} /></div>
                 <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{stats.total}</div>
               </div>
             </div>
@@ -229,7 +230,7 @@ export default function ClientRequestsPage() {
                 <Clock className="w-3.5 h-3.5" />
               </div>
               <div className="min-w-0">
-                <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">In Progress</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"In Progress"} /></div>
                 <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{stats.in_progress}</div>
               </div>
             </div>
@@ -238,7 +239,7 @@ export default function ClientRequestsPage() {
                 <CheckCircle2 className="w-3.5 h-3.5" />
               </div>
               <div className="min-w-0">
-                <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Resolved</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Resolved"} /></div>
                 <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{stats.resolved}</div>
               </div>
             </div>
@@ -252,8 +253,7 @@ export default function ClientRequestsPage() {
                 onClick={() => setFilter("")}
                 className={`px-2.5 py-0.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap ${filter === "" ? "bg-indigo-600 text-white shadow-2xs" : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"}`}
               >
-                All
-              </button>
+                <LocalizedText text={"All"} /> </button>
               {Object.entries(STATUS_LABELS).map(([k, v]) => (
                 <button 
                   key={k} 
@@ -273,8 +273,7 @@ export default function ClientRequestsPage() {
             </div>
           ) : rows.length === 0 ? (
             <div className="py-12 text-center text-slate-400 bg-white dark:bg-zinc-900 rounded-xl border border-dashed border-slate-200 dark:border-zinc-800 text-xs font-medium">
-              No requests found.
-            </div>
+              <LocalizedText text={"No requests found."} /> </div>
           ) : (
             <div className="space-y-1.5">
               {rows.map((r) => (
@@ -296,7 +295,7 @@ export default function ClientRequestsPage() {
                       <span>&middot;</span>
                       <span>{PRIORITY_LABELS[r.priority] || r.priority} priority</span>
                       <span>&middot;</span>
-                      <span>Updated {new Date(r.updated_at).toLocaleDateString()}</span>
+                      <span><LocalizedText text={"Updated"} /> {new Date(r.updated_at).toLocaleDateString()}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">

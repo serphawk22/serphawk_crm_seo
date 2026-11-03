@@ -1,4 +1,5 @@
 "use client";
+import DashboardSection from "@/components/DashboardSection";
 
 import { motion } from "framer-motion";
 import type { Variants } from "framer-motion";
@@ -71,7 +72,7 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
       </motion.div>
 
       {/* KPI METRICS ROW */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <DashboardSection name="client_metrics"><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { title: t("client_dashboard.kpi_active_services"), value: activeServicesCount, trend: t("client_dashboard.kpi_trend_services"), icon: Briefcase, color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-500/10" },
           { title: t("client_dashboard.kpi_pending_requests"), value: pendingRequestsCount, trend: t("client_dashboard.kpi_trend_pending"), icon: Timer, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-500/10" },
@@ -89,12 +90,12 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
             </div>
           </motion.div>
         ))}
-      </div>
+      </div></DashboardSection>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           {/* QUICK LINKS GRID */}
-          <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm h-max">
+          <DashboardSection name="quick_links"><motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm h-max">
             <div className="p-5 border-b border-[var(--border)]">
               <h3 className="font-bold text-[var(--text-primary)]">{t("client_dashboard.quick_links")}</h3>
             </div>
@@ -106,10 +107,10 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
                 </Link>
               ))}
             </div>
-          </motion.div>
+          </motion.div></DashboardSection>
 
           {/* SERVICES IN MOTION */}
-          {(activeServicesCount > 0 || pendingRequestsCount > 0) && (
+          <DashboardSection name="client_services">{(activeServicesCount > 0 || pendingRequestsCount > 0) && (
             <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
               <div className="p-5 border-b border-[var(--border)]">
                 <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -125,7 +126,7 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
                       </div>
                       <div>
                         <h4 className="font-bold text-[var(--text-primary)]">{svc.service_name}</h4>
-                        <p className="text-xs font-medium text-emerald-500 mt-1 uppercase tracking-wider">{svc.status}</p>
+                        <p className="text-xs font-medium text-emerald-500 mt-1 uppercase tracking-wider">{t(svc.status)}</p>
                       </div>
                     </div>
                     <Link href="/messages" className="p-2 bg-slate-100 dark:bg-zinc-800 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors">
@@ -152,10 +153,10 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
                 )}
               </div>
             </motion.div>
-          )}
+          )}</DashboardSection>
 
           {/* ACTIVE PROJECTS */}
-          {activeProjectsCount > 0 && (
+          <DashboardSection name="projects" module="projects">{activeProjectsCount > 0 && (
             <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
               <div className="p-5 border-b border-[var(--border)]">
                 <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -168,7 +169,7 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
                     <div className="p-4 border border-[var(--border)] rounded-xl hover:border-indigo-500/50 hover:bg-[var(--sidebar-hover)] transition-all cursor-pointer group">
                       <h4 className="font-bold text-[var(--text-primary)] mb-1 group-hover:text-indigo-500 transition-colors">{project.name}</h4>
                       <div className="flex items-center justify-between mt-4">
-                        <span className="text-xs font-medium text-[var(--text-secondary)]">{project.status}</span>
+                        <span className="text-xs font-medium text-[var(--text-secondary)]">{t(project.status)}</span>
                         <ArrowUpRight className="w-4 h-4 text-[var(--text-secondary)] group-hover:text-indigo-500" />
                       </div>
                     </div>
@@ -176,13 +177,13 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
                 ))}
               </div>
             </motion.div>
-          )}
+          )}</DashboardSection>
         </div>
 
         {/* RIGHT COLUMN */}
         <div className="space-y-6">
           {/* ONBOARDING CHECKLIST WIDGET */}
-          {showOnboarding && (
+          <DashboardSection name="onboarding">{showOnboarding && (
             <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
               <div className="p-5 border-b border-[var(--border)] flex justify-between items-center">
                 <h3 className="font-bold text-[var(--text-primary)] text-sm uppercase tracking-wider text-amber-600">{t("client_dashboard.onboarding")}</h3>
@@ -206,10 +207,10 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
                 </div>
               </div>
             </motion.div>
-          )}
+          )}</DashboardSection>
 
           {/* ACTIVE STRATEGY WIDGET */}
-          {(clientStats?.seoStrategy || clientStats?.targetKeywords?.length > 0) && (
+          <DashboardSection name="client_strategy">{(clientStats?.seoStrategy || clientStats?.targetKeywords?.length > 0) && (
             <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
                <div className="p-5 border-b border-[var(--border)]">
                 <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -242,10 +243,10 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
                 )}
               </div>
             </motion.div>
-          )}
+          )}</DashboardSection>
 
           {/* COMPANY PROFILE WIDGET */}
-          <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
+          <DashboardSection name="client_profile"><motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
              <div className="p-5 border-b border-[var(--border)]">
               <h3 className="font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Shield className="w-5 h-5 text-slate-400" /> {t("client_dashboard.identity")}
@@ -276,7 +277,7 @@ export function ClientDashboard({ clientStats, NAV_CARDS, language }: any) {
                 ))}
               </div>
             </div>
-          </motion.div>
+          </motion.div></DashboardSection>
 
         </div>
       </div>

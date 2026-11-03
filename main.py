@@ -143,21 +143,19 @@ class BulkDeleteRequest(BaseModel):
 def register_sent_emails_endpoint(app, get_session):
     from fastapi import Depends
     from sqlmodel import Session
-    from sqlalchemy import func
+    from sqlalchemy import func, case
 
     @app.get("/sent-emails")
     def get_sent_emails(client_id: int = None, limit: int = 50, session: Session = Depends(get_session)):
         query = select(SentEmail).order_by(SentEmail.sent_at.desc())
-        total_query = select(func.count(SentEmail.id))
-        manual_query = select(func.count(SentEmail.id)).where(
-            SentEmail.manual == True)
         if client_id:
             query = query.where(SentEmail.client_id == client_id)
-            total_query = total_query.where(SentEmail.client_id == client_id)
-            manual_query = manual_query.where(SentEmail.client_id == client_id)
 
-        total_count = session.exec(total_query).first() or 0
-        manual_count = session.exec(manual_query).first() or 0
+        count_query = select(func.count(SentEmail.id), func.coalesce(func.sum(
+            case((SentEmail.manual == True, 1), else_=0)), 0))
+        if client_id:
+            count_query = count_query.where(SentEmail.client_id == client_id)
+        total_count, manual_count = session.exec(count_query).one()
         auto_count = total_count - manual_count
 
         emails = session.exec(query.limit(limit)).all()
@@ -573,6 +571,8 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         from modules import sales_access
         sales_access.actor.set(None)
+        from modules import demo_usage
+        demo_usage.demo_context.set(None)
         # Reset context for this request
         current_client_id.set(None)
         current_salesperson_id.set(None)
@@ -660,15 +660,38 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         if (gated_tenant is None or gated_tenant < 1) and not operator_create and (no_selection or tenant_scope.requires_tenant(path)):
             return JSONResponse(status_code=403 if current_salesperson_id.get() else 401,
                                 content={"detail": "Sign in and select a valid company to access CRM records"})
-        if gated_tenant is not None and gated_tenant >= 1:
-            for feature_key in features.gates_for_path(path):
-                from starlette.concurrency import run_in_threadpool
-                person = sales_access.actor.get()
-                enabled = await run_in_threadpool(sales_access.effective_modules, gated_tenant, person[1] if person else "")
+        gate_keys = features.gates_for_path(path)
+        if gated_tenant is not None and gated_tenant >= 1 and gate_keys:
+            from starlette.concurrency import run_in_threadpool
+            person = sales_access.actor.get()
+            enabled = await run_in_threadpool(sales_access.effective_modules, gated_tenant, person[1] if person else "")
+            for feature_key in gate_keys:
                 if not enabled.get(feature_key, True):
                     return JSONResponse(status_code=403, content={
                         "detail": f"The '{features.FEATURES[feature_key].label}' module is not enabled for your account.",
                         "feature": feature_key})
+
+        if demo_usage.request_policy(request.method, path) and not current_salesperson_id.get():
+            return JSONResponse(status_code=401, content={"detail": "Sign in to use paid services"})
+        if gated_tenant and gated_tenant > 0 and current_salesperson_id.get():
+            def _demo_policy():
+                with Session(engine) as session:
+                    from types import SimpleNamespace
+                    person = sales_access.actor.get()
+                    actor_snapshot = SimpleNamespace(tenant_id=gated_tenant, role=person[1]) if person else None
+                    return demo_usage.restricted_tenant(session, user=actor_snapshot)
+            demo_tid = await run_in_threadpool(_demo_policy)
+            demo_usage.demo_context.set(demo_tid)
+            if demo_tid:
+                policy = demo_usage.request_policy(request.method, path)
+                try:
+                    if policy == "blocked":
+                        raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED", "limit_type": "ai",
+                                            "message": "Bulk and background paid services require a full account. Use individual AI actions in the demo."})
+                    if policy:
+                        await run_in_threadpool(demo_usage.check, demo_tid, policy)
+                except HTTPException as error:
+                    return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
 
         # Try to infer client_id from path parameters
         # Example paths: /clients/123/something or /projects/456 where we might need to lookup client
@@ -680,7 +703,16 @@ class APIIntelligenceMiddleware(BaseHTTPMiddleware):
         return response
 
 
+from modules import demo_usage
+demo_usage.install_guards()
+
 app = FastAPI(title="SerpHawk CRM", version="2.0.0")
+
+
+@app.on_event("shutdown")
+def stop_background_jobs():
+    from modules.job_runtime import STOP
+    STOP.set()
 
 
 @app.exception_handler(Exception)
@@ -743,6 +775,9 @@ def on_startup():
     except Exception as e:
         print(
             f"[startup] create_db_and_tables skipped (tables likely exist): {type(e).__name__}: {e}")
+
+    from database import DemoServiceUsage, engine as quota_engine
+    DemoServiceUsage.__table__.create(quota_engine, checkfirst=True)
 
     # Ensure SuperAdmin exists
     try:
@@ -1078,32 +1113,9 @@ def on_startup():
     except Exception as e:
         print("tenant call limits already exist or error:", e)
 
-# Keep the Neon serverless DB awake + pool warm. Without this, the first
-    # requests after ~5min of idle trigger a slow cold-start (~5-7s each).
-    try:
-        import threading as _threading
-        from database import engine as _keepalive_engine
-
-        def _db_keepalive_loop():
-            import time as _time
-            from sqlalchemy import text as _text
-            while True:
-                _time.sleep(60)
-                try:
-                    with _keepalive_engine.connect() as _conn:
-                        _conn.execute(_text("SELECT 1"))
-                except Exception as _e:
-                    print("Keepalive ping failed:", _e)
-
-        if os.getenv("DB_KEEPALIVE", "1") == "0":
-            # Tests start the app's startup hook many times; each ping thread would share (and roll back) their one connection.
-            print("DB keepalive disabled (DB_KEEPALIVE=0).")
-        else:
-            _threading.Thread(target=_db_keepalive_loop,
-                              daemon=True, name="db-keepalive").start()
-            print("DB keepalive started (pings every 60s).")
-    except Exception as e:
-        print("Could not start DB keepalive:", e)
+    # Warm-up traffic is an explicit operational choice, not a default.
+    from modules.background import start_keepalive
+    start_keepalive(engine)
 
     try:
         with engine.connect() as conn:
@@ -2776,14 +2788,6 @@ def omnisearch(q: str, session: Session = Depends(get_session)):
         results.append({"type": "Task", "title": t.title,
                        "subtitle": t.status, "route": f"/tasks"})
 
-    # Search Deals
-    deals = session.exec(select(Deal).where(
-        Deal.tenant_id == tenant_id,
-        Deal.title.ilike(search_term)
-    ).limit(5)).all()
-    for d in deals:
-        results.append({"type": "Deal", "title": d.title,
-                       "subtitle": f"${d.value}", "route": f"/pipeline"})
 
     return {"results": results}
 
@@ -3058,26 +3062,10 @@ def get_dashboard_call_pitch(session: Session = Depends(get_session)):
     if not client:
         return {"client": None, "pitch_text": None}
 
+    if demo_usage.restricted_tenant(session):
+        return {"client": None, "pitch_text": None, "message": "Use an individual call pitch action in the demo."}
+
     if not client.call_pitch_text:
-        if tenant_id:
-            tenant = session.get(Tenant, tenant_id)
-
-            if tenant:
-                user = session.exec(
-                    select(User).where(User.tenant_id == tenant_id)
-                ).first()
-
-                if user and user.role == "Demo":
-                    if tenant.usage_calls >= tenant.limit_calls:
-                        return {
-                            "client": _client_dict(client, session),
-                            "pitch_text": "Demo limit reached. You can only generate up to 5 pitches."
-                        }
-
-                    tenant.usage_calls += 1
-                    session.add(tenant)
-                    session.commit()
-
         try:
             import openai
             import os
@@ -7704,8 +7692,11 @@ def dashboard_stats(
     email: str = Query(""),
     session: Session = Depends(get_session),
 ):
+    # Identity and role always come from the signed-in user, never query parameters.
+    actor = _require_roles(session, ["Admin", "SalesManager", "Sales", "Employee", "Demo", "Client", "ProjectMember", "Intern"])
+    role, email = _normalize_role(actor.role), actor.email
     if role == "SalesManager":
-        user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
+        user = actor
         if not user:
             return {"error": "User not found"}
 
@@ -7740,12 +7731,12 @@ def dashboard_stats(
             _RecentCallRow(c.summary, c.phone_number, c.createdAt)
             for c in session.exec(select(CallLog).where(
                 or_(CallLog.assigned_to == user.name,
-                    CallLog.assigned_to == str(user.id)))).all()
+                    CallLog.assigned_to == str(user.id))).order_by(CallLog.createdAt.desc()).limit(5)).all()
         ] + [
             _RecentCallRow(a.summary, a.to_number, a.created_at)
             for a in session.exec(select(AICall).where(
                 or_(AICall.assigned_to == user.name,
-                    AICall.assigned_to == str(user.id)))).all()
+                    AICall.assigned_to == str(user.id))).order_by(AICall.created_at.desc()).limit(5)).all()
         ]
         recent_calls.sort(key=lambda c: c.createdAt.isoformat() if c.createdAt else "", reverse=True)
         recent_calls = recent_calls[:5]
@@ -7768,49 +7759,21 @@ def dashboard_stats(
 
         activities.sort(key=lambda x: x["date"] or "", reverse=True)
 
+        converted_leads_count = session.exec(select(func.count(Lead.id)).where(Lead.owner_id == user.id, or_(Lead.is_converted == True, Lead.converted_student_id > 0))).one()
         return {
             "isSalesManager": True,
             "metrics": {
                 "assigned_leads": assigned_leads_count,
                 "assigned_contacts": assigned_contacts_count,
-                "assigned_clients": assigned_clients_count
+                "assigned_clients": assigned_clients_count,
+                "converted_leads": converted_leads_count,
+                "conversion_percentage": round(100 * converted_leads_count / assigned_leads_count, 1) if assigned_leads_count else 0,
             },
             "recent_activity": activities[:5]
         }
 
-    if role == "Demo":
-        user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
-        if not user:
-            return {"error": "User not found"}
-
-        # Read usage from tenant record (the authoritative source)
-        tenant = session.get(
-            Tenant, user.tenant_id) if user.tenant_id else None
-
-        if tenant:
-            return {
-                "isDemo": True,
-                "usage": {
-                    "clients_leads": tenant.usage_clients,
-                    "email_agent": tenant.usage_emails,
-                    "radar": tenant.usage_searches
-                },
-                "limits": {
-                    "clients_leads": tenant.limit_clients,
-                    "email_agent": tenant.limit_emails,
-                    "radar": tenant.limit_searches
-                }
-            }
-
-        # Fallback if no tenant
-        return {
-            "isDemo": True,
-            "usage": {"clients_leads": 0, "email_agent": 0, "radar": 0},
-            "limits": {"clients_leads": 15, "email_agent": 5, "radar": 5}
-        }
-
     if role in ["Client", "ProjectMember", "Intern"]:
-        user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
+        user = actor
         if not user:
             return {"isClient": True}
         cp = session.exec(select(ClientProfile).where(
@@ -7826,12 +7789,11 @@ def dashboard_stats(
         ]
         pending_quotes = [r for r in service_reqs if r.status == "Quoted"]
 
-        # Resolve service names for active services and quotes
+        # One lookup for the page, rather than one per service request.
+        service_ids = {r.service_id for r in active_services + pending_quotes if r.service_id}
+        service_names = dict(session.exec(select(ServiceCatalog.id, ServiceCatalog.name).where(ServiceCatalog.id.in_(service_ids))).all()) if service_ids else {}
         def _resolve_service_name(service_id):
-            if not service_id:
-                return "Service"
-            svc = session.get(ServiceCatalog, service_id)
-            return svc.name if svc else "Service"
+            return service_names.get(service_id, "Service")
 
         # Milestones for this client
         milestones = session.exec(
@@ -7989,214 +7951,9 @@ def dashboard_stats(
             ],
         }
 
-    # Admin / Employee stats
-    total_clients = len(session.exec(select(ClientProfile)).all())
-    active_clients = len(
-        session.exec(select(ClientProfile).where(
-            ClientProfile.status == "Active")).all()
-    )
-    pending_clients = len(
-        session.exec(select(ClientProfile).where(
-            ClientProfile.status == "Pending")).all()
-    )
-    hold_clients = len(
-        session.exec(select(ClientProfile).where(
-            ClientProfile.status == "Hold")).all()
-    )
-    total_projects = len(session.exec(select(Project)).all())
-    total_employees = len(
-        session.exec(select(User).where(User.role == "Employee").where(
-            User.tenant_id == current_tenant_id.get())).all()
-    )
-    total_interns = len(
-        session.exec(select(User).where(User.role == "Intern").where(
-            User.tenant_id == current_tenant_id.get())).all()
-    )
-    total_activities = len(session.exec(select(ActivityLog)).all())
-    # Calls now live in AI Calls (call_logs is no longer used); keep the metric meaningful.
-    total_calls = len(session.exec(select(CallLog)).all()) + \
-        len(session.exec(select(AICall)).all())
-
-    try:
-        from database import MarketplaceService
-        total_marketplace = len(session.exec(select(MarketplaceService)).all())
-    except:
-        total_marketplace = 0
-
-    # Build real 7-day chart data from database
-    labels = []
-    activity_chart = []
-    email_chart = []
-    call_chart = []
-    all_activities = session.exec(select(ActivityLog)).all()
-    all_emails = session.exec(select(SentEmail)).all()
-    all_calls_list = session.exec(select(CallLog)).all()
-    all_ai_calls_list = session.exec(select(AICall)).all()
-    total_emails_sent = len(all_emails)
-    for i in range(6, -1, -1):
-        day = datetime.utcnow() - timedelta(days=i)
-        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day_start + timedelta(days=1)
-        labels.append(day.strftime("%b %d"))
-        activity_chart.append(sum(
-            1 for a in all_activities if a.createdAt and day_start <= _as_naive_utc(a.createdAt) < day_end))
-        email_chart.append(sum(
-            1 for e in all_emails if e.sent_at and day_start <= _as_naive_utc(e.sent_at) < day_end))
-        call_chart.append(
-            sum(1 for c in all_calls_list if c.createdAt and day_start <= _as_naive_utc(c.createdAt) < day_end)
-            + sum(1 for c in all_ai_calls_list if c.created_at and day_start <= _as_naive_utc(c.created_at) < day_end))
-
-    import calendar
-    all_invoices = session.exec(select(Invoice)).all()
-    all_quotes = session.exec(select(CRMQuote)).all()
-    all_sales_orders = session.exec(select(SalesOrder)).all()
-    all_purchase_orders = session.exec(select(PurchaseOrder)).all()
-    all_service_reqs = session.exec(select(ServiceRequest)).all()
-
-    def _billing_value(row):
-        return getattr(row, "grand_total", None) or getattr(row, "total", None) or 0
-
-    revenue_data = []
-    today = datetime.utcnow()
-    for i in range(5, -1, -1):
-        target_month = today.month - i
-        target_year = today.year
-        while target_month <= 0:
-            target_month += 12
-            target_year -= 1
-
-        month_start = datetime(target_year, target_month, 1)
-        next_month = target_month + 1
-        next_year = target_year
-        if next_month > 12:
-            next_month = 1
-            next_year += 1
-        month_end = datetime(next_year, next_month, 1)
-
-        def _in_month(row):
-            v = _as_naive_utc(getattr(row, "created_at", None))
-            return bool(v and month_start <= v < month_end)
-
-        # Money in: quotes + paid invoices + sales orders created this month.
-        rev = (
-            sum(_billing_value(q) for q in all_quotes if _in_month(q))
-            + sum(_billing_value(inv)
-                  for inv in all_invoices if inv.status == "Paid" and _in_month(inv))
-            + sum(_billing_value(o) for o in all_sales_orders if _in_month(o))
-        )
-        # Money out: purchase orders created this month.
-        exp = sum(_billing_value(po)
-                  for po in all_purchase_orders if _in_month(po))
-        revenue_data.append(
-            {"name": calendar.month_abbr[target_month], "revenue": rev, "expenses": exp})
-
-    pipeline_data = [
-        {"stage": "Prospecting", "count": pending_clients},
-        {"stage": "Qualification", "count": len(
-            [r for r in all_service_reqs if r.status == "Pending"])},
-        {"stage": "Proposal", "count": len(
-            [r for r in all_service_reqs if r.status == "Quoted"])},
-        {"stage": "Negotiation", "count": len(
-            [r for r in all_service_reqs if r.status == "In Progress"])},
-        {"stage": "Closed Won", "count": len(
-            [r for r in all_service_reqs if r.status == "Accepted"])},
-    ]
-
-    recent_activities = session.exec(
-        select(ActivityLog).order_by(ActivityLog.createdAt.desc()).limit(10)
-    ).all()
-
-    all_proposals = session.exec(select(Proposal)).all()
-    total_revenue = sum(
-        inv.total or 0 for inv in all_invoices if inv.status == "Paid")
-    total_pipeline_value = sum(
-        p.total_value or 0 for p in all_proposals if p.status not in ("Accepted", "Declined"))
-
-    total_quotes_value = sum(_billing_value(q) for q in all_quotes)
-    accepted_quotes_value = sum(_billing_value(q)
-                                for q in all_quotes if q.status == "Accepted")
-    total_quotes_count = len(all_quotes)
-    accepted_quotes_count = sum(
-        1 for q in all_quotes if q.status == "Accepted")
-
-    total_sales_orders_value = sum(_billing_value(o) for o in all_sales_orders)
-    fulfilled_sales_orders_value = sum(_billing_value(
-        o) for o in all_sales_orders if o.status in ("Fulfilled", "Paid", "Completed"))
-    total_sales_orders_count = len(all_sales_orders)
-    fulfilled_sales_orders_count = sum(
-        1 for o in all_sales_orders if o.status in ("Fulfilled", "Paid", "Completed"))
-
-    total_purchase_orders_value = sum(
-        _billing_value(po) for po in all_purchase_orders)
-    received_purchase_orders_value = sum(_billing_value(
-        po) for po in all_purchase_orders if po.status in ("Received", "Completed"))
-    total_purchase_orders_count = len(all_purchase_orders)
-    received_purchase_orders_count = sum(
-        1 for po in all_purchase_orders if po.status in ("Received", "Completed"))
-
-    total_invoices_value = sum(inv.total or 0 for inv in all_invoices)
-    paid_invoices_value = sum(
-        inv.total or 0 for inv in all_invoices if inv.status == "Paid")
-    sent_invoices_value = sum(
-        inv.total or 0 for inv in all_invoices if inv.status == "Sent")
-    overdue_invoices_value = sum(
-        inv.total or 0 for inv in all_invoices if inv.status == "Overdue")
-    partial_invoices_value = sum(
-        inv.total or 0 for inv in all_invoices if inv.status == "Partial")
-    paid_invoices_count = sum(
-        1 for inv in all_invoices if inv.status == "Paid")
-    total_invoices_count = len(all_invoices)
-
-    return {
-        "revenue": total_revenue,
-        "pipelineValue": total_pipeline_value,
-        "totalQuotesValue": total_quotes_value,
-        "acceptedQuotesValue": accepted_quotes_value,
-        "totalQuotesCount": total_quotes_count,
-        "acceptedQuotesCount": accepted_quotes_count,
-        "totalSalesOrdersValue": total_sales_orders_value,
-        "fulfilledSalesOrdersValue": fulfilled_sales_orders_value,
-        "totalSalesOrdersCount": total_sales_orders_count,
-        "fulfilledSalesOrdersCount": fulfilled_sales_orders_count,
-        "totalPurchaseOrdersValue": total_purchase_orders_value,
-        "receivedPurchaseOrdersValue": received_purchase_orders_value,
-        "totalPurchaseOrdersCount": total_purchase_orders_count,
-        "receivedPurchaseOrdersCount": received_purchase_orders_count,
-        "totalInvoicesValue": total_invoices_value,
-        "paidInvoicesValue": paid_invoices_value,
-        "sentInvoicesValue": sent_invoices_value,
-        "overdueInvoicesValue": overdue_invoices_value,
-        "partialInvoicesValue": partial_invoices_value,
-        "paidInvoicesCount": paid_invoices_count,
-        "totalInvoicesCount": total_invoices_count,
-        "total": total_clients,
-        "active": active_clients,
-        "pending": pending_clients,
-        "hold": hold_clients,
-        "totalProjects": total_projects,
-        "totalEmployees": total_employees,
-        "totalInterns": total_interns,
-        "totalActivities": total_activities,
-        "totalCalls": total_calls,
-        "totalEmailsSent": total_emails_sent,
-        "totalMarketplaceServices": total_marketplace,
-        "revenueData": revenue_data,
-        "pipelineData": pipeline_data,
-        "chartLabels": labels,
-        "activityChart": activity_chart,
-        "emailChart": email_chart,
-        "callChart": call_chart,
-        "recentActivities": [
-            {
-                "id": a.id,
-                "action": a.action,
-                "method": a.method,
-                "content": a.content,
-                "createdAt": a.createdAt.isoformat() if a.createdAt else None,
-            }
-            for a in recent_activities
-        ],
-    }
+    from modules.dashboard import admin_summary
+    from modules.sales_access import effective_modules
+    return admin_summary(session, actor.tenant_id, effective_modules(actor.tenant_id, role))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -9529,7 +9286,7 @@ def add_project_team(project_id: int, body: ProjectTeamRequest, session: Session
     current_members = p.projectMemberIds or []
 
     for email, role in zip(body.emails, body.roles):
-        user = session.exec(select(User).where(User.email == email).execution_options(skip_tenant=True)).first()
+        user = actor
         if not user:
             # Create user
             user = User(
@@ -10886,98 +10643,11 @@ def delete_competitor(analysis_id: int, session: Session = Depends(get_session))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Deals (Visual Sales Pipeline)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-@app.get("/deals")
-def get_deals(user_id: Optional[int] = None, session: Session = Depends(get_session)):
-    q = select(Deal).order_by(Deal.created_at.desc())
-    if user_id:
-        q = q.where(Deal.assigned_to == user_id)
-    deals = session.exec(q).all()
-
-    # We fetch client names for the UI manually
-    results = []
-    for d in deals:
-        client = session.get(ClientProfile, d.client_id)
-        results.append({
-            "id": d.id,
-            "title": d.title,
-            "value": d.value,
-            "client_id": d.client_id,
-            "client_name": client.companyName or client.email if client else "Unknown",
-            "assigned_to": d.assigned_to,
-            "stage": d.stage,
-            "expected_close_date": d.expected_close_date,
-            "final_value": d.final_value,
-            "currency": d.currency or "INR",
-            "won_at": d.won_at.isoformat() if d.won_at else None,
-            "created_at": d.created_at.isoformat()
-        })
-    return {"deals": results}
-
-
-@app.post("/deals")
-def create_deal(body: DealCreateRequest, session: Session = Depends(get_session)):
-    deal = Deal(
-        title=body.title,
-        value=body.value,
-        client_id=body.client_id,
-        assigned_to=body.assigned_to,
-        stage=body.stage,
-        expected_close_date=body.expected_close_date,
-        final_value=body.final_value,
-        currency=body.currency or "INR",
-    )
-    session.add(deal)
-    session.commit()
-    session.refresh(deal)
-    return {"ok": True, "id": deal.id}
-
-
-@app.put("/deals/{deal_id}")
-def update_deal(deal_id: int, body: DealUpdateRequest, session: Session = Depends(get_session)):
-    deal = session.get(Deal, deal_id)
-    if not deal:
-        raise HTTPException(status_code=404, detail="Deal not found")
-    if body.title is not None:
-        deal.title = body.title
-    if body.value is not None:
-        deal.value = body.value
-    if body.assigned_to is not None:
-        deal.assigned_to = body.assigned_to
-    if body.stage is not None:
-        deal.stage = body.stage
-    if body.expected_close_date is not None:
-        deal.expected_close_date = body.expected_close_date
-    if body.final_value is not None:
-        deal.final_value = body.final_value
-    if body.currency is not None:
-        deal.currency = body.currency
-    if body.stage == "Closed Won" and not deal.won_at:
-        deal.won_at = datetime.now(timezone.utc)
-    elif body.stage in ("Closed Lost", "Lead", "Discovery", "Demo", "Negotiation"):
-        deal.won_at = None
-    deal.updated_at = datetime.now(timezone.utc)
-    session.add(deal)
-    session.commit()
-    return {"ok": True}
-
-
-@app.delete("/deals/{deal_id}")
-def delete_deal(deal_id: int, session: Session = Depends(get_session)):
-    deal = session.get(Deal, deal_id)
-    if not deal:
-        raise HTTPException(status_code=404, detail="Deal not found")
-    session.delete(deal)
-    session.commit()
-    return {"ok": True}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Reports
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+# Reports
 def _report_date(value: Optional[str], fallback: date) -> date:
     if not value:
         return fallback
@@ -15776,7 +15446,7 @@ class CaseCreateRequest(BaseModel):
     status: str = "Open"
     priority: str = "Medium"
     category: Optional[str] = None
-    case_type: Optional[str] = "Bug"
+    case_type: Optional[str] = "Issue"
     url: Optional[str] = None
     lead_id: Optional[int] = None
     client_id: Optional[int] = None
@@ -15794,6 +15464,23 @@ class CaseUpdateRequest(BaseModel):
     url: Optional[str] = None
     assigned_to: Optional[int] = None
     resolution: Optional[str] = None
+
+
+def _validate_case_values(values: dict) -> None:
+    allowed = {"status": {"Open", "In Progress", "Resolved", "Closed"},
+               "priority": {"Low", "Medium", "High", "Urgent"},
+               "case_type": {"Issue", "Bug", "Feature Request"}}
+    for key, choices in allowed.items():
+        if key in values and values[key] not in choices:
+            raise HTTPException(status_code=422, detail=f"Invalid {key}")
+    if "subject" in values:
+        if not isinstance(values["subject"], str) or not values["subject"].strip() or len(values["subject"]) > 500:
+            raise HTTPException(status_code=422, detail="Subject must contain 1 to 500 characters")
+        values["subject"] = values["subject"].strip()
+    if "url" in values and values["url"]:
+        url = values["url"]
+        if len(url) > 1000 or (":" in url and not url.startswith(("http://", "https://"))) or url.startswith("//"):
+            raise HTTPException(status_code=422, detail="Use an issue area or an http(s) URL")
 
 
 def _case_for_viewer(session: Session, case_id: int) -> Case:
@@ -15816,168 +15503,6 @@ def _case_dict(c: Case, session: Session) -> dict:
     d["created_at"] = c.created_at.isoformat()
     d["updated_at"] = c.updated_at.isoformat()
     return d
-
-
-_scmhub_cases_engine = None
-
-
-def _scmhub_cases_conn():
-    """Read-only connection to the SCMHub database's `case` table."""
-    import os
-    global _scmhub_cases_engine
-    if _scmhub_cases_engine is None:
-        url = os.getenv("SCMHUB_DATABASE_URL")
-        if not url:
-            return None
-        from sqlalchemy import create_engine as _sch_create_engine
-        _scmhub_cases_engine = _sch_create_engine(
-            url, pool_pre_ping=True, pool_recycle=300)
-    return _scmhub_cases_engine
-
-
-@app.get("/scmhub-cases")
-def list_scmhub_cases(status: Optional[str] = None):
-    """List cases authored in the SCMHub project, read directly from SCMHub's
-    `case` table. Read-only and shared across tenants."""
-    from sqlalchemy import text as _text
-    eng = _scmhub_cases_conn()
-    if eng is None:
-        return {"cases": [], "error": "SCMHUB_DATABASE_URL not configured"}
-    from sqlalchemy.orm import Session as _ORM_Session
-    with _ORM_Session(eng) as s:
-        # Self-heal: cases authored in SCMHub's `cases` table are mirrored into
-        # `case` on creation; if that best-effort sync was skipped or failed,
-        # mirror them lazily here so they are never silently invisible.
-        try:
-            existing = {r[0] for r in s.execute(
-                _text('SELECT case_number FROM "case"')).all()}
-            src = s.execute(_text('''
-                SELECT id, case_number, subject, description, status, priority, assigned_to,
-                       client_id, lead_id, contact_id, created_at, updated_at
-                FROM cases''')).mappings().all()
-            for row in src:
-                if row["case_number"] in existing:
-                    continue
-                entity_type = entity_id = None
-                if row["client_id"]:
-                    entity_type, entity_id = "client", row["client_id"]
-                elif row["lead_id"]:
-                    entity_type, entity_id = "lead", row["lead_id"]
-                elif row["contact_id"]:
-                    entity_type, entity_id = "contact", row["contact_id"]
-                s.execute(_text('DELETE FROM "case" WHERE case_number = :cn'), {
-                          "cn": row["case_number"]})
-                s.execute(_text('''
-                    INSERT INTO "case" (case_number, title, description, status, priority,
-                        assigned_to, created_by, entity_type, entity_id, created_at, updated_at)
-                    VALUES (:case_number, :title, :description, :status, :priority,
-                        :assigned_to, :created_by, :entity_type, :entity_id,
-                        :created_at, :updated_at)'''), {
-                    "case_number": row["case_number"],
-                    "title": row["subject"],
-                    "description": row["description"],
-                    "status": row["status"],
-                    "priority": row["priority"],
-                    "assigned_to": row["assigned_to"],
-                    "created_by": None,
-                    "entity_type": entity_type,
-                    "entity_id": entity_id,
-                    "created_at": row["created_at"],
-                    "updated_at": row["updated_at"]})
-                existing.add(row["case_number"])
-            s.commit()
-        except Exception:
-            s.rollback()
-
-        sql = 'SELECT id, case_number, title, description, status, priority, assigned_to, created_by, entity_type, entity_id, created_at, updated_at FROM "case"'
-        params: dict = {}
-        if status:
-            sql += " WHERE status = :status"
-            params["status"] = status
-        sql += " ORDER BY updated_at DESC NULLS LAST, created_at DESC"
-        rows = s.execute(_text(sql), params).mappings().all()
-        return {"cases": [dict(r) for r in rows]}
-
-
-class ScmhubCaseUpdateRequest(BaseModel):
-    status: Optional[str] = None
-    priority: Optional[str] = None
-    title: Optional[str] = None
-    description: Optional[str] = None
-
-
-@app.put("/scmhub-cases/{case_id}")
-def update_scmhub_case(case_id: int, body: ScmhubCaseUpdateRequest):
-    """Update a case authored in SCMHub. Writes back to SCMHub's `case` mirror
-    table and its source `cases` table so both projects stay in sync."""
-    _require_tenant()
-    from sqlalchemy import text as _text
-    eng = _scmhub_cases_conn()
-    if eng is None:
-        raise HTTPException(
-            status_code=503, detail="SCMHUB_DATABASE_URL not configured")
-    from sqlalchemy.orm import Session as _ORM_Session
-    with _ORM_Session(eng) as s:
-        row = s.execute(_text('SELECT id, case_number, title, description, status, priority FROM "case" WHERE id = :id'), {
-                        "id": case_id}).mappings().first()
-        if not row:
-            raise HTTPException(status_code=404, detail="Case not found")
-
-        updates: dict = {}
-        if body.status:
-            updates["status"] = body.status
-        if body.priority:
-            updates["priority"] = body.priority
-        if body.title is not None:
-            updates["title"] = body.title
-        if body.description is not None:
-            updates["description"] = body.description
-
-        if not updates:
-            return {"ok": True, "case": dict(row)}
-
-        sets = ", ".join(f"{k} = :{k}" for k in updates)
-        s.execute(_text(f'UPDATE "case" SET {sets}, updated_at = now() WHERE id = :id'), {
-                  **updates, "id": case_id})
-
-        source_updates: dict = {}
-        if "title" in updates:
-            source_updates["subject"] = updates["title"]
-        if "description" in updates:
-            source_updates["description"] = updates["description"]
-        if "status" in updates:
-            source_updates["status"] = updates["status"]
-            source_updates["resolved_at"] = "now()" if updates["status"] in (
-                "Resolved", "Closed") else None
-        if "priority" in updates:
-            source_updates["priority"] = updates["priority"]
-        if source_updates:
-            src_frags: list[str] = []
-            src_params: dict = {}
-            if "subject" in source_updates:
-                src_frags.append("subject = :subject")
-                src_params["subject"] = source_updates["subject"]
-            if "description" in source_updates:
-                src_frags.append("description = :description")
-                src_params["description"] = source_updates["description"]
-            if "status" in source_updates:
-                src_frags.append("status = :status")
-                src_params["status"] = source_updates["status"]
-            if "priority" in source_updates:
-                src_frags.append("priority = :priority")
-                src_params["priority"] = source_updates["priority"]
-            if source_updates.get("resolved_at") == "now()":
-                src_frags.append("resolved_at = now()")
-            elif "resolved_at" in source_updates:
-                src_frags.append("resolved_at = NULL")
-            if src_frags:
-                s.execute(_text(f'UPDATE cases SET {", ".join(src_frags)}, updated_at = now() WHERE case_number = :case_number'),
-                          {**src_params, "case_number": row["case_number"]})
-
-        s.commit()
-        fresh = s.execute(_text('SELECT id, case_number, title, description, status, priority, assigned_to, created_by, entity_type, entity_id, created_at, updated_at FROM "case" WHERE id = :id'), {
-                          "id": case_id}).mappings().first()
-        return {"ok": True, "case": dict(fresh)}
 
 
 @app.get("/cases")
@@ -16031,8 +15556,26 @@ def _notify_admins(session, tenant_id, title, message, notif_type="info", link=N
 
 @app.post("/cases")
 def create_case(body: CaseCreateRequest, session: Session = Depends(get_session)):
-    raise HTTPException(
-        status_code=403, detail="Cases are created in the SCMHub project.")
+    actor = _require_roles(session, ["Admin", "SalesManager", "Employee", "ProjectMember", "Demo"])
+    values = body.model_dump()
+    _validate_case_values(values)
+    if not _is_admin_user(actor):
+        if body.assigned_to not in (None, actor.id):
+            raise HTTPException(status_code=403, detail="Only an Admin can assign a case to another user")
+        values["assigned_to"] = actor.id
+    _validate_company_assignee(session, values.get("assigned_to"))
+    for field, model in (("lead_id", Lead), ("client_id", ClientProfile), ("contact_id", Contact)):
+        if values.get(field) and not session.get(model, values[field]):
+            raise HTTPException(status_code=404, detail="Related record not found")
+    import uuid
+    case = Case(**values, tenant_id=current_tenant_id.get(), case_number=f"CASE-{uuid.uuid4().hex[:12].upper()}")
+    if case.status in ("Resolved", "Closed"):
+        case.resolved_at = datetime.now(timezone.utc)
+    session.add(case)
+    session.commit()
+    session.refresh(case)
+    _notify_admins(session, case.tenant_id, f"New case {case.case_number}", case.subject, link="/support/cases")
+    return {"case": _case_dict(case, session)}
 
 
 @app.get("/cases/{case_id}")
@@ -16050,6 +15593,7 @@ def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depend
         raise HTTPException(status_code=404, detail="Case not found")
     tenant_id = current_tenant_id.get() or c.tenant_id
     updates = body.model_dump(exclude_unset=True)
+    _validate_case_values(updates)
     actor = _current_user(session)
     if "assigned_to" in updates:
         _validate_company_assignee(session, updates["assigned_to"])
@@ -16058,6 +15602,8 @@ def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depend
     old_status = c.status
     if updates.get("status") in ("Resolved", "Closed") and not c.resolved_at:
         c.resolved_at = datetime.now(timezone.utc)
+    if updates.get("status") in ("Open", "In Progress"):
+        c.resolved_at = None
     for k, v in updates.items():
         setattr(c, k, v)
     c.updated_at = datetime.now(timezone.utc)
@@ -16073,8 +15619,7 @@ def update_case(case_id: int, body: CaseUpdateRequest, session: Session = Depend
                 session, tenant_id,
                 title=f"{icon} Case {c.case_number}: {new_status}",
                 message=f"{c.subject} — Status changed from {old_status} → {new_status}",
-                notif_type="success" if new_status in (
-                    "Resolved", "Closed") else "info",
+                notif_type="info",
                 link=f"/support/cases"
             )
         except Exception:

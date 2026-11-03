@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -173,8 +174,7 @@ export default function EmailTrackerTab() {
                         disabled={!integrationEmail}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-50"
                       >
-                        Verify
-                      </button>
+                        <LocalizedText text={"Verify"} /> </button>
                     </div>
                   </div>
                 </div>
@@ -251,8 +251,7 @@ export default function EmailTrackerTab() {
             </div>
           </div>
           <span className="px-3 py-1 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 font-bold text-xs rounded-full">
-            {extractedEmails.length} Pending
-          </span>
+            {extractedEmails.length} <LocalizedText text={"Pending"} /> </span>
         </div>
 
         <div className="space-y-4">

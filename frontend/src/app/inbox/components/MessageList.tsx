@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import React from 'react';
 import { Archive, ArchiveRestore, Inbox, Loader2, Sparkles, Star, X } from 'lucide-react';
@@ -33,8 +34,7 @@ export default function MessageList({
             <b>Sorted by AI</b> for “{aiResults.question}” · {aiResults.count} email{aiResults.count === 1 ? '' : 's'}
           </span>
           <button type="button" onClick={onClearAi} className="flex items-center gap-1 rounded-lg px-2 py-1 font-bold hover:bg-violet-100 dark:hover:bg-violet-500/20">
-            <X size={12} /> Clear
-          </button>
+            <X size={12} /> <LocalizedText text={"Clear"} /> </button>
         </div>
       )}
 

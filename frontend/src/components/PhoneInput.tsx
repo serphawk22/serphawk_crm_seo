@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Search, X } from "lucide-react";
 import { COUNTRY_DIAL_CODES, dialCodeFromLocale, joinPhone, parsePhoneNumber } from "@/lib/phone";
 import { useTenantConfig } from "@/context/TenantConfigContext";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface PhoneInputProps {
   /** The stored value: "<dial code> <national number>", or "" */
@@ -23,6 +24,9 @@ interface PhoneInputProps {
  * the value handed back is always "<dial code> <national number>" (empty when no number is typed).
  */
 export default function PhoneInput({ value, onChange, defaultDialCode, id, name, placeholder, disabled, required }: PhoneInputProps) {
+  const { language, t } = useLanguage();
+  const countryNames = useMemo(() => new Intl.DisplayNames([language], { type: "region" }), [language]);
+  const countryLabel = (country: { code: string; name: string }) => countryNames.of(country.code) || country.name;
   const { settings } = useTenantConfig();
   const fallbackDial = defaultDialCode || settings.default_dial_code || dialCodeFromLocale() || "+1";
 
@@ -57,7 +61,7 @@ export default function PhoneInput({ value, onChange, defaultDialCode, id, name,
   const selected = COUNTRY_DIAL_CODES.find((c) => c.code === countryCode && c.dialCode === dial) || pickCountry(dial) || COUNTRY_DIAL_CODES[0];
   const q = search.trim().toLowerCase();
   const filtered = COUNTRY_DIAL_CODES.filter(
-    (c) => !q || c.name.toLowerCase().includes(q) || (c.nativeName || "").toLowerCase().includes(q) || c.dialCode.includes(q) || c.code.toLowerCase().includes(q)
+    (c) => !q || countryLabel(c).toLocaleLowerCase(language).includes(q) || c.name.toLowerCase().includes(q) || (c.nativeName || "").toLowerCase().includes(q) || c.dialCode.includes(q) || c.code.toLowerCase().includes(q)
   );
 
   return (
@@ -72,8 +76,8 @@ export default function PhoneInput({ value, onChange, defaultDialCode, id, name,
           onClick={() => { setOpen((o) => !o); setSearch(""); }}
           className="flex shrink-0 items-center gap-1.5 rounded-l-xl border-r px-3 py-2 text-sm font-medium transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800/60"
           style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}
-          title={`${selected.name} (${selected.dialCode}) - click to change the country`}
-          aria-label="Change country code"
+          title={`${countryLabel(selected)} (${selected.dialCode}) — ${t("Change country code")}`}
+          aria-label={t("Change country code")}
         >
           <span className="text-base leading-none">{selected.flag}</span>
           <span className="text-xs font-semibold">{selected.dialCode}</span>
@@ -107,18 +111,18 @@ export default function PhoneInput({ value, onChange, defaultDialCode, id, name,
               autoFocus
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search country or code..."
+              placeholder={t("Search country or code...")}
               className="w-full bg-transparent text-xs outline-none"
               style={{ color: "var(--text-primary)" }}
             />
             {search && (
-              <button type="button" onClick={() => setSearch("")} className="text-slate-400 hover:text-slate-600" aria-label="Clear search">
+              <button type="button" onClick={() => setSearch("")} className="text-slate-400 hover:text-slate-600" aria-label={t("Clear search")}>
                 <X className="h-3 w-3" />
               </button>
             )}
           </div>
           <div className="max-h-48 space-y-0.5 overflow-y-auto">
-            {filtered.length === 0 && <p className="p-3 text-center text-xs text-slate-400">No country found</p>}
+            {filtered.length === 0 && <p className="p-3 text-center text-xs text-slate-400">{t("No country found")}</p>}
             {filtered.map((c) => {
               const active = c.code === selected.code && c.dialCode === selected.dialCode;
               return (
@@ -138,7 +142,7 @@ export default function PhoneInput({ value, onChange, defaultDialCode, id, name,
                 >
                   <span className="flex items-center gap-2 truncate">
                     <span className="text-sm leading-none">{c.flag}</span>
-                    <span className="truncate">{c.name}</span>
+                    <span className="truncate">{countryLabel(c)}</span>
                   </span>
                   <span className={`ml-2 shrink-0 font-mono text-[11px] ${active ? "text-blue-100" : "text-slate-400"}`}>{c.dialCode}</span>
                 </button>

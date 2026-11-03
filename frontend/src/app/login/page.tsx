@@ -1,4 +1,5 @@
 "use client";
+import { useLanguage } from "@/context/LanguageContext";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -7,9 +8,11 @@ import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import { Loader2, ArrowRight, ShieldCheck, Mail, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import LanguageSelector from "@/components/LanguageSelector";
 import AuthThemeToggle from "@/components/AuthThemeToggle";
 
 export default function LoginPage() {
+  const { t } = useLanguage();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -81,11 +84,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleDemoLogin = () => {
-    setEmail("admin@serphawk.com");
-    setPassword("Admin123!");
-    setError("");
-  };
 
   if (!mounted) return <div className="min-h-screen bg-[#fafafa] dark:bg-[#0a0a0b]" />;
 
@@ -98,7 +96,8 @@ export default function LoginPage() {
         <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-blue-200 dark:bg-blue-900/40 rounded-full mix-blend-multiply dark:mix-blend-lighten filter blur-3xl opacity-50 animate-blob animation-delay-2000" />
       </div>
 
-      <div className="absolute top-6 right-6 z-50">
+      <div className="absolute top-6 right-6 z-50 flex items-center gap-2">
+        <LanguageSelector />
         <AuthThemeToggle />
       </div>
 
@@ -116,15 +115,15 @@ export default function LoginPage() {
                 <path d="M12 3L3 8.5V15.5L12 21L21 15.5V8.5L12 3Z" className="fill-white" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">Welcome back</h1>
-            <p className="text-slate-500 dark:text-zinc-400 text-sm">Sign in to your SERP Hawk workspace.</p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">{t("Welcome back")}</h1>
+            <p className="text-slate-500 dark:text-zinc-400 text-sm">{t("Sign in to your SERP Hawk workspace.")}</p>
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             <div className="space-y-4">
               {/* Email */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase">Email Address</label>
+                <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase">{t("Email Address")}</label>
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                     <Mail className="h-4 w-4 text-slate-400 dark:text-zinc-500 group-focus-within:text-indigo-500 transition-colors" />
@@ -135,7 +134,7 @@ export default function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-zinc-950/50 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all shadow-sm"
-                    placeholder="name@company.com"
+                    placeholder={t("name@company.com")}
                   />
                 </div>
               </div>
@@ -143,10 +142,9 @@ export default function LoginPage() {
               {/* Password */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase">Password</label>
+                  <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase">{t("Password")}</label>
                   <Link href="/forgot-password" className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">
-                    Forgot password?
-                  </Link>
+                    {t("Forgot password?")}{" "}</Link>
                 </div>
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -189,15 +187,14 @@ export default function LoginPage() {
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <>
-                  Sign in
-                  <ArrowRight className="w-4 h-4" />
+                  {t("Sign in")}{" "}<ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
 
             <div className="relative flex items-center py-2">
               <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
-              <span className="flex-shrink-0 mx-4 text-slate-400 dark:text-zinc-600 text-xs font-medium uppercase tracking-widest">Or</span>
+              <span className="flex-shrink-0 mx-4 text-slate-400 dark:text-zinc-600 text-xs font-medium uppercase tracking-widest">{t("Or")}</span>
               <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
             </div>
 
@@ -217,28 +214,19 @@ export default function LoginPage() {
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                 </svg>
               )}
-              Continue with Google
-            </button>
+              {t("Continue with Google")}{" "}</button>
           </form>
 
           <div className="mt-8 pt-6 border-t border-slate-100 dark:border-zinc-800/60 flex flex-col items-center gap-3">
-            <button 
-              onClick={handleDemoLogin}
-              className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
-            >
-              Try the Admin Demo Account
-            </button>
             <p className="text-center text-sm text-slate-500 dark:text-zinc-500">
-              New to SERP Hawk?{" "}
+              {t("New to SERP Hawk?")}{" "}
               <Link href="/signup" className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-                Create a demo workspace
-              </Link>
+                {t("Create a demo workspace")}{" "}</Link>
             </p>
             <p className="text-center text-sm text-slate-500 dark:text-zinc-500">
-              Setting up your company?{" "}
+              {t("Setting up your company?")}{" "}
               <Link href="/register" className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-                Register your company
-              </Link>
+                {t("Register your company")}{" "}</Link>
             </p>
           </div>
 

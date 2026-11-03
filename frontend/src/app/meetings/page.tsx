@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calendar, Plus, X, Clock, Users, MapPin, CheckCircle2, Filter, Search, Loader2, Video, Phone, Coffee, BarChart2, Trash2, Edit2, Upload, FileText, LayoutGrid, List, ExternalLink } from "lucide-react";
@@ -312,11 +313,11 @@ export default function MeetingsPage() {
                   <tr>
                     <th className="px-5 py-3.5">Meeting / Title</th>
                     <th className="px-5 py-3.5">Client / Lead</th>
-                    <th className="px-5 py-3.5">Scheduled Date & Time</th>
+                    <th className="px-5 py-3.5"><LocalizedText text={"Scheduled Date & Time"} /></th>
                     <th className="px-5 py-3.5">Host / Attendees</th>
-                    <th className="px-5 py-3.5">Location / Link</th>
-                    <th className="px-5 py-3.5">Status</th>
-                    <th className="px-5 py-3.5 text-center">Actions</th>
+                    <th className="px-5 py-3.5"><LocalizedText text={"Location / Link"} /></th>
+                    <th className="px-5 py-3.5"><LocalizedText text={"Status"} /></th>
+                    <th className="px-5 py-3.5 text-center"><LocalizedText text={"Actions"} /></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/60">
@@ -454,9 +455,9 @@ export default function MeetingsPage() {
                     className={`text-[10px] font-black uppercase tracking-wide px-2 py-1 rounded-lg border cursor-pointer focus:outline-none transition-all shadow-sm ${statusCls}`}
                     title="Click to change meeting status"
                   >
-                    <option value="Scheduled" className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100">Scheduled</option>
-                    <option value="Completed" className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100">Completed</option>
-                    <option value="Cancelled" className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100">Cancelled</option>
+                    <option value="Scheduled" className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100"><LocalizedText text={"Scheduled"} /></option>
+                    <option value="Completed" className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100"><LocalizedText text={"Completed"} /></option>
+                    <option value="Cancelled" className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100"><LocalizedText text={"Cancelled"} /></option>
                     <option value="No-show" className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100">No-show</option>
                     <option value="Missed" className="bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100">Missed</option>
                   </select>
@@ -489,8 +490,7 @@ export default function MeetingsPage() {
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all shadow-sm"
                   >
-                    <Video className="w-3.5 h-3.5" /> Join Meeting
-                  </a>
+                    <Video className="w-3.5 h-3.5" /> <LocalizedText text={"Join Meeting"} /></a>
                 </div>
               )}
               {m.location && (
@@ -563,14 +563,14 @@ export default function MeetingsPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">Type</label>
+                    <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block"><LocalizedText text={"Type"} /></label>
                     <select value={form.meeting_type} onChange={e => setForm(f => ({ ...f, meeting_type: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500">
                       {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block">Status</label>
+                    <label className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mb-1 block"><LocalizedText text={"Status"} /></label>
                     <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500">
                       {STATUSES.map(st => <option key={st} value={st}>{st}</option>)}

@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useState } from "react";
 import { AlertCircle, BookOpen, CheckCircle2, CreditCard, Loader2, Plus } from "lucide-react";
@@ -273,8 +274,7 @@ export default function StudentEnrollmentActions({ studentId, enrollments, canMa
                         />
                       </label>
                       <label className="text-xs font-medium">
-                        Payment Method
-                        <select
+                        <LocalizedText text={"Payment Method"} /> <select
                           value={paymentMode}
                           onChange={event => setPaymentMode(event.target.value)}
                           className="mt-1 min-h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -316,8 +316,7 @@ export default function StudentEnrollmentActions({ studentId, enrollments, canMa
                 onClick={() => setShowAddEnrollment(false)}
                 className="text-xs text-[var(--text-secondary)] hover:underline"
               >
-                Close
-              </button>
+                <LocalizedText text={"Close"} /> </button>
             )}
           </div>
           {loadingOptions ? (
@@ -365,8 +364,7 @@ export default function StudentEnrollmentActions({ studentId, enrollments, canMa
                 />
               </label>
               <label className="text-sm font-medium">
-                Discount
-                <input
+                <LocalizedText text={"Discount"} /> <input
                   type="number"
                   min="0"
                   step="0.01"

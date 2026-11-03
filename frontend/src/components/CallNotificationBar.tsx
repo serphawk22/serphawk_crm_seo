@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Phone, X, Clock, MessageSquare, Check } from "lucide-react";
+import { createVisiblePoll } from "@/lib/visiblePoll";
+import { useRole } from "@/context/RoleContext";
 import { API_BASE_URL } from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
 
@@ -42,16 +44,19 @@ function saveDismissed(set: Set<number>) {
 
 export function CallNotificationBar() {
   const { t } = useLanguage();
+  const { user } = useRole();
+  const poll = useRef<ReturnType<typeof createVisiblePoll> | null>(null);
   const [calls, setCalls] = useState<Call[]>([]);
   const [current, setCurrent] = useState<Call | null>(null);
   const [summary, setSummary] = useState("");
   const [saving, setSaving] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
-  const fetchUnsummarized = useCallback(async () => {
+  const fetchUnsummarized = useCallback(async (signal: AbortSignal) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/calls?unsummarized=true`);
+      const res = await fetch(`${API_BASE_URL}/calls?unsummarized=true`, { signal });
       const data = await res.json();
+      if (signal.aborted) return;
       const dismissedIds = loadDismissed();
       const list: Call[] = (data.calls || []).filter((c: Call) => !dismissedIds.has(c.id));
       setCalls(list);
@@ -64,17 +69,22 @@ export function CallNotificationBar() {
   }, [dismissed]);
 
   useEffect(() => {
-    fetchUnsummarized();
-    const interval = setInterval(fetchUnsummarized, 30_000);
+    setCalls([]);
+    setCurrent(null);
+    if (!user?.id) return;
+    const active = createVisiblePoll(fetchUnsummarized, 30_000);
+    poll.current = active;
+    const refresh = () => { void active.refresh(); };
     
     // Listen for simulation events
-    window.addEventListener("refresh-calls", fetchUnsummarized);
+    window.addEventListener("refresh-calls", refresh);
     
     return () => {
-      clearInterval(interval);
-      window.removeEventListener("refresh-calls", fetchUnsummarized);
+      active.dispose();
+      poll.current = null;
+      window.removeEventListener("refresh-calls", refresh);
     };
-  }, [fetchUnsummarized]);
+  }, [fetchUnsummarized, user?.id]);
 
   // Show each call only once ever: record it the moment it is displayed,
   // so reloads / navigation / the 30s poll never bring the same popup back.

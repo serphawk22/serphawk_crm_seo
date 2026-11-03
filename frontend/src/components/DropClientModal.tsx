@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -318,8 +319,7 @@ export default function DropClientModal({
                   onClick={onClose}
                   className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
                 >
-                  Close
-                </button>
+                  <LocalizedText text={"Close"} /> </button>
                 <button
                   type="button"
                   onClick={handleReactivate}
@@ -348,8 +348,7 @@ export default function DropClientModal({
               {/* Company Name */}
               <div>
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1.5 flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5" /> Company Name
-                </label>
+                  <Building2 className="w-3.5 h-3.5" /> <LocalizedText text={"Company Name"} /> </label>
                 <input
                   type="text"
                   required
@@ -468,8 +467,7 @@ export default function DropClientModal({
                   onClick={onClose}
                   className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
                 >
-                  Cancel
-                </button>
+                  <LocalizedText text={"Cancel"} /> </button>
                 <button
                   type="submit"
                   disabled={saving}

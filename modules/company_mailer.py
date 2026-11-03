@@ -246,9 +246,13 @@ def send_and_record(session: Session, account: MailAccount, *, tenant_id: Option
                                "sent_from_source": account.source}),
     )
     session.add(row)
+    session.flush()
+    tracking_id = row.id
     session.commit()
     try:
-        sender(account, to=to, subject=subject, body=body, tracking_id=row.id, message_id=message_id)
+        from modules.job_runtime import assert_ownership
+        assert_ownership()
+        sender(account, to=to, subject=subject, body=body, tracking_id=tracking_id, message_id=message_id)
     except Exception:
         session.delete(row)
         session.commit()

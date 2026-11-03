@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useState } from "react";
 import Link from "next/link";
@@ -227,7 +228,7 @@ export default function StudentExecutiveOverview({
               </svg>
               <div className="absolute flex flex-col items-center justify-center text-center">
                 <span className="text-sm font-extrabold text-[var(--text-primary)]">{paymentPct}%</span>
-                <span className="text-[9px] font-medium text-[var(--text-secondary)]">Paid</span>
+                <span className="text-[9px] font-medium text-[var(--text-secondary)]"><LocalizedText text={"Paid"} /></span>
               </div>
             </div>
 
@@ -337,8 +338,7 @@ export default function StudentExecutiveOverview({
               Tasks & Projects
             </span>
             <span className="rounded bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-800 dark:bg-violet-950 dark:text-violet-300">
-              {completedTasks}/{totalTasks} Done
-            </span>
+              {completedTasks}/{totalTasks} <LocalizedText text={"Done"} /> </span>
           </div>
 
           <div className="my-3 flex items-center justify-center gap-4">
@@ -365,22 +365,21 @@ export default function StudentExecutiveOverview({
               </svg>
               <div className="absolute flex flex-col items-center justify-center text-center">
                 <span className="text-sm font-extrabold text-[var(--text-primary)]">{taskPct}%</span>
-                <span className="text-[9px] font-medium text-[var(--text-secondary)]">Done</span>
+                <span className="text-[9px] font-medium text-[var(--text-secondary)]"><LocalizedText text={"Done"} /></span>
               </div>
             </div>
 
             <div className="flex flex-col space-y-1 text-xs">
               <div>
-                <span className="text-[10px] text-[var(--text-secondary)]">Completed</span>
+                <span className="text-[10px] text-[var(--text-secondary)]"><LocalizedText text={"Completed"} /></span>
                 <p className="font-bold text-emerald-700 dark:text-emerald-400">
                   {completedTasks} Submissions
                 </p>
               </div>
               <div>
-                <span className="text-[10px] text-[var(--text-secondary)]">Pending</span>
+                <span className="text-[10px] text-[var(--text-secondary)]"><LocalizedText text={"Pending"} /></span>
                 <p className="font-bold text-amber-600 dark:text-amber-400">
-                  {pendingTasks} Tasks
-                </p>
+                  {pendingTasks} <LocalizedText text={"Tasks"} /> </p>
               </div>
             </div>
           </div>
@@ -493,7 +492,7 @@ export default function StudentExecutiveOverview({
           </div>
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
-              <span className="text-[var(--text-secondary)]">Assigned Salesperson</span>
+              <span className="text-[var(--text-secondary)]"><LocalizedText text={"Assigned Salesperson"} /></span>
               <span className="font-bold text-[var(--text-primary)]">
                 {salesperson?.name || "Unassigned"}
               </span>

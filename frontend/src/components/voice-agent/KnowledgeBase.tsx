@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useCallback, useEffect, useState } from "react";
 import { BookOpen, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
@@ -77,7 +78,7 @@ export default function KnowledgeBase({ notify }: { notify: Notify }) {
                 <div key={k.id} className={cn("rounded-2xl border p-4", k.is_active ? "border-slate-200 dark:border-zinc-800" : "border-dashed border-slate-300 opacity-60")}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex gap-2 flex-wrap"><Badge className={meta?.cls}>{meta?.label}</Badge>
-                      {k.usage_count > 0 && <Badge className="bg-slate-100 text-slate-500">used {k.usage_count}×</Badge>}</div>
+                      {k.usage_count > 0 && <Badge className="bg-slate-100 text-slate-500"><LocalizedText text={"used"} /> {k.usage_count}×</Badge>}</div>
                     <div className="flex gap-1 shrink-0">
                       <button onClick={() => toggleActive(k)} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-500">{k.is_active ? "Active" : "Disabled"}</button>
                       <button onClick={() => setForm({ id: k.id, kind: k.kind, title: k.title, answer: k.answer, tags: k.tags.join(", "), is_active: k.is_active })}
@@ -118,7 +119,7 @@ export default function KnowledgeBase({ notify }: { notify: Notify }) {
               <label className={labelCls}>Tags / keywords (comma separated)</label>
               <input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="price, cost, budget" className={inputCls} />
             </div>
-            <button onClick={save} disabled={saving} className={cn(primaryBtn, "w-full")}>{saving && <Loader2 className="w-4 h-4 animate-spin" />} Save</button>
+            <button onClick={save} disabled={saving} className={cn(primaryBtn, "w-full")}>{saving && <Loader2 className="w-4 h-4 animate-spin" />} <LocalizedText text={"Save"} /></button>
           </div>
         )}
       </Modal>

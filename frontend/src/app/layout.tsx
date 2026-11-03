@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect } from "react";
 import "./globals.css";
@@ -145,12 +146,11 @@ function AppContent({ children }: { children: React.ReactNode }) {
             <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
               <span className="text-white text-xs font-black">S</span>
             </div>
-            <span className="font-bold text-slate-800 dark:text-white text-sm">Supplier Portal</span>
+            <span className="font-bold text-slate-800 dark:text-white text-sm"><LocalizedText text={"Supplier Portal"} /></span>
           </div>
           <a href="/" onClick={() => { localStorage.removeItem("crm_user"); localStorage.removeItem("crm_token"); }}
             className="text-xs font-semibold text-slate-500 hover:text-red-500 transition-colors">
-            Sign Out
-          </a>
+            <LocalizedText text={"Sign Out"} /> </a>
         </nav>
         <main>{gated}</main>
         <Chatbot />

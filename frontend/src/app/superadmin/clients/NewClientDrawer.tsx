@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Building2, CheckCircle2, KeyRound, Loader2, Plus, Sparkles } from "lucide-react";
@@ -100,7 +101,7 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-slate-500 dark:text-zinc-400">{showErrors && !valid ? "Fix the highlighted fields to continue." : "You can change modules and branding any time."}</p>
             <div className="flex gap-3">
-              <button className={ghostBtn} onClick={onClose}>Cancel</button>
+              <button className={ghostBtn} onClick={onClose}><LocalizedText text={"Cancel"} /></button>
               <button className={primaryBtn} onClick={submit} disabled={busy}>
                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Create client
               </button>
@@ -126,8 +127,8 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
             <p className="font-semibold text-slate-900 dark:text-white">What happens next</p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>The admin signs in and sees a setup checklist (logo, contacts, mailbox, team).</li>
-              <li>Open <b>Configure</b> to switch modules on or off, set branding and upload a logo.</li>
-              <li>Use <b>Create demo workspace</b> there to give them a safe place to try things.</li>
+              <li><LocalizedText text={"Open"} /> <b>Configure</b> to switch modules on or off, set branding and upload a logo.</li>
+              <li>Use <b><LocalizedText text={"Create demo workspace"} /></b> there to give them a safe place to try things.</li>
             </ul>
           </div>
         </div>
@@ -139,7 +140,7 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
             <h3 className="mb-3 text-sm font-bold text-slate-900 dark:text-white">1. The company</h3>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className={labelCls}>Company name</label>
+                <label className={labelCls}><LocalizedText text={"Company name"} /></label>
                 <input className={`${inputCls} ${bad("business_name")}`} placeholder="Acme Logistics" value={form.business_name}
                   onChange={(e) => set({ business_name: e.target.value, ...(accountTouched ? {} : { name: slug(e.target.value) }) })} />
                 {field("business_name")}
@@ -151,7 +152,7 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
                 {showErrors && problems.name ? field("name") : <p className="mt-1 text-xs text-slate-500 dark:text-zinc-500">A short unique id; filled in for you.</p>}
               </div>
               <div>
-                <label className={labelCls}>Business type</label>
+                <label className={labelCls}><LocalizedText text={"Business type"} /></label>
                 <select className={inputCls} value={form.industry} onChange={(e) => {
                   const industry = e.target.value;
                   const rec = regions.industries.find((i) => i.key === industry)?.preset;
@@ -163,7 +164,7 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
                 </select>
               </div>
               <div>
-                <label className={labelCls}>Country</label>
+                <label className={labelCls}><LocalizedText text={"Country"} /></label>
                 <select className={inputCls} value={form.country} onChange={(e) => set({ country: e.target.value })}>
                   <option value="">Select a country</option>
                   {regions.countries.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
@@ -177,7 +178,7 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
             <h3 className="mb-3 text-sm font-bold text-slate-900 dark:text-white">2. The account login</h3>
             <label className={labelCls}>Account role</label>
             <select className={`${inputCls} mb-4`} value={form.account_role} onChange={e => set({ account_role: e.target.value })}>
-              <option value="Admin">Admin</option><option value="SalesManager">Sales Manager</option>
+              <option value="Admin"><LocalizedText text={"Admin"} /></option><option value="SalesManager"><LocalizedText text={"Sales Manager"} /></option>
             </select>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
@@ -191,7 +192,7 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
                 {field("admin_email")}
               </div>
               <div className="sm:col-span-2">
-                <label className={labelCls}>Password</label>
+                <label className={labelCls}><LocalizedText text={"Password"} /></label>
                 <div className="relative">
                   <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input className={`${inputCls} pl-10 ${bad("admin_password")}`} placeholder="Leave blank to generate a strong one" value={form.admin_password} onChange={(e) => set({ admin_password: e.target.value })} />

@@ -50,7 +50,6 @@ _FEATURES: List[Feature] = [
     _f("leads", "Leads", "CRM", "Lead list, research and conversion.", path_prefixes=("/leads",)),
     _f("contacts", "Contacts", "CRM", path_prefixes=("/contacts",)),
     _f("clients", "Clients", "CRM", path_prefixes=("/clients",)),
-    _f("deals", "Deals / pipeline", "CRM"),
     # Work
     _f("work_queue", "My Work Queue", "Work", path_prefixes=("/work-queue",)),
     _f("projects", "Projects", "Work"),
@@ -82,8 +81,6 @@ _FEATURES: List[Feature] = [
     _f("support", "Solutions", "Support", path_prefixes=("/solutions",)),
     _f("cases", "Cases", "Support", "Track and manage support cases.", default_on=False, path_prefixes=("/cases",)),
     _f("support_sh", "Support @SH", "Support", "Open the external support ticketing portal.", default_on=False, path_prefixes=("/support/helpdesk",)),
-    _f("scmhub_cases", "SCMHub Cases", "Support", "Bridge to the external SCMHub ticketing database.",
-       path_prefixes=("/scmhub-cases",)),
     # System
     _f("import_data", "Import data", "System", path_prefixes=("/import", "/api/import")),
     _f("api_intelligence", "API Intelligence", "System", path_prefixes=("/api-intelligence",)),
@@ -128,6 +125,10 @@ _FEATURES: List[Feature] = [
                       "/schedule/upcoming", "/leads/intake", "/leads/sources/analytics"),
        path_regexes=(r"^/leads/\d+/(demo-sessions|walk-ins|webinars|follow-ups|convert-to-student|course-plan|background-details)$",)),
 ]
+
+# Section entitlements sit alongside the Dashboard switch in module management.
+from modules.dashboard import SECTIONS, SECTION_MODULES
+_FEATURES.extend(_f(f"dashboard_{key}", label, "Dashboard sections") for key, label in SECTIONS.items())
 
 FEATURES: Dict[str, Feature] = {f.key: f for f in _FEATURES}
 
@@ -257,7 +258,8 @@ def set_features(session: Session, tenant_id: int, changes: Dict[str, bool]) -> 
 def catalog() -> List[dict]:
     return [{"key": f.key, "label": f.label, "group": f.group, "description": f.description,
              "locked": f.locked, "default_on": f.default_on,
-             "gated_on_server": bool(f.path_prefixes or f.path_regexes)}
+             "gated_on_server": bool(f.path_prefixes or f.path_regexes),
+             "requires_any": list(SECTION_MODULES.get(f.key.removeprefix("dashboard_"), ())) if f.key.startswith("dashboard_") else []}
             for f in _FEATURES]
 
 

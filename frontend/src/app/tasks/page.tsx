@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect, useMemo } from "react";
 import {
@@ -299,7 +300,7 @@ export default function TasksPage() {
           {/* Desktop Table Header */}
           <div className="hidden md:grid grid-cols-12 gap-3 px-3 py-1.5 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
             <div className="col-span-5">Task & Details</div>
-            <div className="col-span-2">Priority</div>
+            <div className="col-span-2"><LocalizedText text={"Priority"} /></div>
             <div className="col-span-2">Assignee & Due</div>
             <div className="col-span-3 text-right">Status & Action</div>
           </div>
@@ -344,7 +345,7 @@ export default function TasksPage() {
                       <span className="truncate">{task.assignee_name}</span>
                     </span>
                   ) : (
-                    <span className="text-slate-400 italic">Unassigned</span>
+                    <span className="text-slate-400 italic"><LocalizedText text={"Unassigned"} /></span>
                   )}
                   {task.due_date && (
                     <span className="text-[10px] text-slate-400 dark:text-zinc-500 flex items-center gap-1 mt-0.5">
@@ -367,8 +368,8 @@ export default function TasksPage() {
                     )}
                   >
                     <option value="Todo">Todo</option>
-                    <option value="InProgress">In Progress</option>
-                    <option value="Done">Done</option>
+                    <option value="InProgress"><LocalizedText text={"In Progress"} /></option>
+                    <option value="Done"><LocalizedText text={"Done"} /></option>
                   </select>
 
                   <button

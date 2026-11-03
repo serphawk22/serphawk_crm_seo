@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/context/LanguageContext";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -20,6 +22,7 @@ export default function EmailOTPVerification({
   onVerified,
   onCancel,
 }: EmailOTPVerificationProps) {
+  const { t } = useLanguage();
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -156,10 +159,9 @@ export default function EmailOTPVerification({
         >
           <CheckCircle className="w-8 h-8 text-emerald-500" />
         </motion.div>
-        <p className="font-bold text-lg text-slate-800 dark:text-zinc-100">Email Verified!</p>
+        <p className="font-bold text-lg text-slate-800 dark:text-zinc-100">{t("Email Verified!")}</p>
         <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">
-          {email} has been verified successfully.
-        </p>
+          {email} {t("has been verified successfully.")}{" "}</p>
       </motion.div>
     );
   }
@@ -172,9 +174,9 @@ export default function EmailOTPVerification({
           <Shield size={20} />
         </div>
         <div>
-          <h3 className="font-bold text-slate-900 dark:text-white">Verify Email Address</h3>
+          <h3 className="font-bold text-slate-900 dark:text-white">{t("Verify Email Address")}</h3>
           <p className="text-sm text-slate-500 dark:text-zinc-400">
-            We'll send a 6-digit code to <span className="font-semibold">{email}</span>
+            {t("We'll send a 6-digit code to")}{" "}<span className="font-semibold">{email}</span>
           </p>
         </div>
       </div>
@@ -191,7 +193,7 @@ export default function EmailOTPVerification({
           ) : (
             <Mail size={16} />
           )}
-          {sending ? "Sending verification code..." : "Send Verification Code"}
+          {t(sending ? "Sending verification code..." : "Send Verification Code")}
         </button>
       )}
 
@@ -199,8 +201,7 @@ export default function EmailOTPVerification({
       {sent && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
           <p className="text-sm text-slate-600 dark:text-zinc-300 text-center">
-            Enter the 6-digit code sent to your email
-          </p>
+            {t("Enter the 6-digit code sent to your email")}{" "}</p>
           <div className="flex justify-center gap-2">
             {otp.map((digit, i) => (
               <input
@@ -222,10 +223,9 @@ export default function EmailOTPVerification({
           {debugOtp && (
             <div className="px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
               <p className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1">
-                Demo mode: email delivery is not configured
-              </p>
+                {t("Demo mode: email delivery is not configured")}{" "}</p>
               <p className="text-sm text-amber-700 dark:text-amber-400">
-                Use this code to continue:{" "}
+                {t("Use this code to continue:")}{" "}
                 <span className="font-mono font-bold tracking-widest text-lg">{debugOtp}</span>
               </p>
             </div>
@@ -234,16 +234,14 @@ export default function EmailOTPVerification({
           {verifying && (
             <div className="flex items-center justify-center gap-2 text-sm text-blue-600">
               <Loader2 size={14} className="animate-spin" />
-              Verifying...
-            </div>
+              <LocalizedText text={"Verifying..."} /> </div>
           )}
 
           {/* Resend */}
           <div className="flex justify-center">
             {resendTimer > 0 ? (
               <p className="text-xs text-slate-400 dark:text-zinc-500">
-                Resend code in {resendTimer}s
-              </p>
+                {t("Resend code in")}{" "}{resendTimer}{t("s")}{" "}</p>
             ) : (
               <button
                 onClick={sendOtp}
@@ -251,8 +249,7 @@ export default function EmailOTPVerification({
                 className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
               >
                 <RefreshCw size={12} />
-                Resend Code
-              </button>
+                {t("Resend Code")}{" "}</button>
             )}
           </div>
         </motion.div>
@@ -268,7 +265,7 @@ export default function EmailOTPVerification({
             className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400"
           >
             <AlertCircle className="w-4 h-4 shrink-0" />
-            {error}
+            {t(error)}
           </motion.div>
         )}
       </AnimatePresence>
@@ -279,8 +276,7 @@ export default function EmailOTPVerification({
           onClick={onCancel}
           className="w-full text-center text-sm font-semibold text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
         >
-          Cancel
-        </button>
+          <LocalizedText text={"Cancel"} /> </button>
       )}
     </div>
   );

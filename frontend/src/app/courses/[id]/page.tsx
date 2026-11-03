@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -145,7 +146,7 @@ export default function CourseDetailsPage() {
           <p className="mt-2 text-lg font-semibold">₹{course.price.toLocaleString()}</p>
         </div>
         <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
-          <p className="text-xs text-[var(--text-secondary)]">Duration</p>
+          <p className="text-xs text-[var(--text-secondary)]"><LocalizedText text={"Duration"} /></p>
           <p className="mt-2 flex items-center gap-2 text-sm font-semibold">
             <Clock3 className="h-4 w-4" />
             {course.duration_weeks ? `${course.duration_weeks} weeks` : "Not set"}
@@ -156,8 +157,7 @@ export default function CourseDetailsPage() {
           <p className="text-xs text-[var(--text-secondary)]">Active batches</p>
           <p className="mt-2 flex items-center gap-2 text-sm font-semibold">
             <BookOpen className="h-4 w-4" />
-            {batches.length} batches
-          </p>
+            {batches.length} <LocalizedText text={"batches"} /></p>
         </div>
         <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
           <p className="text-xs text-[var(--text-secondary)]">Tasks completion</p>
@@ -199,11 +199,11 @@ export default function CourseDetailsPage() {
               <table className="w-full min-w-[700px] text-left">
                 <thead>
                   <tr className="border-b border-[var(--border)] text-xs text-[var(--text-secondary)]">
-                    <th className="px-4 py-3 font-medium">Batch</th>
+                    <th className="px-4 py-3 font-medium"><LocalizedText text={"Batch"} /></th>
                     <th className="px-4 py-3 font-medium">Dates</th>
-                    <th className="px-4 py-3 font-medium">Instructor</th>
-                    <th className="px-4 py-3 font-medium">Students</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium"><LocalizedText text={"Instructor"} /></th>
+                    <th className="px-4 py-3 font-medium"><LocalizedText text={"Students"} /></th>
+                    <th className="px-4 py-3 font-medium"><LocalizedText text={"Status"} /></th>
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>
@@ -295,7 +295,7 @@ export default function CourseDetailsPage() {
                           </span>
                           {summary.due_date && (
                             <span className="text-xs text-[var(--text-secondary)]">
-                              Due: {summary.due_date}
+                              <LocalizedText text={"Due:"} /> {summary.due_date}
                             </span>
                           )}
                         </div>
@@ -338,8 +338,8 @@ export default function CourseDetailsPage() {
                         <table className="w-full min-w-[620px] text-left text-sm">
                           <thead>
                             <tr className="border-b border-[var(--border)] text-xs text-[var(--text-secondary)]">
-                              <th className="pb-2 pr-4 font-medium">Student</th>
-                              <th className="pb-2 pr-4 font-medium">Status</th>
+                              <th className="pb-2 pr-4 font-medium"><LocalizedText text={"Student"} /></th>
+                              <th className="pb-2 pr-4 font-medium"><LocalizedText text={"Status"} /></th>
                               <th className="pb-2 pr-4 font-medium">Project URL</th>
                               <th className="pb-2 pr-4 font-medium">Uploaded File</th>
                               <th className="pb-2 font-medium">Submitted Date</th>
@@ -373,8 +373,7 @@ export default function CourseDetailsPage() {
                                   >
                                     {studentSub.status === "Done" ? (
                                       <>
-                                        <CheckCircle2 className="h-3 w-3" /> Done
-                                      </>
+                                        <CheckCircle2 className="h-3 w-3" /> <LocalizedText text={"Done"} /> </>
                                     ) : (
                                       "Pending"
                                     )}

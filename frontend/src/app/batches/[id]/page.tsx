@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -667,9 +668,9 @@ export default function BatchDetailsPage() {
                             <table className="w-full min-w-[640px] text-left">
                               <thead>
                                 <tr className="border-b border-[var(--border)] text-xs text-[var(--text-secondary)]">
-                                  <th className="py-2 pr-4 font-medium">Student</th>
+                                  <th className="py-2 pr-4 font-medium"><LocalizedText text={"Student"} /></th>
                                   <th className="py-2 pr-4 font-medium">Attendance</th>
-                                  <th className="py-2 pr-4 font-medium">Progress</th>
+                                  <th className="py-2 pr-4 font-medium"><LocalizedText text={"Progress"} /></th>
                                   <th className="py-2 font-medium">Completion %</th>
                                 </tr>
                               </thead>
@@ -803,8 +804,7 @@ export default function BatchDetailsPage() {
                 onClick={() => setCalendarDate(dateKey(new Date()))}
                 className="rounded-md border border-[var(--border)] px-3 py-2 text-xs font-semibold hover:bg-[var(--surface)]"
               >
-                Today
-              </button>
+                <LocalizedText text={"Today"} /> </button>
             </div>
           </div>
 
@@ -922,7 +922,7 @@ export default function BatchDetailsPage() {
                             </span>
                             {task.due_date && (
                               <span className="text-xs text-[var(--text-secondary)]">
-                                Due: {task.due_date}
+                                <LocalizedText text={"Due:"} /> {task.due_date}
                               </span>
                             )}
                           </div>
@@ -935,8 +935,7 @@ export default function BatchDetailsPage() {
                         </div>
                         <div className="text-right sm:min-w-44">
                           <p className="text-sm font-semibold">
-                            {task.completed_count} / {task.total_assigned} completed
-                          </p>
+                            {task.completed_count} / {task.total_assigned} <LocalizedText text={"completed"} /> </p>
                           <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--background)]">
                             <div
                               className="h-full bg-emerald-600 transition-all"
@@ -968,8 +967,8 @@ export default function BatchDetailsPage() {
                           <table className="w-full min-w-[620px] text-left text-sm">
                             <thead>
                               <tr className="border-b border-[var(--border)] text-xs text-[var(--text-secondary)]">
-                                <th className="pb-2 pr-4 font-medium">Student</th>
-                                <th className="pb-2 pr-4 font-medium">Status</th>
+                                <th className="pb-2 pr-4 font-medium"><LocalizedText text={"Student"} /></th>
+                                <th className="pb-2 pr-4 font-medium"><LocalizedText text={"Status"} /></th>
                                 <th className="pb-2 pr-4 font-medium">Project URL</th>
                                 <th className="pb-2 pr-4 font-medium">Uploaded File</th>
                                 <th className="pb-2 font-medium">Submitted</th>
@@ -1003,8 +1002,7 @@ export default function BatchDetailsPage() {
                                     >
                                       {submission.status === "Done" ? (
                                         <>
-                                          <CheckCircle2 className="h-3 w-3" /> Done
-                                        </>
+                                          <CheckCircle2 className="h-3 w-3" /> <LocalizedText text={"Done"} /> </>
                                       ) : (
                                         "Pending"
                                       )}
@@ -1087,7 +1085,7 @@ export default function BatchDetailsPage() {
                 <thead>
                   <tr className="border-b border-[var(--border)] text-xs text-[var(--text-secondary)]">
                     <th className="px-4 py-3 font-medium">Student Name</th>
-                    <th className="px-4 py-3 font-medium">Progress</th>
+                    <th className="px-4 py-3 font-medium"><LocalizedText text={"Progress"} /></th>
                     <th className="px-4 py-3 font-medium">Completion %</th>
                     <th className="px-4 py-3" />
                   </tr>
@@ -1189,7 +1187,7 @@ export default function BatchDetailsPage() {
                 />
               </label>
               <label>
-                <span className="text-sm font-medium">Starts</span>
+                <span className="text-sm font-medium"><LocalizedText text={"Starts"} /></span>
                 <input
                   required
                   type="datetime-local"
@@ -1224,7 +1222,7 @@ export default function BatchDetailsPage() {
                 />
               </label>
               <label className="sm:col-span-2">
-                <span className="text-sm font-medium">Notes</span>
+                <span className="text-sm font-medium"><LocalizedText text={"Notes"} /></span>
                 <textarea
                   rows={3}
                   value={form.notes}
@@ -1239,8 +1237,7 @@ export default function BatchDetailsPage() {
                 onClick={() => setShowCreate(false)}
                 className="rounded-md border border-[var(--border)] px-3 py-2 text-sm"
               >
-                Cancel
-              </button>
+                <LocalizedText text={"Cancel"} /> </button>
               <button
                 type="submit"
                 disabled={saving}

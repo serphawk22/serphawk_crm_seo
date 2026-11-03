@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Download, Loader2, Users } from "lucide-react";
@@ -101,7 +102,7 @@ export default function BulkDrawer({ open, onClose, presets, regions, onDone, on
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-slate-600 dark:text-zinc-400">{rows.length === 0 ? "Paste or type one client per line." : valid ? `${rows.length} client${rows.length === 1 ? "" : "s"} ready.` : "Fix the lines marked in red to continue."}</p>
             <button className={primaryBtn} onClick={create} disabled={!valid || busy}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />} Create {rows.length || ""} client{rows.length === 1 ? "" : "s"}
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />} <LocalizedText text={"Create"} /> {rows.length || ""} client{rows.length === 1 ? "" : "s"}
             </button>
           </div>
         )
@@ -139,14 +140,14 @@ export default function BulkDrawer({ open, onClose, presets, regions, onDone, on
           <textarea className={`${inputCls} font-mono text-xs`} rows={7} spellCheck={false} placeholder={EXAMPLE} value={text} onChange={(e) => setText(e.target.value)} />
           <div className="flex gap-3">
             <button type="button" className="text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-300" onClick={() => setText(EXAMPLE)}>Fill with an example</button>
-            {text && <button type="button" className="text-xs font-semibold text-slate-500 hover:underline" onClick={() => setText("")}>Clear</button>}
+            {text && <button type="button" className="text-xs font-semibold text-slate-500 hover:underline" onClick={() => setText("")}><LocalizedText text={"Clear"} /></button>}
           </div>
 
           {rows.length > 0 && (
             <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-zinc-800">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-zinc-900 dark:text-zinc-400">
-                  <tr><th className="px-3 py-2">Line</th><th className="px-3 py-2">Account</th><th className="px-3 py-2">Admin</th><th className="px-3 py-2">Setup</th><th className="px-3 py-2">Check</th></tr>
+                  <tr><th className="px-3 py-2">Line</th><th className="px-3 py-2">Account</th><th className="px-3 py-2"><LocalizedText text={"Admin"} /></th><th className="px-3 py-2">Setup</th><th className="px-3 py-2">Check</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                   {rows.map((r) => (
@@ -155,7 +156,7 @@ export default function BulkDrawer({ open, onClose, presets, regions, onDone, on
                       <td className="px-3 py-2 font-medium text-slate-900 dark:text-zinc-100">{r.body.name || "—"}</td>
                       <td className="px-3 py-2 text-slate-600 dark:text-zinc-300">{r.body.admin_email || "—"}</td>
                       <td className="px-3 py-2 text-slate-600 dark:text-zinc-300">{r.body.preset}{r.body.country ? ` · ${r.body.country}` : ""}</td>
-                      <td className="px-3 py-2 text-xs">{r.problems.length ? <span className="font-medium text-red-600">{r.problems.join(", ")}</span> : <span className="font-medium text-emerald-600">OK</span>}</td>
+                      <td className="px-3 py-2 text-xs">{r.problems.length ? <span className="font-medium text-red-600">{r.problems.join(", ")}</span> : <span className="font-medium text-emerald-600"><LocalizedText text={"OK"} /></span>}</td>
                     </tr>
                   ))}
                 </tbody>

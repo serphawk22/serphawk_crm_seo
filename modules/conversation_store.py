@@ -38,6 +38,8 @@ def ensure_conversation_schema(engine_to_use=None):
                 conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {kind}{default}'))
             result["columns"].append(f"{table.name}.{column.name}")
         for index in table.indexes:
+            if index.info.get("manual_existing_install"):
+                continue  # performance indexes use a reviewed concurrent deployment step
             index.create(eng, checkfirst=True)
             result["indexes"].append(index.name)
     return result

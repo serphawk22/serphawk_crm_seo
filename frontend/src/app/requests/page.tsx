@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import React, { useCallback, useEffect, useState } from "react";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
@@ -121,7 +122,7 @@ export default function RequestsPage() {
           <input className={input} placeholder="What do you need? (a short title)" required maxLength={200} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
           <textarea className={input} rows={5} required maxLength={5000} placeholder="Describe it: what you do today, what should happen instead, and why it matters." value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           <div className="grid sm:grid-cols-2 gap-3">
-            <label className="text-sm"><span className="text-gray-600 dark:text-gray-400">Type</span>
+            <label className="text-sm"><span className="text-gray-600 dark:text-gray-400"><LocalizedText text={"Type"} /></span>
               <select className={input} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                 {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
@@ -140,7 +141,7 @@ export default function RequestsPage() {
         <div className={`${card} space-y-4`}>
           <button className="inline-flex items-center gap-1 text-sm text-blue-700" onClick={() => setOpen(null)}><ArrowLeft className="w-4 h-4" /> All requests</button>
           <div className="flex items-center gap-3"><h2 className="text-xl font-bold">{open.title}</h2><StatusBadge status={open.status} /></div>
-          <p className="text-xs text-gray-500">{CATEGORY_LABELS[open.category] || open.category} &middot; {PRIORITY_LABELS[open.priority] || open.priority} priority &middot; raised by {open.requester_name || "you"} on {new Date(open.created_at).toLocaleDateString()}</p>
+          <p className="text-xs text-gray-500">{CATEGORY_LABELS[open.category] || open.category} &middot; {PRIORITY_LABELS[open.priority] || open.priority} priority &middot; raised by {open.requester_name || "you"} <LocalizedText text={"on"} />{new Date(open.created_at).toLocaleDateString()}</p>
           <p className="text-sm whitespace-pre-wrap">{open.description}</p>
           <div className="border-t border-gray-200 dark:border-gray-800 pt-4 space-y-3">
             {open.messages.length === 0 && <p className="text-sm text-gray-500">No replies yet. We will answer here.</p>}
@@ -157,7 +158,7 @@ export default function RequestsPage() {
           </div>
         </div>
       ) : loading ? (
-        <div className="flex items-center gap-2 text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading...</div>
+        <div className="flex items-center gap-2 text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> <LocalizedText text={"Loading..."} /></div>
       ) : rows.length === 0 ? (
         <div className={`${card} text-center text-gray-500`}>No requests yet. Use &ldquo;New request&rdquo; to tell us what you need.</div>
       ) : (

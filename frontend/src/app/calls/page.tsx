@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -360,7 +361,7 @@ function CallCard({
           <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5 flex-wrap">
             <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-slate-400" />{formatDuration(call.duration_seconds)}</span>
             <span suppressHydrationWarning>{new Date(call.received_at).toLocaleString()}</span>
-            {call.followup_date && <span className="text-rose-600 dark:text-rose-400 font-semibold">Due: {call.followup_date}</span>}
+            {call.followup_date && <span className="text-rose-600 dark:text-rose-400 font-semibold"><LocalizedText text={"Due:"} /> {call.followup_date}</span>}
           </div>
           {call.summary && (
             <p className="text-xs text-slate-600 dark:text-zinc-300 bg-slate-50 dark:bg-white/5 px-2.5 py-1.5 rounded-lg border border-slate-200/60 dark:border-white/5 mt-1.5 line-clamp-1">{call.summary}</p>
@@ -682,8 +683,7 @@ export default function CallsPage() {
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-                {loggedCalls.length} logged · {scheduledCalls.filter((s) => s.status === "Scheduled").length} scheduled · {aiCallLogs.length} AI calls
-              </p>
+                {loggedCalls.length} logged · {scheduledCalls.filter((s) => s.status === "Scheduled").length} scheduled · {aiCallLogs.length} <LocalizedText text={"AI calls"} /> </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2 shrink-0">
@@ -716,7 +716,7 @@ export default function CallsPage() {
 
           <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
             <div>
-              <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Scheduled</p>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider"><LocalizedText text={"Scheduled"} /></p>
               <p className="text-base sm:text-lg font-bold text-indigo-600 dark:text-indigo-400 leading-tight mt-0.5">
                 {scheduledCalls.filter((s) => s.status === "Scheduled").length}
               </p>
@@ -1050,9 +1050,9 @@ export default function CallsPage() {
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.type")}</label>
                       <select value={schedForm.entity_type} onChange={(e) => setSchedForm({ ...schedForm, entity_type: e.target.value, entity_id: "" })}
                         className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-indigo-400/30">
-                        <option value="client">Client</option>
-                        <option value="lead">Lead</option>
-                        <option value="contact">Contact</option>
+                        <option value="client"><LocalizedText text={"Client"} /></option>
+                        <option value="lead"><LocalizedText text={"Lead"} /></option>
+                        <option value="contact"><LocalizedText text={"Contact"} /></option>
                       </select>
                     </div>
                     <div>
@@ -1130,9 +1130,9 @@ export default function CallsPage() {
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">{t("calls.type")}</label>
                       <select value={genType} onChange={(e) => { setGenType(e.target.value as "client" | "lead" | "contact"); setGenEntityId(""); setGeneratedPitch(""); setAiContext(""); }}
                         className="w-full px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl font-bold text-slate-700 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-amber-400/30">
-                        <option value="client">Client</option>
-                        <option value="lead">Lead</option>
-                        <option value="contact">Contact</option>
+                        <option value="client"><LocalizedText text={"Client"} /></option>
+                        <option value="lead"><LocalizedText text={"Lead"} /></option>
+                        <option value="contact"><LocalizedText text={"Contact"} /></option>
                       </select>
                     </div>
                     <div>

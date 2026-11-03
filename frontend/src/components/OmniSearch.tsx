@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, User, Briefcase, CheckSquare, Target, X, Command } from 'lucide-react';
 import { API_BASE_URL } from '@/config';
@@ -120,8 +121,8 @@ export default function OmniSearch() {
               <Command className="w-12 h-12 mb-4 opacity-20" />
               <p>{t("omni_search.type_to_search")}</p>
               <div className="mt-4 flex gap-2">
-                <span className="bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded text-xs font-mono">clients</span>
-                <span className="bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded text-xs font-mono">leads</span>
+                <span className="bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded text-xs font-mono"><LocalizedText text={"clients"} /></span>
+                <span className="bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded text-xs font-mono"><LocalizedText text={"leads"} /></span>
                 <span className="bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded text-xs font-mono">tasks</span>
                 <span className="bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded text-xs font-mono">deals</span>
               </div>

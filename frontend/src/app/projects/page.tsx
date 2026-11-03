@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect, useMemo } from "react";
 import { StickyNote, Users, Plus, Search, MoreVertical, X, Check, Loader2, LayoutList, LayoutGrid, ChevronRight, Folder } from "lucide-react";
@@ -186,7 +187,7 @@ export default function ProjectsPage() {
             <StickyNote className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Active</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Active"} /></div>
             <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{activeCount}</div>
           </div>
         </div>
@@ -204,7 +205,7 @@ export default function ProjectsPage() {
             <Check className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Completed</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Completed"} /></div>
             <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{completedCount}</div>
           </div>
         </div>
@@ -292,8 +293,8 @@ export default function ProjectsPage() {
             {/* Desktop Table Header */}
             <div className="hidden md:grid grid-cols-12 gap-3 px-3 py-1.5 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
               <div className="col-span-5">Project & Objective</div>
-              <div className="col-span-2">Status</div>
-              <div className="col-span-3">Progress</div>
+              <div className="col-span-2"><LocalizedText text={"Status"} /></div>
+              <div className="col-span-3"><LocalizedText text={"Progress"} /></div>
               <div className="col-span-2 text-right">Team & Link</div>
             </div>
 
@@ -340,8 +341,8 @@ export default function ProjectsPage() {
                       )}
                     >
                       <option value="Planning">Planning</option>
-                      <option value="Active">Active</option>
-                      <option value="Completed">Completed</option>
+                      <option value="Active"><LocalizedText text={"Active"} /></option>
+                      <option value="Completed"><LocalizedText text={"Completed"} /></option>
                     </select>
                   </div>
 
@@ -404,8 +405,8 @@ export default function ProjectsPage() {
                     )}
                   >
                     <option value="Planning">Planning</option>
-                    <option value="Active">Active</option>
-                    <option value="Completed">Completed</option>
+                    <option value="Active"><LocalizedText text={"Active"} /></option>
+                    <option value="Completed"><LocalizedText text={"Completed"} /></option>
                   </select>
                 </div>
                 
@@ -438,7 +439,7 @@ export default function ProjectsPage() {
                     <span>+{(project.employeeIds?.length || 0) + (project.internIds?.length || 0)} members</span>
                   </div>
                   <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                    View <ChevronRight className="w-3 h-3" />
+                    <LocalizedText text={"View"} /> <ChevronRight className="w-3 h-3" />
                   </span>
                 </div>
               </Link>
@@ -552,8 +553,8 @@ export default function ProjectsPage() {
                     className="w-full px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-blue-500 transition-all outline-none text-slate-900 dark:text-white"
                   >
                     <option>Planning</option>
-                    <option>Active</option>
-                    <option>Hold</option>
+                    <option value={"Active"}><LocalizedText text={"Active"} /></option>
+                    <option value={"Hold"}><LocalizedText text={"Hold"} /></option>
                   </select>
                 </div>
                 <div className="space-y-1">
