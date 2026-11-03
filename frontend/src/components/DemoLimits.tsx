@@ -1,3 +1,4 @@
+import LocalizedText from "@/components/LocalizedText";
 import React, { useState, useEffect } from "react";
 import { useRole } from "@/context/RoleContext";
 import { API_BASE_URL } from "@/config";
@@ -104,8 +105,7 @@ export default function DemoLimits({ type }: DemoLimitsProps) {
         </div>
         {upgraded ? (
           <div className="flex-shrink-0 flex items-center gap-2 text-green-600 dark:text-green-400 font-bold text-sm bg-green-50 dark:bg-green-900/20 px-3 py-1.5 rounded-lg border border-green-200 dark:border-green-900/30">
-            <CheckCircle2 className="w-4 h-4" /> Request Sent!
-          </div>
+            <CheckCircle2 className="w-4 h-4" /> <LocalizedText text={"Request Sent!"} /> </div>
         ) : (
           <button
             onClick={handleUpgrade}

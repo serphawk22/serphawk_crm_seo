@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useTenantConfig } from "@/context/TenantConfigContext";
 import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from "react";
@@ -475,7 +476,7 @@ export default function LearningPage() {
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-gray-500">
               <span>Payment progress</span>
-              <span>{formatCurrency(totalPaid)} of {formatCurrency(totalFee)}</span>
+              <span>{formatCurrency(totalPaid)} <LocalizedText text={"of"} /> {formatCurrency(totalFee)}</span>
             </div>
             <div className="h-3 overflow-hidden rounded-full bg-gray-100 dark:bg-zinc-800">
               <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-600 transition-all duration-700" style={{ width: `${Math.min(feePercent, 100)}%` }} />
@@ -592,7 +593,7 @@ export default function LearningPage() {
                   <article key={task.id} className={`flex flex-col rounded-2xl border bg-white p-5 dark:bg-zinc-900 shadow-sm ${isDone ? "border-emerald-300 dark:border-emerald-800" : isOverdue ? "border-rose-300 dark:border-rose-800" : "border-gray-200 dark:border-zinc-800"}`}>
                     <div className="flex items-start justify-between gap-2">
                       <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold ${isDone ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : isOverdue ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300" : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"}`}>
-                        {isDone ? <><CheckCircle2 className="h-3 w-3" /> Submitted</> : isOverdue ? "⚠ Overdue" : <><Clock3 className="h-3 w-3" /> Pending</>}
+                        {isDone ? <><CheckCircle2 className="h-3 w-3" /> Submitted</> : isOverdue ? "⚠ Overdue" : <><Clock3 className="h-3 w-3" /> <LocalizedText text={"Pending"} /></>}
                       </span>
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${task.priority === "High" || task.priority === "Urgent" ? "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400" : "bg-gray-100 text-gray-600 dark:bg-zinc-800 dark:text-zinc-400"}`}>{task.priority}</span>
                     </div>
@@ -655,7 +656,7 @@ export default function LearningPage() {
                   <textarea rows={3} value={submitNotes} onChange={e => setSubmitNotes(e.target.value)} placeholder="Approach, credentials, comments…" className="mt-1.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </label>
                 <div className="flex justify-end gap-2 pt-1">
-                  <button type="button" disabled={submitting} onClick={() => setSubmittingTaskId(null)} className="rounded-xl border border-gray-200 dark:border-zinc-700 px-4 py-2.5 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">Cancel</button>
+                  <button type="button" disabled={submitting} onClick={() => setSubmittingTaskId(null)} className="rounded-xl border border-gray-200 dark:border-zinc-700 px-4 py-2.5 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"><LocalizedText text={"Cancel"} /></button>
                   <button type="submit" disabled={submitting} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-600 disabled:opacity-60 transition-colors">
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     Submit & Mark Complete
@@ -756,7 +757,7 @@ export default function LearningPage() {
                           <p className="mt-1 text-sm font-bold text-gray-900 dark:text-zinc-100">{course.payment_status || "Pending"} · Slip {course.slip_number || "pending"}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-black text-emerald-700 dark:text-emerald-400">Paid {formatCurrency(course.amount_paid)}</p>
+                          <p className="text-sm font-black text-emerald-700 dark:text-emerald-400"><LocalizedText text={"Paid"} /> {formatCurrency(course.amount_paid)}</p>
                           <p className="text-xs text-gray-400 dark:text-zinc-500">Balance {formatCurrency(course.amount_due)}</p>
                           {course.total_fee && <p className="text-xs text-gray-400 dark:text-zinc-500">Total {formatCurrency(course.total_fee)}</p>}
                         </div>
@@ -836,7 +837,7 @@ export default function LearningPage() {
                           <p className="text-xs text-violet-700 dark:text-violet-400 mt-0.5">{[course.instructor.qualification, course.instructor.expertise, course.instructor.experience_years ? `${course.instructor.experience_years} yrs exp` : null].filter(Boolean).join(" · ") || "Course Instructor"}</p>
                           {course.instructor.bio && <p className="mt-2 text-sm text-gray-500 dark:text-zinc-400 line-clamp-2">{course.instructor.bio}</p>}
                           <div className="mt-3 flex flex-wrap gap-2">
-                            {course.instructor.email && <a href={`mailto:${course.instructor.email}`} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 dark:border-violet-900 bg-white dark:bg-zinc-900 px-3 py-1.5 text-xs font-bold text-violet-700 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors"><Mail className="h-3.5 w-3.5" /> Email</a>}
+                            {course.instructor.email && <a href={`mailto:${course.instructor.email}`} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 dark:border-violet-900 bg-white dark:bg-zinc-900 px-3 py-1.5 text-xs font-bold text-violet-700 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors"><Mail className="h-3.5 w-3.5" /> <LocalizedText text={"Email"} /></a>}
                             {course.instructor.phone && <a href={`tel:${course.instructor.phone}`} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 dark:border-violet-900 bg-white dark:bg-zinc-900 px-3 py-1.5 text-xs font-bold text-violet-700 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors"><Phone className="h-3.5 w-3.5" /> Call</a>}
                           </div>
                         </div>
@@ -930,7 +931,7 @@ export default function LearningPage() {
                             </div>
                             <textarea value={reviewText} onChange={event => setReviewText(event.target.value)} rows={3} placeholder="Share what went well, what could improve, specific examples…" className="w-full resize-y rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
                             <div className="flex flex-wrap justify-end gap-2">
-                              <button type="button" onClick={() => setReviewBatchId(null)} className="rounded-xl border border-gray-200 dark:border-zinc-700 px-4 py-2 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">Cancel</button>
+                              <button type="button" onClick={() => setReviewBatchId(null)} className="rounded-xl border border-gray-200 dark:border-zinc-700 px-4 py-2 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"><LocalizedText text={"Cancel"} /></button>
                               <button type="button" onClick={() => void submitReview(course)} disabled={!reviewText.trim() || savingAction === `review-${course.batch_id}`} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-50 transition-colors">
                                 {savingAction === `review-${course.batch_id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Star className="h-4 w-4" />}
                                 Submit Review

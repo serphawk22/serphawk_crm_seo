@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -308,8 +309,7 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
                             removeMember(u);
                           }}
                         >
-                          Remove
-                        </button>
+                          <LocalizedText text={"Remove"} /> </button>
                       )}
                       <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-zinc-300 border border-slate-200/80 dark:border-white/10 rounded-full">
                         {u.role}
@@ -376,8 +376,7 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
                             removeMember(u);
                           }}
                         >
-                          Remove
-                        </button>
+                          <LocalizedText text={"Remove"} /> </button>
                       )}
                       <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-zinc-300 border border-slate-200/80 dark:border-white/10 rounded-full">
                         {u.role}
@@ -458,7 +457,7 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
                   className="team-field mt-1"
                 >
                   <optgroup label={t("teams.optgroup_sales")}>
-                    <option value="Admin">Admin</option>
+                    <option value="Admin"><LocalizedText text={"Admin"} /></option>
                     <option value="SalesManager">{t("teams.opt_sales_manager")}</option>
                   </optgroup>
                   {!institute && (
@@ -568,23 +567,23 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
                           <div className="bg-slate-50 dark:bg-white/5 rounded-xl p-3 border border-slate-200/80 dark:border-white/10">
                             <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 mb-1">
                               <Briefcase className="w-4 h-4" />
-                              <span className="text-[10px] font-bold uppercase tracking-wider">Clients</span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider"><LocalizedText text={"Clients"} /></span>
                             </div>
                             <p className="text-xl font-bold text-slate-900 dark:text-white tabular-nums">
                               {userStats.clients_handling}
                             </p>
-                            <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Active Accounts</p>
+                            <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5"><LocalizedText text={"Active Accounts"} /></p>
                           </div>
 
                           <div className="bg-emerald-50 dark:bg-emerald-500/5 rounded-xl p-3 border border-emerald-200/80 dark:border-emerald-500/20">
                             <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 mb-1">
                               <Target className="w-4 h-4" />
-                              <span className="text-[10px] font-bold uppercase tracking-wider">Leads</span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider"><LocalizedText text={"Leads"} /></span>
                             </div>
                             <p className="text-xl font-bold text-slate-900 dark:text-white tabular-nums">
                               {userStats.leads_converted}
                             </p>
-                            <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Converted</p>
+                            <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5"><LocalizedText text={"Converted"} /></p>
                           </div>
 
                           <div className="bg-rose-50 dark:bg-rose-500/5 rounded-xl p-3 border border-rose-200/80 dark:border-rose-500/20 col-span-2">
@@ -618,8 +617,7 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
                                         ? 'text-rose-500'
                                         : 'text-blue-500'
                                     }`}>
-                                      {t.priority} Priority
-                                    </span>
+                                      {t.priority} <LocalizedText text={"Priority"} /> </span>
                                   </div>
                                 </div>
                               ))}
@@ -651,7 +649,7 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
                           <div className="flex items-center justify-between p-2.5 bg-white dark:bg-[#111111]/90 border border-slate-200/90 dark:border-white/10 rounded-xl shadow-xs">
                             <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
                               <Ticket className="w-4 h-4" />
-                              <span className="font-semibold text-xs">Support Cases</span>
+                              <span className="font-semibold text-xs"><LocalizedText text={"Support Cases"} /></span>
                             </div>
                             <span className="font-bold text-xs text-slate-900 dark:text-white tabular-nums">{userStats.cases_assigned || 0}</span>
                           </div>

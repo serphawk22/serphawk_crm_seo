@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
@@ -65,8 +66,7 @@ export default function VoiceAgentPage() {
         <div>
           <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
             <span className="p-2.5 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white"><AudioLines className="w-6 h-6" /></span>
-            AI Voice Caller
-          </h1>
+            <LocalizedText text={"AI Voice Caller"} /> </h1>
           <p className="text-sm text-slate-500 mt-2 font-medium">Turn pitches into natural speech, let the AI call prospects, handle their questions and objections — and jump in whenever you want.</p>
         </div>
       </motion.div>

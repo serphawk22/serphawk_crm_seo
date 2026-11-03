@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useState, useCallback } from "react";
 import { IndianRupee, Plus, Trash2, RefreshCw, Search, SlidersHorizontal, CheckCircle2, X, AlertCircle, Receipt, Layers, Calendar, Repeat } from "lucide-react";
@@ -131,8 +132,7 @@ export default function BusinessCostsPage() {
             <div className="flex items-center gap-2">
               <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">Business Costs</h1>
               <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                {costs.length} items
-              </span>
+                {costs.length} <LocalizedText text={"items"} /> </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
               Salaries, rent, software, and operational expenditures · Admin only
@@ -222,7 +222,7 @@ export default function BusinessCostsPage() {
               onChange={e => setCatFilter(e.target.value)}
               className="bg-transparent text-xs text-slate-700 dark:text-zinc-300 outline-none cursor-pointer font-medium"
             >
-              <option value="" className="dark:bg-zinc-900">All Categories</option>
+              <option value="" className="dark:bg-zinc-900"><LocalizedText text={"All Categories"} /></option>
               {CATEGORIES.map(c => <option key={c} value={c} className="dark:bg-zinc-900">{c}</option>)}
             </select>
           </div>
@@ -240,13 +240,13 @@ export default function BusinessCostsPage() {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50/70 dark:bg-white/5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 border-b border-slate-200/80 dark:border-white/10">
               <tr>
-                <th className="px-4 py-2.5">Title</th>
-                <th className="px-4 py-2.5">Category</th>
-                <th className="px-4 py-2.5">Amount</th>
+                <th className="px-4 py-2.5"><LocalizedText text={"Title"} /></th>
+                <th className="px-4 py-2.5"><LocalizedText text={"Category"} /></th>
+                <th className="px-4 py-2.5"><LocalizedText text={"Amount"} /></th>
                 <th className="px-4 py-2.5">Month</th>
                 <th className="px-4 py-2.5">Recurring</th>
-                <th className="px-4 py-2.5">Notes</th>
-                <th className="px-4 py-2.5 text-right">Actions</th>
+                <th className="px-4 py-2.5"><LocalizedText text={"Notes"} /></th>
+                <th className="px-4 py-2.5 text-right"><LocalizedText text={"Actions"} /></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-white/5">
@@ -274,11 +274,9 @@ export default function BusinessCostsPage() {
                     {deleteId === c.id ? (
                       <div className="flex items-center justify-end gap-1.5">
                         <button onClick={() => del(c.id)} className="rounded-md bg-rose-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-rose-500 shadow-xs">
-                          Confirm
-                        </button>
+                          <LocalizedText text={"Confirm"} /> </button>
                         <button onClick={() => setDeleteId(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-[11px] px-1">
-                          Cancel
-                        </button>
+                          <LocalizedText text={"Cancel"} /> </button>
                       </div>
                     ) : (
                       <button onClick={() => setDeleteId(c.id)} className="opacity-70 group-hover:opacity-100 text-slate-400 hover:text-rose-500 transition-all p-1">
@@ -306,7 +304,7 @@ export default function BusinessCostsPage() {
         </h2>
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">Title *</label>
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400"><LocalizedText text={"Title *"} /></label>
             <input
               value={form.title}
               onChange={e => setForm({ ...form, title: e.target.value })}
@@ -317,7 +315,7 @@ export default function BusinessCostsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">Category</label>
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400"><LocalizedText text={"Category"} /></label>
               <select
                 value={form.category}
                 onChange={e => setForm({ ...form, category: e.target.value })}
@@ -327,7 +325,7 @@ export default function BusinessCostsPage() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">Currency</label>
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400"><LocalizedText text={"Currency"} /></label>
               <select
                 value={form.currency}
                 onChange={e => setForm({ ...form, currency: e.target.value })}
@@ -361,7 +359,7 @@ export default function BusinessCostsPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">Notes</label>
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400"><LocalizedText text={"Notes"} /></label>
             <textarea
               value={form.notes}
               onChange={e => setForm({ ...form, notes: e.target.value })}
@@ -384,8 +382,7 @@ export default function BusinessCostsPage() {
 
         <div className="mt-5 flex justify-end gap-2">
           <button onClick={() => setModalOpen(false)} className="rounded-lg border border-slate-200 dark:border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-white/5">
-            Cancel
-          </button>
+            <LocalizedText text={"Cancel"} /> </button>
           <button onClick={save} disabled={saving}
             className="rounded-lg bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-500 disabled:opacity-50 shadow-xs">
             {saving ? "Saving…" : "Save Cost"}

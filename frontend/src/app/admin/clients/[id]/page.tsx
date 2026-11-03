@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -166,7 +167,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px 20px', backdropFilter: 'blur(16px)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <div style={{ background: 'var(--accent)', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Building2 size={13} color="#fff" /></div>
-            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Company Overview</span>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}><LocalizedText text={"Company Overview"} /></span>
           </div>
           <p style={{ fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{research.company_overview}</p>
         </div>
@@ -184,7 +185,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px 20px', backdropFilter: 'blur(16px)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
                 <div style={{ background: 'var(--accent)', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Users size={13} color="#fff" /></div>
-                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Key Decision Makers</span>
+                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}><LocalizedText text={"Key Decision Makers"} /></span>
                 <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>{people.length} extracted</span>
               </div>
               
@@ -192,9 +193,9 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border)', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      <th style={{ padding: '8px 12px', fontWeight: 700 }}>Name & Role</th>
-                      <th style={{ padding: '8px 12px', fontWeight: 700 }}>Contact</th>
-                      <th style={{ padding: '8px 12px', fontWeight: 700 }}>Socials</th>
+                      <th style={{ padding: '8px 12px', fontWeight: 700 }}><LocalizedText text={"Name & Role"} /></th>
+                      <th style={{ padding: '8px 12px', fontWeight: 700 }}><LocalizedText text={"Contact"} /></th>
+                      <th style={{ padding: '8px 12px', fontWeight: 700 }}><LocalizedText text={"Socials"} /></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -207,7 +208,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
                         <td style={{ padding: '12px 12px' }}>
                           {p.email && <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Mail size={12} color="var(--text-muted)"/> <a href={`mailto:${p.email}`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>{p.email}</a></div>}
                           {p.phone && <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}><Phone size={12} color="var(--text-muted)"/> <a href={`tel:${p.phone}`} style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>{p.phone}</a></div>}
-                          {!p.email && !p.phone && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Not found</span>}
+                          {!p.email && !p.phone && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}><LocalizedText text={"Not found"} /></span>}
                         </td>
                         <td style={{ padding: '12px 12px', display: 'flex', gap: 8 }}>
                           {p.linkedin ? (
@@ -244,7 +245,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 18, padding: '16px 20px', backdropFilter: 'blur(16px)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
               <div style={{ background: 'var(--accent)', borderRadius: 8, padding: '4px 7px', display: 'flex' }}><Store size={13} color="#fff" /></div>
-              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Services Offered</span>
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}><LocalizedText text={"Services Offered"} /></span>
               <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>{parsedServices.length} services detected</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
@@ -304,7 +305,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
           <div style={{ background: 'var(--accent)', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><StickyNote size={13} color="#fff" /></div>
-          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Add Note</span>
+          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}><LocalizedText text={"Add Note"} /></span>
           <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>Ctrl+Enter to save</span>
         </div>
         <div style={{ padding: '14px 20px 16px' }}>
@@ -353,7 +354,7 @@ function OverviewTab({ client, employees, serviceRequests, activities, timeline,
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
           <div style={{ background: 'var(--accent)', borderRadius: 9, padding: '5px 7px', display: 'flex' }}><MessageSquare size={13} color="#fff" /></div>
-          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}>Log Conversation</span>
+          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: 'var(--text-primary)' }}><LocalizedText text={"Log Conversation"} /></span>
         </div>
         <div style={{ padding: '14px 20px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {/* Type pills */}
@@ -623,8 +624,7 @@ function AdminClientSwotTab({ client, onRefresh }: { client: any, onRefresh: () 
 
                 <div className="p-6 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-3xl">
                   <h3 className="text-lg font-black text-emerald-800 dark:text-emerald-400 mb-4 flex items-center gap-2">
-                    <TrendingUp size={20} /> Strengths
-                  </h3>
+                    <TrendingUp size={20} /> <LocalizedText text={"Strengths"} /> </h3>
                   <ul className="space-y-3">
                     {swot.strengths?.map((s: string, i: number) => (
                       <li key={i} className="flex gap-2 text-sm text-emerald-700 dark:text-emerald-300">
@@ -636,8 +636,7 @@ function AdminClientSwotTab({ client, onRefresh }: { client: any, onRefresh: () 
 
                 <div className="p-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-3xl">
                   <h3 className="text-lg font-black text-red-800 dark:text-red-400 mb-4 flex items-center gap-2">
-                    <TrendingDown size={20} /> Weaknesses
-                  </h3>
+                    <TrendingDown size={20} /> <LocalizedText text={"Weaknesses"} /> </h3>
                   <ul className="space-y-3">
                     {swot.weaknesses?.map((w: string, i: number) => (
                       <li key={i} className="flex gap-2 text-sm text-red-700 dark:text-red-300">
@@ -649,8 +648,7 @@ function AdminClientSwotTab({ client, onRefresh }: { client: any, onRefresh: () 
 
                 <div className="p-6 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-3xl">
                   <h3 className="text-lg font-black text-blue-800 dark:text-blue-400 mb-4 flex items-center gap-2">
-                    <Lightbulb size={20} /> Opportunities
-                  </h3>
+                    <Lightbulb size={20} /> <LocalizedText text={"Opportunities"} /> </h3>
                   <ul className="space-y-3">
                     {swot.opportunities?.map((o: string, i: number) => (
                       <li key={i} className="flex gap-2 text-sm text-blue-700 dark:text-blue-300">
@@ -887,7 +885,7 @@ export default function AdminClientDetailPage() {
                   <input required value={newUserForm.name} onChange={e => setNewUserForm(p => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700  bg-slate-50 dark:bg-zinc-950  focus:outline-none focus:ring-2 focus:ring-indigo-500 " />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 mb-1">Email</label>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 mb-1"><LocalizedText text={"Email"} /></label>
                   <input required type="email" value={newUserForm.email} onChange={e => setNewUserForm(p => ({ ...p, email: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700  bg-slate-50 dark:bg-zinc-950  focus:outline-none focus:ring-2 focus:ring-indigo-500 " />
                 </div>
                 <div>
@@ -1077,15 +1075,13 @@ export default function AdminClientDetailPage() {
               <div className="flex gap-2 mb-4">
                 {client?.website && (
                   <a href={client.website.startsWith('http') ? client.website : `https://${client.website}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors">
-                    <Globe className="w-3.5 h-3.5" /> Visit Site
-                  </a>
+                    <Globe className="w-3.5 h-3.5" /> <LocalizedText text={"Visit Site"} /> </a>
                 )}
                 <button 
                   onClick={() => router.push(`/admin/clients/${client.id}/competitors`)}
                   className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-1.5 rounded-lg shadow-md hover:shadow-lg transition-all"
                 >
-                  <Navigation className="w-3.5 h-3.5" /> Radar Scan
-                </button>
+                  <Navigation className="w-3.5 h-3.5" /> <LocalizedText text={"Radar Scan"} /> </button>
               </div>
               <p className="text-xs font-black uppercase tracking-wider text-slate-400  mb-2">{language === 'es' ? 'Fechas de Seguimiento' : 'Follow-up Dates'}</p>
               <div className="space-y-2">

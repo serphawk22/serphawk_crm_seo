@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -195,7 +196,7 @@ export default function CallConsole({ options, notify, requestedPitch, onRequest
         {/* ── Call list ─────────────────────────────────────────── */}
         <div className={cn(cardCls, "xl:col-span-3 p-5")}>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-black text-slate-800 dark:text-white">Calls</h2>
+            <h2 className="font-black text-slate-800 dark:text-white"><LocalizedText text={"Calls"} /></h2>
             <button onClick={() => setShowStart(true)} className={cn(primaryBtn, "px-3 py-2 text-xs")}>
               <PhoneCall className="w-3.5 h-3.5" /> New call
             </button>
@@ -397,13 +398,13 @@ export default function CallConsole({ options, notify, requestedPitch, onRequest
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className={labelCls}>Type</label>
+              <label className={labelCls}><LocalizedText text={"Type"} /></label>
               <select value={entityType} onChange={(e) => { setEntityType(e.target.value as EntityType); setEntityId(""); }} className={inputCls}>
-                <option value="lead">Lead</option><option value="client">Client</option><option value="contact">Contact</option>
+                <option value="lead"><LocalizedText text={"Lead"} /></option><option value="client"><LocalizedText text={"Client"} /></option><option value="contact"><LocalizedText text={"Contact"} /></option>
               </select>
             </div>
             <div className="col-span-2">
-              <label className={labelCls}>Prospect</label>
+              <label className={labelCls}><LocalizedText text={"Prospect"} /></label>
               <select value={entityId} onChange={(e) => setEntityId(e.target.value)} className={inputCls}>
                 <option value="">— None —</option>
                 {entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}

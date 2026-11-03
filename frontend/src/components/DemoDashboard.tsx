@@ -1,5 +1,6 @@
 "use client";
-
+import { useLanguage } from "@/context/LanguageContext";
+import LocalizedText from "@/components/LocalizedText";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import type { Variants } from "framer-motion";
@@ -24,6 +25,7 @@ const containerVariants: Variants = {
 };
 
 export function DemoDashboard({ demoStats, NAV_CARDS, language }: any) {
+  const { t } = useLanguage();
   const { user, email } = useRole();
   const [upgrading, setUpgrading] = useState(false);
   const [upgraded, setUpgraded] = useState(false);
@@ -42,10 +44,10 @@ export function DemoDashboard({ demoStats, NAV_CARDS, language }: any) {
       if (res.ok) {
         setUpgraded(true);
       } else {
-        alert("There was an issue sending your request. Please contact support.");
+        alert(t("There was an issue sending your request. Please contact support."));
       }
     } catch (err) {
-      alert("Network error.");
+      alert(t("Network error."));
     }
     setUpgrading(false);
   };
@@ -60,8 +62,8 @@ export function DemoDashboard({ demoStats, NAV_CARDS, language }: any) {
             <ShieldAlert className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="font-bold text-amber-800 dark:text-amber-500 text-sm tracking-wide uppercase">Sandbox Environment</h3>
-            <p className="text-sm font-medium text-amber-700/80 dark:text-amber-500/80">You are currently exploring a limited demo account. Any data generated may be cleared periodically.</p>
+            <h3 className="font-bold text-amber-800 dark:text-amber-500 text-sm tracking-wide uppercase"><LocalizedText text={"Sandbox Environment"} /></h3>
+            <p className="text-sm font-medium text-amber-700/80 dark:text-amber-500/80"><LocalizedText text={"You are currently exploring a limited demo account. Any data generated may be cleared periodically."} /></p>
           </div>
         </div>
         {!upgraded ? (
@@ -70,13 +72,12 @@ export function DemoDashboard({ demoStats, NAV_CARDS, language }: any) {
             disabled={upgrading}
             className="shrink-0 px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-lg transition-all text-sm flex items-center gap-2"
           >
-            {upgrading ? "Sending..." : "Request Full Access"}
+            {upgrading ? t("Sending...") : t("Request Full Access")}
             {!upgrading && <LockKeyhole className="w-4 h-4" />}
           </button>
         ) : (
           <div className="shrink-0 px-6 py-2.5 bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold rounded-xl text-sm flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4" /> Request Sent to Admin!
-          </div>
+            <CheckCircle2 className="w-4 h-4" /> <LocalizedText text={"Request Sent to Admin!"} />{" "}</div>
         )}
       </motion.div>
 
@@ -84,11 +85,10 @@ export function DemoDashboard({ demoStats, NAV_CARDS, language }: any) {
       <motion.div variants={itemVariants} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">
-            Welcome, {user?.name || 'Demo User'}
+            <LocalizedText text={"Welcome,"} /> {user?.name || t("Demo User")}
           </h1>
           <p className="text-sm font-medium text-[var(--text-secondary)] mt-1">
-            Explore the platform and monitor your demo usage limits below.
-          </p>
+            <LocalizedText text={"Explore the platform and monitor your demo usage limits below."} />{" "}</p>
         </div>
       </motion.div>
 
@@ -99,7 +99,7 @@ export function DemoDashboard({ demoStats, NAV_CARDS, language }: any) {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-indigo-500">
               <Users className="w-5 h-5" />
-              <span className="font-bold text-sm tracking-wide uppercase">Clients & Leads</span>
+              <span className="font-bold text-sm tracking-wide uppercase"><LocalizedText text={"Clients & Leads"} /></span>
             </div>
             <span className="text-[10px] font-black px-2 py-1 bg-indigo-500/10 text-indigo-600 rounded-md">
               {usage.clients_leads} / {limits.clients_leads}
@@ -113,7 +113,7 @@ export function DemoDashboard({ demoStats, NAV_CARDS, language }: any) {
               className={`h-full rounded-full ${usage.clients_leads >= limits.clients_leads ? 'bg-rose-500' : 'bg-indigo-500'}`} 
             />
           </div>
-          <p className="text-xs text-[var(--text-secondary)] mt-3">You can create up to {limits.clients_leads} CRM records during the demo.</p>
+          <p className="text-xs text-[var(--text-secondary)] mt-3"><LocalizedText text={"You can create up to"} />{" "}{limits.clients_leads} <LocalizedText text={"CRM records during the demo."} /></p>
         </motion.div>
 
         {/* Email Agent */}
@@ -121,7 +121,7 @@ export function DemoDashboard({ demoStats, NAV_CARDS, language }: any) {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-violet-500">
               <Mail className="w-5 h-5" />
-              <span className="font-bold text-sm tracking-wide uppercase">AI Email Agent</span>
+              <span className="font-bold text-sm tracking-wide uppercase"><LocalizedText text={"AI Email Agent"} /></span>
             </div>
             <span className="text-[10px] font-black px-2 py-1 bg-violet-500/10 text-violet-600 rounded-md">
               {usage.email_agent} / {limits.email_agent}
@@ -135,7 +135,7 @@ export function DemoDashboard({ demoStats, NAV_CARDS, language }: any) {
               className={`h-full rounded-full ${usage.email_agent >= limits.email_agent ? 'bg-rose-500' : 'bg-violet-500'}`} 
             />
           </div>
-          <p className="text-xs text-[var(--text-secondary)] mt-3">Trigger the AI Email Agent up to {limits.email_agent} times.</p>
+          <p className="text-xs text-[var(--text-secondary)] mt-3"><LocalizedText text={"Trigger the AI Email Agent up to"} />{" "}{limits.email_agent} <LocalizedText text={"times."} /></p>
         </motion.div>
 
         {/* Radar Analysis */}
@@ -143,7 +143,7 @@ export function DemoDashboard({ demoStats, NAV_CARDS, language }: any) {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-emerald-500">
               <Activity className="w-5 h-5" />
-              <span className="font-bold text-sm tracking-wide uppercase">Radar Scans</span>
+              <span className="font-bold text-sm tracking-wide uppercase"><LocalizedText text={"Radar Scans"} /></span>
             </div>
             <span className="text-[10px] font-black px-2 py-1 bg-emerald-500/10 text-emerald-600 rounded-md">
               {usage.radar} / {limits.radar}
@@ -157,14 +157,14 @@ export function DemoDashboard({ demoStats, NAV_CARDS, language }: any) {
               className={`h-full rounded-full ${usage.radar >= limits.radar ? 'bg-rose-500' : 'bg-emerald-500'}`} 
             />
           </div>
-          <p className="text-xs text-[var(--text-secondary)] mt-3">Perform deep competitor analyses up to {limits.radar} times.</p>
+          <p className="text-xs text-[var(--text-secondary)] mt-3"><LocalizedText text={"Perform deep competitor analyses up to"} />{" "}{limits.radar} <LocalizedText text={"times."} /></p>
         </motion.div>
       </div>
 
       {/* QUICK LINKS GRID */}
       <motion.div variants={itemVariants} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-sm h-max">
         <div className="p-5 border-b border-[var(--border)]">
-          <h3 className="font-bold text-[var(--text-primary)]">Explore Platform Features</h3>
+          <h3 className="font-bold text-[var(--text-primary)]"><LocalizedText text={"Explore Platform Features"} /></h3>
         </div>
         <div className="p-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {NAV_CARDS.map((card: any) => (

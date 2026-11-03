@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useState } from "react";
 import { 
@@ -208,7 +209,7 @@ export default function RevenueDashboard() {
 
         <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
           <div>
-            <span className="text-[10px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Win Rate</span>
+            <span className="text-[10px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider"><LocalizedText text={"Win Rate"} /></span>
             <p className="text-sm sm:text-base font-bold text-slate-900 dark:text-white leading-tight mt-0.5">{totals.win_rate != null ? `${totals.win_rate}%` : "—"}</p>
           </div>
           <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
@@ -384,11 +385,11 @@ export default function RevenueDashboard() {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50/70 dark:bg-white/5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 border-b border-slate-200/80 dark:border-white/10">
               <tr>
-                <th className="px-4 py-2.5">Deal Title</th>
-                <th className="px-4 py-2.5">Client</th>
+                <th className="px-4 py-2.5"><LocalizedText text={"Deal Title"} /></th>
+                <th className="px-4 py-2.5"><LocalizedText text={"Client"} /></th>
                 <th className="px-4 py-2.5">Sales Representative</th>
                 <th className="px-4 py-2.5">Won Date</th>
-                <th className="px-4 py-2.5 text-right">Deal Value</th>
+                <th className="px-4 py-2.5 text-right"><LocalizedText text={"Deal Value"} /></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-white/5">

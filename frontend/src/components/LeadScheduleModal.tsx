@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useState } from "react";
 import { motion } from "framer-motion";
@@ -140,8 +141,7 @@ export default function LeadScheduleModal({ type, leadName, initial, submitLabel
         <div className="flex gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-zinc-900/50">
           <button type="button" onClick={onClose} disabled={saving}
             className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
-            Cancel
-          </button>
+            <LocalizedText text={"Cancel"} /> </button>
           <button type="submit" disabled={saving}
             className={`flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${accent} py-2.5 text-sm font-semibold text-white shadow-md hover:opacity-90 disabled:opacity-50`}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}

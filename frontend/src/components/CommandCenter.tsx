@@ -1,5 +1,6 @@
 "use client";
-
+import { useLanguage } from "@/context/LanguageContext";
+import LocalizedText from "@/components/LocalizedText";
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,6 +9,7 @@ import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, LineChart, Line
 } from "recharts";
+import { dashboardDateLabel } from "@/lib/dashboardLocale";
 import { API_BASE_URL } from "@/config";
 import { useRole } from "@/context/RoleContext";
 import {
@@ -17,6 +19,7 @@ import {
 import { CallPitchWidget } from "@/components/AdminDashboard";
 
 export default function CommandCenter() {
+  const { t, language } = useLanguage();
   const { role, user } = useRole();
   const router = useRouter();
   const [currency, setCurrency] = useCurrency();
@@ -32,7 +35,7 @@ export default function CommandCenter() {
     try {
       const res = await fetch(`${API_BASE_URL}/command-center/overview?months=${months}`);
       if (!res.ok) {
-        throw new Error(`Failed to load command center overview (${res.status})`);
+        throw new Error("Failed to load command center");
       }
       const json = await res.json();
       setData(json);
@@ -65,7 +68,7 @@ export default function CommandCenter() {
   const inventory = data?.inventory || {};
   const team = data?.team || [];
   const costs = data?.costs || null;
-  const series = data?.series || [];
+  const series = (data?.series || []).map((point: { month?: string; label: string }) => ({ ...point, label: language === "en" ? point.label : dashboardDateLabel(point.month || point.label, language) }));
 
   return (
     <div className="space-y-6 pb-20">
@@ -79,15 +82,12 @@ export default function CommandCenter() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)]">
-                  Enterprise Command Center
-                </h1>
+                  <LocalizedText text={"Enterprise Command Center"} />{" "}</h1>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-extrabold uppercase tracking-wider">
-                  Live Operations
-                </span>
+                  <LocalizedText text={"Live Operations"} />{" "}</span>
               </div>
               <p className="text-xs font-semibold text-[var(--text-secondary)] mt-0.5">
-                Full-suite CRM control panel • Micromanage leads, deals, revenue, costs, team & pipelines
-              </p>
+                <LocalizedText text={"Full-suite CRM control panel • Micromanage leads, deals, revenue, costs, team & pipelines"} />{" "}</p>
             </div>
           </div>
         </div>
@@ -112,8 +112,7 @@ export default function CommandCenter() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--sidebar-hover)] transition-colors shadow-sm disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+            <LocalizedText text={"Refresh"} /> </button>
         </div>
       </div>
 
@@ -121,9 +120,9 @@ export default function CommandCenter() {
         <div className="p-4 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-500 text-sm font-semibold flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{error}</span>
+            <span>{t(error || "")}</span>
           </div>
-          <button onClick={fetchOverview} className="underline text-xs font-bold">Retry</button>
+          <button onClick={fetchOverview} className="underline text-xs font-bold"><LocalizedText text={"Retry"} /></button>
         </div>
       )}
 
@@ -132,8 +131,7 @@ export default function CommandCenter() {
         <div className="p-3 rounded-xl border border-amber-500/20 bg-amber-500/5 shadow-sm">
           <div className="flex items-center gap-2 mb-2 text-xs font-black text-amber-500 uppercase tracking-wider">
             <AlertTriangle className="h-4 w-4" />
-            Requires Immediate Attention ({attention.length} items)
-          </div>
+            <LocalizedText text={"Requires Immediate Attention ("} />{attention.length} <LocalizedText text={"items)"} />{" "}</div>
           <div className="flex flex-wrap gap-2">
             {attention.map((item: any) => (
               <Link
@@ -147,9 +145,9 @@ export default function CommandCenter() {
                     : "border-indigo-500/30 bg-indigo-500/10 text-indigo-500 hover:border-indigo-500 hover:bg-indigo-500/20"
                 }`}
               >
-                <span>{item.label}:</span>
+                <span>{t(item.label)}:</span>
                 <span className="font-black px-1.5 py-0.2 rounded bg-black/20">{item.count}</span>
-                {item.detail && <span className="text-[10px] opacity-80">({item.detail})</span>}
+                {item.detail && <span className="text-[10px] opacity-80">({item.key === "overdue_invoices" ? t("{{amount}} outstanding", { amount: String(item.detail).replace(/ outstanding$/, "") }) : t(item.detail)})</span>}
                 <ArrowUpRight className="h-3 w-3 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
               </Link>
             ))}
@@ -163,53 +161,53 @@ export default function CommandCenter() {
       {/* ── ROW 1: PRIMARY FINANCIAL & GROWTH KPIS ───────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
         <Tile
-          label="Total Won Revenue"
+          label={t("Total Won Revenue")}
           value={money(kpis.won_revenue, currency, true)}
           delta={kpis.revenue_change_pct}
-          sub={`${num(kpis.won_deals)} closed won deals`}
+          sub={t("{{value0}} closed won deals", { value0: num(kpis.won_deals) })}
           icon={IndianRupee}
           tone="emerald"
           href="/revenue"
         />
         <Tile
-          label="Pipeline Value"
+          label={t("Pipeline Value")}
           value={money(kpis.pipeline_value, currency, true)}
-          sub={`Weighted: ${money(kpis.weighted_forecast, currency, true)}`}
+          sub={t("Weighted: {{value0}}", { value0: money(kpis.weighted_forecast, currency, true) })}
           icon={Target}
           tone="indigo"
-          href="/pipeline"
+          href="/proposals"
         />
         <Tile
-          label="Active Deals"
+          label={t("Active Deals")}
           value={num(kpis.open_deals)}
-          sub={`${num(kpis.total_deals)} total deals (${pctf(kpis.win_rate)} win)`}
+          sub={t("{{value0}} total deals ({{value1}} win)", { value0: num(kpis.total_deals), value1: pctf(kpis.win_rate) })}
           icon={Briefcase}
           tone="sky"
-          href="/pipeline"
+          href="/proposals"
         />
         <Tile
-          label="Average Deal Size"
+          label={t("Average Deal Size")}
           value={money(kpis.avg_deal_size, currency, true)}
-          sub={`Avg cycle: ${kpis.avg_sales_cycle_days ? `${kpis.avg_sales_cycle_days}d` : "—"}`}
+          sub={t("Avg cycle: {{value0}}", { value0: kpis.avg_sales_cycle_days ? `${kpis.avg_sales_cycle_days}d` : "—" })}
           icon={Clock}
           tone="violet"
-          href="/pipeline"
+          href="/proposals"
         />
 
         {data?.can_see_finance && costs && (
           <>
             <Tile
-              label="Operating Costs"
+              label={t("Operating Costs")}
               value={money(costs.period_total, currency, true)}
-              sub={`Burn: ${money(costs.monthly_burn, currency, true)}/mo`}
+              sub={t("Burn: {{value0}}/mo", { value0: money(costs.monthly_burn, currency, true) })}
               icon={TrendingDown}
               tone="slate"
               href="/business-costs"
             />
             <Tile
-              label="Net Operating Profit"
+              label={t("Net Operating Profit")}
               value={money(costs.net_profit, currency, true)}
-              sub={`Margin: ${pctf(costs.margin_pct)}`}
+              sub={t("Margin: {{value0}}", { value0: pctf(costs.margin_pct) })}
               icon={TrendingUp}
               tone={costs.net_profit >= 0 ? "emerald" : "rose"}
               href="/revenue"
@@ -218,50 +216,50 @@ export default function CommandCenter() {
         )}
 
         <Tile
-          label="Total Leads"
+          label={t("Total Leads")}
           value={num(kpis.total_leads)}
           delta={kpis.leads_change_pct}
-          sub={`${pctf(kpis.lead_conversion_rate)} conversion rate`}
+          sub={t("{{value0}} conversion rate", { value0: pctf(kpis.lead_conversion_rate) })}
           icon={Users}
           tone="amber"
           href="/leads"
         />
         <Tile
-          label="In Negotiation"
+          label={t("In Negotiation")}
           value={money(kpis.in_negotiation_value, currency, true)}
-          sub={`${num(kpis.in_negotiation)} deals negotiating`}
+          sub={t("{{value0}} deals negotiating", { value0: num(kpis.in_negotiation) })}
           icon={Flame}
           tone="orange"
-          href="/pipeline"
+          href="/proposals"
         />
         <Tile
-          label="Proposals Sent"
+          label={t("Proposals Sent")}
           value={num(kpis.proposals_sent)}
-          sub={`${pctf(kpis.proposal_acceptance_rate)} accepted`}
+          sub={t("{{value0}} accepted", { value0: pctf(kpis.proposal_acceptance_rate) })}
           icon={FileEdit}
           tone="teal"
           href="/proposals"
         />
         <Tile
-          label="Active Clients"
+          label={t("Active Clients")}
           value={num(kpis.active_clients)}
-          sub={`${num(kpis.total_clients)} registered accounts`}
+          sub={t("{{value0}} registered accounts", { value0: num(kpis.total_clients) })}
           icon={UserCheck}
           tone="indigo"
           href="/clients"
         />
         <Tile
-          label="Overdue Invoices"
+          label={t("Overdue Invoices")}
           value={money(kpis.overdue_invoices, currency, true)}
-          sub={`Outstanding: ${money(kpis.outstanding_invoices, currency, true)}`}
+          sub={t("Outstanding: {{value0}}", { value0: money(kpis.outstanding_invoices, currency, true) })}
           icon={AlertCircle}
           tone="rose"
           href="/billing"
         />
         <Tile
-          label="Pending Follow-ups"
+          label={t("Pending Follow-ups")}
           value={num(kpis.pending_followups)}
-          sub={`${num(kpis.overdue_followups)} overdue`}
+          sub={t("{{value0}} overdue", { value0: num(kpis.overdue_followups) })}
           icon={Calendar}
           tone={kpis.overdue_followups > 0 ? "rose" : "emerald"}
           href="/follow-ups"
@@ -272,20 +270,19 @@ export default function CommandCenter() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Revenue, Costs & Net Profit Chart */}
         <Card
-          title="Revenue & Profit Trajectory"
+          title={t("Revenue & Profit Trajectory")}
           icon={TrendingUp}
           tone="emerald"
           href="/revenue"
-          linkLabel="Full Financials"
+          linkLabel={t("Full Financials")}
           right={
             <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
-              Last {months} months
-            </span>
+              <LocalizedText text={"Last"} />{" "}{months} <LocalizedText text={"months"} />{" "}</span>
           }
         >
           <div className="h-72 w-full">
             {series.length === 0 ? (
-              <p className="text-xs text-[var(--text-secondary)] text-center py-20">No monthly financial records</p>
+              <p className="text-xs text-[var(--text-secondary)] text-center py-20"><LocalizedText text={"No monthly financial records"} /></p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={series} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -300,16 +297,16 @@ export default function CommandCenter() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
-                  <XAxis dataKey="label" tick={AXIS_TICK} />
+                  <XAxis dataKey="label" tick={AXIS_TICK} tickFormatter={label => dashboardDateLabel(String(label), language)} />
                   <YAxis tick={AXIS_TICK} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: any) => [money(v, currency), ""]} />
+                  <Tooltip labelFormatter={label => dashboardDateLabel(String(label), language)} contentStyle={TOOLTIP_STYLE} formatter={(v: any) => [money(v, currency), ""]} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Area type="monotone" dataKey="won_revenue" name="Won Revenue" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorWon)" />
+                  <Area type="monotone" dataKey="won_revenue" name={t("Won Revenue")} stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorWon)" />
                   {data?.can_see_finance && (
-                    <Area type="monotone" dataKey="costs" name="Costs" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorCosts)" />
+                    <Area type="monotone" dataKey="costs" name={t("Costs")} stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorCosts)" />
                   )}
                   {data?.can_see_finance && (
-                    <Line type="monotone" dataKey="net_profit" name="Net Profit" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="net_profit" name={t("Net Profit")} stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
                   )}
                 </AreaChart>
               </ResponsiveContainer>
@@ -319,11 +316,11 @@ export default function CommandCenter() {
 
         {/* Pipeline Distribution by Stage */}
         <Card
-          title="Pipeline Stage Breakdown"
+          title={t("Pipeline Stage Breakdown")}
           icon={Target}
           tone="indigo"
-          href="/pipeline"
-          linkLabel="Interactive Kanban"
+          href="/proposals"
+          linkLabel={t("Interactive Kanban")}
         >
           <div className="space-y-3">
             {(pipeline.by_stage || []).map((st: any) => {
@@ -331,13 +328,13 @@ export default function CommandCenter() {
               return (
                 <Link
                   key={st.name}
-                  href={`/pipeline?stage=${encodeURIComponent(st.name)}`}
+                  href="/proposals"
                   className="block p-2 rounded-lg border border-[var(--border)] bg-[var(--surface)]/50 hover:bg-[var(--sidebar-hover)] transition-all group"
                 >
                   <div className="flex items-center justify-between text-xs font-bold">
                     <span className="flex items-center gap-1.5 text-[var(--text-primary)] group-hover:text-[var(--primary)]">
                       <span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusColor(st.name) }} />
-                      {st.name} ({st.count})
+                      {t(st.name)} ({st.count})
                     </span>
                     <span className="text-[var(--text-primary)]">{money(st.value, currency)}</span>
                   </div>
@@ -346,8 +343,7 @@ export default function CommandCenter() {
                       <Meter value={st.value} max={maxVal} color={statusColor(st.name)} height={4} />
                     </div>
                     <span className="text-[10px] text-[var(--text-secondary)] font-semibold shrink-0">
-                      {st.probability}% win prob
-                    </span>
+                      {st.probability}<LocalizedText text={"% win prob"} />{" "}</span>
                   </div>
                 </Link>
               );
@@ -362,15 +358,13 @@ export default function CommandCenter() {
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-indigo-500" />
             <h3 className="text-sm font-extrabold text-[var(--text-primary)]">
-              Lead Sources & Acquisition Channels ({sources.total_sources || 0} active)
-            </h3>
+              <LocalizedText text={"Lead Sources & Acquisition Channels ("} />{sources.total_sources || 0} <LocalizedText text={"active)"} />{" "}</h3>
           </div>
           <Link
             href="/lead-source-analytics"
             className="flex items-center gap-1 text-xs font-bold text-[var(--primary)] hover:underline"
           >
-            Open Dedicated Lead Source Analytics
-            <ArrowUpRight className="h-3 w-3" />
+            <LocalizedText text={"Open Dedicated Lead Source Analytics"} />{" "}<ArrowUpRight className="h-3 w-3" />
           </Link>
         </header>
 
@@ -388,10 +382,10 @@ export default function CommandCenter() {
                 <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: s.color || "#94a3b8" }} />
               </div>
               <p className="text-lg font-black text-[var(--text-primary)] mt-1.5">
-                {num(s.leads)} <span className="text-xs font-semibold text-[var(--text-secondary)]">leads</span>
+                {num(s.leads)} <span className="text-xs font-semibold text-[var(--text-secondary)]"><LocalizedText text={"leads"} /></span>
               </p>
               <div className="flex items-center justify-between text-[11px] font-semibold mt-1">
-                <span className="text-emerald-500">{pctf(s.conversion_rate)} conv</span>
+                <span className="text-emerald-500">{pctf(s.conversion_rate)} <LocalizedText text={"conv"} /></span>
                 <span className="text-amber-500">{money(s.won_revenue, currency, true)}</span>
               </div>
             </Link>
@@ -403,20 +397,20 @@ export default function CommandCenter() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Proposals Hub */}
         <Card
-          title={`Proposals & Quotes (${proposals.total || 0})`}
+          title={t("Proposals & Quotes ({{value0}})", { value0: proposals.total || 0 })}
           icon={FileEdit}
           tone="indigo"
           href="/proposals"
-          linkLabel="Manage Proposals"
+          linkLabel={t("Manage Proposals")}
         >
           <div className="space-y-2.5 text-xs">
             <div className="grid grid-cols-2 gap-2">
               <div className="p-2 rounded-lg bg-[var(--surface)]/60 border border-[var(--border)]">
-                <p className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase">Sent Value</p>
+                <p className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase"><LocalizedText text={"Sent Value"} /></p>
                 <p className="text-base font-extrabold text-[var(--text-primary)] mt-0.5">{money(proposals.total_value, currency, true)}</p>
               </div>
               <div className="p-2 rounded-lg bg-[var(--surface)]/60 border border-[var(--border)]">
-                <p className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase">Accepted Value</p>
+                <p className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase"><LocalizedText text={"Accepted Value"} /></p>
                 <p className="text-base font-extrabold text-emerald-600 mt-0.5">{money(proposals.accepted_value, currency, true)}</p>
               </div>
             </div>
@@ -430,7 +424,7 @@ export default function CommandCenter() {
                 >
                   <span className="font-semibold text-[var(--text-primary)] truncate max-w-[130px]">{p.title}</span>
                   <div className="flex items-center gap-1.5">
-                    <Pill color={statusColor(p.status)}>{p.status}</Pill>
+                    <Pill color={statusColor(p.status)}>{t(p.status)}</Pill>
                     <span className="font-bold text-amber-600">{money(p.value, currency, true)}</span>
                   </div>
                 </Link>
@@ -441,20 +435,20 @@ export default function CommandCenter() {
 
         {/* Negotiations Hub */}
         <Card
-          title={`Deal Negotiations (${negotiations.in_negotiation_stage || 0})`}
+          title={t("Deal Negotiations ({{value0}})", { value0: negotiations.in_negotiation_stage || 0 })}
           icon={Flame}
           tone="orange"
-          href="/pipeline"
-          linkLabel="Pipeline Negotiations"
+          href="/proposals"
+          linkLabel={t("Pipeline Negotiations")}
         >
           <div className="space-y-2.5 text-xs">
             <div className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)]/60 flex items-center justify-between">
               <div>
-                <span className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase">Negotiating Volume</span>
+                <span className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase"><LocalizedText text={"Negotiating Volume"} /></span>
                 <p className="text-base font-black text-amber-600 mt-0.5">{money(negotiations.in_negotiation_value, currency, true)}</p>
               </div>
               <div className="text-right">
-                <span className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase">Avg Discount</span>
+                <span className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase"><LocalizedText text={"Avg Discount"} /></span>
                 <p className="text-base font-black text-rose-500 mt-0.5">{negotiations.avg_discount_pct || 0}%</p>
               </div>
             </div>
@@ -463,12 +457,12 @@ export default function CommandCenter() {
               {(negotiations.deals || []).slice(0, 4).map((d: any) => (
                 <Link
                   key={d.id}
-                  href="/pipeline"
+                  href="/proposals"
                   className="p-1.5 rounded hover:bg-[var(--sidebar-hover)] flex items-center justify-between block transition-all"
                 >
                   <span className="font-bold text-[var(--text-primary)] truncate max-w-[130px]">{d.title}</span>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-[var(--text-secondary)]">{d.rounds} rounds</span>
+                    <span className="text-[10px] text-[var(--text-secondary)]">{d.rounds} <LocalizedText text={"rounds"} /></span>
                     <span className="font-bold text-emerald-600">{money(d.last_price || d.value, currency, true)}</span>
                   </div>
                 </Link>
@@ -479,22 +473,22 @@ export default function CommandCenter() {
 
         {/* Invoices & Collections */}
         <Card
-          title="Billing & Invoicing"
+          title={t("Billing & Invoicing")}
           icon={FileText}
           tone="teal"
           href="/billing"
-          linkLabel="Billing Desk"
+          linkLabel={t("Billing Desk")}
         >
           <div className="space-y-2.5 text-xs">
             <div className="grid grid-cols-2 gap-2">
               <div className="p-2 rounded-lg bg-[var(--surface)]/60 border border-[var(--border)]">
-                <p className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase">Paid Invoices</p>
+                <p className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase"><LocalizedText text={"Paid Invoices"} /></p>
                 <p className="text-base font-extrabold text-emerald-600 mt-0.5">
                   {money(billing.invoices?.paid_value, currency, true)}
                 </p>
               </div>
               <div className="p-2 rounded-lg bg-[var(--surface)]/60 border border-[var(--border)]">
-                <p className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase">Collection Rate</p>
+                <p className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase"><LocalizedText text={"Collection Rate"} /></p>
                 <p className="text-base font-extrabold text-indigo-500 mt-0.5">
                   {pctf(billing.invoices?.collection_rate)}
                 </p>
@@ -503,11 +497,11 @@ export default function CommandCenter() {
 
             <div className="space-y-1.5 pt-1">
               <div className="flex items-center justify-between p-1.5 rounded bg-[var(--surface)]/40 border border-[var(--border)]">
-                <span className="text-[var(--text-secondary)]">Overdue Invoices:</span>
+                <span className="text-[var(--text-secondary)]"><LocalizedText text={"Overdue Invoices:"} /></span>
                 <span className="font-extrabold text-rose-500">{money(billing.invoices?.overdue_value, currency, true)} ({billing.invoices?.overdue_count || 0})</span>
               </div>
               <div className="flex items-center justify-between p-1.5 rounded bg-[var(--surface)]/40 border border-[var(--border)]">
-                <span className="text-[var(--text-secondary)]">Sales Orders:</span>
+                <span className="text-[var(--text-secondary)]"><LocalizedText text={"Sales Orders:"} /></span>
                 <span className="font-extrabold text-[var(--text-primary)]">{money(billing.sales_orders?.value, currency, true)} ({billing.sales_orders?.total || 0})</span>
               </div>
             </div>
@@ -519,15 +513,15 @@ export default function CommandCenter() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Clients Directory Overview */}
         <Card
-          title={`Top Generating Clients (${clients.total || 0})`}
+          title={t("Top Generating Clients ({{value0}})", { value0: clients.total || 0 })}
           icon={Users}
           tone="indigo"
           href="/clients"
-          linkLabel="Clients Directory"
+          linkLabel={t("Clients Directory")}
         >
           <div className="space-y-2">
             {(clients.top || []).length === 0 ? (
-              <p className="text-xs text-[var(--text-secondary)] text-center py-6">No client revenue recorded</p>
+              <p className="text-xs text-[var(--text-secondary)] text-center py-6"><LocalizedText text={"No client revenue recorded"} /></p>
             ) : (
               (clients.top || []).map((c: any) => (
                 <Link
@@ -535,11 +529,11 @@ export default function CommandCenter() {
                   href={`/clients/${c.id}`}
                   className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)]/50 hover:border-indigo-500 transition-all flex items-center justify-between block text-xs"
                 >
-                  <span className="font-bold text-[var(--text-primary)] truncate max-w-[180px]">{c.name || `Client #${c.id}`}</span>
+                  <span className="font-bold text-[var(--text-primary)] truncate max-w-[180px]">{c.name || t("Client #{{id}}", { id: c.id })}</span>
                   <div className="text-right">
                     <p className="font-extrabold text-emerald-600">{money(c.revenue, currency)}</p>
                     {c.open_value > 0 && (
-                      <p className="text-[10px] text-indigo-500 font-semibold">{money(c.open_value, currency)} open</p>
+                      <p className="text-[10px] text-indigo-500 font-semibold">{money(c.open_value, currency)} <LocalizedText text={"open"} /></p>
                     )}
                   </div>
                 </Link>
@@ -550,15 +544,15 @@ export default function CommandCenter() {
 
         {/* Team Leaderboard */}
         <Card
-          title={`Sales Team Performance (${team.length} Reps)`}
+          title={t("Sales Team Performance ({{value0}} Reps)", { value0: team.length })}
           icon={Trophy}
           tone="amber"
           href="/admin/leaderboard"
-          linkLabel="Full Leaderboard"
+          linkLabel={t("Full Leaderboard")}
         >
           <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
             {team.length === 0 ? (
-              <p className="text-xs text-[var(--text-secondary)] text-center py-6">No team members active</p>
+              <p className="text-xs text-[var(--text-secondary)] text-center py-6"><LocalizedText text={"No team members active"} /></p>
             ) : (
               team.map((rep: any) => (
                 <div
@@ -568,12 +562,11 @@ export default function CommandCenter() {
                   <div>
                     <p className="font-bold text-[var(--text-primary)]">{rep.name}</p>
                     <p className="text-[10px] text-[var(--text-secondary)]">
-                      {rep.leads} leads • {rep.won_deals} won deals ({pctf(rep.win_rate)} win)
-                    </p>
+                      {rep.leads} <LocalizedText text={"leads •"} />{" "}{rep.won_deals} <LocalizedText text={"won deals ("} />{pctf(rep.win_rate)} <LocalizedText text={"win)"} />{" "}</p>
                   </div>
                   <div className="text-right">
                     <p className="font-extrabold text-amber-600">{money(rep.won_revenue, currency)}</p>
-                    <p className="text-[10px] text-indigo-500 font-semibold">{money(rep.pipeline_value, currency)} pipeline</p>
+                    <p className="text-[10px] text-indigo-500 font-semibold">{money(rep.pipeline_value, currency)} <LocalizedText text={"pipeline"} /></p>
                   </div>
                 </div>
               ))
@@ -586,15 +579,15 @@ export default function CommandCenter() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Tasks */}
         <Card
-          title={`Action Tasks (${tasks.open || 0} Open)`}
+          title={t("Action Tasks ({{value0}} Open)", { value0: tasks.open || 0 })}
           icon={CheckSquare}
           tone="sky"
           href="/tasks"
-          linkLabel="Task Board"
+          linkLabel={t("Task Board")}
         >
           <div className="space-y-2 text-xs">
             {(tasks.next || []).length === 0 ? (
-              <p className="text-[var(--text-secondary)] text-center py-6">All tasks completed!</p>
+              <p className="text-[var(--text-secondary)] text-center py-6"><LocalizedText text={"All tasks completed!"} /></p>
             ) : (
               (tasks.next || []).map((t: any) => (
                 <Link
@@ -604,7 +597,7 @@ export default function CommandCenter() {
                 >
                   <span className="font-bold text-[var(--text-primary)] truncate max-w-[130px]">{t.title}</span>
                   <div className="flex items-center gap-1.5">
-                    <Pill color={statusColor(t.priority)}>{t.priority || "Normal"}</Pill>
+                    <Pill color={statusColor(t.priority)}><LocalizedText text={t.priority || "Normal"} /></Pill>
                     <span className="text-[10px] text-[var(--text-secondary)]">{t.due_date || "—"}</span>
                   </div>
                 </Link>
@@ -615,15 +608,15 @@ export default function CommandCenter() {
 
         {/* Follow-ups */}
         <Card
-          title={`Pending Follow-ups (${followups.pending || 0})`}
+          title={t("Pending Follow-ups ({{value0}})", { value0: followups.pending || 0 })}
           icon={Calendar}
           tone="teal"
           href="/follow-ups"
-          linkLabel="Follow-up Queue"
+          linkLabel={t("Follow-up Queue")}
         >
           <div className="space-y-2 text-xs">
             {(followups.next || []).length === 0 ? (
-              <p className="text-[var(--text-secondary)] text-center py-6">No pending follow-ups</p>
+              <p className="text-[var(--text-secondary)] text-center py-6"><LocalizedText text={"No pending follow-ups"} /></p>
             ) : (
               (followups.next || []).map((f: any) => (
                 <Link
@@ -633,9 +626,9 @@ export default function CommandCenter() {
                 >
                   <span className="font-bold text-[var(--text-primary)] truncate max-w-[130px]">{f.title}</span>
                   <div className="flex items-center gap-1.5">
-                    <Pill color={f.overdue ? "#ef4444" : "#10b981"}>{f.channel || "Call"}</Pill>
+                    <Pill color={f.overdue ? "#ef4444" : "#10b981"}>{t(f.channel || "Call")}</Pill>
                     <span className={`text-[10px] ${f.overdue ? "text-rose-500 font-bold" : "text-[var(--text-secondary)]"}`}>
-                      {relTime(f.due_at)}
+                      {relTime(f.due_at, language)}
                     </span>
                   </div>
                 </Link>
@@ -646,15 +639,15 @@ export default function CommandCenter() {
 
         {/* Meetings */}
         <Card
-          title={`Upcoming Meetings (${meetings.upcoming_7d || 0})`}
+          title={t("Upcoming Meetings ({{value0}})", { value0: meetings.upcoming_7d || 0 })}
           icon={Clock}
           tone="indigo"
           href="/meetings"
-          linkLabel="Calendar"
+          linkLabel={t("Calendar")}
         >
           <div className="space-y-2 text-xs">
             {(meetings.next || []).length === 0 ? (
-              <p className="text-[var(--text-secondary)] text-center py-6">No meetings scheduled for next 7 days</p>
+              <p className="text-[var(--text-secondary)] text-center py-6"><LocalizedText text={"No meetings scheduled for next 7 days"} /></p>
             ) : (
               (meetings.next || []).map((m: any) => (
                 <Link
@@ -664,8 +657,8 @@ export default function CommandCenter() {
                 >
                   <span className="font-bold text-[var(--text-primary)] truncate max-w-[130px]">{m.title}</span>
                   <div className="text-right">
-                    <span className="text-[10px] text-indigo-500 font-semibold block">{m.type || "Online"}</span>
-                    <span className="text-[10px] text-[var(--text-secondary)]">{relTime(m.scheduled_at)}</span>
+                    <span className="text-[10px] text-indigo-500 font-semibold block">{t(m.type || "Online")}</span>
+                    <span className="text-[10px] text-[var(--text-secondary)]">{relTime(m.scheduled_at, language)}</span>
                   </div>
                 </Link>
               ))
@@ -678,15 +671,15 @@ export default function CommandCenter() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Projects */}
         <Card
-          title={`Operations Projects (${projects.total || 0})`}
+          title={t("Operations Projects ({{value0}})", { value0: projects.total || 0 })}
           icon={FolderOpen}
           tone="indigo"
           href="/projects"
-          linkLabel="Project Board"
+          linkLabel={t("Project Board")}
         >
           <div className="space-y-2 text-xs">
             {(projects.active || []).length === 0 ? (
-              <p className="text-[var(--text-secondary)] text-center py-6">No active ongoing projects</p>
+              <p className="text-[var(--text-secondary)] text-center py-6"><LocalizedText text={"No active ongoing projects"} /></p>
             ) : (
               (projects.active || []).map((p: any) => (
                 <Link
@@ -709,15 +702,15 @@ export default function CommandCenter() {
 
         {/* Low Stock Alert */}
         <Card
-          title={`Inventory & Low Stock Alerts (${inventory.low_stock || 0})`}
+          title={t("Inventory & Low Stock Alerts ({{value0}})", { value0: inventory.low_stock || 0 })}
           icon={Package}
           tone="amber"
           href="/inventory"
-          linkLabel="Inventory Catalog"
+          linkLabel={t("Inventory Catalog")}
         >
           <div className="space-y-2 text-xs">
             {(inventory.items || []).length === 0 ? (
-              <p className="text-emerald-500 text-center py-6 font-semibold">All inventory levels are healthy!</p>
+              <p className="text-emerald-500 text-center py-6 font-semibold"><LocalizedText text={"All inventory levels are healthy!"} /></p>
             ) : (
               (inventory.items || []).map((i: any) => (
                 <Link
@@ -727,8 +720,8 @@ export default function CommandCenter() {
                 >
                   <span className="font-bold text-[var(--text-primary)]">{i.name} ({i.code})</span>
                   <div className="text-right">
-                    <span className="text-rose-500 font-extrabold">{i.stock} in stock</span>
-                    <span className="text-[10px] text-[var(--text-secondary)] block">Min: {i.min}</span>
+                    <span className="text-rose-500 font-extrabold">{i.stock} <LocalizedText text={"in stock"} /></span>
+                    <span className="text-[10px] text-[var(--text-secondary)] block"><LocalizedText text={"Min:"} /> {i.min}</span>
                   </div>
                 </Link>
               ))

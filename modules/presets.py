@@ -12,7 +12,7 @@ from sqlmodel import Session
 
 from modules import features, tenant_settings
 
-_CRM_BASE = {"dashboard", "leads", "contacts", "clients", "deals", "work_queue", "projects", "task_sheet", "reports",
+_CRM_BASE = {"dashboard", "leads", "contacts", "clients", "work_queue", "projects", "task_sheet", "reports",
              "meetings", "calls", "teams", "leaderboard", "inbox", "followups", "email_agent", "support", "cases"}
 
 # The business-suite modules the SerpHawk flagship ships to its own users (ported from the SCM BPO deployment).
@@ -31,7 +31,7 @@ PRESETS: Dict[str, dict] = {
     },
     "standard": {
         "label": "Standard CRM",
-        "description": "The CRM every business starts from: leads, contacts, clients, deals, projects and tasks, reports, "
+        "description": "The CRM every business starts from: leads, contacts, clients, projects and tasks, reports, "
                        "inbox, follow-ups, email agent, products, billing and proposals. Brand-neutral.",
         "features": _CRM_BASE | {"products", "billing", "invoices", "proposals"},
         "settings": {},
@@ -102,7 +102,7 @@ def apply_preset(session: Session, tenant_id: int, name: str, settings_override:
     if name not in PRESETS:
         raise ValueError(f"Unknown preset '{name}'")
     preset = PRESETS[name]
-    applied = features.set_features(session, tenant_id, {k: (k in preset["features"]) for k in features.FEATURES})
+    applied = features.set_features(session, tenant_id, {k: (k in preset["features"] or (k.startswith("dashboard_") and "dashboard" in preset["features"])) for k in features.FEATURES})
     merged = dict(preset["settings"])
     merged.update(settings_override or {})
     stored = tenant_settings.update_settings(session, tenant_id, merged, preset=name)

@@ -771,7 +771,6 @@ Explain what each feature does, how it helps, and guide through the UI step by s
 
 {CRM_KNOWLEDGE}"""
             allowed_tools = "demo"
-            route_map = "Dashboard='/', Clients='/clients', Leads='/leads', Pipeline='/pipeline', Billing='/billing', Inventory='/inventory', Catalog='/catalog', Projects='/projects', Email Agent='/email-agent', Marketplace='/admin/marketplace'"
 
         else:
             persona = f"""You are the SERP Hawk CRM AI Assistant.

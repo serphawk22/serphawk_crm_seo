@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import { useRef } from "react";
 import { FileText, Plus } from "lucide-react";
 import Quotes, { QuotesHandle } from "./Quotes";
@@ -17,7 +18,7 @@ export default function BillingManage() {
             <FileText className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Billing</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100"><LocalizedText text={"Billing"} /></h1>
             <p className="text-sm text-slate-500 dark:text-zinc-400">Manage quotes</p>
           </div>
         </div>
@@ -35,8 +36,7 @@ export default function BillingManage() {
           />
           <button onClick={() => quotesRef.current?.openCreate()}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white text-sm font-semibold hover:opacity-90 shadow-md transition-all active:scale-95">
-            <Plus className="w-4 h-4" /> New Quote
-          </button>
+            <Plus className="w-4 h-4" /> <LocalizedText text={"New Quote"} /> </button>
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import React, { useState, useEffect } from "react";
 import { API_BASE_URL } from "@/config";
 import { motion, AnimatePresence } from "framer-motion";
@@ -112,15 +113,12 @@ export default function CoursesPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                Course Catalog
-              </h1>
+                <LocalizedText text={"Course Catalog"} /></h1>
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-zinc-300 border border-slate-200/80 dark:border-white/5">
-                {courses.length} courses
-              </span>
+                {courses.length} <LocalizedText text={"courses"} /></span>
             </div>
             <p className="text-xs text-slate-500 dark:text-zinc-400">
-              Manage all institute academic programs, pricing, and syllabi
-            </p>
+              <LocalizedText text={"Manage all institute academic programs, pricing, and syllabi"} /></p>
           </div>
         </div>
 
@@ -128,8 +126,7 @@ export default function CoursesPage() {
           onClick={openCreate}
           className="flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-xs shadow-violet-500/20 transition-all hover:opacity-95 active:scale-95"
         >
-          <Plus className="w-4 h-4" /> Create Course
-        </button>
+          <Plus className="w-4 h-4" /> <LocalizedText text={"Create Course"} /></button>
       </div>
 
       {/* High-density Compact Metrics Strip */}
@@ -221,17 +218,17 @@ export default function CoursesPage() {
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-[#111111]/90 rounded-xl border border-slate-200/90 dark:border-white/10 text-center">
           <BookOpen className="w-10 h-10 text-slate-300 dark:text-zinc-600 mb-2" />
-          <p className="text-slate-600 dark:text-zinc-400 font-semibold text-sm">No courses found matching criteria</p>
+          <p className="text-slate-600 dark:text-zinc-400 font-semibold text-sm"><LocalizedText text={"No courses found matching criteria"} /></p>
         </div>
       ) : viewMode === "list" ? (
         <div className="space-y-2">
           {/* Subtle column headers for desktop */}
           <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-            <div className="col-span-4">Course Program</div>
-            <div className="col-span-2">Tuition & Advance</div>
-            <div className="col-span-3">Duration & Batches</div>
-            <div className="col-span-2">Enrollments & Status</div>
-            <div className="col-span-1 text-right">Actions</div>
+            <div className="col-span-4"><LocalizedText text={"Course Program"} /></div>
+            <div className="col-span-2"><LocalizedText text={"Tuition & Advance"} /></div>
+            <div className="col-span-3"><LocalizedText text={"Duration & Batches"} /></div>
+            <div className="col-span-2"><LocalizedText text={"Enrollments & Status"} /></div>
+            <div className="col-span-1 text-right"><LocalizedText text={"Actions"} /></div>
           </div>
 
           {filtered.map((c, i) => (
@@ -280,7 +277,7 @@ export default function CoursesPage() {
                   </p>
                   {c.advance_amount > 0 ? (
                     <p className="text-[10.5px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                      Advance: ₹{c.advance_amount.toLocaleString()}
+                      <LocalizedText text={"Advance: ₹"} />{c.advance_amount.toLocaleString()}
                     </p>
                   ) : null}
                 </div>
@@ -291,12 +288,12 @@ export default function CoursesPage() {
                     {c.duration_weeks ? (
                       <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-zinc-300 bg-slate-100 dark:bg-white/10 px-2 py-0.5 rounded border border-slate-200/60 dark:border-white/5">
                         <Clock className="w-2.5 h-2.5 text-blue-500" />
-                        <span>{c.duration_weeks} wks</span>
+                        <span>{c.duration_weeks} <LocalizedText text={"wks"} /></span>
                       </span>
                     ) : null}
                     <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-zinc-300 bg-slate-100 dark:bg-white/10 px-2 py-0.5 rounded border border-slate-200/60 dark:border-white/5">
                       <Layers className="w-2.5 h-2.5 text-amber-500" />
-                      <span>{c.batch_count} batches</span>
+                      <span>{c.batch_count} <LocalizedText text={"batches"} /></span>
                     </span>
                   </div>
                 </div>
@@ -305,7 +302,7 @@ export default function CoursesPage() {
                 <div className="col-span-1 lg:col-span-2 flex items-center gap-1.5">
                   <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 border border-violet-200/60 dark:border-violet-700/30 whitespace-nowrap shadow-xs">
                     <Users className="w-2.5 h-2.5" />
-                    <span>{c.enrollment_count} enrolled</span>
+                    <span>{c.enrollment_count} <LocalizedText text={"enrolled"} /></span>
                   </span>
                   <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.2 rounded-full border whitespace-nowrap ${
                     c.is_active
@@ -361,7 +358,7 @@ export default function CoursesPage() {
                   <button onClick={() => openEdit(course)} className="p-1 bg-black/30 rounded-lg hover:bg-black/50 text-white transition"><Edit2 className="w-3 h-3" /></button>
                   <button onClick={() => handleDelete(course.id)} className="p-1 bg-black/30 rounded-lg hover:bg-red-500/60 text-white transition"><Trash2 className="w-3 h-3" /></button>
                 </div>
-                {!course.is_active && <div className="absolute top-2 left-2 px-1.5 py-0.2 bg-red-500/80 rounded-full text-[10px] text-white">Inactive</div>}
+                {!course.is_active && <div className="absolute top-2 left-2 px-1.5 py-0.2 bg-red-500/80 rounded-full text-[10px] text-white"><LocalizedText text={"Inactive"} /></div>}
               </div>
 
               <div className="p-3.5 flex-1 flex flex-col justify-between">
@@ -374,15 +371,14 @@ export default function CoursesPage() {
 
                   <div className="grid grid-cols-2 gap-1.5 text-xs text-slate-700 dark:text-zinc-300 py-2 border-y border-slate-100 dark:border-white/5 mb-3">
                     <div className="flex items-center gap-1 font-semibold text-emerald-600">₹{course.price.toLocaleString()}</div>
-                    <div className="flex items-center gap-1"><Clock className="w-3 h-3 text-blue-500" />{course.duration_weeks || 0} wks</div>
-                    <div className="flex items-center gap-1"><Layers className="w-3 h-3 text-amber-500" />{course.batch_count} batches</div>
-                    <div className="flex items-center gap-1"><Users className="w-3 h-3 text-violet-500" />{course.enrollment_count} enrolled</div>
+                    <div className="flex items-center gap-1"><Clock className="w-3 h-3 text-blue-500" />{course.duration_weeks || 0} <LocalizedText text={"wks"} /></div>
+                    <div className="flex items-center gap-1"><Layers className="w-3 h-3 text-amber-500" />{course.batch_count} <LocalizedText text={"batches"} /></div>
+                    <div className="flex items-center gap-1"><Users className="w-3 h-3 text-violet-500" />{course.enrollment_count} <LocalizedText text={"enrolled"} /></div>
                   </div>
                 </div>
 
                 <Link href={`/courses/${course.id}`} className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-violet-50 hover:text-violet-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300 dark:hover:bg-violet-500/20 text-xs font-semibold transition">
-                  <Eye className="w-3.5 h-3.5" /> View Program Details
-                </Link>
+                  <Eye className="w-3.5 h-3.5" /> <LocalizedText text={"View Program Details"} /></Link>
               </div>
             </motion.div>
           ))}
@@ -401,39 +397,39 @@ export default function CoursesPage() {
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
-                    <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Course Title *</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Course Title *"} /></label>
                     <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Full Stack Web Development" className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-violet-500" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Category</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Category"} /></label>
                     <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-zinc-800 dark:text-white focus:outline-none focus:border-violet-500">
                       {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Course Price (₹)</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Course Price (₹)"} /></label>
                     <input value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} type="number" placeholder="0" className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-violet-500" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Advance Amount (₹)</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Advance Amount (₹)"} /></label>
                     <input value={form.advance_amount} onChange={e => setForm({ ...form, advance_amount: e.target.value })} type="number" placeholder="0" className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-violet-500" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Duration (Weeks)</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Duration (Weeks)"} /></label>
                     <input value={form.duration_weeks} onChange={e => setForm({ ...form, duration_weeks: e.target.value })} type="number" placeholder="e.g. 12" className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-violet-500" />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1">Description</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Description"} /></label>
                     <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={2} placeholder="Course overview..." className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-violet-500 resize-none" />
                   </div>
                   <div className="col-span-2 flex items-center gap-2">
                     <input type="checkbox" id="is_active" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="w-4 h-4 accent-violet-500" />
-                    <label htmlFor="is_active" className="text-xs font-semibold text-slate-700 dark:text-zinc-300">Course is Active</label>
+                    <label htmlFor="is_active" className="text-xs font-semibold text-slate-700 dark:text-zinc-300"><LocalizedText text={"Course is Active"} /></label>
                   </div>
                 </div>
               </div>
               <div className="flex gap-2.5 mt-5">
-                <button onClick={() => setShowModal(false)} className="flex-1 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300 transition text-xs sm:text-sm font-semibold">Cancel</button>
+                <button onClick={() => setShowModal(false)} className="flex-1 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300 transition text-xs sm:text-sm font-semibold"><LocalizedText text={"Cancel"} /></button>
                 <button onClick={handleSave} disabled={saving} className="flex-1 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold hover:opacity-95 transition disabled:opacity-50 flex items-center justify-center gap-2 text-xs sm:text-sm shadow-xs">
                   {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   {editCourse ? "Update" : "Create Course"}

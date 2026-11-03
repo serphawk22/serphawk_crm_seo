@@ -52,6 +52,7 @@ function mountCard({ legacyToken, readStatus = 200 } = {}) {
   const imports = name => {
     if (name === 'react') return react;
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    if (name === '@/context/LanguageContext') return { useLanguage: () => ({ t: key => key, language: 'en' }) };
     if (name === '@/config') return { API_BASE_URL: 'https://api.test.invalid' };
     if (name === '@/lib/apiRequest') return apiModule.exports;
     if (name === '@/lib/emailConfirm') return { emailTriggerInfo: () => null };
@@ -59,6 +60,7 @@ function mountCard({ legacyToken, readStatus = 200 } = {}) {
     if (name === 'framer-motion') return { motion: new Proxy({}, { get: (_, key) => `motion.${String(key)}` }), AnimatePresence: 'AnimatePresence' };
     if (name === 'lucide-react') return new Proxy({}, { get: (_, key) => `icon.${String(key)}` });
     if (name === '@/components/EmailOTPVerification') return { default: 'EmailOTPVerification' };
+    if (name === '@/components/LocalizedText') return { default: 'LocalizedText' };
     throw new Error(`Unexpected component import: ${name}`);
   };
   const window = { fetch: nativeFetch, location: { origin: 'https://app.test.invalid', pathname: '/admin/branding' } };

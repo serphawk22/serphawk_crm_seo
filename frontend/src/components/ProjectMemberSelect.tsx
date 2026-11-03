@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
@@ -28,7 +29,7 @@ export default function ProjectMemberSelect({ users, value, onChange }: { users:
         </label>)}
         {!filtered.length && <p className="text-sm text-gray-500 p-2">No matching team members.</p>}
       </div>
-      <button type="button" onClick={() => setOpen(false)} className="mt-2 text-sm font-bold text-blue-600">Done</button>
+      <button type="button" onClick={() => setOpen(false)} className="mt-2 text-sm font-bold text-blue-600"><LocalizedText text={"Done"} /></button>
     </div>}
     {!!value.length && <div className="flex flex-wrap gap-2 mt-2">{members.filter(u => value.includes(u.id)).map(u => <button type="button" key={u.id} onClick={() => onChange(value.filter(id => id !== u.id))} className="rounded-full bg-blue-50 dark:bg-blue-950 px-3 py-1 text-xs text-blue-700 dark:text-blue-200" aria-label={`Remove ${u.name || u.email}`}>{u.name || u.email} ×</button>)}</div>}
   </div>;

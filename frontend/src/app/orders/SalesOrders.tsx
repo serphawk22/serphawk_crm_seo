@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ShoppingCart, Plus, X, Search, Loader2, Trash2, Building2, Download, Mail, Eye } from "lucide-react";
@@ -147,7 +148,7 @@ export default function SalesOrdersPage() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-4">
           <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-lg shadow-blue-500/20"><ShoppingCart className="w-6 h-6 text-white" /></div>
-          <div><h1 className="text-2xl font-black text-slate-800 dark:text-zinc-100">Sales Orders</h1><p className="text-sm text-slate-500 dark:text-zinc-400">Track confirmed orders and fulfillment</p></div>
+          <div><h1 className="text-2xl font-black text-slate-800 dark:text-zinc-100"><LocalizedText text={"Sales Orders"} /></h1><p className="text-sm text-slate-500 dark:text-zinc-400">Track confirmed orders and fulfillment</p></div>
         </div>
         <div className="flex items-center gap-3">
           <ExportActions
@@ -235,31 +236,31 @@ export default function SalesOrdersPage() {
                   {form.linked_to === "lead" ? (
                     <select value={form.lead_id} onChange={e => setForm(f => ({ ...f, lead_id: e.target.value }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-blue-200 dark:border-blue-700/40 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Select a lead...</option>
+                      <option value=""><LocalizedText text={"Select a lead..."} /></option>
                       {leads.map(l => <option key={l.id} value={l.id}>{l.company_name}{l.email ? ` — ${l.email}` : ""}</option>)}
                     </select>
                   ) : (
                     <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-blue-200 dark:border-blue-700/40 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Select a client...</option>
+                      <option value=""><LocalizedText text={"Select a client..."} /></option>
                       {clients.map(c => <option key={c.id} value={c.id}>{c.companyName || `Client #${c.id}`}</option>)}
                     </select>
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Amount</label>
+                  <div><label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block"><LocalizedText text={"Amount"} /></label>
                     <input type="number" value={form.grand_total} onChange={e => setForm(f => ({ ...f, grand_total: e.target.value }))} placeholder="0.00" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div><label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Delivery Date</label>
                     <input type="date" value={form.delivery_date} onChange={e => setForm(f => ({ ...f, delivery_date: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
-                <div><label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">Notes</label>
+                <div><label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block"><LocalizedText text={"Notes"} /></label>
                   <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Order notes..." className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
                 </div>
               </div>
               <div className="flex gap-3 mt-6">
-                <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 font-bold text-sm hover:bg-slate-200 transition-all">Cancel</button>
+                <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 font-bold text-sm hover:bg-slate-200 transition-all"><LocalizedText text={"Cancel"} /></button>
                 <button onClick={handleSave} disabled={saving || (form.linked_to === "lead" ? !form.lead_id : !form.client_id)} className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-sm hover:opacity-90 disabled:opacity-40 transition-all flex items-center justify-center gap-2">
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />} Create Order
                 </button>
@@ -282,8 +283,7 @@ export default function SalesOrdersPage() {
                 <div className="flex items-center gap-2 shrink-0">
                   <button onClick={() => handleDownloadPdf(preview.id, preview.name)} title="Download PDF"
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-all">
-                    <Download className="w-3.5 h-3.5" /> Download
-                  </button>
+                    <Download className="w-3.5 h-3.5" /> <LocalizedText text={"Download"} /> </button>
                   <button onClick={closePreview} title="Close" className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 transition-all"><X className="w-4 h-4" /></button>
                 </div>
               </div>
@@ -302,7 +302,7 @@ export default function SalesOrdersPage() {
                 <h2 className="text-lg font-black text-slate-800 dark:text-zinc-100 flex items-center gap-2"><Mail className="w-4 h-4 text-blue-600" /> Email PDF</h2>
                 <button onClick={() => { setEmailModal(null); setEmailPrompt(""); }}><X className="w-4 h-4" /></button>
               </div>
-              <p className="text-xs text-slate-500 mb-3">{emailPrompt || <>Send <span className="font-bold">{emailModal.orderNumber}</span> as PDF attachment</>}</p>
+              <p className="text-xs text-slate-500 mb-3">{emailPrompt || <><LocalizedText text={"Send"} /> <span className="font-bold">{emailModal.orderNumber}</span> as PDF attachment</>}</p>
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Recipient Email</label>
               <input type="email" autoFocus value={emailAddr} onChange={e => setEmailAddr(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleSendEmail()}
@@ -312,11 +312,10 @@ export default function SalesOrdersPage() {
                 <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1.5">Client/Lead email pre-filled: <span className="font-bold">{emailAddr}</span> — edit if needed</p>
               )}
               <div className="flex gap-3 mt-5">
-                <button onClick={() => { setEmailModal(null); setEmailPrompt(""); }} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-bold text-sm hover:bg-slate-200 transition-all">Cancel</button>
+                <button onClick={() => { setEmailModal(null); setEmailPrompt(""); }} className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-bold text-sm hover:bg-slate-200 transition-all"><LocalizedText text={"Cancel"} /></button>
                 <button onClick={handleSendEmail} disabled={!emailAddr.trim() || sending}
                   className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
-                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} Send
-                </button>
+                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} <LocalizedText text={"Send"} /> </button>
               </div>
             </motion.div>
           </motion.div>

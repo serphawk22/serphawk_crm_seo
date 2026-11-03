@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect } from "react";
 import { 
@@ -300,7 +301,7 @@ export default function ProjectDetailPage() {
                             })}
                          </div>
                          <div className="flex gap-5 mt-4 text-[10px] font-black uppercase tracking-widest text-gray-400">
-                            <span><i className="inline-block w-2 h-2 rounded-full bg-blue-400 mr-2" />Created</span>
+                            <span><i className="inline-block w-2 h-2 rounded-full bg-blue-400 mr-2" /><LocalizedText text={"Created"} /></span>
                             <span><i className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-2" />Production</span>
                             <span className="ml-auto">{dashboard.tickets.not_started} not started</span>
                          </div>
@@ -313,7 +314,7 @@ export default function ProjectDetailPage() {
                          </div>
                          <div className="overflow-x-auto">
                             <table className="w-full text-left text-xs">
-                               <thead><tr className="text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100 dark:border-zinc-800"><th className="py-3">Developer</th><th>Total</th><th>Not Started</th><th>Dev</th><th>QA</th><th>Done</th></tr></thead>
+                               <thead><tr className="text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100 dark:border-zinc-800"><th className="py-3"><LocalizedText text={"Developer"} /></th><th>Total</th><th>Not Started</th><th>Dev</th><th>QA</th><th><LocalizedText text={"Done"} /></th></tr></thead>
                                <tbody>{(dashboard.developers || []).map((developer: any) => <tr key={developer.id} className="border-b border-gray-50 dark:border-zinc-800/60 last:border-0"><td className="py-4 font-black text-gray-800 dark:text-zinc-100">{developer.name}<span className="block text-[10px] font-normal text-gray-400">{developer.email}</span></td><td className="font-bold">{developer.total}</td><td>{developer.not_started}</td><td>{developer.in_dev}</td><td>{developer.in_qa}</td><td className="font-black text-emerald-600">{developer.done}</td></tr>)}</tbody>
                             </table>
                          </div>

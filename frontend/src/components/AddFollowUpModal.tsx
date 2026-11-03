@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -300,26 +301,25 @@ export default function AddFollowUpModal({ open, onClose, target, onSuccess }: A
                   onChange={(e) => setChannel(e.target.value)}
                   className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/30 text-slate-900 dark:text-zinc-100"
                 >
-                  <option value="Email">Email</option>
+                  <option value="Email"><LocalizedText text={"Email"} /></option>
                   <option value="Call">Phone Call</option>
-                  <option value="Meeting">Meeting</option>
+                  <option value="Meeting"><LocalizedText text={"Meeting"} /></option>
                   <option value="WhatsApp">WhatsApp</option>
-                  <option value="Other">Other</option>
+                  <option value="Other"><LocalizedText text={"Other"} /></option>
                 </select>
               </div>
               <div>
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-zinc-300 mb-1">
-                  Priority
-                </label>
+                  <LocalizedText text={"Priority"} /> </label>
                 <select
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
                   className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/30 text-slate-900 dark:text-zinc-100"
                 >
-                  <option value="Low">Low</option>
-                  <option value="Medium">Medium</option>
-                  <option value="High">High</option>
-                  {board && <option value="Urgent">Urgent</option>}
+                  <option value="Low"><LocalizedText text={"Low"} /></option>
+                  <option value="Medium"><LocalizedText text={"Medium"} /></option>
+                  <option value="High"><LocalizedText text={"High"} /></option>
+                  {board && <option value="Urgent"><LocalizedText text={"Urgent"} /></option>}
                 </select>
               </div>
             </div>
@@ -398,8 +398,7 @@ export default function AddFollowUpModal({ open, onClose, target, onSuccess }: A
                 onClick={onClose}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
               >
-                Cancel
-              </button>
+                <LocalizedText text={"Cancel"} /> </button>
               <button
                 type="submit"
                 disabled={submitting}

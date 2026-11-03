@@ -1,4 +1,6 @@
 "use client";
+import { createVisiblePoll } from "@/lib/visiblePoll";
+import LocalizedText from "@/components/LocalizedText";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -188,7 +190,7 @@ function Sheet({ open, onClose, title, children, footer }: { open: boolean; onCl
 }
 
 function RemindersBoard() {
-  const { role } = useRole();
+  const { role, user } = useRole();
   const viewerTz = useMemo(() => detectTimeZone(), []);
   const canSeeAll = role === "Admin" || role === "SuperAdmin";
 
@@ -230,25 +232,26 @@ function RemindersBoard() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  const load = useCallback(async (silent = false) => {
+  const load = useCallback(async (silent = false, signal?: AbortSignal) => {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/follow-ups?scope=${scope}`);
+      const res = await fetch(`${API_BASE_URL}/follow-ups?scope=${scope}`, { signal });
       if (res.ok) {
         const d = await res.json();
+        if (signal?.aborted) return;
         setItems(Array.isArray(d.follow_ups) ? d.follow_ups : []);
         setCounts(d.counts || { overdue: 0, pending: 0, upcoming: 0, completed: 0 });
       }
     } catch { /* keep previous */ }
-    setLoading(false);
-  }, [scope]);
+    if (!signal?.aborted) setLoading(false);
+  }, [scope, user?.id]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { const controller = new AbortController(); void load(false, controller.signal); return () => controller.abort(); }, [load]);
 
   // Periodic refresh every 60s
   useEffect(() => {
-    const t = setInterval(() => { load(true); setTick(x => x + 1); }, 60000);
-    return () => clearInterval(t);
+    const poll = createVisiblePoll(async signal => { await load(true, signal); if (!signal.aborted) setTick(x => x + 1); }, 60000, false);
+    return () => poll.dispose();
   }, [load]);
 
   // first load: land on the most urgent non-empty tab
@@ -635,8 +638,7 @@ function RemindersBoard() {
                 Follow-ups &amp; Reminders
               </h1>
               <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                {activeFollowups} Active
-              </span>
+                {activeFollowups} <LocalizedText text={"Active"} /> </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
               Auto-assigned to lead owners, instant status changer, timezone sync, and AI email assistant
@@ -1059,13 +1061,13 @@ function RemindersBoard() {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 dark:bg-zinc-800/60 border-b border-slate-200 dark:border-zinc-800 text-slate-500 uppercase tracking-wider font-extrabold text-[10px]">
                 <tr>
-                  <th className="py-3 px-4 w-12 text-center">Done</th>
-                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4 w-12 text-center"><LocalizedText text={"Done"} /></th>
+                  <th className="py-3 px-4"><LocalizedText text={"Status"} /></th>
                   <th className="py-3 px-4">Title &amp; Notes</th>
                   <th className="py-3 px-4">Entity &amp; Sales Rep</th>
                   <th className="py-3 px-4">Channel / Priority</th>
-                  <th className="py-3 px-4">Due Date</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4"><LocalizedText text={"Due Date"} /></th>
+                  <th className="py-3 px-4 text-right"><LocalizedText text={"Actions"} /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
@@ -1220,8 +1222,7 @@ function RemindersBoard() {
               onClick={() => setShowForm(false)}
               className="flex-1 h-11 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-bold text-sm hover:bg-slate-200 dark:hover:bg-zinc-700 transition"
             >
-              Cancel
-            </button>
+              <LocalizedText text={"Cancel"} /> </button>
             <button
               onClick={save}
               disabled={saving || !form.title.trim()}
@@ -1324,7 +1325,7 @@ function RemindersBoard() {
         {/* Status & Priority */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className={labelCls}>Status</label>
+            <label className={labelCls}><LocalizedText text={"Status"} /></label>
             <select
               value={form.status}
               onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
@@ -1337,7 +1338,7 @@ function RemindersBoard() {
             </select>
           </div>
           <div>
-            <label className={labelCls}>Priority</label>
+            <label className={labelCls}><LocalizedText text={"Priority"} /></label>
             <select
               value={form.priority}
               onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
@@ -1465,8 +1466,7 @@ function RemindersBoard() {
                   className="h-11 px-4 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 font-bold text-xs flex items-center gap-2 justify-center hover:bg-slate-200 transition"
                 >
                   {drafting ? <Loader2 className="w-4 h-4 animate-spin text-amber-500" /> : <RefreshCw className="w-4 h-4" />}
-                  Regenerate
-                </button>
+                  <LocalizedText text={"Regenerate"} /> </button>
                 <button
                   onClick={sendEmail}
                   disabled={sending || drafting}

@@ -312,7 +312,7 @@ def create_demo_workspace(session: Session, source_tenant_id: int, password_hash
     preset = tenant_settings.get_stored(source.id, use_cache=False)[0] or "standard"
     out = create_workspace(session, company_name=source.business_name or source.name, admin_name=demo_name,
                            admin_email=email, password_hash=password_hash, preset=preset if preset in presets.PRESETS else "standard",
-                           settings=stored, is_trial=True, tenant_name=f"{source.name} (Demo)", admin_role="Demo",
+                           settings=stored, is_trial=True, limits={"limit_calls": 2}, tenant_name=f"{source.name} (Demo)", admin_role="Demo",
                            demo_of=source.id)
     # same modules as the real tenant, not the preset's defaults
     features.set_features(session, out["tenant_id"], features.effective_features(source.id, use_cache=False))

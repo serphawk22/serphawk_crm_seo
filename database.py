@@ -44,8 +44,8 @@ engine = create_engine(
     DATABASE_URL,
     echo=False,
     # Revalidate pooled connections before handing them out so a dropped Neon SSL connection is
-    # transparently replaced instead of surfacing as a slow/failed query. pool_recycle keeps
-    # connections warm, so the ping rarely finds anything stale.
+    # transparently replaced instead of surfacing as a slow/failed query. Recycling
+    # happens at checkout; it does not send periodic keepalive traffic.
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
@@ -1702,6 +1702,13 @@ class ExtractedEmail(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow)
 
 
+class DemoServiceUsage(SQLModel, table=True):
+    __tablename__ = "demo_service_usage"
+    tenant_id: int = Field(foreign_key="tenants.id", primary_key=True)
+    resource: str = Field(max_length=20, primary_key=True)
+    used: int = Field(default=0)
+
+
 class TenantFeature(SQLModel, table=True):
     """Per-tenant feature entitlement. A missing row falls back to the registry default
     (modules/features.py), so tenants that predate this table keep every feature they had."""
@@ -1765,6 +1772,20 @@ class CustomizationRequestMessage(SQLModel, table=True):
     from_platform: bool = Field(default=False)
     body: str = Field(sa_column=Column(Text))
     created_at: datetime = Field(default_factory=_utcnow)
+
+
+# Plan-verified indexes for NEW schemas. create_all does not add indexes to
+# existing tables; existing deployments add them concurrently,
+# outside startup transactions, after reviewing their own plans.
+Index("ix_sent_emails_tenant_recipient_time", SentEmail.tenant_id,
+      func.lower(SentEmail.to_email), SentEmail.sent_at.desc(), info={"manual_existing_install": True})
+Index("ix_inbox_pending_classification", InboxMessage.received_at.desc(),
+      postgresql_where=InboxMessage.ai_classified_at.is_(None),
+      sqlite_where=InboxMessage.ai_classified_at.is_(None), info={"manual_existing_install": True})
+Index("ix_follow_ups_pending_reminder", func.coalesce(FollowUp.remind_at, FollowUp.due_at), FollowUp.due_at,
+      postgresql_where=(FollowUp.status.in_(("Pending", "In Progress")) & FollowUp.reminder_sent_at.is_(None)),
+      sqlite_where=(FollowUp.status.in_(("Pending", "In Progress")) & FollowUp.reminder_sent_at.is_(None)),
+      info={"manual_existing_install": True})
 
 
 def create_db_and_tables():

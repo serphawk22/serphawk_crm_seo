@@ -323,7 +323,13 @@ class FakeMailbox:
         return "OK", [" ".join(str(i + 1) for i in range(len(self.raws))).encode()]
 
     def fetch(self, uid, spec):
-        return "OK", [(b"1 (BODY[] {1}", self.raws[int(uid) - 1]), b")"]
+        parts = []
+        for seq in str(uid).split(","):
+            raw = self.raws[int(seq) - 1]
+            if "HEADER" in spec:
+                raw = raw.split(b"\n\n", 1)[0] + b"\n\n"
+            parts.extend([(f"{seq} (BODY[] {{{len(raw)}}}".encode(), raw), b")"])
+        return "OK", parts
 
 
 class ReplyParsingTests(DBTestCase):

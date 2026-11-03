@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import threading
+from contextvars import copy_context
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
@@ -121,17 +122,10 @@ def _set_tenant(tenant_id: Optional[int]) -> None:
 
 
 def _check_call_limit(session: Session, user: User) -> None:
-    if user.role != "Demo" or not user.tenant_id:
-        return
-    tenant = session.get(Tenant, user.tenant_id)
-    if not tenant or not tenant.is_trial:
-        return
-    if tenant.usage_calls >= tenant.limit_calls:
-        raise HTTPException(status_code=403, detail={
-            "error": "LIMIT_REACHED", "limit_type": "calls",
-            "message": f"Trial limit reached. You can only make {tenant.limit_calls} calls."})
-    tenant.usage_calls += 1
-    session.add(tenant)
+    from modules import demo_usage
+    tid = demo_usage.restricted_tenant(session, user)
+    if tid:
+        demo_usage.consume(tid, "calls")
 
 
 def _iso(dt: Optional[datetime]) -> Optional[str]:
@@ -401,19 +395,30 @@ def _tts_budget() -> float:
     return REPLY_TTS_BUDGET_PAID if va.is_paid_account() else REPLY_TTS_BUDGET
 
 
+def _set_call_demo_context(call: AICall) -> bool:
+    from modules import demo_usage
+    restricted = False
+    if call.tenant_id:
+        with Session(engine) as session:
+            restricted = demo_usage.background_restricted(session, call.tenant_id, call.started_by)
+    demo_usage.demo_context.set(call.tenant_id if restricted else None)
+    return restricted
+
+
 def _call_audio(call: AICall, text: str, prefix: str = "reply") -> SpokenAudio:
     """The one shared helper for all call audio (opening pitch, replies and fillers).
 
     It reads the voice saved on the call record, synthesizes in that voice with a hard timeout
     (no synchronous retry and no gTTS voice switch) and, when TTS times out or fails, returns the
     pre-generated filler clip in the SAME voice. It never returns a Twilio ``<Say>`` fallback."""
+    _set_call_demo_context(call)
     v = _call_voice(call)
     t0 = time.monotonic()
     budget = _tts_budget()
     url = None
     try:
         future = _TTS_POOL.submit(
-            synthesize_cached, text, voice=v["voice"], accent=v["accent"], style=v["style"],
+            copy_context().run, synthesize_cached, text, voice=v["voice"], accent=v["accent"], style=v["style"],
             speed=v["speed"], language=v["language"], prefix=prefix, timeout=budget,
         )
         rel = future.result(timeout=budget + 0.5)[0]
@@ -431,7 +436,7 @@ def _call_audio(call: AICall, text: str, prefix: str = "reply") -> SpokenAudio:
             # same voice — still no <Say> and still inside the webhook budget.
             try:
                 rel = _TTS_POOL.submit(
-                    synthesize_cached, _filler_text(call), voice=v["voice"], accent=v["accent"],
+                    copy_context().run, synthesize_cached, _filler_text(call), voice=v["voice"], accent=v["accent"],
                     style=v["style"], speed=v["speed"], language=v["language"], prefix="filler",
                     timeout=budget,
                 ).result(timeout=budget + 0.5)[0]
@@ -451,6 +456,8 @@ def _speak_audio(call: AICall, text: str, prefix: str = "reply") -> Optional[str
 def _prewarm_call_clips(call: AICall) -> None:
     """Pre-generate this call's fixed lines (wait fillers, silence prompts, apology and goodbyes)
     in the call's own voice in the background, so no turn or error path ever waits on live TTS."""
+    if _set_call_demo_context(call):
+        return  # avoid a fan-out of automatic paid speech requests in a demo
     def _run() -> None:
         try:
             v = _call_voice(call)
@@ -1834,6 +1841,7 @@ def _prepare_reply(call_id: int, tenant_id: Optional[int], speech: str,
 def _build_reply(session: Session, call: AICall, speech: str, timer: "Optional[_TurnTimer]" = None):
     """Produce ONLY the spoken line plus its TwiML (latency-critical path). No commit here — the
     caller persists after publishing. Returns ``(xml, meta, reply)``."""
+    _set_call_demo_context(call)
     def _mark(name: str) -> None:
         if timer is not None:
             timer.mark(name)
@@ -1893,6 +1901,8 @@ def _prepare_insights(call_id: int, tenant_id: Optional[int], speech: str,
             t.mark("db_read")
             if not call:
                 return
+            if _set_call_demo_context(call):
+                return  # optional background insights are unavailable in demos
             ctx = call.context or {}
             transcript = list(call.transcript or [])
             # Drop the AI reply we already spoke and the client turn (passed as client_text).

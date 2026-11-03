@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { MessageSquare, X, Users, UserPlus, Mail, ChevronRight, Send, Loader2, Mic, MicOff, Bot, LayoutDashboard, TrendingUp, Briefcase, Phone, FolderOpen, ShoppingBag } from 'lucide-react';
+import { MessageSquare, X, Users, UserPlus, Mail, ChevronRight, Send, Loader2, Mic, MicOff, Bot, LayoutDashboard, TrendingUp, Phone, FolderOpen, ShoppingBag } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useRole } from '@/context/RoleContext';
 import { useTenantConfig } from '@/context/TenantConfigContext';
@@ -18,7 +18,6 @@ const QUICK_ACTIONS: QuickAction[] = [
   { label: 'Add Client', icon: <UserPlus className="w-3.5 h-3.5 text-emerald-500" />, route: '/clients?action=add' },
   { label: 'Email Agent', icon: <Mail className="w-3.5 h-3.5 text-blue-500" />, route: '/email-agent' },
   { label: 'Dashboard', icon: <LayoutDashboard className="w-3.5 h-3.5 text-indigo-500" />, route: '/' },
-  { label: 'Deals', icon: <Briefcase className="w-3.5 h-3.5 text-emerald-500" />, route: '/pipeline' },
   { label: 'Reports', icon: <TrendingUp className="w-3.5 h-3.5 text-cyan-500" />, route: '/reports' },
   { label: 'Leaderboard', icon: <TrendingUp className="w-3.5 h-3.5 text-yellow-500" />, route: '/admin/leaderboard' },
   { label: 'Team Directory', icon: <Users className="w-3.5 h-3.5 text-indigo-500" />, route: '/teams' },
@@ -27,13 +26,13 @@ const QUICK_ACTIONS: QuickAction[] = [
 
 const ROLE_ROUTES: Record<string, Array<{ label: string; route: string }>> = {
   Admin: [
-    { label: 'Dashboard', route: '/' }, { label: 'Leads', route: '/leads' }, { label: 'Contacts', route: '/contacts' }, { label: 'Clients', route: '/clients' }, { label: 'Deals', route: '/pipeline' }, { label: 'Projects', route: '/projects' }, { label: 'Task Sheet', route: '/task-sheet' }, { label: 'Reports', route: '/reports' }, { label: 'Meetings', route: '/meetings' }, { label: 'Calls', route: '/calls' }, { label: 'Team Directory', route: '/teams' }, { label: 'Leaderboard', route: '/admin/leaderboard' }, { label: 'Email Agent', route: '/email-agent' }, { label: 'Cases', route: '/support/cases' },
+    { label: 'Dashboard', route: '/' }, { label: 'Leads', route: '/leads' }, { label: 'Contacts', route: '/contacts' }, { label: 'Clients', route: '/clients' }, { label: 'Projects', route: '/projects' }, { label: 'Task Sheet', route: '/task-sheet' }, { label: 'Reports', route: '/reports' }, { label: 'Meetings', route: '/meetings' }, { label: 'Calls', route: '/calls' }, { label: 'Team Directory', route: '/teams' }, { label: 'Leaderboard', route: '/admin/leaderboard' }, { label: 'Email Agent', route: '/email-agent' }, { label: 'Cases', route: '/support/cases' },
   ],
   SuperAdmin: [
-    { label: 'Dashboard', route: '/' }, { label: 'Leads', route: '/leads' }, { label: 'Contacts', route: '/contacts' }, { label: 'Clients', route: '/clients' }, { label: 'Deals', route: '/pipeline' }, { label: 'Projects', route: '/projects' }, { label: 'Task Sheet', route: '/task-sheet' }, { label: 'Reports', route: '/reports' }, { label: 'Meetings', route: '/meetings' }, { label: 'Calls', route: '/calls' }, { label: 'Team Directory', route: '/teams' }, { label: 'Leaderboard', route: '/admin/leaderboard' }, { label: 'Email Agent', route: '/email-agent' }, { label: 'Cases', route: '/support/cases' },
+    { label: 'Dashboard', route: '/' }, { label: 'Leads', route: '/leads' }, { label: 'Contacts', route: '/contacts' }, { label: 'Clients', route: '/clients' }, { label: 'Projects', route: '/projects' }, { label: 'Task Sheet', route: '/task-sheet' }, { label: 'Reports', route: '/reports' }, { label: 'Meetings', route: '/meetings' }, { label: 'Calls', route: '/calls' }, { label: 'Team Directory', route: '/teams' }, { label: 'Leaderboard', route: '/admin/leaderboard' }, { label: 'Email Agent', route: '/email-agent' }, { label: 'Cases', route: '/support/cases' },
   ],
   SalesManager: [
-    { label: 'Dashboard', route: '/' }, { label: 'Leads', route: '/leads' }, { label: 'Contacts', route: '/contacts' }, { label: 'Clients', route: '/clients' }, { label: 'Deals', route: '/pipeline' }, { label: 'Task Sheet', route: '/task-sheet' }, { label: 'Meetings', route: '/meetings' }, { label: 'Calls', route: '/calls' }, { label: 'Leaderboard', route: '/admin/leaderboard' }, { label: 'Email Agent', route: '/email-agent' }, { label: 'Cases', route: '/support/cases' },
+    { label: 'Dashboard', route: '/' }, { label: 'Leads', route: '/leads' }, { label: 'Contacts', route: '/contacts' }, { label: 'Clients', route: '/clients' }, { label: 'Task Sheet', route: '/task-sheet' }, { label: 'Meetings', route: '/meetings' }, { label: 'Calls', route: '/calls' }, { label: 'Leaderboard', route: '/admin/leaderboard' }, { label: 'Email Agent', route: '/email-agent' }, { label: 'Cases', route: '/support/cases' },
   ],
   ProjectMember: [
     { label: 'Dashboard', route: '/' }, { label: 'Projects', route: '/projects' }, { label: 'Task Sheet', route: '/task-sheet' }, { label: 'Cases', route: '/support/cases' },

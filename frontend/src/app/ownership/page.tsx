@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useState, useCallback } from "react";
 import { Users, UserCheck, ArrowRightLeft, Shield, RefreshCw, Search, CheckCircle2, AlertCircle, TrendingUp, IndianRupee, Briefcase } from "lucide-react";
@@ -170,7 +171,7 @@ export default function OwnershipPage() {
             <thead className="bg-slate-50/70 dark:bg-white/5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 border-b border-slate-200/80 dark:border-white/10">
               <tr>
                 <th className="px-4 py-2.5">Rep Name</th>
-                <th className="px-4 py-2.5">Role</th>
+                <th className="px-4 py-2.5"><LocalizedText text={"Role"} /></th>
                 <th className="px-4 py-2.5">Current Leads</th>
                 <th className="px-4 py-2.5">Current Clients</th>
                 <th className="px-4 py-2.5">Lifetime Leads</th>
@@ -229,7 +230,7 @@ export default function OwnershipPage() {
                 <th className="px-4 py-2.5">To Rep</th>
                 <th className="px-4 py-2.5">Reason</th>
                 <th className="px-4 py-2.5">Reassigned By</th>
-                <th className="px-4 py-2.5">Date</th>
+                <th className="px-4 py-2.5"><LocalizedText text={"Date"} /></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-white/5">

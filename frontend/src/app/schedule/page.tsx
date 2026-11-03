@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -265,10 +266,9 @@ export default function SchedulePage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">Important Dates</h1>
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none"><LocalizedText text={"Important Dates"} /></h1>
               <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                {items.length} scheduled
-              </span>
+                {items.length} <LocalizedText text={"scheduled"} /> </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
               {isAdmin ? "Track scheduled follow-ups, webinars & walk-ins across the team" : "Your upcoming appointments, webinars & follow-ups"}
@@ -283,13 +283,13 @@ export default function SchedulePage() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-white/10 text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-white/5 transition"
           >
             <RefreshCw className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
-            <span>Refresh</span>
+            <span><LocalizedText text={"Refresh"} /></span>
           </button>
           <Link
             href="/leads"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-xs transition"
           >
-            <span>Go to Leads</span>
+            <span><LocalizedText text={"Go to Leads"} /></span>
           </Link>
         </div>
       </div>
@@ -298,7 +298,7 @@ export default function SchedulePage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
         <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
           <div>
-            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Total Scheduled</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider"><LocalizedText text={"Total Scheduled"} /></p>
             <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight mt-0.5">{counts.all}</p>
           </div>
           <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
@@ -308,7 +308,7 @@ export default function SchedulePage() {
 
         <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
           <div>
-            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Due Today</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider"><LocalizedText text={"Due Today"} /></p>
             <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 leading-tight mt-0.5">{counts.today}</p>
           </div>
           <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
@@ -318,7 +318,7 @@ export default function SchedulePage() {
 
         <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
           <div>
-            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Overdue</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider"><LocalizedText text={"Overdue"} /></p>
             <p className="text-base sm:text-lg font-bold text-rose-600 dark:text-rose-400 leading-tight mt-0.5">{counts.overdue}</p>
           </div>
           <div className="w-7 h-7 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
@@ -328,7 +328,7 @@ export default function SchedulePage() {
 
         <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
           <div>
-            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Webinars & Demos</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider"><LocalizedText text={"Webinars & Demos"} /></p>
             <p className="text-base sm:text-lg font-bold text-indigo-600 dark:text-indigo-400 leading-tight mt-0.5">{counts.webinar}</p>
           </div>
           <div className="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
@@ -385,15 +385,15 @@ export default function SchedulePage() {
       ) : error ? (
         <div className="p-4 rounded-xl border border-rose-200 bg-rose-50 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300 flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => load()} className="font-semibold underline ml-2">Retry</button>
+          <button onClick={() => load()} className="font-semibold underline ml-2"><LocalizedText text={"Retry"} /></button>
         </div>
       ) : visible.length === 0 ? (
         <div className="text-center py-12 bg-white dark:bg-[#111111]/90 rounded-xl border border-slate-200/90 dark:border-white/10">
           <CalendarCheck className="w-8 h-8 mx-auto mb-2 text-slate-400 dark:text-zinc-600" />
-          <p className="text-xs font-semibold text-slate-700 dark:text-zinc-300">Nothing scheduled</p>
+          <p className="text-xs font-semibold text-slate-700 dark:text-zinc-300"><LocalizedText text={"Nothing scheduled"} /></p>
           <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">
-            Move a lead to Follow-up, Webinar Scheduled, or Walk-in Scheduled in{" "}
-            <Link href="/leads" className="text-blue-600 hover:underline">Student Leads</Link>.
+            <LocalizedText text={"Move a lead to Follow-up, Webinar Scheduled, or Walk-in Scheduled in"} />{" "}
+            <Link href="/leads" className="text-blue-600 hover:underline"><LocalizedText text={"Student Leads"} /></Link>.
           </p>
         </div>
       ) : (
@@ -459,8 +459,7 @@ export default function SchedulePage() {
 
                               {overdue && (
                                 <span className="px-1.5 py-0.2 rounded text-[10px] font-bold uppercase bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-                                  Overdue
-                                </span>
+                                  <LocalizedText text={"Overdue"} /> </span>
                               )}
                             </div>
 
@@ -491,7 +490,7 @@ export default function SchedulePage() {
                                   className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
                                 >
                                   <ExternalLink className="w-3 h-3" />
-                                  <span>Join Meeting</span>
+                                  <span><LocalizedText text={"Join Meeting"} /></span>
                                 </a>
                               )}
 

@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/context/LanguageContext";
+import LocalizedText from "@/components/LocalizedText";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -14,10 +16,12 @@ const inputCls = "mt-1 w-full rounded-lg border border-slate-200 dark:border-zin
 const cardCls = "space-y-4 rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-zinc-900 p-4 shadow-2xs";
 
 export default function SettingsPage() {
-  return <Suspense fallback={<p role="status" className="p-6 text-xs text-slate-400">Loading settings…</p>}><SettingsContent /></Suspense>;
+  const { t } = useLanguage();
+  return <Suspense fallback={<p role="status" className="p-6 text-xs text-slate-400">{t("Loading settings…")}</p>}><SettingsContent /></Suspense>;
 }
 
 function SettingsContent() {
+  const { t } = useLanguage();
   const { user, role, logout, updateProfile } = useRole();
   const { hasFeature } = useTenantConfig();
   const router = useRouter();
@@ -83,20 +87,20 @@ function SettingsContent() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate">Profile &amp; Settings</h1>
+              <h1 className="text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate">{t("Profile & Settings")}</h1>
               <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/40">
-                {role || "User"}
+                {t(role || "User")}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 dark:text-zinc-500 leading-none mt-0.5 truncate">
-              Manage your personal account{role === "Admin" ? ", branding and sales access" : " and credentials"}.
+              {t(role === "Admin" ? "Manage your personal account, branding and sales access." : "Manage your personal account and credentials.")}
             </p>
           </div>
         </div>
       </div>
 
       {/* Compact Tabs Navigation */}
-      <nav aria-label="Settings sections" className="flex items-center gap-1 overflow-x-auto bg-white dark:bg-zinc-900 p-1 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-2xs">
+      <nav aria-label={t("Settings sections")} className="flex items-center gap-1 overflow-x-auto bg-white dark:bg-zinc-900 p-1 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-2xs">
         {tabs.map(({ key, label, Icon }) => (
           <button 
             key={key} 
@@ -110,7 +114,7 @@ function SettingsContent() {
             onClick={() => { setMessage(""); router.replace(`/settings${key === "profile" ? "" : `?tab=${key}`}`); }}
           >
             <Icon size={14} />
-            <span>{label}</span>
+            <span>{t(label)}</span>
           </button>
         ))}
       </nav>
@@ -118,7 +122,7 @@ function SettingsContent() {
       {message && (
         <div role="status" className="rounded-xl border border-indigo-200/80 dark:border-indigo-800/60 bg-indigo-50/80 dark:bg-indigo-950/40 px-3 py-2 text-xs font-medium text-indigo-900 dark:text-indigo-200 flex items-center gap-2">
           <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-          <span>{message}</span>
+          <span>{t(message)}</span>
         </div>
       )}
 
@@ -132,17 +136,15 @@ function SettingsContent() {
         <form onSubmit={savePassword} className={cardCls}>
           <div>
             <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-              <KeyRound className="w-3.5 h-3.5 text-indigo-600" /> Change Password
-            </h2>
+              <KeyRound className="w-3.5 h-3.5 text-indigo-600" /> <LocalizedText text={"Change Password"} /> </h2>
             <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">
-              After saving, sign in again with your new credentials.
+              {t("After saving, sign in again with your new credentials.")}
             </p>
           </div>
 
           <div className="space-y-3">
             <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300">
-              Current password
-              <input 
+              <LocalizedText text={"Current password"} /> <input
                 required 
                 autoComplete="current-password" 
                 type="password" 
@@ -153,8 +155,7 @@ function SettingsContent() {
             </label>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300">
-                New password
-                <input 
+                <LocalizedText text={"New password"} /> <input
                   required 
                   minLength={8} 
                   autoComplete="new-password" 
@@ -165,8 +166,8 @@ function SettingsContent() {
                 />
               </label>
               <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300">
-                Confirm new password
-                <input 
+                {t("Confirm new password")}
+                <input
                   required 
                   minLength={8} 
                   autoComplete="new-password" 
@@ -184,24 +185,23 @@ function SettingsContent() {
             className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 shadow-2xs transition-colors disabled:opacity-50 flex items-center gap-1.5"
           >
             {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-            <span>{busy ? "Saving…" : "Change password"}</span>
+            <span>{t(busy ? "Saving…" : "Change password")}</span>
           </button>
         </form>
       ) : (
         <form onSubmit={saveProfile} className={cardCls}>
           <div>
             <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-indigo-600" /> Personal Details
+              <User className="w-3.5 h-3.5 text-indigo-600" /> {t("Personal Details")}
             </h2>
             <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">
-              Update your contact information and display profile.
+              {t("Update your contact information and display profile.")}
             </p>
           </div>
 
           <div className="space-y-3">
             <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300">
-              Full Name
-              <input 
+              <LocalizedText text={"Full Name"} /> <input
                 required 
                 className={inputCls} 
                 value={profile.name} 
@@ -211,25 +211,24 @@ function SettingsContent() {
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-semibold text-slate-700 dark:text-zinc-300">
-                Email Address
-                <input 
+                <LocalizedText text={"Email Address"} /> <input
                   readOnly 
                   className={`${inputCls} text-slate-500 dark:text-zinc-400 cursor-not-allowed`} 
                   value={profile.email} 
                 />
               </label>
               <label className="text-xs font-semibold text-slate-700 dark:text-zinc-300">
-                Account Role
-                <input 
+                {t("Account Role")}
+                <input
                   readOnly 
                   className={`${inputCls} text-slate-500 dark:text-zinc-400 cursor-not-allowed`} 
-                  value={profile.role === "SalesManager" ? "Sales Manager" : profile.role} 
+                  value={t(profile.role === "SalesManager" ? "Sales Manager" : profile.role)}
                 />
               </label>
             </div>
 
             <label className="block space-y-1 text-xs font-semibold text-slate-700 dark:text-zinc-300">
-              <span>Phone Number</span>
+              <span><LocalizedText text={"Phone Number"} /></span>
               <PhoneInput value={profile.phone} onChange={phone => setProfile({ ...profile, phone })} />
             </label>
           </div>
@@ -240,20 +239,20 @@ function SettingsContent() {
               className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 shadow-2xs transition-colors disabled:opacity-50"
             >
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-              <span>{busy ? "Saving…" : "Save profile"}</span>
+              <span>{t(busy ? "Saving…" : "Save profile")}</span>
             </button>
           </div>
 
           <div className="pt-2 border-t border-slate-100 dark:border-zinc-800 space-y-1">
             {role === "SuperAdmin" && (
               <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-                Manage company modules and branding in <Link className="font-semibold text-indigo-600 dark:text-indigo-400 underline" href="/superadmin/clients">Client Management</Link>.
+                {t("Manage company modules and branding in")} <Link className="font-semibold text-indigo-600 dark:text-indigo-400 underline" href="/superadmin/clients"><LocalizedText text={"Client Management"} /></Link>.
               </p>
             )}
             {hasFeature("email_agent") && ["Admin", "Demo"].includes(role) && (
               <p className="text-[11px]">
                 <Link className="text-indigo-600 dark:text-indigo-400 underline font-semibold" href="/email-agent">
-                  Email integration and signature settings &rarr;
+                  {t("Email integration and signature settings")} →
                 </Link>
               </p>
             )}

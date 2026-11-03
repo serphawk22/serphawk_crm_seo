@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -176,8 +177,7 @@ export default function InstructorDetailsPage() {
         className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
       >
         <ArrowLeft className="h-4 w-4" />
-        Instructors
-      </Link>
+        <LocalizedText text={"Instructors"} /></Link>
 
       <header className="flex flex-col justify-between gap-5 border-b border-[var(--border)] pb-6 sm:flex-row sm:items-end">
         <div className="flex items-center gap-4">
@@ -216,13 +216,12 @@ export default function InstructorDetailsPage() {
           <p className="mt-2 text-2xl font-bold">{batches.length}</p>
         </div>
         <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
-          <p className="text-xs text-[var(--text-secondary)]">Rating</p>
+          <p className="text-xs text-[var(--text-secondary)]"><LocalizedText text={"Rating"} /></p>
           <p className="mt-2 inline-flex items-center gap-2 text-2xl font-bold">
             <Star className="h-5 w-5 fill-amber-500 text-amber-500" />
             {rating || "—"}
             <span className="text-xs font-normal text-[var(--text-secondary)]">
-              {feedbackCount} reviews
-            </span>
+              {feedbackCount} <LocalizedText text={"reviews"} /> </span>
           </p>
         </div>
         <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
@@ -306,8 +305,7 @@ export default function InstructorDetailsPage() {
               {taskRate}%
             </p>
             <p className="mt-1 text-[11px] text-[var(--text-secondary)]">
-              {tasksDone}/{tasksGiven} completed
-            </p>
+              {tasksDone}/{tasksGiven} <LocalizedText text={"completed"} /> </p>
           </div>
         </div>
       </section>
@@ -502,9 +500,9 @@ export default function InstructorDetailsPage() {
               <table className="w-full text-left text-sm min-w-[760px]">
                 <thead>
                   <tr className="border-b border-[var(--border)] text-xs text-[var(--text-secondary)]">
-                    <th className="px-4 py-3 font-medium">Batch</th>
-                    <th className="px-4 py-3 font-medium">Course</th>
-                    <th className="px-4 py-3 font-medium">Starts</th>
+                    <th className="px-4 py-3 font-medium"><LocalizedText text={"Batch"} /></th>
+                    <th className="px-4 py-3 font-medium"><LocalizedText text={"Course"} /></th>
+                    <th className="px-4 py-3 font-medium"><LocalizedText text={"Starts"} /></th>
                     <th className="px-4 py-3 font-medium">Enrolled</th>
                     <th className="px-4 py-3 font-medium">Classes (Done / Sched)</th>
                     <th className="px-4 py-3 font-medium">Attendance %</th>

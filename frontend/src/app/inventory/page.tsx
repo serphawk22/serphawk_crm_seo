@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import { API_BASE_URL } from "@/config";
 import React, { useState, useEffect, useRef } from "react";
 import { ExportActions } from "@/components/ExportActions";
@@ -435,8 +436,7 @@ export default function InventoryPage() {
           </button>
           <button onClick={() => setActiveTab("suppliers")}
             className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === "suppliers" ? "bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 shadow-sm" : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-300 hover:bg-slate-200/50 dark:hover:bg-zinc-800/50"}`}>
-            Suppliers
-          </button>
+            <LocalizedText text={"Suppliers"} /> </button>
         </div>
       </div>
 
@@ -865,7 +865,7 @@ export default function InventoryPage() {
                         <input autoFocus value={supplierForm.supplier_name} onChange={e => setSupplierForm(f => ({ ...f, supplier_name: e.target.value }))} placeholder="Supplier Co."
                           className="flex-1 w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                         {dropdownSuppliers.length > 0 && (
-                          <button type="button" onClick={() => setIsNewSupplier(false)} className="px-3 py-2 text-xs font-bold text-slate-500 hover:text-blue-600 bg-slate-100 dark:bg-slate-800 rounded-xl">Cancel</button>
+                          <button type="button" onClick={() => setIsNewSupplier(false)} className="px-3 py-2 text-xs font-bold text-slate-500 hover:text-blue-600 bg-slate-100 dark:bg-slate-800 rounded-xl"><LocalizedText text={"Cancel"} /></button>
                         )}
                       </div>
                     )}

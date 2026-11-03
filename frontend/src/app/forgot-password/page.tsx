@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -71,7 +72,7 @@ export default function ForgotPasswordPage() {
           {!success ? (
             <>
               <div className="flex flex-col items-start mb-8 text-left">
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">Reset password</h1>
+                <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2"><LocalizedText text={"Reset password"} /></h1>
                 <p className="text-slate-500 dark:text-zinc-400 text-sm">
                   Enter your email address and we'll send you a link to reset your password.
                 </p>
@@ -79,7 +80,7 @@ export default function ForgotPasswordPage() {
 
               <form onSubmit={handleSubmit} className="flex flex-col gap-5">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase">Email Address</label>
+                  <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase"><LocalizedText text={"Email Address"} /></label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                       <Mail className="h-4 w-4 text-slate-400 dark:text-zinc-500 group-focus-within:text-indigo-500 transition-colors" />
@@ -120,8 +121,7 @@ export default function ForgotPasswordPage() {
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <>
-                      Send Reset Link
-                      <ArrowRight className="w-4 h-4" />
+                      <LocalizedText text={"Send Reset Link"} /> <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </button>

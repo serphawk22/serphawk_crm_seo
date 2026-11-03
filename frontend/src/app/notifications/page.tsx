@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -121,14 +122,13 @@ export default function NotificationsPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate">Notifications</h1>
+              <h1 className="text-sm font-semibold text-slate-900 dark:text-white leading-tight truncate"><LocalizedText text={"Notifications"} /></h1>
               <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200/60 dark:border-zinc-700">
                 {notifications.length}
               </span>
               {unreadCount > 0 && (
                 <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/50 dark:border-rose-800/40">
-                  {unreadCount} unread
-                </span>
+                  {unreadCount} <LocalizedText text={"unread"} /> </span>
               )}
             </div>
             <p className="text-[11px] text-slate-400 dark:text-zinc-500 leading-none mt-0.5 truncate">
@@ -163,7 +163,7 @@ export default function NotificationsPage() {
               className="flex items-center gap-1 px-2.5 py-1 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/50 dark:border-rose-800/40 rounded-lg text-xs font-semibold hover:bg-rose-100 transition-colors"
             >
               {clearing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-              <span>Clear</span>
+              <span><LocalizedText text={"Clear"} /></span>
             </button>
           )}
         </div>
@@ -185,7 +185,7 @@ export default function NotificationsPage() {
             <Flame className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Unread</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Unread"} /></div>
             <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{tabCounts.unread}</div>
           </div>
         </div>
@@ -194,7 +194,7 @@ export default function NotificationsPage() {
             <CheckCircle className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Success</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Success"} /></div>
             <div className="text-sm font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{tabCounts.success}</div>
           </div>
         </div>

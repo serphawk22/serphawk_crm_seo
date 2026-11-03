@@ -44,6 +44,7 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
+from modules.job_runtime import exclusive, mailbox_resource, assert_ownership, tally, run_recurring
 
 from database import (
     ClientProfile,
@@ -343,6 +344,39 @@ def match_address(session: Session, address: str, tenant_id: Optional[int]) -> d
     return links
 
 
+def match_addresses(session: Session, pairs: list) -> dict:
+    """Same matching precedence as match_address; three queries per tenant, not per sender."""
+    result = {pair: {"lead_id": None, "client_id": None, "contact_id": None} for pair in pairs}
+    tenants = {}
+    for address, tid in pairs:
+        if tid and address:
+            tenants.setdefault(tid, set()).add(address.strip().lower())
+    for tid, addresses in tenants.items():
+        leads, contacts, clients = {}, {}, {}
+        for row in session.exec(select(Lead).where(Lead.tenant_id == tid, func.lower(Lead.email).in_(addresses))
+                                .order_by(Lead.id.desc()).execution_options(skip_tenant=True)).all():
+            leads.setdefault(row.email.lower(), row)
+        for row in session.exec(select(Contact).where(Contact.tenant_id == tid, func.lower(Contact.email).in_(addresses))
+                                .order_by(Contact.id.desc()).execution_options(skip_tenant=True)).all():
+            contacts.setdefault(row.email.lower(), row)
+        for address, cp_id in session.exec(select(User.email, ClientProfile.id).join(
+                ClientProfile, ClientProfile.userId == User.id).where(
+                ClientProfile.tenant_id == tid, func.lower(User.email).in_(addresses))
+                .execution_options(skip_tenant=True)).all():
+            clients.setdefault(address.lower(), cp_id)
+        for pair in pairs:
+            if pair[1] != tid:
+                continue
+            address = pair[0].strip().lower()
+            lead, contact = leads.get(address), contacts.get(address)
+            result[pair] = {"lead_id": lead.id if lead else (contact.lead_id if contact else None),
+                            "client_id": clients.get(address) or (contact.client_id if contact else None),
+                            "contact_id": contact.id if contact else None}
+            if lead and lead.converted_client_id and not result[pair]["client_id"]:
+                result[pair]["client_id"] = lead.converted_client_id
+    return result
+
+
 def link_inbound(session: Session, cfg: MailboxConfig, parsed: dict) -> dict:
     """Decide tenant + CRM links for one inbound message."""
     links = {"tenant_id": cfg.tenant_id, "lead_id": None, "client_id": None, "contact_id": None, "sent_email_id": None}
@@ -462,6 +496,8 @@ def _store(session: Session, row: InboxMessage) -> bool:
         return False
 
 
+@exclusive("mailbox-sync", resource=mailbox_resource, busy=lambda: {
+    "mailbox": "", "scanned": 0, "created": 0, "error": "A sync of this mailbox is already running."})
 def sync_mailbox(cfg: MailboxConfig, engine=None, days_back: int = 3, max_new: int = 200, connect=_connect) -> dict:
     """Mirror new INBOX messages from the last `days_back` days. Never raises."""
     engine = engine or default_engine
@@ -473,6 +509,7 @@ def sync_mailbox(cfg: MailboxConfig, engine=None, days_back: int = 3, max_new: i
 
     conn = None
     try:
+        assert_ownership()
         conn = connect(cfg)
         typ, _ = conn.select("INBOX", readonly=True)
         if typ != "OK":
@@ -498,6 +535,7 @@ def sync_mailbox(cfg: MailboxConfig, engine=None, days_back: int = 3, max_new: i
             new_uids = new_uids[-max_new:]  # newest first; any older remainder is picked up next cycle
 
             for uid in new_uids:
+                assert_ownership()
                 try:
                     typ, msg_data = conn.uid("FETCH", uid, "(BODY.PEEK[])")
                     if typ != "OK" or not msg_data or not isinstance(msg_data[0], tuple):
@@ -512,6 +550,8 @@ def sync_mailbox(cfg: MailboxConfig, engine=None, days_back: int = 3, max_new: i
                 except Exception as inner:
                     session.rollback()
                     print(f"[Inbox sync] {cfg.address}: failed on uid {uid}: {inner}")
+
+        tally(examined=stats["scanned"], changed=stats["created"])
 
         _set_status(mailbox_key(cfg), tenant_id=cfg.tenant_id, last_sync_at=datetime.now(timezone.utc).isoformat(),
                     last_error=None, last_created=stats["created"])
@@ -598,8 +638,10 @@ def relink_unlinked(engine=None, max_addresses: int = 100) -> int:
         by_sender: dict = {}
         for row in rows:
             by_sender.setdefault((row.from_address, row.tenant_id), []).append(row)
-        for (address, tenant_id), group in list(by_sender.items())[:max_addresses]:
-            links = match_address(session, address, tenant_id)
+        groups = list(by_sender.items())[:max_addresses]
+        matched = match_addresses(session, [key for key, _ in groups])
+        for (address, tenant_id), group in groups:
+            links = matched[(address, tenant_id)]
             if not (links["lead_id"] or links["client_id"]):
                 continue
             for row in group:
@@ -609,6 +651,7 @@ def relink_unlinked(engine=None, max_addresses: int = 100) -> int:
                 updated += 1
         if updated:
             session.commit()
+        tally(examined=len(rows), changed=updated)
     return updated
 
 
@@ -657,13 +700,7 @@ _thread_lock = threading.Lock()
 
 
 def _sync_loop(interval_seconds: int):
-    time.sleep(25)  # let startup and the reply checker settle first
-    while True:
-        try:
-            run_sync_cycle()
-        except Exception as e:
-            print(f"[Inbox sync] loop error: {e}")
-        time.sleep(interval_seconds)
+    run_recurring("inbox-sync", run_sync_cycle, interval_seconds, initial_delay=25)
 
 
 def start_inbox_sync_thread():

@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -143,7 +144,7 @@ export default function RecordFollowUpsTab({ kind, recordId }: { kind: 'lead' | 
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
         <div className="mr-auto flex items-center gap-2 px-1">
           <CalendarClock size={16} className="text-indigo-500" />
-          <span className="text-sm font-black text-slate-800 dark:text-zinc-100">Follow-ups</span>
+          <span className="text-sm font-black text-slate-800 dark:text-zinc-100"><LocalizedText text={"Follow-ups"} /></span>
           <span className="rounded-full bg-slate-100 px-2 text-[11px] font-bold text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">{pending.length} pending</span>
           {overdue > 0 && <span className="rounded-full bg-red-100 px-2 text-[11px] font-bold text-red-700">{overdue} overdue</span>}
         </div>

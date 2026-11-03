@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import ts from 'typescript';
+import { translate } from './helpers/translation.mjs';
 
-function harness(role, tab = 'profile') {
+function harness(role, tab = 'profile', language = 'en') {
   const states = [], effects = [], calls = [], updated = [];
   let cursor = 0, mounted = false, loggedOut = false;
   const user = { id: 7, name: 'Initial', role };
@@ -14,6 +15,7 @@ function harness(role, tab = 'profile') {
   const imports = name => {
     if (name === 'react') return react;
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    if (name === '@/context/LanguageContext') return { useLanguage: () => ({ language, t: (key, values) => translate(key, language, values) }) };
     if (name === '@/context/RoleContext') return { useRole: () => ({ user, role, logout: () => { loggedOut = true; }, updateProfile: value => updated.push(value) }) };
     if (name === '@/context/TenantConfigContext') return { useTenantConfig: () => ({ hasFeature: () => true }) };
     if (name === 'next/navigation') return { useRouter: () => ({ replace() {} }), useSearchParams: () => new URLSearchParams({ tab }) };
@@ -29,7 +31,7 @@ function harness(role, tab = 'profile') {
   const mod = { exports: {} };
   new Function('module', 'exports', 'require', 'fetch', code)(mod, mod.exports, imports, fetch);
   return {
-    calls, updated, states, get loggedOut() { return loggedOut; },
+    calls, updated, states, setLanguage(value) { language = value; }, get loggedOut() { return loggedOut; },
     render() { cursor = 0; const tree = mod.exports.SettingsContent(); mounted = true; return tree; },
     async load() { effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve)); },
   };
@@ -62,3 +64,25 @@ assert.equal(security.calls.at(-1).url, 'https://api.test/change-password');
 assert.equal(JSON.parse(security.calls.at(-1).init.body).user_id, 7);
 assert.equal(security.loggedOut, true);
 console.log('Profile/settings role visibility and live save-handler checks passed.');
+
+for (const role of ['Admin', 'SalesManager']) {
+  const localized = harness(role, 'profile', 'es');
+  localized.render(); await localized.load();
+  let content = JSON.stringify(localized.render());
+  for (const label of ['Profile & Settings', 'My Profile', 'Security', 'Personal Details', 'Account Role', 'Save profile', ...(role === 'Admin' ? ['Email integration and signature settings'] : [])]) {
+    assert.ok(content.includes(translate(label, 'es')), `Spanish settings includes ${label}`);
+    assert.ok(!content.includes(`"${label}"`), `Settings does not leave ${label} in English`);
+  }
+  assert.ok(content.includes('Saved name') && content.includes('user@test.invalid'), 'Profile data stays unchanged');
+  localized.setLanguage('en');
+  content = JSON.stringify(localized.render());
+  assert.ok(content.includes('Personal Details') && content.includes('Save profile'));
+  assert.ok(content.includes('Saved name'), 'Language switching preserves loaded profile data');
+  localized.setLanguage('es');
+  await find(localized.render(), node => node.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.equal(JSON.parse(localized.calls.at(-1).init.body).name, 'Saved name', 'Spanish display does not alter API values');
+}
+const spanishSecurity = harness('Admin', 'security', 'es');
+spanishSecurity.render(); await spanishSecurity.load();
+assert.ok(JSON.stringify(spanishSecurity.render()).includes(translate('Change password', 'es')));
+console.log('Spanish settings, security, language switching and unchanged profile payload checks passed.');

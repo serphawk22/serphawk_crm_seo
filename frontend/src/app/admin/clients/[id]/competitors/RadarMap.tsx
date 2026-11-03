@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
@@ -89,19 +90,19 @@ export default function RadarMap({ clientLat, clientLng, competitors, clientName
                   
                   <div className="grid grid-cols-2 gap-2 mb-3">
                     <div className="bg-slate-100 p-2 rounded">
-                      <div className="text-[9px] text-slate-500 uppercase font-bold">Distance</div>
+                      <div className="text-[9px] text-slate-500 uppercase font-bold"><LocalizedText text={"Distance"} /></div>
                       <div className="text-sm font-black text-slate-800">{comp.distance_km}km</div>
                     </div>
                     <div className="bg-slate-100 p-2 rounded">
-                      <div className="text-[9px] text-slate-500 uppercase font-bold">Market Score</div>
+                      <div className="text-[9px] text-slate-500 uppercase font-bold"><LocalizedText text={"Market Score"} /></div>
                       <div className="text-sm font-black text-slate-800">{comp.market_size_score}/100</div>
                     </div>
                     <div className="bg-slate-100 p-2 rounded">
-                      <div className="text-[9px] text-slate-500 uppercase font-bold">Team</div>
+                      <div className="text-[9px] text-slate-500 uppercase font-bold"><LocalizedText text={"Team"} /></div>
                       <div className="text-sm font-black text-slate-800">{comp.team_size_estimate}</div>
                     </div>
                     <div className="bg-slate-100 p-2 rounded">
-                      <div className="text-[9px] text-slate-500 uppercase font-bold">Overlap</div>
+                      <div className="text-[9px] text-slate-500 uppercase font-bold"><LocalizedText text={"Overlap"} /></div>
                       <div className="text-sm font-black text-slate-800">{comp.overlap_pct}%</div>
                     </div>
                   </div>

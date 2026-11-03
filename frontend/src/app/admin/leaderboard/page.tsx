@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect } from "react";
 import { Ticket, DollarSign, Trophy, Award, TrendingUp, Users, Phone, Calendar, Target, Briefcase } from "lucide-react";
@@ -144,8 +145,7 @@ function StandardLeaderboardPage() {
             <div className="flex items-center gap-2">
               <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">Team Leaderboard</h1>
               <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                Rankings
-              </span>
+                <LocalizedText text={"Rankings"} /> </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
               Sales revenue outcomes and ticket delivery performance
@@ -195,14 +195,14 @@ function StandardLeaderboardPage() {
 
           {/* Desktop Column Header */}
           <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-            <div className="col-span-1">Rank</div>
-            <div className="col-span-4">Salesperson</div>
-            <div className="col-span-2 text-right">Revenue Closed</div>
-            <div className="col-span-1 text-center">Deals</div>
-            <div className="col-span-1 text-center">Meetings</div>
-            <div className="col-span-1 text-center">Calls</div>
-            <div className="col-span-1 text-center">Leads</div>
-            <div className="col-span-1 text-center">Clients</div>
+            <div className="col-span-1"><LocalizedText text={"Rank"} /></div>
+            <div className="col-span-4"><LocalizedText text={"Salesperson"} /></div>
+            <div className="col-span-2 text-right"><LocalizedText text={"Revenue Closed"} /></div>
+            <div className="col-span-1 text-center"><LocalizedText text={"Deals"} /></div>
+            <div className="col-span-1 text-center"><LocalizedText text={"Meetings"} /></div>
+            <div className="col-span-1 text-center"><LocalizedText text={"Calls"} /></div>
+            <div className="col-span-1 text-center"><LocalizedText text={"Leads"} /></div>
+            <div className="col-span-1 text-center"><LocalizedText text={"Clients"} /></div>
           </div>
 
           {salesBoard.length === 0 ? (
@@ -295,11 +295,11 @@ function StandardLeaderboardPage() {
 
           {/* Desktop Column Header */}
           <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-            <div className="col-span-1">Rank</div>
-            <div className="col-span-5">Employee</div>
+            <div className="col-span-1"><LocalizedText text={"Rank"} /></div>
+            <div className="col-span-5"><LocalizedText text={"Employee"} /></div>
             <div className="col-span-2 text-center">Tickets Assigned</div>
             <div className="col-span-2 text-center">In Production</div>
-            <div className="col-span-2 text-center">Completed</div>
+            <div className="col-span-2 text-center"><LocalizedText text={"Completed"} /></div>
           </div>
 
           {ticketsBoard.length === 0 ? (

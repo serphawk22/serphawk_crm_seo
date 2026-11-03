@@ -101,6 +101,14 @@ def get_my_settings(session: Session = Depends(get_session)):
     return {"tenant_id": tid, "settings": settings}
 
 
+@router.get("/me/demo-usage")
+def my_demo_usage(session: Session = Depends(get_session)):
+    from modules import demo_usage
+    user = _user(session)
+    tid = demo_usage.restricted_tenant(session, user)
+    return {"restricted": bool(tid), "budgets": demo_usage.usage(session, tid) if tid else None}
+
+
 class SettingsUpdate(BaseModel):
     settings: Dict[str, object]
 

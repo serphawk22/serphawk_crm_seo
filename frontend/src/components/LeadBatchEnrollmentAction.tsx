@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -325,8 +326,7 @@ export default function LeadBatchEnrollmentAction({
                         {/* Discount Fields */}
                         <div className="grid grid-cols-2 gap-3">
                           <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300">
-                            Discount (₹)
-                            <input
+                            <LocalizedText text={"Discount (₹)"} /><input
                               type="number"
                               min="0"
                               max={courseFee}
@@ -389,8 +389,7 @@ export default function LeadBatchEnrollmentAction({
                   <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4 dark:border-zinc-700">
                     <button type="button" onClick={() => setIsOpen(false)} disabled={saving}
                       className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800">
-                      Cancel
-                    </button>
+                      <LocalizedText text={"Cancel"} /> </button>
                     <button type="submit" disabled={saving || loadingBatches || !selectedBatchId}
                       className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
                       {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}

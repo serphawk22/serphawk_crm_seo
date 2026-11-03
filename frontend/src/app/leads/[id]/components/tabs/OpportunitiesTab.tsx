@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -296,7 +297,7 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
               <div className="p-2 bg-indigo-600 rounded-xl text-white">
                 <Brain size={16} />
               </div>
-              <h4 className="text-lg font-black text-slate-800 dark:text-zinc-100 dark:text-white">Pre-Sales Research</h4>
+              <h4 className="text-lg font-black text-slate-800 dark:text-zinc-100 dark:text-white"><LocalizedText text={"Pre-Sales Research"} /></h4>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -359,7 +360,7 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
             <div className="space-y-4">
               {liveResearch.company_overview && (
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-wider text-indigo-500 mb-1">Company Overview</p>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-indigo-500 mb-1"><LocalizedText text={"Company Overview"} /></p>
                   <p className="text-sm text-slate-600 dark:text-zinc-300 dark:text-slate-300 leading-relaxed">{liveResearch.company_overview}</p>
                 </div>
               )}
@@ -367,7 +368,7 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {liveResearch.pain_points && (
                   <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-amber-500 mb-2">Pain Points</p>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-amber-500 mb-2"><LocalizedText text={"Pain Points"} /></p>
                     {Array.isArray(parsedPainPoints) ? (
                       <ul className="space-y-3">
                         {parsedPainPoints.map((p: any, i: number) => (
@@ -386,7 +387,7 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
                 )}
                 {liveResearch.competitors && (
                   <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-rose-500 mb-2">Competitors</p>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-rose-500 mb-2"><LocalizedText text={"Competitors"} /></p>
                     {typeof parsedCompetitors === 'object' && parsedCompetitors !== null && !Array.isArray(parsedCompetitors) ? (
                       <div className="space-y-3">
                         {parsedCompetitors.competitive_positioning && <p className="text-sm text-slate-600 dark:text-zinc-300">{parsedCompetitors.competitive_positioning}</p>}
@@ -409,7 +410,7 @@ export default function OpportunitiesTab({ lead, timeline, serviceRequests, rese
                 )}
                 {liveResearch.business_goals && (
                   <div className="p-4 bg-white dark:bg-zinc-900 dark:bg-slate-800/80 rounded-xl border border-indigo-50 dark:border-indigo-900/30 md:col-span-2">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-500 mb-2">Business Goals</p>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-500 mb-2"><LocalizedText text={"Business Goals"} /></p>
                     {typeof parsedBusinessGoals === 'object' && parsedBusinessGoals !== null && !Array.isArray(parsedBusinessGoals) ? (
                       <div className="space-y-3">
                         {parsedBusinessGoals.positioning_statement && <p className="text-sm text-slate-600 dark:text-zinc-300 font-medium">{parsedBusinessGoals.positioning_statement}</p>}

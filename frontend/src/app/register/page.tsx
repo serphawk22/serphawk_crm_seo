@@ -1,10 +1,11 @@
 "use client";
+import { useLanguage } from "@/context/LanguageContext";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Building2, Globe, Loader2, Lock, Mail, ShieldCheck, User as UserIcon, ArrowRight, Eye, EyeOff } from "lucide-react";
 import { API_BASE_URL } from "@/config";
-import { useRole } from "@/context/RoleContext";
+import LanguageSelector from "@/components/LanguageSelector";
 import AuthThemeToggle from "@/components/AuthThemeToggle";
 import EmailOTPVerification from "@/components/EmailOTPVerification";
 import PasswordStrengthMeter from "@/components/PasswordStrengthMeter";
@@ -23,9 +24,10 @@ const selectCls =
 const labelCls = "text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase";
 
 function Field({ label, icon, children }: { label: string; icon: React.ReactNode; children: React.ReactNode }) {
+  const { t } = useLanguage();
   return (
     <div className="space-y-1.5">
-      <label className={labelCls}>{label}</label>
+      <label className={labelCls}>{t(label)}</label>
       <div className="relative group">
         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 dark:text-zinc-500 group-focus-within:text-indigo-500 transition-colors">
           {icon}
@@ -37,7 +39,7 @@ function Field({ label, icon, children }: { label: string; icon: React.ReactNode
 }
 
 export default function RegisterPage() {
-  const { login } = useRole();
+  const { t } = useLanguage();
   const [mounted, setMounted] = useState(false);
   const [options, setOptions] = useState<Options>({ industries: [], countries: [] });
   const [company, setCompany] = useState("");
@@ -64,8 +66,8 @@ export default function RegisterPage() {
   const submitDetails = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (password.length < 8) return setError("Use a password of at least 8 characters.");
-    if (!isPlausiblePhone(phone)) return setError("Please enter a valid phone number.");
+    if (password.length < 8) return setError(t("Use a password of at least 8 characters."));
+    if (!isPlausiblePhone(phone)) return setError(t("Please enter a valid phone number."));
     setStep("verify");
   };
 
@@ -89,8 +91,9 @@ export default function RegisterPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Could not create your workspace");
-      const result = await login(email.trim(), password);
-      if (!result.success) throw new Error(result.message || "Your workspace was created. Please sign in.");
+      if (!data.user?.id || !data.token) throw new Error(t("Your workspace was created. Please sign in."));
+      localStorage.setItem("crm_user", JSON.stringify(data.user));
+      localStorage.setItem("crm_token", data.token);
       window.location.href = "/admin/branding?welcome=1";
     } catch (err: any) {
       setError(err.message || "Something went wrong.");
@@ -103,7 +106,8 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#fafafa] dark:bg-[#0a0a0b] text-slate-900 dark:text-zinc-100 font-sans relative overflow-y-auto py-10">
-      <div className="absolute top-6 right-6 z-50">
+      <div className="absolute top-6 right-6 z-50 flex items-center gap-2">
+        <LanguageSelector />
         <AuthThemeToggle />
       </div>
 
@@ -113,39 +117,38 @@ export default function RegisterPage() {
             <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center mb-5 shadow-lg shadow-indigo-600/20">
               <Building2 className="w-6 h-6 text-white" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">Register your company</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">{t("Register your company")}</h1>
             <p className="text-slate-500 dark:text-zinc-400 text-sm">
-              Your own private CRM workspace, set up for you in a minute. Your data stays separate from every other company.
-            </p>
+              {t("Your own private CRM workspace, set up for you in a minute. Your data stays separate from every other company.")}{" "}</p>
           </div>
 
           {step === "details" ? (
             <form onSubmit={submitDetails} className="flex flex-col gap-4">
               <Field label="Company name" icon={<Building2 className="h-4 w-4" />}>
-                <input required className={inputCls} value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Acme Trading Co." />
+                <input required className={inputCls} value={company} onChange={(e) => setCompany(e.target.value)} placeholder={t("Acme Trading Co.")} />
               </Field>
               <Field label="Your name" icon={<UserIcon className="h-4 w-4" />}>
-                <input required className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" />
+                <input required className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Jane Doe")} />
               </Field>
               <Field label="Work email" icon={<Mail className="h-4 w-4" />}>
-                <input required type="email" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@acme.com" />
+                <input required autoComplete="email" type="email" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("jane@acme.com")} />
               </Field>
               <div className="space-y-1.5">
-                <label className={labelCls}>Phone</label>
+                <label className={labelCls}>{t("Phone")}</label>
                 <PhoneInput value={phone} onChange={setPhone} defaultDialCode={options.countries.find((c) => c.code === country)?.dial_code} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="What you do" icon={<Building2 className="h-4 w-4" />}>
                   <select className={selectCls} value={industry} onChange={(e) => setIndustry(e.target.value)}>
-                    {options.industries.length === 0 && <option value="general">Other / general business</option>}
+                    {options.industries.length === 0 && <option value="general">{t("Other / general business")}</option>}
                     {options.industries.map((i) => (
-                      <option key={i.key} value={i.key}>{i.label}</option>
+                      <option key={i.key} value={i.key}>{t(i.label)}</option>
                     ))}
                   </select>
                 </Field>
                 <Field label="Country" icon={<Globe className="h-4 w-4" />}>
                   <select className={selectCls} value={country} onChange={(e) => setCountry(e.target.value)}>
-                    <option value="">Select...</option>
+                    <option value="">{t("Select...")}</option>
                     {options.countries.map((c) => (
                       <option key={c.code} value={c.code}>{c.name}</option>
                     ))}
@@ -153,10 +156,10 @@ export default function RegisterPage() {
                 </Field>
               </div>
               <Field label="Website (optional)" icon={<Globe className="h-4 w-4" />}>
-                <input className={inputCls} value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="acme.com" />
+                <input className={inputCls} value={website} onChange={(e) => setWebsite(e.target.value)} placeholder={t("acme.com")} />
               </Field>
               <div className="space-y-1.5">
-                <label className={labelCls}>Password</label>
+                <label className={labelCls}>{t("Password")}</label>
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 dark:text-zinc-500">
                     <Lock className="h-4 w-4" />
@@ -164,11 +167,12 @@ export default function RegisterPage() {
                   <input
                     required
                     minLength={8}
+                    autoComplete="new-password"
                     type={showPassword ? "text" : "password"}
                     className={`${inputCls} pr-12`}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 8 characters"
+                    placeholder={t("At least 8 characters")}
                   />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600">
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -188,12 +192,11 @@ export default function RegisterPage() {
                 type="submit"
                 className="w-full mt-2 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold tracking-wide transition-all shadow-md flex items-center justify-center gap-2 active:scale-[0.98]"
               >
-                Continue
-                <ArrowRight className="w-4 h-4" />
+                {t("Continue")}{" "}<ArrowRight className="w-4 h-4" />
               </button>
               <p className="text-center text-sm text-slate-500 dark:text-zinc-500">
-                Already registered?{" "}
-                <Link href="/login" className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600">Sign in</Link>
+                {t("Already registered?")}{" "}
+                <Link href="/login" className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600">{t("Sign in")}</Link>
               </p>
             </form>
           ) : (
@@ -201,7 +204,7 @@ export default function RegisterPage() {
               {creating ? (
                 <div className="flex flex-col items-center gap-3 py-8 text-slate-500">
                   <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
-                  <p className="text-sm">Setting up your workspace...</p>
+                  <p className="text-sm">{t("Setting up your workspace...")}</p>
                 </div>
               ) : (
                 <EmailOTPVerification email={email.trim()} purpose="signup" autoSend onVerified={createWorkspace} onCancel={() => setStep("details")} />

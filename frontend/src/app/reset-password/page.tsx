@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
@@ -94,7 +95,7 @@ function ResetPasswordCard() {
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase">New Password</label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase"><LocalizedText text={"New Password"} /></label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                 <Lock className="h-4 w-4 text-slate-400 dark:text-zinc-500 group-focus-within:text-indigo-500 transition-colors" />
@@ -119,7 +120,7 @@ function ResetPasswordCard() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase">Confirm Password</label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase"><LocalizedText text={"Confirm Password"} /></label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                 <Lock className="h-4 w-4 text-slate-400 dark:text-zinc-500 group-focus-within:text-indigo-500 transition-colors" />

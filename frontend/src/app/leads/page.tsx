@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 import { API_BASE_URL } from "@/config";
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -428,8 +429,7 @@ export default function LeadsPage() {
               <div className="flex items-center gap-2">
                 <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{t("leads.title")}</h1>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-zinc-300 border border-slate-200/80 dark:border-white/5">
-                  {leads.length} total
-                </span>
+                  {leads.length} <LocalizedText text={"total"} /> </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">{t("leads.subtitle")}</p>
             </div>
@@ -460,8 +460,7 @@ export default function LeadsPage() {
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-white/5 transition-colors shadow-xs"
             >
-              <Download className="w-3.5 h-3.5" /> Export CSV
-            </button>
+              <Download className="w-3.5 h-3.5" /> <LocalizedText text={"Export CSV"} /></button>
             {isAdmin && (
               <button
                 onClick={handleAutoAssignLeads}
@@ -706,11 +705,11 @@ export default function LeadsPage() {
           <div className="w-full p-3 sm:p-4 space-y-2">
             {/* Subtle column headers for desktop */}
             <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-              <div className="col-span-3">Company</div>
-              <div className="col-span-2">Contact</div>
-              <div className="col-span-2">Salesperson</div>
-              <div className="col-span-2">Source</div>
-              <div className="col-span-3 text-right">Status & Actions</div>
+              <div className="col-span-3"><LocalizedText text={"Company"} /></div>
+              <div className="col-span-2"><LocalizedText text={"Contact"} /></div>
+              <div className="col-span-2"><LocalizedText text={"Salesperson"} /></div>
+              <div className="col-span-2"><LocalizedText text={"Source"} /></div>
+              <div className="col-span-3 text-right"><LocalizedText text={"Status & Actions"} /></div>
             </div>
 
             <AnimatePresence>
@@ -786,7 +785,7 @@ export default function LeadsPage() {
                           className="text-xs font-medium bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer max-w-[150px] truncate shadow-xs"
                           title="Assign Salesperson"
                         >
-                          <option value="">Unassigned</option>
+                          <option value=""><LocalizedText text={"Unassigned"} /></option>
                           {employees.map(emp => (
                             <option key={emp.id} value={emp.id}>
                               {emp.name}
@@ -1102,7 +1101,7 @@ export default function LeadsPage() {
       />
 
       {/* Add Follow-up Modal */}
-      {loadError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-40 rounded-xl bg-red-50 p-4 text-red-800 shadow-lg">{loadError} <button onClick={fetchLeads} className="ml-3 underline">Retry</button></div>}
+      {loadError && <div role="alert" className="fixed bottom-4 left-4 right-4 z-40 rounded-xl bg-red-50 p-4 text-red-800 shadow-lg">{loadError} <button onClick={fetchLeads} className="ml-3 underline"><LocalizedText text={"Retry"} /></button></div>}
       {schedule && <InstituteLeadScheduleModal lead={schedule.lead} stage={schedule.stage} onClose={() => setSchedule(null)} onSuccess={fetchLeads} />}
       <AddFollowUpModal
         open={!!followUpTarget}

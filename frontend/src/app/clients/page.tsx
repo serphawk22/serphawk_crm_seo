@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -662,7 +663,7 @@ export default function ClientsPage() {
               <Download className="w-3.5 h-3.5" /> <span className="hidden sm:inline">CSV</span>
             </button>
             <button onClick={() => router.push('/import?target=clients')} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-white/10 text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-white/5 transition">
-              <FileSpreadsheet className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Import</span>
+              <FileSpreadsheet className="w-3.5 h-3.5" /> <span className="hidden sm:inline"><LocalizedText text={"Import"} /></span>
             </button>
             <button onClick={() => setIsOCRModalOpen(true)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-white/10 text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-white/5 transition">
               <FileScan className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t("clients.ocr_scan")}</span>
@@ -709,7 +710,7 @@ export default function ClientsPage() {
             </div>
             <div className="flex-1">
               <p className="text-sm font-bold text-violet-800 dark:text-violet-300">🎯 Discover your clients' competitors with Radar Analysis</p>
-              <p className="text-xs text-violet-700/70 dark:text-violet-400/70 mt-0.5">Add a client, then use <strong>Radar Analysis</strong> to instantly see who they're competing against, what keywords they rank for, and where the SEO opportunities are.</p>
+              <p className="text-xs text-violet-700/70 dark:text-violet-400/70 mt-0.5">Add a client, then use <strong><LocalizedText text={"Radar Analysis"} /></strong> to instantly see who they're competing against, what keywords they rank for, and where the SEO opportunities are.</p>
             </div>
             <a href="/admin/radar" className="shrink-0 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-all whitespace-nowrap shadow-md">
               Try Radar Analysis →
@@ -754,7 +755,7 @@ export default function ClientsPage() {
               )}
             >
               <UserX className={cn("w-3.5 h-3.5", filter === "Dropped" ? "text-white" : "text-rose-500")} />
-              <span>Dropped Clients</span>
+              <span><LocalizedText text={"Dropped Clients"} /></span>
               <span className={cn(
                 "px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none",
                 filter === "Dropped"
@@ -783,7 +784,7 @@ export default function ClientsPage() {
                         <UserX className="w-3.5 h-3.5" />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">Dropped Clients</h4>
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100"><LocalizedText text={"Dropped Clients"} /></h4>
                         <p className="text-[10px] text-slate-500 dark:text-zinc-400">{droppedCount} discontinued accounts</p>
                       </div>
                     </div>
@@ -1085,11 +1086,11 @@ export default function ClientsPage() {
             <div className="p-3 space-y-2">
               {/* Desktop Header */}
               <div className="hidden md:grid grid-cols-12 gap-3 px-3 py-1.5 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-                <div className="col-span-4">Client</div>
-                <div className="col-span-2">Status</div>
-                <div className="col-span-2">Salesperson</div>
+                <div className="col-span-4"><LocalizedText text={"Client"} /></div>
+                <div className="col-span-2"><LocalizedText text={"Status"} /></div>
+                <div className="col-span-2"><LocalizedText text={"Salesperson"} /></div>
                 <div className="col-span-2">Website & Activity</div>
-                <div className="col-span-2 text-right">Actions</div>
+                <div className="col-span-2 text-right"><LocalizedText text={"Actions"} /></div>
               </div>
 
               <AnimatePresence>
@@ -1160,7 +1161,7 @@ export default function ClientsPage() {
                               className="text-[11px] font-medium bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-md px-1.5 py-0.5 text-slate-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-[125px]"
                               title="Assign Salesperson"
                             >
-                              <option value="">Unassigned</option>
+                              <option value=""><LocalizedText text={"Unassigned"} /></option>
                               {employees.map(emp => (
                                 <option key={emp.id} value={emp.id}>{emp.name}</option>
                               ))}
@@ -1295,8 +1296,7 @@ export default function ClientsPage() {
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors shadow-2xs"
                           >
                             <FileText className="w-3.5 h-3.5" />
-                            Create Proposal
-                          </Link>
+                            <LocalizedText text={"Create Proposal"} /> </Link>
                           <button
                             onClick={() => setFollowUpTarget({
                               type: 'client',
@@ -1361,22 +1361,20 @@ export default function ClientsPage() {
           {viewMode === 'list' && totalCount > perPage && (
             <div className="px-6 py-4 flex items-center justify-between border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
               <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-                Showing {(page - 1) * perPage + 1} to {Math.min(page * perPage, totalCount)} of {totalCount} clients
-              </span>
+                <LocalizedText text={"Showing"} /> {(page - 1) * perPage + 1} <LocalizedText text={"to"} /> {Math.min(page * perPage, totalCount)} <LocalizedText text={"of"} /> {totalCount} <LocalizedText text={"clients"} /> </span>
               <div className="flex gap-2">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
                   className="px-4 py-2 text-sm font-semibold bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-2"
                 >
-                  <ChevronLeft className="w-4 h-4" /> Previous
-                </button>
+                  <ChevronLeft className="w-4 h-4" /> <LocalizedText text={"Previous"} /> </button>
                 <button
                   onClick={() => setPage(p => p + 1)}
                   disabled={page * perPage >= totalCount}
                   className="px-4 py-2 text-sm font-semibold bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-2"
                 >
-                  Next <ChevronRight className="w-4 h-4" />
+                  <LocalizedText text={"Next"} /> <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -1386,7 +1384,7 @@ export default function ClientsPage() {
               <div className="w-16 h-16 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center mb-4">
                 <Building2 className="w-8 h-8 text-slate-400" />
               </div>
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">No clients found</h3>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white"><LocalizedText text={"No clients found"} /></h3>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm">Try adjusting filters or click "Add Client" to get started.</p>
             </div>
           )}
@@ -1471,7 +1469,7 @@ export default function ClientsPage() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-700 dark:text-zinc-200 uppercase tracking-widest pl-1">Email</label>
+                      <label className="text-[10px] font-black text-slate-700 dark:text-zinc-200 uppercase tracking-widest pl-1"><LocalizedText text={"Email"} /></label>
                       <input required type="email" className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500 transition-all shadow-sm font-medium" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                     </div>
                     <div className="space-y-2">
@@ -1539,8 +1537,7 @@ export default function ClientsPage() {
                   Copy Pitch
                 </button>
                 <button onClick={() => setPitchModal({isOpen: false, pitch: "", clientName: ""})} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors">
-                  Done
-                </button>
+                  <LocalizedText text={"Done"} /> </button>
               </div>
             </motion.div>
           </motion.div>

@@ -10,6 +10,7 @@ import {
   Phone, Package, ShoppingCart, Truck, HeadphonesIcon, BookOpen, FileBarChart2, Briefcase, Edit2, GripVertical, Check,
   Cloud, Trophy, Star, Inbox, PhoneCall, CalendarClock, Building2, TrendingUp, IndianRupee, GraduationCap, Lightbulb, LogOut
 } from "lucide-react";
+import { createVisiblePoll } from "@/lib/visiblePoll";
 import { cn } from "@/lib/utils";
 import { useRole, Role } from "@/context/RoleContext";
 import { useSidebar } from "@/context/SidebarContext";
@@ -17,8 +18,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { mergeSidebarSections, sidebarPathMatches } from "@/lib/sidebarPreferences";
 import { API_BASE_URL } from "@/config";
-import { useTranslation } from "react-i18next";
-import { useLanguage, Language } from "@/context/LanguageContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { useTenantConfig } from "@/context/TenantConfigContext";
 import { isPlatformManagementPage } from "@/lib/moduleRoutes";
@@ -59,13 +59,13 @@ const INBOX_ROLES = ["Admin", "SalesManager", "Employee", "Demo", "SuperAdmin"];
 const ITEM_FEATURE: Record<string, string> = {
   "item-dashboard": "dashboard",
   "item-work-queue": "work_queue", "item-inbox": "inbox", "item-followups": "followups",
-  "item-leads": "leads", "item-contacts": "contacts", "item-clients": "clients", "item-deals": "deals",
+  "item-leads": "leads", "item-contacts": "contacts", "item-clients": "clients",
   "item-projects": "projects", "item-task-sheet": "task_sheet", "item-reports": "reports",
   "item-meetings": "meetings", "item-calls": "calls", "item-teams": "teams", "item-leaderboard": "leaderboard",
   "item-email-agent": "email_agent", "item-voice-agent": "voice_agent",
   "item-inventory": "inventory", "item-orders": "inventory", "item-products": "products",
   "item-billing": "billing", "item-invoices": "invoices", "item-proposals": "proposals", "item-marketplace": "marketplace",
-  "item-cases": "cases", "item-solutions": "support", "item-scmhub-cases": "scmhub_cases", "item-support-sh": "support_sh",
+  "item-cases": "cases", "item-solutions": "support", "item-support-sh": "support_sh",
   "item-import": "import_data", "item-api-intelligence": "api_intelligence", "item-demo-accounts": "demo_accounts",
 };
 
@@ -122,7 +122,6 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-leads", name: "Leads", icon: "Radar", href: "/leads", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-contacts", name: "Contacts", icon: "Users", href: "/contacts", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-clients", name: "Clients", icon: "CheckCircle", href: "/clients", roles: ["Admin", "SalesManager", "Demo"] },
-      { id: "item-deals", name: "Deals", icon: "Briefcase", href: "/pipeline", roles: ["Admin", "SalesManager", "Demo"] },
     ],
   },
   {
@@ -198,7 +197,6 @@ const defaultSidebarSections: SidebarSection[] = [
       { id: "item-support-sh", name: "Support @SH", icon: "HeadphonesIcon", href: "/support/helpdesk", roles: ["Admin", "SalesManager", "Sales", "Employee", "ProjectMember", "Demo"] },
       { id: "item-cases", name: "Cases", icon: "HeadphonesIcon", href: "/support/cases", roles: ["Admin", "SalesManager", "Employee", "ProjectMember", "Demo"] },
       { id: "item-solutions", name: "Solutions", icon: "BookOpen", href: "/support/solutions", roles: ["Admin", "SalesManager", "Demo"] },
-      { id: "item-scmhub-cases", name: "SCMHub Cases", icon: "Cloud", href: "/support/scmhub-cases", roles: ["Admin", "SalesManager", "Demo"] },
     ],
   },
   {
@@ -253,7 +251,7 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
   const itemLabel = (item: SidebarItem) => {
     const k = `sidebar.${sidebarItemKey(item.id)}`;
     const v = t(k);
-    return v === k ? item.name : v;
+    return v === k ? t(item.name) : v;
   };
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -463,22 +461,28 @@ function SidebarContent({ role }: SidebarProps) {
   useEffect(() => {
     if (!user?.id || !INBOX_ROLES.includes(role) || !inboxEnabled) return;
     let alive = true;
-    const load = async () => {
+    const load = async (signal: AbortSignal) => {
       try {
-        const res = await fetch(`${API_BASE_URL}/inbox/counts?only=unread`);
+        const res = await fetch(`${API_BASE_URL}/inbox/counts?only=unread`, { signal });
         if (res.ok) {
           const data = await res.json();
-          if (alive) setInboxUnread(data.unread || 0);
+          if (alive && !signal.aborted) setInboxUnread(data.unread || 0);
         }
       } catch {}
     };
-    load();
-    const timer = setInterval(load, 60000);
-    window.addEventListener("inbox-unread-changed", load);
+    const poll = createVisiblePoll(load, 60000);
+    const refresh = (event?: Event) => {
+      if (event instanceof CustomEvent && typeof event.detail?.unread === "number") {
+        setInboxUnread(event.detail.unread);
+      } else {
+        void poll.refresh();
+      }
+    };
+    window.addEventListener("inbox-unread-changed", refresh);
     return () => {
       alive = false;
-      clearInterval(timer);
-      window.removeEventListener("inbox-unread-changed", load);
+      poll.dispose();
+      window.removeEventListener("inbox-unread-changed", refresh);
     };
   }, [user?.id, role, inboxEnabled]);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
@@ -662,47 +666,13 @@ function SidebarContent({ role }: SidebarProps) {
   const labelFor = (item: SidebarItem) => {
     const k = `sidebar.${sidebarItemKey(item.id)}`;
     const v = t(k);
-    return v === k ? item.name : v;
+    return v === k ? t(item.name) : v;
   };
 
   // ── Language Toggle ──
-  const { i18n } = useTranslation();
-  const { t, setLanguage } = useLanguage();
-  const [activeLang, setActiveLang] = useState<"en" | "es">("en");
+  const { t, setLanguage, language: activeLang } = useLanguage();
 
-  const switchLanguage = useCallback((lang: "en" | "es") => {
-    i18n.changeLanguage(lang);
-    localStorage.setItem("crm-language", lang);
-    setLanguage(lang as Language);
-    setActiveLang(lang);
-
-    if (lang === "en") {
-      // Set flag BEFORE reload — sync script in <head> reads this and adds
-      // 'notranslate' to <html> BEFORE GT loads, so GT never retranslates.
-      sessionStorage.setItem("crm_gt_restore_en", "1");
-      document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${window.location.hostname}`;
-      window.location.reload();
-      return;
-    }
-
-    // Switching TO Spanish:
-    // Remove notranslate so GT is allowed to translate the page.
-    document.documentElement.classList.remove("notranslate");
-    document.documentElement.removeAttribute("translate");
-
-    const triggerGT = (attempts = 0) => {
-      const select = document.querySelector<HTMLSelectElement>(".goog-te-combo");
-      if (select) {
-        select.value = lang;
-        select.dispatchEvent(new Event("change"));
-      } else if (attempts < 25) {
-        setTimeout(() => triggerGT(attempts + 1), 100);
-      }
-    };
-    triggerGT();
-  }, [i18n, setLanguage]);
+  const switchLanguage = useCallback((lang: "en" | "es") => setLanguage(lang), [setLanguage]);
 
   return (
     <>
@@ -964,17 +934,17 @@ function SidebarContent({ role }: SidebarProps) {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-bold text-slate-900 dark:text-white leading-tight">
-                  {user?.name || user?.email || "User"}
+                  {user?.name || user?.email || t("User")}
                 </p>
                 <p className="truncate text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
-                  {role === "SalesManager" || role === "Employee" || role === "Sales" ? "Sales Manager" : role}
+                  {t(role === "SalesManager" || role === "Employee" || role === "Sales" ? "Sales Manager" : role)}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={logout}
-                title="Sign out"
-                aria-label="Sign out"
+                title={t("Sign out")}
+                aria-label={t("Sign out")}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 dark:hover:text-rose-400 border border-transparent hover:border-rose-200 dark:hover:border-rose-500/20 transition-all shrink-0"
               >
                 <LogOut className="w-4 h-4" />

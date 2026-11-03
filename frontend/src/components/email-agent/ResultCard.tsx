@@ -1,3 +1,4 @@
+import LocalizedText from "@/components/LocalizedText";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -315,8 +316,8 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
         <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mb-4">
           <CheckCircle className="w-10 h-10 text-emerald-500" />
         </div>
-        <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 mb-2">Mail Sent Successfully!</h2>
-        <p className="text-slate-500 dark:text-zinc-400 text-sm mb-6">Moving this to your recent outreach log...</p>
+        <h2 className="text-2xl font-black text-slate-800 dark:text-zinc-100 mb-2"><LocalizedText text={"Mail Sent Successfully!"} /></h2>
+        <p className="text-slate-500 dark:text-zinc-400 text-sm mb-6"><LocalizedText text={"Moving this to your recent outreach log..."} /></p>
       </motion.div>
     );
   }
@@ -329,8 +330,8 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
         className="w-full bg-white dark:bg-zinc-900 border border-indigo-500/30 rounded-2xl p-12 flex flex-col items-center justify-center shadow-sm h-64"
       >
         <Clock className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
-        <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2">Sending Email...</h2>
-        <p className="text-slate-500 dark:text-zinc-400 text-sm">Please wait while the system processes your request.</p>
+        <h2 className="text-xl font-black text-slate-800 dark:text-zinc-100 mb-2"><LocalizedText text={"Sending Email..."} /></h2>
+        <p className="text-slate-500 dark:text-zinc-400 text-sm"><LocalizedText text={"Please wait while the system processes your request."} /></p>
       </motion.div>
     );
   }
@@ -505,12 +506,12 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
             <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
               <AtSign className="w-4 h-4" />
             </div>
-            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Extracted Company Info</p>
+            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest"><LocalizedText text={"Extracted Company Info"} /></p>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
             <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
-              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1.5">Emails</p>
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1.5"><LocalizedText text={"Emails"} /></p>
               <div className="flex flex-col gap-1.5">
                 {result.company_info?.extracted_emails ? (
                   (Array.isArray(result.company_info.extracted_emails) 
@@ -522,20 +523,20 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
                     <CopyableEmailItem key={i} email={e.trim()} />
                   ))
                 ) : (
-                  <p className="text-xs text-slate-500 dark:text-zinc-500 font-mono">None</p>
+                  <p className="text-xs text-slate-500 dark:text-zinc-500 font-mono"><LocalizedText text={"None"} /></p>
                 )}
               </div>
             </div>
             <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
-              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1">Phones</p>
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1"><LocalizedText text={"Phones"} /></p>
               <div className="flex flex-col gap-1">
                 {result.company_info?.extracted_phone_numbers ? result.company_info.extracted_phone_numbers.split(',').map((p: string, i: number) => (
                   <a key={i} href={`tel:${p.trim()}`} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-mono break-all">{p.trim()}</a>
-                )) : <p className="text-sm text-slate-500 dark:text-zinc-500 font-mono">None</p>}
+                )) : <p className="text-sm text-slate-500 dark:text-zinc-500 font-mono"><LocalizedText text={"None"} /></p>}
               </div>
             </div>
             <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm lg:col-span-2">
-              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-2">Company Socials</p>
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-2"><LocalizedText text={"Company Socials"} /></p>
               <div className="flex flex-wrap gap-2">
                 {result.company_info?.company_social_media?.linkedin ? <a href={result.company_info.company_social_media.linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn</a> : null}
                 {result.company_info?.company_social_media?.twitter ? <a href={result.company_info.company_social_media.twitter} target="_blank" rel="noreferrer" className="px-3 py-1 bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-slate-300 rounded-md text-xs font-bold hover:bg-slate-200 transition-colors">X / Twitter</a> : null}
@@ -543,7 +544,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
                 {result.company_info?.company_social_media?.facebook ? <a href={result.company_info.company_social_media.facebook} target="_blank" rel="noreferrer" className="px-3 py-1 bg-blue-600/10 text-blue-700 dark:bg-blue-600/20 dark:text-blue-400 rounded-md text-xs font-bold hover:bg-blue-600/20 transition-colors">Facebook</a> : null}
                 {result.company_info?.company_social_media?.youtube ? <a href={result.company_info.company_social_media.youtube} target="_blank" rel="noreferrer" className="px-3 py-1 bg-red-600/10 text-red-700 dark:bg-red-600/20 dark:text-red-400 rounded-md text-xs font-bold hover:bg-red-600/20 transition-colors flex items-center gap-1"><Youtube className="w-3 h-3" /> YouTube</a> : null}
                 {result.company_info?.extracted_linkedin && !result.company_info?.company_social_media?.linkedin ? <a href={result.company_info.extracted_linkedin} target="_blank" rel="noreferrer" className="px-3 py-1 bg-[#0a66c2]/10 text-[#0a66c2] dark:bg-[#0a66c2]/20 dark:text-[#60a5fa] rounded-md text-xs font-bold hover:bg-[#0a66c2]/20 transition-colors">LinkedIn (Fallback)</a> : null}
-                {(!result.company_info?.company_social_media || Object.values(result.company_info.company_social_media).every(v => !v)) && !result.company_info?.extracted_linkedin && <span className="text-sm text-slate-500 dark:text-zinc-500">No social profiles detected.</span>}
+                {(!result.company_info?.company_social_media || Object.values(result.company_info.company_social_media).every(v => !v)) && !result.company_info?.extracted_linkedin && <span className="text-sm text-slate-500 dark:text-zinc-500"><LocalizedText text={"No social profiles detected."} /></span>}
               </div>
             </div>
           </div>
@@ -554,9 +555,9 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-zinc-700 text-[10px] text-slate-500 dark:text-zinc-400 uppercase tracking-widest bg-slate-100 dark:bg-zinc-900/50">
-                    <th className="py-3 px-4 font-bold">Name & Role</th>
-                    <th className="py-3 px-4 font-bold">Contact</th>
-                    <th className="py-3 px-4 font-bold">Socials</th>
+                    <th className="py-3 px-4 font-bold"><LocalizedText text={"Name & Role"} /></th>
+                    <th className="py-3 px-4 font-bold"><LocalizedText text={"Contact"} /></th>
+                    <th className="py-3 px-4 font-bold"><LocalizedText text={"Socials"} /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -579,7 +580,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
                             <a href={`tel:${p.phone_number}`} className="text-xs text-slate-600 dark:text-zinc-300 hover:underline">{p.phone_number}</a>
                           </div>
                         )}
-                        {!p.email && !p.phone_number && <span className="text-xs text-slate-400">Not found</span>}
+                        {!p.email && !p.phone_number && <span className="text-xs text-slate-400"><LocalizedText text={"Not found"} /></span>}
                       </td>
                       <td className="py-4 px-4 align-top">
                         <div className="flex flex-wrap gap-2">
@@ -600,7 +601,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
           ) : (
             <div className="flex flex-col items-center justify-center h-24 text-slate-400">
               <AtSign className="w-8 h-8 opacity-30" />
-              <p className="text-xs mt-2">No key decision makers found</p>
+              <p className="text-xs mt-2"><LocalizedText text={"No key decision makers found"} /></p>
             </div>
           )}
         </div>
@@ -612,7 +613,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
               <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
                 <Globe className="w-4 h-4" />
               </div>
-              <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Source Pages / Reference URLs</p>
+              <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest"><LocalizedText text={"Source Pages / Reference URLs"} /></p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {result.company_info.source_pages.map((url: string, i: number) => (
@@ -632,10 +633,9 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
             <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100">
               <Store className="w-4 h-4" />
             </div>
-            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Services Offered by This Company</p>
+            <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest"><LocalizedText text={"Services Offered by This Company"} /></p>
             <span className="ml-auto text-[9px] font-black text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2 py-0.5 rounded-full">
-              {result.extracted_services.length} detected
-            </span>
+              {result.extracted_services.length} <LocalizedText text={"detected"} /> </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {result.extracted_services.map((svc, i) => (
@@ -671,14 +671,14 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
               <div className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-100">
                 <FileText className="w-4 h-4" />
               </div>
-              <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest">Generated Email Draft</p>
+              <p className="text-[10px] font-black text-slate-800 dark:text-zinc-100 uppercase tracking-widest"><LocalizedText text={"Generated Email Draft"} /></p>
             </div>
             <CopyButton text={activeTab === "english" ? editableEnglishBody : activeTab === "spanish" ? editableSpanishBody : editableWhatsappBody} />
           </div>
 
           {result.email_hook && (
             <div className="mb-6 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-xl p-4 shadow-sm">
-              <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Suggested Hook</p>
+              <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> <LocalizedText text={"Suggested Hook"} /></p>
               <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{result.email_hook}</p>
             </div>
           )}
@@ -688,7 +688,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100 group relative">
-                  <span className="text-slate-500 w-12">From:</span>
+                  <span className="text-slate-500 w-12"><LocalizedText text={"From:"} /></span>
                   <input 
                     type="text" 
                     value="crm@serphawk.in"
@@ -697,12 +697,11 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
                     className="flex-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 px-3 py-1.5 text-sm text-slate-500 cursor-not-allowed focus:outline-none transition-all"
                   />
                   <div className="absolute bottom-full left-14 mb-2 hidden group-hover:block bg-slate-800 text-white text-xs rounded-lg px-3 py-1.5 shadow-lg whitespace-nowrap z-50 font-medium">
-                    Automated sending email address
-                    <div className="absolute -bottom-1 left-4 w-2 h-2 bg-slate-800 rotate-45"></div>
+                    <LocalizedText text={"Automated sending email address"} /> <div className="absolute -bottom-1 left-4 w-2 h-2 bg-slate-800 rotate-45"></div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100">
-                  <span className="text-slate-500 w-12">To:</span>
+                  <span className="text-slate-500 w-12"><LocalizedText text={"To:"} /></span>
                   <input 
                     type="text" 
                     value={toEmail}
@@ -763,8 +762,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
                       className="w-full px-4 py-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100 font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-50 hover:text-slate-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <UserPlus className="w-3.5 h-3.5" />
-                      Send via System
-                    </button>
+                      <LocalizedText text={"Send via System"} /> </button>
                   )}
                 </div>
               </div>
@@ -783,7 +781,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
               )}
             </div>
           <div className="mb-4">
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Subject</p>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1"><LocalizedText text={"Subject"} /></p>
             <input 
               type="text"
               value={editableSubject}
@@ -841,7 +839,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
 
             <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 space-y-3">
               <div>
-                <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Next Follow-up Note</label>
+                <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400"><LocalizedText text={"Next Follow-up Note"} /></label>
                 <input
                   type="text"
                   value={followUpTitle}
@@ -851,7 +849,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
                 />
               </div>
               <div>
-                <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Note for the sales team</label>
+                <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400"><LocalizedText text={"Note for the sales team"} /></label>
                 <textarea
                   value={followUpNote}
                   onChange={(e) => setFollowUpNote(e.target.value)}

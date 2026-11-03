@@ -407,6 +407,10 @@ def _finish(session: Session, campaign: EmailCampaign, status: str, error: Optio
     session.commit()
 
 
+from modules.job_runtime import exclusive, assert_ownership
+
+
+@exclusive("campaign", resource=lambda campaign_id, *a, **kw: f"campaign:{campaign_id}", busy=None)
 def run_campaign(campaign_id: int, engine=None, sender=None, delay: Optional[float] = None, ai=True):
     """Send every Pending recipient of a campaign, one at a time. Synchronous (the thread target)."""
     from modules import company_mailer
@@ -415,6 +419,10 @@ def run_campaign(campaign_id: int, engine=None, sender=None, delay: Optional[flo
     with Session(engine) as s:
         c = s.get(EmailCampaign, campaign_id)
         if not c or c.status not in ("Queued", "Sending"):
+            return
+        from modules.demo_usage import background_restricted
+        if background_restricted(s, c.tenant_id, c.created_by):
+            _finish(s, c, "Failed", "Bulk paid services require a full account.")
             return
         if c.status == "Queued":
             c.status, c.started_at = "Sending", utcnow()
@@ -432,6 +440,7 @@ def run_campaign(campaign_id: int, engine=None, sender=None, delay: Optional[flo
         company = (tenant.business_name or tenant.name) if tenant else ""
 
     while True:
+        assert_ownership()
         with Session(engine) as s:
             c = s.get(EmailCampaign, campaign_id)
             if not c or c.status != "Sending":
@@ -447,7 +456,12 @@ def run_campaign(campaign_id: int, engine=None, sender=None, delay: Optional[flo
             if not _claim(s, r.id):
                 continue
             s.refresh(r)
-            subject, body, note = compose(c, r.data or {}, sender_name, company, ai=ai)
+            # Compose from detached snapshots: personalization may wait on AI.
+            from types import SimpleNamespace
+            compose_campaign = SimpleNamespace(**{key: getattr(c, key) for key in type(c).model_fields})
+            recipient_data = dict(r.data or {})
+            s.commit()
+            subject, body, note = compose(compose_campaign, recipient_data, sender_name, company, ai=ai)
             body = company_mailer.apply_signature(body, signature)
             r.subject, r.body = subject, body
             new_lead = False
@@ -526,10 +540,21 @@ def resume_campaigns(engine=None) -> int:
         stale = s.exec(select(EmailCampaignRecipient).where(
             EmailCampaignRecipient.status == "Sending", EmailCampaignRecipient.claimed_at < utcnow() - STALE_CLAIM,
         ).execution_options(skip_tenant=True).limit(200)).all()
-        for r in stale:
-            r.status = "Failed"
-            r.error = "Interrupted while sending (server restart). It may not have been delivered — use Retry failed to resend."
-            s.add(r)
+        from modules.job_runtime import Guard
+        for campaign_id in {r.campaign_id for r in stale}:
+            with Guard(engine, f"campaign:{campaign_id}") as guard:
+                if not guard.acquired:
+                    continue  # another process still owns a slow but live send
+                ids = [r.id for r in stale if r.campaign_id == campaign_id]
+                current = s.exec(select(EmailCampaignRecipient).where(
+                    EmailCampaignRecipient.id.in_(ids), EmailCampaignRecipient.status == "Sending",
+                    EmailCampaignRecipient.claimed_at < utcnow() - STALE_CLAIM,
+                ).execution_options(skip_tenant=True, populate_existing=True)).all()
+                for r in current:
+                    r.status = "Failed"
+                    r.error = "Interrupted while sending (server restart). It may not have been delivered — use Retry failed to resend."
+                    s.add(r)
+                s.commit()
         s.commit()
         ids = s.exec(select(EmailCampaign.id).where(EmailCampaign.status.in_(("Queued", "Sending")))
                      .execution_options(skip_tenant=True)).all()

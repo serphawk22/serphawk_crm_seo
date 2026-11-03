@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:interface-language": "node scripts/check-interface-language.mjs",
     "test:profile-settings": "node scripts/check-profile-settings.mjs",
     "test:sidebar": "node scripts/check-sidebar.mjs",
     "dev": "next dev",
@@ -12,7 +13,8 @@
     "test:phone": "node scripts/check-phone.js",
     "test:lead-workflow": "node scripts/check-lead-workflow.mjs",
     "test:branding-session": "node scripts/check-branding-session.mjs",
-    "test:superadmin-access": "node scripts/check-superadmin-access.mjs"
+    "test:superadmin-access": "node scripts/check-superadmin-access.mjs",
+    "test:crm-refinement": "node scripts/check-crm-refinement.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect } from "react";
 import { Users, UserPlus, Search, MoreVertical, Mail, Trash2, ShieldCheck, Briefcase, X, Check, Loader2, Key, Star } from "lucide-react";
@@ -217,8 +218,8 @@ export default function EmployeesPage() {
                      onChange={(e) => setRole(e.target.value)}
                      className="w-full px-6 py-5 bg-gray-50 dark:bg-zinc-950 border-none rounded-[1.5rem] text-sm font-black focus:ring-2 focus:ring-indigo-500 transition-all outline-none appearance-none shadow-inner"
                    >
-                     <option>Employee</option>
-                     <option>Admin</option>
+                     <option value={"Employee"}><LocalizedText text={"Employee"} /></option>
+                     <option value={"Admin"}><LocalizedText text={"Admin"} /></option>
                    </select>
                 </div>
               </div>

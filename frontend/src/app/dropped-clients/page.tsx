@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -158,7 +159,7 @@ export default function DroppedClientsPage() {
                 <UserX className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100">Dropped Clients</h1>
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-zinc-100"><LocalizedText text={"Dropped Clients"} /></h1>
                 <p className="text-sm text-slate-500 dark:text-zinc-400">Track discontinued client relationships</p>
               </div>
             </div>
@@ -202,7 +203,7 @@ export default function DroppedClientsPage() {
               {pieData.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-40 text-slate-400">
                   <TrendingDown className="w-8 h-8 mb-2 opacity-30" />
-                  <p className="text-sm">No data yet</p>
+                  <p className="text-sm"><LocalizedText text={"No data yet"} /></p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={200}>
@@ -333,7 +334,7 @@ export default function DroppedClientsPage() {
               </div>
               <form onSubmit={handleSubmit} className="p-6 space-y-4">
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Company Name *</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block"><LocalizedText text={"Company Name *"} /></label>
                   <input required value={form.company_name} onChange={e => setForm(f => ({ ...f, company_name: e.target.value }))}
                     placeholder="Acme Corp" className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-red-500" />
                 </div>
@@ -344,7 +345,7 @@ export default function DroppedClientsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Category</label>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block"><LocalizedText text={"Category"} /></label>
                     <select value={form.reason_category} onChange={e => setForm(f => ({ ...f, reason_category: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-red-500">
                       {REASON_CATEGORIES.map(c => <option key={c}>{c}</option>)}
@@ -371,15 +372,14 @@ export default function DroppedClientsPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">Notes</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block"><LocalizedText text={"Notes"} /></label>
                   <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2}
                     placeholder="Additional context..." className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-red-500 resize-none" />
                 </div>
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={() => setShowModal(false)}
                     className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-sm font-semibold text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800">
-                    Cancel
-                  </button>
+                    <LocalizedText text={"Cancel"} /> </button>
                   <button type="submit" disabled={saving}
                     className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 shadow-md">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserX className="w-4 h-4" />}

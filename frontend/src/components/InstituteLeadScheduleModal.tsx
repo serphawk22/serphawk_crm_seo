@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Loader2, X } from "lucide-react";
@@ -87,7 +88,7 @@ export default function InstituteLeadScheduleModal({ lead, stage, onClose, onSuc
         </label>}
         <details>
           <summary className="w-fit cursor-pointer rounded text-xs text-slate-500 focus-visible:outline-2 focus-visible:outline-indigo-500 dark:text-zinc-400">Add notes</summary>
-          <label className="sr-only" htmlFor="schedule-notes">Notes</label>
+          <label className="sr-only" htmlFor="schedule-notes"><LocalizedText text={"Notes"} /></label>
           <textarea id="schedule-notes" rows={2} value={notes} maxLength={8000} onChange={e => setNotes(e.target.value)}
             placeholder="Notes (optional)"
             className={`${fieldClass} resize-y`} />
@@ -95,7 +96,7 @@ export default function InstituteLeadScheduleModal({ lead, stage, onClose, onSuc
         {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-400">{error}</p>}
       </fieldset>
       <footer className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-4 py-2.5 dark:border-zinc-800">
-        <button type="button" disabled={saving} onClick={onClose} className="min-h-9 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-indigo-500 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Cancel</button>
+        <button type="button" disabled={saving} onClick={onClose} className="min-h-9 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-indigo-500 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"><LocalizedText text={"Cancel"} /></button>
         <button disabled={saving} className="flex min-h-9 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:opacity-60">
           {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{saving ? "Saving…" : "Schedule"}
         </button>

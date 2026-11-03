@@ -650,108 +650,95 @@ def _build_reply_fields(msg) -> dict:
 
 def _process_inbox_replies(conn, sender_email: str, days_back: int, only_missing: bool = False,
                            tenant_id=None) -> int:
-    """
-    Shared IMAP scan used by both check_email_replies (regular polling) and
-    backfill_reply_content (one-off catch-up for old rows). For every inbox
-    message in the window:
-      - skip our own archived sent-copy
-      - skip it if already recorded (by the *inbound* message's own
-        Message-ID) so re-scanning the same date window never duplicates rows
-      - match it to the most recently sent email addressed to that sender
-        (heuristic: SentEmail.to_email == reply's From address); every reply
-        in a thread attaches to that same sent email as its own EmailReply row
-      - `only_missing=True` restricts matching to sent emails that don't yet
-        have any recorded reply (used by the historical backfill so it never
-        touches threads check_email_replies has already picked up)
-    Returns the number of EmailReply rows created.
-    """
-    since_date = (
-        __import__("datetime").datetime.utcnow() - __import__("datetime").timedelta(days=days_back)
-    ).strftime("%d-%b-%Y")
-    typ, data = conn.search(None, f'(SINCE "{since_date}")')
-    if typ != "OK" or not data or not data[0]:
-        return 0
-
-    uids = data[0].split()
-    # Imported here (not at module top) to avoid a hard import-time dependency
-    # between modules/email_sender.py and database.py.
+    """Header-first scan. Keep the entire lookback window so failures/unmatched mail can be retried."""
+    from datetime import datetime, timedelta, timezone
     from database import engine, SentEmail, EmailReply
     from sqlmodel import Session, select
-    from datetime import datetime as _dt, timezone as _tz
-
-    created = 0
+    from sqlalchemy import func
+    from modules.job_runtime import assert_ownership, tally
+    since = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%d-%b-%Y")
+    typ, data = conn.search(None, f'(SINCE "{since}")')
+    if typ != "OK" or not data or not data[0]:
+        return 0
+    ids = [u.decode() for u in data[0].split()]
+    headers = []
+    for offset in range(0, len(ids), 200):
+        assert_ownership()
+        chunk = ids[offset:offset + 200]
+        typ, parts = conn.fetch(",".join(chunk), "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID FROM)])")
+        if typ != "OK":
+            continue
+        for part in parts or []:
+            if not isinstance(part, tuple) or not isinstance(part[1], bytes):
+                continue
+            seq = re.match(rb"\s*(\d+)", part[0])
+            if seq is None:
+                continue
+            msg = email_lib.message_from_bytes(part[1])
+            address = (parseaddr(msg.get("From", ""))[1] or "").strip().lower()
+            if address and address != sender_email.strip().lower():
+                headers.append((seq[1].decode(), (msg.get("Message-ID") or "").strip(), address))
+    known = set()
+    message_ids = list({mid for _, mid, _ in headers if mid})
     with Session(engine) as session:
-        for uid in uids:
-            try:
-                # Full RFC822 fetch (not just headers) so the reply's own
-                # subject/body/HTML can be stored alongside the status flip.
-                typ, msg_data = conn.fetch(uid, "(BODY.PEEK[])")
-                if typ != "OK" or not msg_data or not isinstance(msg_data[0], tuple):
+        for offset in range(0, len(message_ids), 500):
+            known.update(session.exec(select(EmailReply.message_id).where(
+                EmailReply.message_id.in_(message_ids[offset:offset+500]))
+                .execution_options(skip_tenant=True)).all())
+    pending = [(uid, mid, address) for uid, mid, address in headers if not mid or mid not in known]
+    addresses = list({address for _, _, address in pending})
+    matches = {}
+    with Session(engine) as session:
+        for offset in range(0, len(addresses), 500):
+            stmt = select(SentEmail.id, func.lower(SentEmail.to_email).label("recipient"),
+                          func.row_number().over(partition_by=func.lower(SentEmail.to_email),
+                                                 order_by=SentEmail.sent_at.desc()).label("position"))
+            stmt = stmt.where(func.lower(SentEmail.to_email).in_(addresses[offset:offset+500]))
+            if tenant_id is not None:
+                stmt = stmt.where(SentEmail.tenant_id == tenant_id)
+            if only_missing:
+                stmt = stmt.where(SentEmail.reply_body.is_(None))
+            ranked = stmt.subquery()
+            # Backfill historically moves to the next missing snapshot after each reply.
+            depth = len(pending) if only_missing else 1
+            for row_id, address in session.exec(select(ranked.c.id, ranked.c.recipient).where(
+                    ranked.c.position <= depth).order_by(ranked.c.position)
+                    .execution_options(skip_tenant=True)).all():
+                matches.setdefault(address, []).append(row_id)
+    created = 0
+    tally(examined=len(headers))
+    for uid, inbound_id, address in pending:
+        if not matches.get(address) or (inbound_id and inbound_id in known):
+            continue
+        assert_ownership()
+        try:
+            typ, parts = conn.fetch(uid, "(BODY.PEEK[])")
+            if typ != "OK" or not parts or not isinstance(parts[0], tuple):
+                continue
+            msg = email_lib.message_from_bytes(parts[0][1])
+            fields = _build_reply_fields(msg)
+            with Session(engine) as session:
+                match = session.get(SentEmail, matches[address][0], execution_options={"skip_tenant": True})
+                if not match or (tenant_id is not None and match.tenant_id != tenant_id):
                     continue
-                msg = email_lib.message_from_bytes(msg_data[0][1])
-                from_name, from_addr = parseaddr(msg.get("From", ""))
-                from_addr = (from_addr or "").strip().lower()
-                if not from_addr or from_addr == sender_email.strip().lower():
-                    continue  # our own archived sent-copy, not a real reply
-
-                inbound_message_id = (msg.get("Message-ID") or "").strip()
-
-                # skip_tenant throughout: this function also runs synchronously
-                # inside the unauthenticated POST /webhook/check-replies-now
-                # (and /webhook/backfill-reply-content) requests, where main.py's
-                # tenant-filter listener would otherwise force every query here
-                # to see zero rows (see routers/email_tracking.py notes).
-                if inbound_message_id:
-                    dup_stmt = (
-                        select(EmailReply)
-                        .where(EmailReply.message_id == inbound_message_id)
-                        .execution_options(skip_tenant=True)
-                    )
-                    if session.exec(dup_stmt).first():
-                        continue  # already recorded on a previous poll cycle
-
-                match_stmt = (
-                    select(SentEmail)
-                    .where(SentEmail.to_email.ilike(from_addr))
-                    .order_by(SentEmail.sent_at.desc())
-                    .execution_options(skip_tenant=True)
-                )
-                if only_missing:
-                    match_stmt = match_stmt.where(SentEmail.reply_body.is_(None))
-                if tenant_id is not None:  # a tenant's / user's own mailbox only matches that tenant's sent mail
-                    match_stmt = match_stmt.where(SentEmail.tenant_id == tenant_id)
-                match = session.exec(match_stmt).first()
-                if not match:
-                    continue
-
-                fields = _build_reply_fields(msg)
-                reply_row = EmailReply(
-                    tenant_id=match.tenant_id,
-                    sent_email_id=match.id,
-                    message_id=inbound_message_id or None,
-                    from_address=msg.get("From", "") or from_addr,
-                    subject=(msg.get("Subject", "") or "")[:500],
-                    body_text=fields["body_text"],
-                    body_text_full=fields["body_text_full"],
-                    body_html=fields["body_html"],
-                    received_at=_dt.now(_tz.utc),
-                )
-                session.add(reply_row)
-
-                # Keep the sent_emails snapshot columns pointed at the latest
-                # reply, for any older code path still reading them directly.
+                reply = EmailReply(tenant_id=match.tenant_id, sent_email_id=match.id,
+                    message_id=inbound_id or None, from_address=msg.get("From", "") or address,
+                    subject=(msg.get("Subject", "") or "")[:500], received_at=datetime.now(timezone.utc), **fields)
+                session.add(reply)
                 match.status = "Replied"
-                if not match.replied_at:
-                    match.replied_at = reply_row.received_at
-                match.reply_from = reply_row.from_address
-                match.reply_subject = reply_row.subject
-                match.reply_body = reply_row.body_text
+                match.replied_at = match.replied_at or reply.received_at
+                match.reply_from, match.reply_subject, match.reply_body = reply.from_address, reply.subject, reply.body_text
                 session.add(match)
                 session.commit()
-                created += 1
-            except Exception as inner_e:
-                print(f"[Reply checker] error processing message: {inner_e}")
-                continue
+            if inbound_id:
+                known.add(inbound_id)
+            if only_missing:
+                matches[address].pop(0)
+            created += 1
+        except Exception as exc:
+            tally(failed=1)
+            print(f"[Reply checker] message failed: {type(exc).__name__}")
+    tally(changed=created)
     return created
 
 
@@ -772,10 +759,16 @@ def _scan_all_mailboxes(days_back: int, only_missing: bool, label: str, tenant_i
     for cfg in configs:
         conn = None
         try:
-            conn = inbox_sync._connect(cfg)
-            conn.select("INBOX", readonly=True)
-            total += _process_inbox_replies(conn, cfg.address, days_back, only_missing=only_missing,
-                                            tenant_id=cfg.tenant_id if cfg.tenant_owned else None)
+            from modules.job_runtime import Guard, activity, mailbox_resource, tally
+            with activity("reply-scan", engine), Guard(engine, mailbox_resource(cfg)) as guard:
+                if not guard.acquired:
+                    tally(skipped=1)
+                    continue
+                guard.check()
+                conn = inbox_sync._connect(cfg)
+                conn.select("INBOX", readonly=True)
+                total += _process_inbox_replies(conn, cfg.address, days_back, only_missing=only_missing,
+                                                tenant_id=cfg.tenant_id if cfg.tenant_owned else None)
         except Exception as e:
             print(f"[{label}] IMAP check of {cfg.address} failed: {e}")
         finally:
@@ -809,16 +802,8 @@ def backfill_reply_content(days_back: int = 60, tenant_id=None) -> int:
 
 
 def _reply_checker_loop(interval_seconds: int):
-    # Small initial delay so this doesn't compete with app startup for the DB/IMAP connection.
-    time.sleep(15)
-    while True:
-        try:
-            n = check_email_replies()
-            if n:
-                print(f"[Reply checker] marked {n} email(s) as Replied.")
-        except Exception as e:
-            print(f"[Reply checker] loop error: {e}")
-        time.sleep(interval_seconds)
+    from modules.job_runtime import run_recurring
+    run_recurring("reply-checker", check_email_replies, interval_seconds, initial_delay=15)
 
 
 def start_reply_checker_thread():

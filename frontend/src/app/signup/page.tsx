@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
@@ -39,32 +40,7 @@ function SignupLanguageSwitcher() {
     return () => document.removeEventListener("mousedown", handleOutside);
   }, []);
 
-  const changeLanguage = (code: string) => {
-    setIsOpen(false);
-    setLanguage(code);
-    localStorage.setItem("crm-language", code);
-    localStorage.setItem("language", code);
-
-    if (code === "en") {
-      sessionStorage.setItem("crm_gt_restore_en", "1");
-      document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${window.location.hostname}`;
-      window.location.reload();
-    } else {
-      document.cookie = `googtrans=/en/${code}; path=/;`;
-      document.cookie = `googtrans=/en/${code}; path=/; domain=${window.location.hostname}`;
-      document.cookie = `googtrans=/en/${code}; path=/; domain=.${window.location.hostname}`;
-      document.documentElement.classList.remove("notranslate");
-      document.documentElement.removeAttribute("translate");
-      const tryTrigger = (attempts = 0) => {
-        const sel = document.querySelector<HTMLSelectElement>(".goog-te-combo");
-        if (sel) { sel.value = code; sel.dispatchEvent(new Event("change")); }
-        else if (attempts < 25) setTimeout(() => tryTrigger(attempts + 1), 100);
-      };
-      tryTrigger();
-    }
-  };
+  const changeLanguage = (code: string) => { setIsOpen(false); setLanguage(code); };
 
   const current = SIGNUP_LANGUAGES.find((l) => l.code === currentCode) ?? SIGNUP_LANGUAGES[0];
 
@@ -293,7 +269,7 @@ export default function SignupPage() {
                 <div className="space-y-4">
                   {/* Name */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase">Full Name</label>
+                    <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase"><LocalizedText text={"Full Name"} /></label>
                     <div className="relative group">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                         <UserIcon className="h-4 w-4 text-slate-400 dark:text-zinc-500 group-focus-within:text-indigo-500 transition-colors" />
@@ -330,7 +306,7 @@ export default function SignupPage() {
                   {/* Password */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase">Password</label>
+                      <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 tracking-wide uppercase"><LocalizedText text={"Password"} /></label>
                       <button
                         type="button"
                         onClick={useSuggestedPassword}
@@ -386,13 +362,12 @@ export default function SignupPage() {
                   disabled={isSubmitting || !name || !email || !password}
                   className="w-full mt-2 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold tracking-wide transition-all shadow-md hover:shadow-lg hover:shadow-indigo-500/25 flex items-center justify-center gap-2 disabled:opacity-70 disabled:scale-100 active:scale-[0.98]"
                 >
-                  Create Account
-                  <ArrowRight className="w-4 h-4" />
+                  <LocalizedText text={"Create Account"} /> <ArrowRight className="w-4 h-4" />
                 </button>
 
                 <div className="relative flex items-center py-2">
                   <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
-                  <span className="flex-shrink-0 mx-4 text-slate-400 dark:text-zinc-600 text-xs font-medium uppercase tracking-widest">Or</span>
+                  <span className="flex-shrink-0 mx-4 text-slate-400 dark:text-zinc-600 text-xs font-medium uppercase tracking-widest"><LocalizedText text={"Or"} /></span>
                   <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
                 </div>
 
@@ -417,10 +392,9 @@ export default function SignupPage() {
                 
                 <div className="mt-4 pt-4 border-t border-slate-100 dark:border-zinc-800/60 text-center">
                   <p className="text-sm text-slate-500 dark:text-zinc-500">
-                    Already have an account?{" "}
+                    <LocalizedText text={"Already have an account?"} />{" "}
                     <Link href="/login" className="text-slate-900 dark:text-zinc-200 font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-                      Sign in
-                    </Link>
+                      <LocalizedText text={"Sign in"} /> </Link>
                   </p>
                 </div>
               </motion.form>

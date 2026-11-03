@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -93,7 +94,7 @@ export default function TeachingPage() {
     <div className="space-y-8">
       <section className="flex flex-col justify-between gap-4 border-b border-[var(--border)] pb-6 sm:flex-row sm:items-end">
         <div><p className="mb-2 text-xs font-semibold uppercase text-sky-800 dark:text-sky-400">Instructor workspace</p><h1 className="text-3xl font-bold tracking-tight">Good to see you, {name}</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">Your assigned batches, class schedule, and students.</p></div>
-        <div className="flex gap-5 text-sm"><span><strong>{batches.length}</strong> batches</span><span><strong>{students}</strong> students</span></div>
+        <div className="flex gap-5 text-sm"><span><strong>{batches.length}</strong> <LocalizedText text={"batches"} /></span><span><strong>{students}</strong> <LocalizedText text={"students"} /></span></div>
       </section>
 
       {error && <div role="alert" className="flex items-center gap-2 rounded-md border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800"><AlertCircle className="h-4 w-4 shrink-0" />{error}</div>}
@@ -123,8 +124,8 @@ export default function TeachingPage() {
               {resourceBatchId === batch.batch_id && <form onSubmit={event => { event.preventDefault(); void uploadResource(batch.batch_id); }} className="mt-4 grid gap-3 rounded-md border border-[var(--border)] p-3 sm:grid-cols-2">
                 <label className="text-sm font-medium">Resource title<input required value={resourceTitle} onChange={event => setResourceTitle(event.target.value)} className="mt-1.5 min-h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm" /></label>
                 <label className="text-sm font-medium">File (max 20 MB)<input required type="file" onChange={event => setResourceFile(event.target.files?.[0] || null)} className="mt-1.5 block min-h-10 w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-[var(--background)] file:px-3 file:py-2" /></label>
-                <label className="text-sm font-medium sm:col-span-2">Description<input value={resourceDescription} onChange={event => setResourceDescription(event.target.value)} className="mt-1.5 min-h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm" /></label>
-                <div className="flex justify-end gap-2 sm:col-span-2"><button type="button" onClick={() => setResourceBatchId(null)} className="min-h-10 rounded-md border border-[var(--border)] px-3 text-sm">Cancel</button><button type="submit" disabled={uploading || !resourceFile || !resourceTitle.trim()} className="min-h-10 rounded-md bg-emerald-800 px-3 text-sm font-semibold text-white disabled:opacity-50">{uploading ? "Sharing…" : "Share with students"}</button></div>
+                <label className="text-sm font-medium sm:col-span-2"><LocalizedText text={"Description"} /><input value={resourceDescription} onChange={event => setResourceDescription(event.target.value)} className="mt-1.5 min-h-10 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm" /></label>
+                <div className="flex justify-end gap-2 sm:col-span-2"><button type="button" onClick={() => setResourceBatchId(null)} className="min-h-10 rounded-md border border-[var(--border)] px-3 text-sm"><LocalizedText text={"Cancel"} /></button><button type="submit" disabled={uploading || !resourceFile || !resourceTitle.trim()} className="min-h-10 rounded-md bg-emerald-800 px-3 text-sm font-semibold text-white disabled:opacity-50">{uploading ? "Sharing…" : "Share with students"}</button></div>
               </form>}
             </div>
           </article>;

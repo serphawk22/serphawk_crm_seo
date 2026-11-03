@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -135,8 +136,7 @@ export default function InstitutePeople({ leaderboard = false }: { leaderboard?:
               <div className="flex items-center gap-2">
                 <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">Institute Leaderboard</h1>
                 <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                  Performance
-                </span>
+                  <LocalizedText text={"Performance"} /> </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
                 Sales outcomes and teaching impact across all recorded activity
@@ -150,7 +150,7 @@ export default function InstitutePeople({ leaderboard = false }: { leaderboard?:
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-2.5">
         <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
           <div>
-            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Sales Team</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider"><LocalizedText text={"Sales Team"} /></p>
             <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight mt-0.5">{sales.length}</p>
           </div>
           <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
@@ -160,7 +160,7 @@ export default function InstitutePeople({ leaderboard = false }: { leaderboard?:
 
         <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs">
           <div>
-            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Instructors</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider"><LocalizedText text={"Instructors"} /></p>
             <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight mt-0.5">{instructors.length}</p>
           </div>
           <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
@@ -171,7 +171,7 @@ export default function InstitutePeople({ leaderboard = false }: { leaderboard?:
         {leaderboard && (
           <div className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs col-span-2 sm:col-span-1">
             <div>
-              <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Revenue Collected</p>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider"><LocalizedText text={"Revenue Collected"} /></p>
               <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 leading-tight mt-0.5">
                 {money(sales.reduce((sum, p) => sum + (p.revenue_collected || 0), 0))}
               </p>
@@ -234,7 +234,7 @@ export default function InstitutePeople({ leaderboard = false }: { leaderboard?:
                 </span>
                 <div>
                   <h2 className="text-xs font-bold text-slate-900 dark:text-white leading-none">{group.title}</h2>
-                  <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{visible.length} of {group.people.length} members</p>
+                  <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">{visible.length} <LocalizedText text={"of"} /> {group.people.length} members</p>
                 </div>
               </div>
 
@@ -345,7 +345,7 @@ export default function InstitutePeople({ leaderboard = false }: { leaderboard?:
                           aria-label={`View ${person.name}'s profile`}
                           className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition shrink-0 self-end md:self-center border border-blue-200 dark:border-blue-500/20"
                         >
-                          <span>Profile</span>
+                          <span><LocalizedText text={"Profile"} /></span>
                           <ArrowUpRight className="h-3 w-3" />
                         </Link>
                       )}

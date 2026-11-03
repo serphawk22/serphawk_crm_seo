@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Bot, Brain, Ear, Headphones, Loader2, PhoneCall, PhoneOff, User } from "lucide-react";
@@ -125,7 +126,7 @@ export default function QuickCallPanel({ entityType, entityId, entityName, defau
           </div>
         </div>
         <div>
-          <label className={labelCls}>Phone number</label>
+          <label className={labelCls}><LocalizedText text={"Phone number"} /></label>
           <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+14155550123" className={inputCls} />
           {!phone && <p className="text-[11px] text-slate-500 mt-1">Leave blank to use the number saved on the {entityType}.</p>}
         </div>

@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useState, useEffect } from "react";
 import { Users, Plus, Star, UserPlus } from "lucide-react";
@@ -113,7 +114,7 @@ export default function LinkedContacts({ leadId, clientId }: { leadId?: string, 
       )}
 
       {loading ? (
-        <p className="text-sm text-slate-500 text-center py-2">Loading...</p>
+        <p className="text-sm text-slate-500 text-center py-2"><LocalizedText text={"Loading..."} /></p>
       ) : links.length === 0 ? (
         <div className="flex flex-col items-center text-center py-8 px-4">
           <UserPlus size={28} className="text-slate-300 dark:text-zinc-600 mb-2" />

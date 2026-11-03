@@ -1,4 +1,6 @@
 'use client';
+import { createVisiblePoll } from "@/lib/visiblePoll";
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -53,7 +55,7 @@ function timeAgo(iso?: string | null) {
 }
 
 export default function InboxPage() {
-  const { role, loading: roleLoading } = useRole();
+  const { role, user, loading: roleLoading } = useRole();
   const allowed = INBOX_ROLES.includes(role);
   const wide = useMediaQuery('(min-width: 1536px)');
   const narrow = !useMediaQuery('(min-width: 1024px)');
@@ -75,6 +77,8 @@ export default function InboxPage() {
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
+  const accountRef = useRef(user?.id);
+  accountRef.current = user?.id;
 
   // ── Initial state from the URL (deep links like /inbox?folder=needs_reply or ?message=in-12)
   useEffect(() => {
@@ -106,25 +110,31 @@ export default function InboxPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const loadCounts = useCallback(async () => {
-    try { setCounts(await inboxApi.counts()); } catch {}
-    window.dispatchEvent(new Event('inbox-unread-changed'));  // sidebar badge
-  }, []);
+  const loadCounts = useCallback(async (signal?: AbortSignal) => {
+    const account = accountRef.current;
+    try {
+      const data = await inboxApi.counts(signal);
+      if (signal?.aborted || account !== accountRef.current) return;
+      setCounts(data);
+      window.dispatchEvent(new CustomEvent('inbox-unread-changed', { detail: { unread: data.unread } }));
+    } catch {}
+  }, [user?.id]);
 
-  const loadPage = useCallback(async (offset: number, silent = false) => {
+  const loadPage = useCallback(async (offset: number, silent = false, signal?: AbortSignal) => {
     const f = filtersRef.current;
+    const account = accountRef.current;
     if (!silent) setLoading(true);
     setListError('');
     try {
-      const data = await inboxApi.list(f, PAGE, offset);
-      if (filtersRef.current !== f) return;  // a newer filter change won the race
+      const data = await inboxApi.list(f, PAGE, offset, signal);
+      if (signal?.aborted || account !== accountRef.current || filtersRef.current !== f) return;
       setItems((prev) => (offset === 0 ? data.items : [...prev, ...data.items]));
       setTotal(data.total);
       setViewLabel(data.view);
     } catch (e) {
-      setListError(errorText(e, 'Could not load emails.'));
+      if (!signal?.aborted) setListError(errorText(e, 'Could not load emails.'));
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && !signal?.aborted) setLoading(false);
     }
   }, []);
 
@@ -133,7 +143,7 @@ export default function InboxPage() {
     setAiResults(null);
     setItems([]);  // never show the previous view's emails under the new filter while it loads
     loadPage(0);
-  }, [filters, allowed, loadPage]);
+  }, [filters, allowed, loadPage, user?.id]);
 
   useEffect(() => {
     if (!allowed) return;
@@ -144,12 +154,10 @@ export default function InboxPage() {
   // Quiet refresh every minute while the tab is visible.
   useEffect(() => {
     if (!allowed) return;
-    const id = setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      loadCounts();
-      if (!aiResults && items.length <= PAGE) loadPage(0, true);
-    }, 60000);
-    return () => clearInterval(id);
+    const poll = createVisiblePoll(async signal => {
+      await Promise.all([loadCounts(signal), ...(!aiResults && items.length <= PAGE ? [loadPage(0, true, signal)] : [])]);
+    }, 60000, false);
+    return () => poll.dispose();
   }, [allowed, aiResults, items.length, loadCounts, loadPage]);
 
   const select = (item: InboxItem) => {
@@ -253,8 +261,7 @@ export default function InboxPage() {
         </button>
         <button type="button" onClick={() => selectedKey && setPanel('message')} disabled={!selectedKey}
           className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-bold disabled:opacity-40 ${panel === 'message' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800'}`}>
-          <Mail size={13} /> Email
-        </button>
+          <Mail size={13} /> <LocalizedText text={"Email"} /> </button>
         {!wide && (
           <button type="button" onClick={() => setDrawerOpen(false)} className="rounded-lg px-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800" title="Close">
             <X size={15} />
@@ -299,8 +306,7 @@ export default function InboxPage() {
                 </span>
               )}
             </span>
-            Inbox
-          </h1>
+            <LocalizedText text={"Inbox"} /> </h1>
           <p className="mt-1 text-sm font-medium text-gray-500 dark:text-zinc-400">
             {mailbox ? (
               <>Every email for <b className="text-gray-700 dark:text-zinc-300">{mailbox.address}</b> · synced {timeAgo(mailbox.last_sync_at)}</>

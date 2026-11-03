@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -481,8 +482,7 @@ function ProposalsPageContent() {
               onClick={openWizard}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-2xs transition-colors shrink-0"
             >
-              <Plus className="w-3.5 h-3.5" /> Create Proposal
-            </button>
+              <Plus className="w-3.5 h-3.5" /> <LocalizedText text={"Create Proposal"} /> </button>
           )}
         </div>
       </div>
@@ -503,7 +503,7 @@ function ProposalsPageContent() {
             <Send className="w-3 h-3" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Sent</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Sent"} /></div>
             <div className="text-xs font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{loading ? "—" : stats.sent}</div>
           </div>
         </div>
@@ -512,7 +512,7 @@ function ProposalsPageContent() {
             <Clock className="w-3 h-3" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate">Negotiation</div>
+            <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold leading-none truncate"><LocalizedText text={"Negotiation"} /></div>
             <div className="text-xs font-bold text-slate-800 dark:text-zinc-100 mt-0.5">{loading ? "—" : stats.negotiation}</div>
           </div>
         </div>
@@ -591,8 +591,7 @@ function ProposalsPageContent() {
             <p className="text-xs font-semibold text-slate-600 dark:text-zinc-400">No proposals matching your filter.</p>
             {!isClient && (
               <button onClick={openWizard} className="mt-2.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors shadow-2xs">
-                Create Proposal
-              </button>
+                <LocalizedText text={"Create Proposal"} /> </button>
             )}
           </div>
         ) : viewMode === "list" ? (
@@ -600,13 +599,13 @@ function ProposalsPageContent() {
             {/* Desktop Table Header */}
             <div className="hidden md:grid grid-cols-[100px_2fr_1.5fr_1fr_1.2fr_1.2fr_1fr_auto] gap-3 px-3 py-1.5 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
               <div>Proposal ID</div>
-              <div>Title</div>
-              <div>Recipient</div>
+              <div><LocalizedText text={"Title"} /></div>
+              <div><LocalizedText text={"Recipient"} /></div>
               <div>Sales Rep</div>
-              <div>Pipeline Stage</div>
-              <div>Status</div>
+              <div><LocalizedText text={"Pipeline Stage"} /></div>
+              <div><LocalizedText text={"Status"} /></div>
               <div className="text-right">Value (₹)</div>
-              <div className="text-center">Actions</div>
+              <div className="text-center"><LocalizedText text={"Actions"} /></div>
             </div>
 
             {filtered.map(p => {
@@ -767,8 +766,7 @@ function ProposalsPageContent() {
                         ))}
                         {p.line_items.length > 2 && (
                           <span className="text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-400 px-1.5 py-0.2 rounded border border-slate-200/60 dark:border-zinc-700">
-                            +{p.line_items.length - 2} more
-                          </span>
+                            +{p.line_items.length - 2} <LocalizedText text={"more"} /> </span>
                         )}
                       </div>
                     )}
@@ -887,7 +885,7 @@ function ProposalsPageContent() {
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-900 text-left">
                           <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs">Product / Service</th>
-                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">Qty</th>
+                          <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right"><LocalizedText text={"Qty"} /></th>
                           <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">Unit (₹)</th>
                           <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400 text-xs text-right">Total</th>
                         </tr>
@@ -981,8 +979,7 @@ function ProposalsPageContent() {
                 </button>
                 <button onClick={() => downloadPDF(selected.id)}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition-colors">
-                  <Download className="w-4 h-4" /> Download PDF
-                </button>
+                  <Download className="w-4 h-4" /> <LocalizedText text={"Download PDF"} /> </button>
                 {selected.status === 'Accepted' && (
                   <button
                     onClick={async () => {
@@ -1003,8 +1000,7 @@ function ProposalsPageContent() {
                     title="Convert to Invoice"
                   >
                     {convertingId === selected.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FilePlus2 className="w-4 h-4" />}
-                    Invoice
-                  </button>
+                    <LocalizedText text={"Invoice"} /> </button>
                 )}
                 <button onClick={() => deleteProposal(selected.id)}
                   className="px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-semibold text-sm hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors">
@@ -1226,7 +1222,7 @@ function ProposalsPageContent() {
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Unit</label>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5"><LocalizedText text={"Unit"} /></label>
                         <input
                           value={customUnit}
                           onChange={e => setCustomUnit(e.target.value)}
@@ -1386,8 +1382,7 @@ function ProposalsPageContent() {
                     <div className="flex gap-2">
                       <button onClick={() => setStep("recipient")}
                         className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                        Back
-                      </button>
+                        <LocalizedText text={"Back"} /> </button>
                       <button disabled={cart.length === 0} onClick={() => setStep("details")}
                         className="flex-1 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 disabled:opacity-40 transition-colors">
                         Continue to Terms &amp; Send →
@@ -1405,7 +1400,7 @@ function ProposalsPageContent() {
                 <div className="bg-blue-50 dark:bg-blue-950/30 rounded-2xl p-4 border border-blue-200 dark:border-blue-900/50">
                   <div className="flex items-center justify-between mb-1">
                     <p className="font-bold text-sm text-slate-900 dark:text-white">{recipientName()}</p>
-                    <span className="text-xs font-mono font-bold text-blue-600 uppercase">{currency} Proposal</span>
+                    <span className="text-xs font-mono font-bold text-blue-600 uppercase">{currency} <LocalizedText text={"Proposal"} /></span>
                   </div>
                   <div className="flex items-center gap-3 mt-2">
                     <div className="text-xl font-black text-blue-700 dark:text-blue-400 font-mono">
@@ -1522,8 +1517,7 @@ function ProposalsPageContent() {
                 <div className="flex gap-3 pt-3">
                   <button onClick={() => setStep("cart")}
                     className="px-6 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300">
-                    Back
-                  </button>
+                    <LocalizedText text={"Back"} /> </button>
                   <button onClick={submitQuote} disabled={saving}
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md active:scale-95">
                     {saving ? (

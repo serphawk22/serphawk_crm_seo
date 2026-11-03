@@ -199,9 +199,9 @@ export function query(params: Record<string, string | number | boolean | null | 
 
 // ─── Inbox ───────────────────────────────────────────────────────────────────
 export const inboxApi = {
-  list: (f: InboxFilters, limit = 50, offset = 0) =>
-    request<{ items: InboxItem[]; total: number; view: string }>(`/inbox/messages${query({ ...f, limit, offset })}`),
-  counts: () => request<InboxCounts>('/inbox/counts'),
+  list: (f: InboxFilters, limit = 50, offset = 0, signal?: AbortSignal) =>
+    request<{ items: InboxItem[]; total: number; view: string }>(`/inbox/messages${query({ ...f, limit, offset })}`, { signal }),
+  counts: (signal?: AbortSignal) => request<InboxCounts>('/inbox/counts', { signal }),
   unreadCount: () => request<{ unread: number }>('/inbox/counts?only=unread'),
   status: () => request<InboxStatus>('/inbox/status'),
   sync: () => post<{ ok: boolean; results: { mailbox: string; created: number; error: string | null }[] }>('/inbox/sync'),

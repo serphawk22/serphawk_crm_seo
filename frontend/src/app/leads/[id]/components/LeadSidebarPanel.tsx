@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -98,8 +99,7 @@ const ResearchField = ({
                   onClick={save}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700"
                 >
-                  <Save size={10} /> Save
-                </button>
+                  <Save size={10} /> <LocalizedText text={"Save"} /> </button>
                 <button
                   onClick={() => { setEditing(false); setVal(value || ''); }}
                   className="p-1 rounded-lg hover:bg-slate-100 dark:bg-zinc-800  text-slate-400 hover:text-red-500"

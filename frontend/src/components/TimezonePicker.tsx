@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useId, useMemo, useState } from "react";
 import { Globe2, CheckCircle2, AlertTriangle, MapPin } from "lucide-react";
@@ -100,7 +101,7 @@ export default function TimezonePicker({ value, onChange, localTime, label = "Ti
           ))}
         </select>
         {needsConfirm && <button type="button" disabled={saving} onClick={() => { void confirm(value); }}
-          className="shrink-0 rounded px-1.5 py-1.5 font-medium text-indigo-600 focus-visible:outline-2 focus-visible:outline-indigo-500 disabled:opacity-50 dark:text-indigo-400">Confirm</button>}
+          className="shrink-0 rounded px-1.5 py-1.5 font-medium text-indigo-600 focus-visible:outline-2 focus-visible:outline-indigo-500 disabled:opacity-50 dark:text-indigo-400"><LocalizedText text={"Confirm"} /></button>}
         {confirmed && <CheckCircle2 aria-label="Timezone confirmed" className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />}
       </div>
       {mismatch && needsConfirm && <p className="text-xs text-amber-600 dark:text-amber-400">Profile: {saved}. Select the timezone for this appointment.</p>}

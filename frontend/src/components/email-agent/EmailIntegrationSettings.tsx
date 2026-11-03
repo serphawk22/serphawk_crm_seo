@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -474,8 +475,7 @@ export default function EmailIntegrationSettings() {
                   className="text-[11px] font-bold uppercase tracking-widest"
                   style={{ color: "var(--text-secondary)" }}
                 >
-                  Cancel
-                </button>
+                  <LocalizedText text={"Cancel"} /> </button>
               )}
             </div>
           )}

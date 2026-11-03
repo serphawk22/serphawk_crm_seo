@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -161,7 +162,7 @@ export default function SalesManagerPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-zinc-950 px-6 py-20 text-center transition-colors">
         <div className="max-w-xl rounded-3xl border border-slate-200 dark:border-zinc-700 dark:border-white/10 bg-white dark:bg-zinc-900 dark:bg-white dark:bg-zinc-900/5 p-10 text-slate-800 dark:text-zinc-100 dark:text-white shadow-xl">
-          <h1 className="text-3xl font-bold mb-4">Access Denied</h1>
+          <h1 className="text-3xl font-bold mb-4"><LocalizedText text={"Access Denied"} /></h1>
         </div>
       </div>
     );

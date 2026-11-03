@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -103,7 +104,7 @@ export default function FollowUpsPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">Follow-ups</h1>
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none"><LocalizedText text={"Follow-ups"} /></h1>
               <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
                 {total} tasks
               </span>

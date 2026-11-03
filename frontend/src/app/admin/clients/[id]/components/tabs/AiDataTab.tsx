@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Brain, CheckCircle2, Loader2, RefreshCw, Store } from 'lucide-react';
@@ -206,7 +207,7 @@ export default function AiDataTab({ clientId, websiteUrl, onClientRefresh, resou
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-black text-slate-800">Extracted Services</h3>
-            <span className="text-xs font-bold text-slate-400">{services.length} detected</span>
+            <span className="text-xs font-bold text-slate-400">{services.length} <LocalizedText text={"detected"} /></span>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             {services.map((service: any, index: number) => (

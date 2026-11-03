@@ -25,7 +25,7 @@ from database import ClientProfile, EmailOTP, Lead, Notification, PageVisitTelem
 from modules import features, onboarding, tenant_settings
 
 DEMO_PRESET = "serphawk"          # a self-service demo shows the product as SerpHawk itself ships it
-DEMO_LIMITS = {"limit_clients": 15, "limit_emails": 5, "limit_searches": 5, "limit_projects": 5, "limit_calls": 5}
+DEMO_LIMITS = {"limit_clients": 15, "limit_emails": 5, "limit_searches": 5, "limit_projects": 5, "limit_calls": 2}
 LIMIT_KEYS = {"clients": "limit_clients", "emails": "limit_emails", "searches": "limit_searches",
               "projects": "limit_projects", "calls": "limit_calls"}
 UPGRADE_TITLE = "Demo Upgrade Request"
@@ -236,6 +236,10 @@ def update_limits(session: Session, tenant: Tenant, limits: Optional[Dict[str, i
             raise ValueError(f"Limit '{key}' is out of range")
         setattr(tenant, LIMIT_KEYS[key], int(value))
     if reset_usage:
+        from database import DemoServiceUsage
+        # Caller has already resolved and authorized this managed demo workspace.
+        session.exec(delete(DemoServiceUsage).where(DemoServiceUsage.tenant_id == tenant.id)
+                     .execution_options(skip_tenant=True))
         for key in LIMIT_KEYS:
             setattr(tenant, f"usage_{key}", 0)
     session.add(tenant)

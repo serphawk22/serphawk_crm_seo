@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
@@ -192,8 +193,7 @@ export default function LeadSourcesPage() {
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-900"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
+              <LocalizedText text={"Refresh"} /> </button>
             <Link
               href="/leads"
               className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 transition-all"
@@ -285,8 +285,7 @@ export default function LeadSourcesPage() {
               onClick={() => fetchData()}
               className="mt-3 rounded-lg bg-red-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
             >
-              Retry
-            </button>
+              <LocalizedText text={"Retry"} /></button>
           </div>
         ) : (
           <>
@@ -356,16 +355,14 @@ export default function LeadSourcesPage() {
                       </ResponsiveContainer>
                     ) : (
                       <div className="flex h-full items-center justify-center text-xs text-slate-400">
-                        No data
-                      </div>
+                        <LocalizedText text={"No data"} /></div>
                     )}
                     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
                       <span className="text-2xl font-black text-slate-900 dark:text-white">
                         {summary.total_leads}
                       </span>
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                        Total Leads
-                      </span>
+                        <LocalizedText text={"Total Leads"} /> </span>
                     </div>
                   </div>
 
@@ -503,8 +500,7 @@ export default function LeadSourcesPage() {
                     </ResponsiveContainer>
                   ) : (
                     <div className="flex h-full items-center justify-center text-xs text-slate-400">
-                      No data
-                    </div>
+                      <LocalizedText text={"No data"} /></div>
                   )}
                 </div>
               </div>
@@ -538,14 +534,14 @@ export default function LeadSourcesPage() {
                 <table className="w-full text-left text-xs">
                   <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-400">
                     <tr>
-                      <th className="px-5 py-3.5">Lead Source</th>
-                      <th className="px-4 py-3.5 text-center">Inquiries</th>
-                      <th className="px-4 py-3.5 text-center">Converted</th>
+                      <th className="px-5 py-3.5"><LocalizedText text={"Lead Source"} /></th>
+                      <th className="px-4 py-3.5 text-center"><LocalizedText text={"Inquiries"} /></th>
+                      <th className="px-4 py-3.5 text-center"><LocalizedText text={"Converted"} /></th>
                       <th className="px-4 py-3.5 text-center">Active Pipeline</th>
-                      <th className="px-4 py-3.5 text-center">Lost</th>
+                      <th className="px-4 py-3.5 text-center"><LocalizedText text={"Lost"} /></th>
                       <th className="px-5 py-3.5">Win Rate %</th>
                       <th className="px-4 py-3.5 text-center">Channel Share</th>
-                      <th className="px-5 py-3.5 text-right">Actions</th>
+                      <th className="px-5 py-3.5 text-right"><LocalizedText text={"Actions"} /></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-medium">

@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
@@ -477,8 +478,7 @@ export default function TaskSheetPage() {
               onClick={downloadCSV}
               className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
             >
-              <Download size={14} /> Export CSV
-            </button>
+              <Download size={14} /> <LocalizedText text={"Export CSV"} /></button>
           )}
 
           {!isAdmin && (
@@ -758,16 +758,13 @@ export default function TaskSheetPage() {
                       <div className="flex md:flex-col items-center md:items-end justify-between gap-2 shrink-0">
                         {isDone ? (
                           <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 flex items-center gap-1 shadow-xs">
-                            <Check size={12} strokeWidth={3} /> Done
-                          </span>
+                            <Check size={12} strokeWidth={3} /> <LocalizedText text={"Done"} /> </span>
                         ) : isOverdue ? (
                           <span className="px-2.5 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300 flex items-center gap-1 shadow-xs">
-                            <AlertTriangle size={12} /> Overdue
-                          </span>
+                            <AlertTriangle size={12} /> <LocalizedText text={"Overdue"} /> </span>
                         ) : (
                           <span className="px-2.5 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300 flex items-center gap-1 shadow-xs">
-                            <Clock size={12} /> In Progress
-                          </span>
+                            <Clock size={12} /> <LocalizedText text={"In Progress"} /> </span>
                         )}
 
                         {e.time_spent_minutes && (
@@ -1158,8 +1155,7 @@ export default function TaskSheetPage() {
                       onClick={() => openEdit(e)}
                       className="text-indigo-600 hover:underline text-[11px] font-bold shrink-0"
                     >
-                      Edit
-                    </button>
+                      <LocalizedText text={"Edit"} /> </button>
                   </div>
                 ))}
               </div>

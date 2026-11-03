@@ -62,7 +62,7 @@ class RecommendUnit(unittest.TestCase):
     def test_standard_preset_is_brand_neutral_and_complete(self):
         p = presets.PRESETS["standard"]
         self.assertEqual(p["settings"], {})
-        for key in ("leads", "clients", "deals", "inbox", "followups", "billing", "proposals", "email_agent"):
+        for key in ("leads", "clients", "inbox", "followups", "billing", "proposals", "email_agent"):
             self.assertIn(key, p["features"])
         self.assertNotIn("voice_agent", p["features"])
         self.assertNotIn("institute", p["features"])

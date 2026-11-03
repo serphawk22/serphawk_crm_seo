@@ -1,5 +1,7 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
+import { useLanguage } from "@/context/LanguageContext";
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock, Loader2 } from 'lucide-react';
@@ -8,6 +10,7 @@ import { RecordChip, StateChip, relativeDue } from './followupUi';
 
 /** Dashboard card: pending / overdue / due today / completed follow-ups and the most urgent ones. */
 export default function FollowUpsWidget({ mine = false }: { mine?: boolean }) {
+  const { t, language } = useLanguage();
   const [counts, setCounts] = useState<FollowUpCounts | null>(null);
   const [next, setNext] = useState<FollowUp[]>([]);
   const [state, setState] = useState<'loading' | 'ok' | 'hidden'>('loading');
@@ -34,21 +37,21 @@ export default function FollowUpsWidget({ mine = false }: { mine?: boolean }) {
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5 dark:border-zinc-800">
         <div className="flex items-center gap-2">
           <CalendarClock className="h-4 w-4 text-indigo-500" />
-          <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-100">Follow-ups</h3>
+          <h3 className="text-sm font-bold text-slate-800 dark:text-zinc-100"><LocalizedText text={"Follow-ups"} /></h3>
         </div>
         <Link href="/followups" className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400">
-          Open <ArrowRight className="h-3.5 w-3.5" />
+          <LocalizedText text={"Open"} /> <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
       <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4">
-        {tiles.map((t) => (
-          <Link key={t.key} href={`/followups?view=${t.view || t.key}`}
+        {tiles.map((tile) => (
+          <Link key={tile.key} href={`/followups?view=${tile.view || tile.key}`}
             className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 transition-colors hover:border-indigo-200 hover:bg-indigo-50/40 dark:border-zinc-800 dark:hover:bg-zinc-800/60">
-            <div className={`rounded-lg p-2 ${t.tone}`}><t.icon className="h-4 w-4" /></div>
+            <div className={`rounded-lg p-2 ${tile.tone}`}><tile.icon className="h-4 w-4" /></div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t.label}</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t(tile.label)}</p>
               <p className="text-xl font-black leading-tight text-slate-900 dark:text-white">
-                {state === 'loading' ? <Loader2 className="h-4 w-4 animate-spin text-slate-300" /> : t.value ?? 0}
+                {state === 'loading' ? <Loader2 className="h-4 w-4 animate-spin text-slate-300" /> : tile.value ?? 0}
               </p>
             </div>
           </Link>
@@ -61,7 +64,7 @@ export default function FollowUpsWidget({ mine = false }: { mine?: boolean }) {
               <StateChip state={f.state} />
               <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700 dark:text-zinc-200">{f.title}</span>
               <RecordChip f={f} />
-              <span className={`text-xs font-semibold ${f.state === 'overdue' ? 'text-red-600' : 'text-slate-500 dark:text-zinc-400'}`}>{relativeDue(f.due_at)}</span>
+              <span className={`text-xs font-semibold ${f.state === 'overdue' ? 'text-red-600' : 'text-slate-500 dark:text-zinc-400'}`}>{relativeDue(f.due_at, language)}</span>
             </li>
           ))}
         </ul>

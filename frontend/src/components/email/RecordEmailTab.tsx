@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -63,8 +64,7 @@ function ContextItem({ title, meta, detail, onDraft }: { title: string; meta?: s
         {onDraft && (
           <button type="button" onClick={onDraft} title="Draft an email about this"
             className="shrink-0 rounded-md bg-white px-1.5 py-1 text-[10px] font-bold text-violet-600 opacity-80 shadow-sm ring-1 ring-violet-100 hover:bg-violet-50 group-hover:opacity-100">
-            <Sparkles size={11} className="inline" /> Draft
-          </button>
+            <Sparkles size={11} className="inline" /> <LocalizedText text={"Draft"} /> </button>
         )}
       </div>
     </div>
@@ -266,8 +266,7 @@ export default function RecordEmailTab({ kind, recordId }: Props) {
               </span>
             )}
             <button type="button" onClick={() => load()} className="flex items-center gap-1 rounded-lg bg-white/15 px-2.5 py-1.5 font-bold hover:bg-white/25">
-              <RefreshCw size={12} /> Refresh
-            </button>
+              <RefreshCw size={12} /> <LocalizedText text={"Refresh"} /> </button>
           </div>
         </div>
         {!ctx.sender.configured && (
@@ -363,7 +362,7 @@ export default function RecordEmailTab({ kind, recordId }: Props) {
               <input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="optional, comma-separated" className={input} />
             </label>
             <label className="flex items-center gap-3">
-              <span className="w-14 text-xs font-bold text-slate-500">Subject</span>
+              <span className="w-14 text-xs font-bold text-slate-500"><LocalizedText text={"Subject"} /></span>
               <input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={300} placeholder="Subject" className={input} />
             </label>
             <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={12} maxLength={20000}
@@ -487,7 +486,7 @@ export default function RecordEmailTab({ kind, recordId }: Props) {
                   {isOpen && (
                     <div className="space-y-3 bg-slate-50/60 px-5 pb-4 pt-1">
                       {openLoading ? (
-                        <p className="flex items-center gap-2 text-xs text-slate-400"><Loader2 size={13} className="animate-spin" /> Loading…</p>
+                        <p className="flex items-center gap-2 text-xs text-slate-400"><Loader2 size={13} className="animate-spin" /> <LocalizedText text={"Loading…"} /></p>
                       ) : openMessage ? (
                         <>
                           <p className="text-[11px] text-slate-500">

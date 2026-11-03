@@ -1,4 +1,6 @@
 "use client";
+import { createVisiblePoll } from "@/lib/visiblePoll";
+import LocalizedText from "@/components/LocalizedText";
 
 import PhoneInput from "@/components/PhoneInput";
 import { isPlausiblePhone } from "@/lib/phone";
@@ -151,7 +153,7 @@ function BottomUpFillMail() {
 
 
 export default function EmailAgentPage() {
-  const { role } = useRole();
+  const { role, user } = useRole();
   const { t } = useLanguage();
   const [mode, setMode] = useState<"single" | "excel">("single");
   const [companyName, setCompanyName] = useState("");
@@ -366,10 +368,11 @@ export default function EmailAgentPage() {
 
 
   useEffect(() => {
-    const fetchEmailsData = () => {
-      fetch(`${API_BASE_URL}/sent-emails?limit=30`, { cache: 'no-store' })
+    const fetchEmailsData = async (signal: AbortSignal) => {
+      await fetch(`${API_BASE_URL}/sent-emails?limit=30`, { cache: 'no-store', signal })
         .then((r) => r.json())
         .then((data) => {
+          if (signal.aborted) return;
           let ts = 0, auto = 0, man = 0;
           let em: any[] = [];
           if (data && typeof data === 'object' && !Array.isArray(data) && 'totalSent' in data) {
@@ -390,14 +393,14 @@ export default function EmailAgentPage() {
           setEmailTotals({ totalSent: ts, autoCount: auto, manualCount: man });
           setSentEmails(em);
         })
-        .catch(() => setSentEmails([]))
-        .finally(() => setEmailsLoading(false));
+        .catch(() => { if (!signal.aborted) setSentEmails([]); })
+        .finally(() => { if (!signal.aborted) setEmailsLoading(false); });
     };
 
-    fetchEmailsData();
-    const interval = setInterval(fetchEmailsData, 10000); // Refresh every 10 seconds
-    return () => clearInterval(interval);
-  }, []);
+    setSentEmails([]);
+    const poll = createVisiblePoll(fetchEmailsData, 10000);
+    return () => poll.dispose();
+  }, [role, user?.id]);
 
   const handleDeleteEmail = async (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
@@ -725,26 +728,24 @@ export default function EmailAgentPage() {
                 className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700 shadow-sm transition-colors hover:bg-emerald-100 dark:bg-zinc-900 dark:text-emerald-300 dark:hover:bg-zinc-800"
               >
                 <User className="w-3 h-3" />
-                Profile
-              </button>
+                <LocalizedText text={"Profile"} /> </button>
               <button
                 onClick={() => setShowSettings(v => !v)}
                 className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700 shadow-sm transition-colors hover:bg-emerald-100 dark:bg-zinc-900 dark:text-emerald-300 dark:hover:bg-zinc-800"
               >
                 <Settings className="w-3 h-3" />
-                Settings
-              </button>
+                <LocalizedText text={"Settings"} /> </button>
               <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700 shadow-sm dark:bg-zinc-900 dark:text-emerald-300">Digital Marketing Agency</span>
             </div>
           </div>
           <div className="grid grid-cols-1 gap-x-8 gap-y-3 text-xs text-slate-600 dark:text-zinc-300 sm:grid-cols-2 lg:grid-cols-3">
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Company</strong>SerpHawk Digital Marketing Agency</p>
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Industry</strong>Digital Marketing &amp; SEO</p>
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Website</strong>serphawk.in</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400"><LocalizedText text={"Company"} /></strong>SerpHawk Digital Marketing Agency</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400"><LocalizedText text={"Industry"} /></strong>Digital Marketing &amp; SEO</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400"><LocalizedText text={"Website"} /></strong>serphawk.in</p>
             <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Sender Name</strong>{profileLoading ? "…" : (profile?.name || "Relation Manager- SerpHawk")}</p>
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Contact</strong>{profileLoading ? "…" : (profile?.phone || "+91 9502901416")}</p>
-            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Email</strong>{profileLoading ? "…" : (profile?.email || "crm@serphawk.in")}</p>
-            <p className="sm:col-span-2 lg:col-span-3"><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Location</strong>BTM Layout, Bengaluru, Karnataka, India</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400"><LocalizedText text={"Contact"} /></strong>{profileLoading ? "…" : (profile?.phone || "+91 9502901416")}</p>
+            <p><strong className="block text-[10px] uppercase tracking-widest text-slate-400"><LocalizedText text={"Email"} /></strong>{profileLoading ? "…" : (profile?.email || "crm@serphawk.in")}</p>
+            <p className="sm:col-span-2 lg:col-span-3"><strong className="block text-[10px] uppercase tracking-widest text-slate-400"><LocalizedText text={"Location"} /></strong>BTM Layout, Bengaluru, Karnataka, India</p>
             <p className="sm:col-span-2 lg:col-span-3"><strong className="block text-[10px] uppercase tracking-widest text-slate-400">Services We Offer</strong>Organic SEO · Local SEO · Google Ads · Meta Ads · Social Media · Content Marketing · Web Development · App Development · Automation &amp; Consulting</p>
           </div>
         </section>
@@ -1090,12 +1091,11 @@ export default function EmailAgentPage() {
 
                   {/* Personal Information */}
                   <div className="rounded-2xl border p-6 space-y-4" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Personal Information</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400"><LocalizedText text={"Personal Information"} /></p>
 
                     <div>
                       <label className="flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-zinc-200 mb-1.5">
-                        <User className="w-3.5 h-3.5 text-slate-400" /> Full Name
-                      </label>
+                        <User className="w-3.5 h-3.5 text-slate-400" /> <LocalizedText text={"Full Name"} /> </label>
                       <input
                         type="text"
                         value={profileForm.name}
@@ -1108,8 +1108,7 @@ export default function EmailAgentPage() {
 
                     <div>
                       <label className="flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-zinc-200 mb-1.5">
-                        <Mail className="w-3.5 h-3.5 text-slate-400" /> Email Address
-                      </label>
+                        <Mail className="w-3.5 h-3.5 text-slate-400" /> <LocalizedText text={"Email Address"} /> </label>
                       <input
                         type="email"
                         value={profileForm.email}
@@ -1143,8 +1142,7 @@ export default function EmailAgentPage() {
                         className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
                       >
                         {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        Save Changes
-                      </button>
+                        <LocalizedText text={"Save Changes"} /> </button>
                     </div>
                   </div>
 
@@ -1164,7 +1162,7 @@ export default function EmailAgentPage() {
                     />
 
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Preview</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5"><LocalizedText text={"Preview"} /></p>
                       <div
                         className="rounded-xl border p-4 text-sm whitespace-pre-wrap min-h-[3rem]"
                         style={{ borderColor: "var(--border)", color: "var(--text-primary)", background: "var(--background)" }}
@@ -1238,7 +1236,7 @@ export default function EmailAgentPage() {
                 onClick={e => e.stopPropagation()}
               >
                 <div className="px-6 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-3 shrink-0">
-                  <h2 className="text-lg font-black text-slate-900 dark:text-white">Settings</h2>
+                  <h2 className="text-lg font-black text-slate-900 dark:text-white"><LocalizedText text={"Settings"} /></h2>
                   <button
                     onClick={() => setShowSettings(false)}
                     className="w-9 h-9 shrink-0 flex items-center justify-center rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"

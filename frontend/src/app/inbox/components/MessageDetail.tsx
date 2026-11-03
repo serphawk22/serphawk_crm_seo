@@ -1,4 +1,5 @@
 'use client';
+import LocalizedText from "@/components/LocalizedText";
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -38,7 +39,7 @@ function ThreadMessage({ m, defaultOpen }: { m: InboxMessage; defaultOpen: boole
             <span className="ml-auto text-[11px] text-slate-400">{formatFull(m.date)}</span>
           </div>
           <p className="truncate text-[11px] text-slate-500 dark:text-zinc-400">
-            to {m.to || '—'}{m.cc ? ` · cc ${m.cc}` : ''}
+            <LocalizedText text={"to"} /> {m.to || '—'}{m.cc ? ` · cc ${m.cc}` : ''}
           </p>
           {!open && <p className="mt-1 truncate text-xs text-slate-500 dark:text-zinc-400">{m.snippet}</p>}
         </div>
@@ -184,7 +185,7 @@ export default function MessageDetail({ messageKey, aiEnabled, onClose, onChange
     return (
       <div className="p-6 text-center">
         <p className="text-sm font-bold text-red-600">{error}</p>
-        <button type="button" onClick={onClose} className="mt-3 text-xs font-bold text-indigo-600">Close</button>
+        <button type="button" onClick={onClose} className="mt-3 text-xs font-bold text-indigo-600"><LocalizedText text={"Close"} /></button>
       </div>
     );
   }
@@ -332,7 +333,7 @@ export default function MessageDetail({ messageKey, aiEnabled, onClose, onChange
                 <input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="optional, comma-separated" className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[13px] text-slate-800 outline-none focus:border-indigo-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" />
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-500">
-                <span className="w-10 font-bold">Subject</span>
+                <span className="w-10 font-bold"><LocalizedText text={"Subject"} /></span>
                 <input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={300} className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[13px] text-slate-800 outline-none focus:border-indigo-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100" />
               </label>
               <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9} maxLength={20000}
@@ -342,8 +343,7 @@ export default function MessageDetail({ messageKey, aiEnabled, onClose, onChange
                 <p className="text-[11px] text-slate-400">Sent from the CRM mailbox with open tracking; logged on the linked lead/client.</p>
                 <button type="button" onClick={send} disabled={sending || !to.trim() || !subject.trim() || !body.trim()}
                   className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
-                  {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send
-                </button>
+                  {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} <LocalizedText text={"Send"} /> </button>
               </div>
             </div>
           </div>

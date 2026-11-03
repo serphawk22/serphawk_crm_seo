@@ -3,7 +3,7 @@
  *  Keys match modules/features.py. Pages that are not listed are always open (dashboard, leads, notifications, profile...). */
 const PAGE_MODULES: ReadonlyArray<readonly [string, string]> = [
   // CRM / work
-  ["/leads", "leads"], ["/contacts", "contacts"], ["/clients", "clients"], ["/admin/clients", "clients"], ["/pipeline", "deals"],
+  ["/leads", "leads"], ["/contacts", "contacts"], ["/clients", "clients"], ["/admin/clients", "clients"],
   ["/work-queue", "work_queue"], ["/projects", "projects"], ["/task-sheet", "task_sheet"], ["/reports", "reports"],
   ["/meetings", "meetings"], ["/calls", "calls"], ["/teams", "teams"], ["/admin/leaderboard", "leaderboard"],
   ["/admin/telemetry", "demo_accounts"],
@@ -14,7 +14,7 @@ const PAGE_MODULES: ReadonlyArray<readonly [string, string]> = [
   ["/inventory", "inventory"], ["/orders", "inventory"], ["/products", "products"],
   ["/billing", "billing"], ["/invoices", "invoices"], ["/quotes", "billing"], ["/proposals", "proposals"],
   ["/admin/marketplace", "marketplace"],
-  ["/support/cases", "cases"], ["/support/solutions", "support"], ["/support/scmhub-cases", "scmhub_cases"], ["/support/helpdesk", "support_sh"],
+  ["/support/cases", "cases"], ["/support/solutions", "support"], ["/support/helpdesk", "support_sh"],
   ["/import", "import_data"], ["/admin/api-intelligence", "api_intelligence"],
   // business suite
   ["/command-center", "command_center"], ["/revenue", "finance_suite"], ["/business-costs", "finance_suite"],
@@ -37,11 +37,11 @@ export function moduleForPath(pathname: string | null | undefined): string | nul
 }
 
 const LABELS: Record<string, string> = {
-  contacts: "Contacts", clients: "Clients", deals: "Deals", work_queue: "My Work Queue", projects: "Projects", task_sheet: "Task Sheet",
+  contacts: "Contacts", clients: "Clients", work_queue: "My Work Queue", projects: "Projects", task_sheet: "Task Sheet",
   reports: "Reports", meetings: "Meetings", calls: "Calls", teams: "Team Directory", leaderboard: "Leaderboard",
   demo_accounts: "Demo account data", inbox: "Inbox", followups: "Follow-ups", followup_board: "Follow-up board",
   email_agent: "Email Agent", voice_agent: "AI Voice Caller", inventory: "Inventory & orders", products: "Products catalog",
-  billing: "Quotes & billing", invoices: "Invoices", cases: "Cases", support_sh: "Support @SH", proposals: "Proposals", marketplace: "Marketplace", support: "Solutions", scmhub_cases: "SCMHub Cases",
+  billing: "Quotes & billing", invoices: "Invoices", cases: "Cases", support_sh: "Support @SH", proposals: "Proposals", marketplace: "Marketplace", support: "Solutions",
   import_data: "Import data", api_intelligence: "API Intelligence", command_center: "Command center", finance_suite: "Revenue & business costs",
   lead_sources: "Lead sources", ownership: "Ownership history", dropped_clients: "Dropped clients", institute: "Institute",
 };

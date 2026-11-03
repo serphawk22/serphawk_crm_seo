@@ -1,4 +1,5 @@
 "use client";
+import LocalizedText from "@/components/LocalizedText";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -174,9 +175,9 @@ export default function PitchStudio({ options, notify, onStartCall, onPitchesCha
           <div>
             <label className={labelCls}>Prospect type</label>
             <select value={entityType} onChange={(e) => { setEntityType(e.target.value as EntityType); setEntityId(""); }} className={inputCls}>
-              <option value="lead">Lead</option>
-              <option value="client">Client</option>
-              <option value="contact">Contact</option>
+              <option value="lead"><LocalizedText text={"Lead"} /></option>
+              <option value="client"><LocalizedText text={"Client"} /></option>
+              <option value="contact"><LocalizedText text={"Contact"} /></option>
             </select>
           </div>
           <div className="sm:col-span-2">
@@ -196,7 +197,7 @@ export default function PitchStudio({ options, notify, onStartCall, onPitchesCha
         </div>
 
         <div>
-          <label className={labelCls}>Title</label>
+          <label className={labelCls}><LocalizedText text={"Title"} /></label>
           <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Local SEO intro — dentists" className={inputCls} />
         </div>
         <div>
@@ -325,8 +326,7 @@ export default function PitchStudio({ options, notify, onStartCall, onPitchesCha
                       <PhoneCall className="w-3.5 h-3.5" /> Call
                     </button>
                     <button onClick={() => editPitch(p)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-600 dark:text-zinc-300">
-                      <Pencil className="w-3.5 h-3.5" /> Edit
-                    </button>
+                      <Pencil className="w-3.5 h-3.5" /> <LocalizedText text={"Edit"} /> </button>
                     <button onClick={() => regenerate(p)} disabled={busy === `regen-${p.id}`}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-600 dark:text-zinc-300">
                       {busy === `regen-${p.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} New take
