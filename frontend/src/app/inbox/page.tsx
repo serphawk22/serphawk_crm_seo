@@ -1,5 +1,4 @@
 'use client';
-import { createVisiblePoll } from "@/lib/visiblePoll";
 import LocalizedText from "@/components/LocalizedText";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -150,15 +149,6 @@ export default function InboxPage() {
     loadCounts();
     inboxApi.status().then(setStatus).catch(() => {});
   }, [allowed, loadCounts]);
-
-  // Quiet refresh every minute while the tab is visible.
-  useEffect(() => {
-    if (!allowed) return;
-    const poll = createVisiblePoll(async signal => {
-      await Promise.all([loadCounts(signal), ...(!aiResults && items.length <= PAGE ? [loadPage(0, true, signal)] : [])]);
-    }, 60000, false);
-    return () => poll.dispose();
-  }, [allowed, aiResults, items.length, loadCounts, loadPage]);
 
   const select = (item: InboxItem) => {
     setSelectedKey(item.key);
@@ -338,7 +328,7 @@ export default function InboxPage() {
           </button>
           <button type="button" onClick={syncNow} disabled={syncing}
             className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800">
-            {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Sync
+            {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Sync now
           </button>
           {!wide && (
             <button type="button" onClick={() => { setPanel('assistant'); setDrawerOpen(true); }}

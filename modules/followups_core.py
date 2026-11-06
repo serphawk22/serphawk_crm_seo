@@ -1,8 +1,7 @@
 """
-Follow-up engine shared by routers/followups.py and the background scheduler.
+Follow-up engine shared by routers/followups.py. Scheduled processing is disabled;
+the functions below remain available to explicit/manual workflows.
 
-Background loop (start_followup_scheduler_thread, every
-FOLLOWUP_SCHEDULER_INTERVAL_SECONDS, default 60s):
   1. reminders   — Pending follow-ups whose remind_at (or due_at) has passed get one in-app
                    notification + one reminder email to the assigned salesperson
   2. auto-send   — Pending follow-ups marked auto_send send their prepared email to the
@@ -12,20 +11,18 @@ FOLLOWUP_SCHEDULER_INTERVAL_SECONDS, default 60s):
                    respond next week") a dated follow-up is created on that lead/client
   4. campaigns   — resumes Excel email campaigns interrupted by a restart
 
-Every "do this once" step claims its row with a conditional UPDATE (or a unique insert)
-before acting, so several app instances can run the loop without double reminders or
-double sends. Background threads run without a request, so the tenant listener in
-main.py is inactive here: every query filters tenant_id itself and every new row gets
-tenant_id explicitly.
+  Every "do this once" step claims its row with a conditional UPDATE (or a unique insert)
+  before acting. These functions are not scheduled at startup. They run only when an
+  explicit workflow invokes them; each query filters tenant_id and each new row gets
+  tenant_id explicitly.
 """
 import os
-import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import and_, func, or_, update, cast, String, exists, literal
-from modules.job_runtime import run_recurring, assert_ownership, tally, OwnershipLost
+from modules.job_runtime import assert_ownership, tally, OwnershipLost
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -660,11 +657,6 @@ def scan_notes(engine=None, *, lead_id: Optional[int] = None, client_id: Optiona
     return result
 
 
-# ── Scheduler thread ─────────────────────────────────────────────────────────
-_thread_started = False
-_thread_lock = threading.Lock()
-
-
 def run_cycle(engine=None) -> dict:
     out = {}
     for name, step in (("reminders", process_due_reminders), ("overdue", process_overdue_notices),
@@ -690,19 +682,3 @@ def run_cycle(engine=None) -> dict:
     except Exception as e:
         print(f"[Follow-ups] campaign resume failed: {e}")
     return out
-
-
-def _loop(interval_seconds: int):
-    run_recurring("followups", run_cycle, interval_seconds, initial_delay=40)
-
-
-def start_followup_scheduler_thread():
-    """Start the follow-up scheduler once per process. Safe to call repeatedly."""
-    global _thread_started
-    with _thread_lock:
-        if _thread_started:
-            return
-        interval = int(os.getenv("FOLLOWUP_SCHEDULER_INTERVAL_SECONDS", "60"))
-        threading.Thread(target=_loop, args=(interval,), daemon=True, name="followup-scheduler").start()
-        _thread_started = True
-        print(f"[Follow-ups] scheduler started, every {interval}s.")

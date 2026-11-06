@@ -1,5 +1,4 @@
 "use client";
-import { createVisiblePoll } from "@/lib/visiblePoll";
 import LocalizedText from "@/components/LocalizedText";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -206,7 +205,6 @@ function RemindersBoard() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
-  const [, setTick] = useState(0);
 
   // create / edit state
   const [showForm, setShowForm] = useState(false);
@@ -247,12 +245,6 @@ function RemindersBoard() {
   }, [scope, user?.id]);
 
   useEffect(() => { const controller = new AbortController(); void load(false, controller.signal); return () => controller.abort(); }, [load]);
-
-  // Periodic refresh every 60s
-  useEffect(() => {
-    const poll = createVisiblePoll(async signal => { await load(true, signal); if (!signal.aborted) setTick(x => x + 1); }, 60000, false);
-    return () => poll.dispose();
-  }, [load]);
 
   // first load: land on the most urgent non-empty tab
   useEffect(() => {

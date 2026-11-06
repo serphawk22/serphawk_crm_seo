@@ -86,8 +86,8 @@ Convert to paid* removes them. Clients you create from Client Management are pai
 * Tested: 100 clients created through the API in one call, each isolated from the others (`tests/test_onboarding.py`).
 * Registration and one-time-code limits are per API process (`modules/ratelimit.py`). With several instances behind a
   load balancer the effective limit is multiplied; move the counters to Redis if that matters.
-* Background jobs (inbox sync, reply checker, follow-up scheduler) are in-process threads that scan every tenant. Run
-  them in exactly one process (`BACKGROUND_JOBS`), and move them to a worker when the mailbox count grows.
+* Automatic inbox sync, reply checks, follow-up reminders, and database keepalive are disabled at startup to avoid
+  recurring database/mailbox activity. Sync mail from the Inbox with **Sync now** when needed.
 * Logos are in the database (small, 512 px max). Other uploads are still on local disk.
 * `ALLOW_DEBUG_OTP=1` makes `/email-otp/send` return the code when no mailbox can send it. **Local development only**;
   the compose file sets it, never set it on a deployed backend.

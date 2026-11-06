@@ -889,7 +889,6 @@ def on_startup():
         except Exception as e:
             print(f"Migration ai_calls: {e}")
 
-    # Start the background inbox poller that detects replies to sent emails (IMAP-based).
     # Say which database this process is bound to (never the credentials), so two environments that
     # accidentally share one database are easy to spot in the logs.
     try:
@@ -913,32 +912,7 @@ def on_startup():
         except Exception as e:
             print(f"[startup] RLS_MODE=enforce could not start, ORM scoping only: {type(e).__name__}: {e}")
 
-    # Background pollers: reply checker, inbox sync, follow-up scheduler. BACKGROUND_JOBS=0 turns all
-    # three off (modules/background.py): only one environment per database should run them.
-    from modules.background import jobs_enabled
-    if not jobs_enabled():
-        print("[startup] BACKGROUND_JOBS=0: inbox sync, reply checker and follow-up scheduler are NOT started.")
-    else:
-        # Detect replies to sent emails (IMAP-based).
-        try:
-            from modules.email_sender import start_reply_checker_thread
-            start_reply_checker_thread()
-        except Exception as e:
-            print(f"Reply checker thread failed to start: {e}")
-
-        # Mirror every inbound email into inbox_messages for the in-app Inbox (+ AI triage).
-        try:
-            from modules.inbox_sync import start_inbox_sync_thread
-            start_inbox_sync_thread()
-        except Exception as e:
-            print(f"Inbox sync thread failed to start: {e}")
-
-        # Follow-up reminders, automatic follow-up emails, AI note scanning and campaign resume.
-        try:
-            from modules.followups_core import start_followup_scheduler_thread
-            start_followup_scheduler_thread()
-        except Exception as e:
-            print(f"Follow-up scheduler failed to start: {e}")
+    print("[startup] automatic inbox sync, reply checks, follow-up reminders, and database keepalive are disabled.")
 
     # Tenant ID Migrations (Dynamic reflection to catch all models)
     from sqlmodel import SQLModel
@@ -1112,10 +1086,6 @@ def on_startup():
             print("Successfully added call limits to tenants table.")
     except Exception as e:
         print("tenant call limits already exist or error:", e)
-
-    # Warm-up traffic is an explicit operational choice, not a default.
-    from modules.background import start_keepalive
-    start_keepalive(engine)
 
     try:
         with engine.connect() as conn:

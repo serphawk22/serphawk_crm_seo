@@ -11,7 +11,7 @@ from sqlalchemy.engine import make_url
 from sqlmodel import Session, select
 from tests import _support as S
 from tests._fixtures import TenantIsolationBase
-from modules import background, followups_core, inbox_sync, company_mailer
+from modules import followups_core, inbox_sync, company_mailer
 from modules.job_runtime import Guard, OwnershipLost, activity, tally
 from database import (Lead, LeadNote, FollowUpNoteScan, SentEmail, EmailReply, Invoice,
                       CRMQuote, SalesOrder, PurchaseOrder, Proposal, ActivityLog)
@@ -26,17 +26,6 @@ def _try_lock(url, key, queue):
 
 
 class ComputeRegressions(TenantIsolationBase):
-    def test_keepalive_requires_both_switches_and_starts_once(self):
-        for values in ({}, {"BACKGROUND_JOBS": "0", "DB_KEEPALIVE": "1"}, {"DB_KEEPALIVE": "off"}):
-            with mock.patch.dict(os.environ, values, clear=True), mock.patch.object(background.threading, "Thread") as thread:
-                self.assertFalse(background.start_keepalive(S.ENGINE))
-                thread.assert_not_called()
-        with mock.patch.dict(os.environ, {"BACKGROUND_JOBS": "1", "DB_KEEPALIVE": "true"}), \
-             mock.patch.object(background, "_keepalive_started", False), mock.patch.object(background.threading, "Thread") as thread:
-            self.assertTrue(background.start_keepalive(S.ENGINE))
-            self.assertFalse(background.start_keepalive(S.ENGINE))
-            self.assertEqual(thread.call_count, 1)
-
     def test_existing_schema_does_not_install_optimization_indexes(self):
         import database
         names = ("ix_sent_emails_tenant_recipient_time", "ix_inbox_pending_classification", "ix_follow_ups_pending_reminder")

@@ -4,15 +4,13 @@
 #   docker compose run --rm test                # unit tests (in-memory SQLite, no network)
 #
 # The `api` service may read your local .env for API keys / mailbox, but its DATABASE_URL is always the throwaway
-# local Postgres below (never the one in .env). The `test` service never reads .env. Background pollers (inbox sync,
-# reply checker, follow-up scheduler) are off.
+# local Postgres below (never the one in .env). The `test` service never reads .env.
 x-backend: &backend
   build:
     context: .
     dockerfile: docker/Dockerfile
   environment: &backend-env
     DATABASE_URL: postgresql://crm:crm@db:5432/crm_dev
-    BACKGROUND_JOBS: "0"
     PYTHON_DOTENV_DISABLED: "1"
     PUBLIC_BASE_URL: http://localhost:8000
     FRONTEND_URL: http://localhost:3000
@@ -45,7 +43,7 @@ services:
     <<: *backend
     # Optional: your local .env supplies the API keys and mailbox (OpenAI, SMTP, Firecrawl, Google ...) so those features
     # can be tested. DATABASE_URL in that file is IGNORED on purpose: `environment:` above always wins over env_file,
-    # so this service only ever talks to the throwaway Postgres below. Background pollers stay off (BACKGROUND_JOBS=0).
+    # so this service only ever talks to the throwaway Postgres below.
     env_file:
       - path: .env
         required: false

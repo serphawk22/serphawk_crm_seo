@@ -62,7 +62,7 @@ webhooks) are never gated by the middleware, so public handlers resolve their te
 ## Running and testing
 
 ```
-docker compose up -d db api          # backend :8000 + throwaway Postgres (BACKGROUND_JOBS=0, no .env, no real mail)
+docker compose up -d db api          # backend :8000 + throwaway Postgres (no .env, no real mail)
 docker compose run --rm test         # whole suite
 cd frontend && npx tsc --noEmit -p tsconfig.json    # must stay at 0 errors
 ```

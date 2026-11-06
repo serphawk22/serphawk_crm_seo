@@ -3,8 +3,8 @@ Shared fixtures for tests that call main.py endpoints.
 
 `main` is imported once, with database.engine already pointed at an in-memory SQLite engine, and each
 test re-points every module-level engine reference at that same engine and overrides main.get_session.
-TestClient is used without its context manager, so the startup hook (pollers, account provisioning,
-migrations) never runs. Nothing here reads a .env or touches a real database or mailbox.
+TestClient is used without its context manager, so the startup hook (account provisioning and migrations)
+never runs. Nothing here reads a .env or touches a real database or mailbox.
 """
 import importlib
 import os
@@ -13,8 +13,6 @@ import warnings
 from unittest import mock
 
 os.environ.setdefault("PYTHON_DOTENV_DISABLED", "1")
-os.environ.setdefault("BACKGROUND_JOBS", "0")
-os.environ.setdefault("DB_KEEPALIVE", "0")   # the ping thread shares the tests' single in-memory connection and rolls back whatever a test is saving
 
 from sqlalchemy.exc import SAWarning
 from sqlalchemy.pool import StaticPool
