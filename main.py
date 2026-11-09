@@ -709,12 +709,6 @@ demo_usage.install_guards()
 app = FastAPI(title="SerpHawk CRM", version="2.0.0")
 
 
-@app.on_event("shutdown")
-def stop_background_jobs():
-    from modules.job_runtime import STOP
-    STOP.set()
-
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     print("Unhandled Exception:", exc)
@@ -889,7 +883,6 @@ def on_startup():
         except Exception as e:
             print(f"Migration ai_calls: {e}")
 
-    # Start the background inbox poller that detects replies to sent emails (IMAP-based).
     # Say which database this process is bound to (never the credentials), so two environments that
     # accidentally share one database are easy to spot in the logs.
     try:
@@ -913,32 +906,7 @@ def on_startup():
         except Exception as e:
             print(f"[startup] RLS_MODE=enforce could not start, ORM scoping only: {type(e).__name__}: {e}")
 
-    # Background pollers: reply checker, inbox sync, follow-up scheduler. BACKGROUND_JOBS=0 turns all
-    # three off (modules/background.py): only one environment per database should run them.
-    from modules.background import jobs_enabled
-    if not jobs_enabled():
-        print("[startup] BACKGROUND_JOBS=0: inbox sync, reply checker and follow-up scheduler are NOT started.")
-    else:
-        # Detect replies to sent emails (IMAP-based).
-        try:
-            from modules.email_sender import start_reply_checker_thread
-            start_reply_checker_thread()
-        except Exception as e:
-            print(f"Reply checker thread failed to start: {e}")
-
-        # Mirror every inbound email into inbox_messages for the in-app Inbox (+ AI triage).
-        try:
-            from modules.inbox_sync import start_inbox_sync_thread
-            start_inbox_sync_thread()
-        except Exception as e:
-            print(f"Inbox sync thread failed to start: {e}")
-
-        # Follow-up reminders, automatic follow-up emails, AI note scanning and campaign resume.
-        try:
-            from modules.followups_core import start_followup_scheduler_thread
-            start_followup_scheduler_thread()
-        except Exception as e:
-            print(f"Follow-up scheduler failed to start: {e}")
+    print("[startup] automatic inbox sync, reply checks, follow-up reminders, and database keepalive are disabled.")
 
     # Tenant ID Migrations (Dynamic reflection to catch all models)
     from sqlmodel import SQLModel
@@ -1112,10 +1080,6 @@ def on_startup():
             print("Successfully added call limits to tenants table.")
     except Exception as e:
         print("tenant call limits already exist or error:", e)
-
-    # Warm-up traffic is an explicit operational choice, not a default.
-    from modules.background import start_keepalive
-    start_keepalive(engine)
 
     try:
         with engine.connect() as conn:
@@ -1362,11 +1326,13 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
         mapping = result.get("service_mapping", [])
 
         # Extract Contact Info
-        contacts = analysis.get("contacts", [])
-        contact = contacts[0] if contacts else {}
-        email = contact.get("email", "")
-        if email is None:
-            email = ""
+        contacts = [item for item in (analysis.get("contacts") or []) if isinstance(item, dict)]
+        from modules.research_contacts import email_addresses, extracted_field
+        raw_text = result.get("raw_text", "") or ""
+        scraped_emails = email_addresses(extracted_field(raw_text, "Emails"), raw_text, contacts)
+        contact = next((item for item in contacts if email_addresses(item.get("email"))), contacts[0] if contacts else {})
+        email = (email_addresses(contact.get("email")) or scraped_emails or [""])[0]
+        contact = {**contact, "email": email}
         phone = contact.get("phone_number", "")
         if phone is None:
             phone = ""
@@ -1408,42 +1374,35 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
             analysis, contact, recommended_services, body.owner_name)
 
         # Extract Emails, Phones, and Socials from scraper raw text
-        raw_text = result.get("raw_text", "")
         import re
-        scraped_emails = []
         scraped_phones = []
         scraped_linkedin = ""
         scraped_twitter = ""
 
-        email_match = re.search(r"Extracted Emails:\s*(.+)", raw_text)
-        if email_match:
-            scraped_emails = [e.strip()
-                              for e in email_match.group(1).split(",") if e.strip()]
-
-        phone_match = re.search(r"Extracted Phone Numbers:\s*(.+)", raw_text)
+        phone_match = re.search(r"Extracted Phone Numbers:[ \t]*([^\r\n]*)", raw_text)
         if phone_match:
             scraped_phones = [p.strip()
                               for p in phone_match.group(1).split(",") if p.strip()]
 
-        li_match = re.search(r"Extracted LinkedIn Profiles:\s*(.+)", raw_text)
+        li_match = re.search(r"Extracted LinkedIn Profiles:[ \t]*([^\r\n]*)", raw_text)
         if li_match:
             scraped_linkedin = li_match.group(1).split(
                 ",")[0].strip() if li_match.group(1).strip() else ""
 
-        tw_match = re.search(r"Extracted Twitter Profiles:\s*(.+)", raw_text)
+        tw_match = re.search(r"Extracted Twitter Profiles:[ \t]*([^\r\n]*)", raw_text)
         if tw_match:
             scraped_twitter = tw_match.group(1).split(
                 ",")[0].strip() if tw_match.group(1).strip() else ""
 
-        ig_match = re.search(r"Extracted Instagram Profiles:\s*(.+)", raw_text)
+        ig_match = re.search(r"Extracted Instagram Profiles:[ \t]*([^\r\n]*)", raw_text)
         scraped_ig = ig_match.group(1).split(",")[0].strip() if (
             ig_match and ig_match.group(1).strip()) else ""
 
-        fb_match = re.search(r"Extracted Facebook Profiles:\s*(.+)", raw_text)
+        fb_match = re.search(r"Extracted Facebook Profiles:[ \t]*([^\r\n]*)", raw_text)
         scraped_fb = fb_match.group(1).split(",")[0].strip() if (
             fb_match and fb_match.group(1).strip()) else ""
 
-        yt_match = re.search(r"Extracted Youtube Profiles:\s*(.+)", raw_text)
+        yt_match = re.search(r"Extracted Youtube Profiles:[ \t]*([^\r\n]*)", raw_text)
         scraped_yt = yt_match.group(1).split(",")[0].strip() if (
             yt_match and yt_match.group(1).strip()) else ""
 
@@ -1533,6 +1492,8 @@ async def smart_research(body: SmartResearchRequest, session: Session = Depends(
             lead_id = new_lead.id
         else:
             existing_lead.ai_analysis_results = data
+            if email and not existing_lead.email:
+                existing_lead.email = email
             session.add(existing_lead)
             session.commit()
             lead_id = existing_lead.id
@@ -1599,6 +1560,9 @@ def send_manual(body: SendManualRequest, session: Session = Depends(get_session)
     if not to_email:
         raise HTTPException(
             status_code=400, detail="Recipient email is required")
+    from modules.research_contacts import valid_email
+    if not valid_email(to_email):
+        raise HTTPException(status_code=400, detail="Enter a valid recipient email address.")
 
     lead = session.exec(
         select(Lead).where(Lead.email == to_email)

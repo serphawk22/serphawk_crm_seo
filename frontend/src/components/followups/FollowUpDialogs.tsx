@@ -62,7 +62,7 @@ export function FollowUpFormDialog({ initial, record, defaults, onClose, onSaved
     if (!f.due) return setError('Pick a follow-up date.');
     if (!record && !editing && !f.contact_email.trim()) return setError('Add the contact’s email address.');
     if (f.auto_send && (!f.email_subject.trim() || !f.email_body.trim() || !f.contact_email.trim())) {
-      return setError('Automatic sending needs the contact’s email plus an email subject and body.');
+      return setError('The due email batch needs the contact’s email plus an email subject and body.');
     }
     setSaving(true);
     try {
@@ -187,7 +187,7 @@ export function FollowUpFormDialog({ initial, record, defaults, onClose, onSaved
               <p className="text-[11px] text-slate-500 dark:text-zinc-400">Tip: after saving, use <b>Email → Draft with AI</b> to write this from the previous notes.</p>
               <label className="flex items-start gap-2 text-xs text-slate-700 dark:text-zinc-300">
                 <input type="checkbox" className="mt-0.5 h-3.5 w-3.5 accent-indigo-600" checked={f.auto_send} onChange={(e) => set('auto_send', e.target.checked)} />
-                <span><b>Send this email automatically</b> when the follow-up is due, from the company email account.</span>
+                <span><LocalizedText text="Include in Send due emails once the follow-up is due. An admin must click the button on Follow-ups to send it." /></span>
               </label>
             </div>
           )}
@@ -312,7 +312,7 @@ export function FollowUpEmailDialog({ fu, onClose, onChanged }: { fu: FollowUp; 
     try {
       const r = await followupsApi.update(fu.id, { contact_email: to.trim(), email_subject: subject.trim(), email_body: body, auto_send: true });
       onChanged(r.item);
-      setNotice(`Saved — it will be sent automatically on ${new Date(fu.due_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}.`);
+      setNotice(`Saved — eligible from ${new Date(fu.due_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}. An admin must click Send due emails on Follow-ups.`);
     } catch (e) {
       setError(errorText(e, 'Could not schedule the email.'));
     } finally {
@@ -327,8 +327,8 @@ export function FollowUpEmailDialog({ fu, onClose, onChanged }: { fu: FollowUp; 
       <button className={btn.secondary} onClick={onClose}><LocalizedText text={"Close"} /></button>
       {dueInFuture && fu.status === 'Pending' && (
         <button className={btn.secondary} onClick={schedule} disabled={!!busy || !body.trim() || !sender?.configured}
-          title="Save this email and send it automatically when the follow-up is due">
-          {busy === 'schedule' ? <Loader2 size={14} className="animate-spin" /> : <CalendarPlus size={14} />} Send automatically when due
+          title="Save this email for the admin's Send due emails action">
+          {busy === 'schedule' ? <Loader2 size={14} className="animate-spin" /> : <CalendarPlus size={14} />} <LocalizedText text="Save for due batch" />
         </button>
       )}
       <button className={btn.primary} onClick={send} disabled={!!busy || !sender?.configured}>

@@ -1,4 +1,5 @@
 "use client";
+import { createVisiblePoll } from "@/lib/visiblePoll";
 import LocalizedText from "@/components/LocalizedText";
 
 import { useState, useEffect, useRef } from "react";
@@ -512,10 +513,8 @@ export default function CallsPage() {
 
   useEffect(() => {
     const hasPending = aiCallLogs.some(log => log.call_status === "pending");
-    const interval = setInterval(() => {
-      fetchAll();
-    }, hasPending ? 3000 : 20000);
-    return () => clearInterval(interval);
+    const poll = createVisiblePoll(async () => { await fetchAll(); }, hasPending ? 3000 : 20000, false);
+    return () => poll.dispose();
   }, [aiCallLogs]);
 
   // Debug: Log state updates

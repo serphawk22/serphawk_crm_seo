@@ -127,6 +127,12 @@ export function emailTriggerInfo(
     to = emails.length > 5 ? [...emails.slice(0, 5), `…and ${emails.length - 5} more`] : emails;
     subject = nim(body.subject);
     note = `Send ${emails.length} personalized email${emails.length === 1 ? "" : "s"} from the uploaded file (placeholders are filled in for each recipient).`;
+  } else if (method === "POST" && /^\/email-campaigns\/\d+\/resume$/.test(path)) {
+    note = "Resume sending pending recipients in this campaign. Interrupted sends with uncertain delivery are marked failed for review, without being resent.";
+  } else if (method === "POST" && path === "/followups/run-now" && ["reminders", "send"].includes(body.action)) {
+    note = body.action === "reminders"
+      ? "Send one batch of due reminder emails and in-app notices to your company's assigned staff (up to 25 due and 25 overdue notices)."
+      : "Send up to 20 prepared emails marked for sending whose follow-up time has passed, using the assigned sender's mailbox. Review old overdue items before continuing.";
   } else if (method === "POST" && /^\/email-campaigns\/\d+\/retry$/.test(path)) {
     note = "Re-send the failed / unsent emails of this campaign.";
   } else if (method === "POST" && /^\/followups\/\d+\/send-email$/.test(path)) {

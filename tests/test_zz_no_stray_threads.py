@@ -1,12 +1,9 @@
-"""Runs last (the name sorts after every other test module). A background ping thread would share the tests' single
-in-memory connection and roll back whatever the running test is saving: an intermittent "could not refresh instance"
-error that only shows up on a slow machine."""
-import os
+"""Runs last (the name sorts after every other test module)."""
 import threading
 import unittest
 
 
 class NoStrayThreads(unittest.TestCase):
-    def test_the_database_ping_thread_is_off_in_tests(self):
-        self.assertEqual(os.environ.get("DB_KEEPALIVE"), "0")
-        self.assertEqual([t.name for t in threading.enumerate() if t.name == "db-keepalive"], [])
+    def test_scheduled_database_and_mail_threads_are_not_started(self):
+        forbidden = {"db-keepalive", "inbox-sync", "reply-checker", "followup-scheduler"}
+        self.assertTrue(forbidden.isdisjoint(t.name for t in threading.enumerate()))

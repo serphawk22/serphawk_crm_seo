@@ -1,5 +1,6 @@
 "use client";
 import LocalizedText from "@/components/LocalizedText";
+import { createVisiblePoll } from '@/lib/visiblePoll';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -105,8 +106,8 @@ function CampaignDetail({ id, onBack }: { id: number; onBack: () => void }) {
   const active = campaign?.status === "Sending" || campaign?.status === "Queued";
   useEffect(() => {
     if (!active) return;
-    const t = setInterval(load, 3000);
-    return () => clearInterval(t);
+    const poll = createVisiblePoll(async () => { await load(); }, 5000, false);
+    return () => poll.dispose();
   }, [active, load]);
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -137,6 +138,8 @@ function CampaignDetail({ id, onBack }: { id: number; onBack: () => void }) {
           </p>
         </div>
         <Pill status={campaign.status} />
+        <button className={secondaryBtn} disabled={busy} onClick={() => act(load)}><RefreshCw className="h-3.5 w-3.5" /> <LocalizedText text="Refresh" /></button>
+        {active && <button className={secondaryBtn} disabled={busy} onClick={() => act(() => campaignsApi.resume(id))}><RefreshCw className="h-3.5 w-3.5" /> <LocalizedText text="Resume pending" /></button>}
         {active && <button className={secondaryBtn} disabled={busy} onClick={() => act(() => campaignsApi.cancel(id))}><StopCircle className="h-3.5 w-3.5" /> Stop</button>}
         {!active && (campaign.failed > 0 || campaign.pending > 0) && (
           <button className={secondaryBtn} disabled={busy} onClick={() => act(() => campaignsApi.retry(id))}><RefreshCw className="h-3.5 w-3.5" /> <LocalizedText text={"Retry"} />{campaign.failed ? "failed" : "unsent"}</button>
@@ -146,7 +149,7 @@ function CampaignDetail({ id, onBack }: { id: number; onBack: () => void }) {
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
         <div className="mb-2 flex items-center justify-between text-xs font-bold text-slate-600 dark:text-zinc-300">
-          <span>{active ? "Sending…" : "Finished"} {done} / {campaign.total}</span><span>{pct}%</span>
+          <span>{active ? "Sending / awaiting resume" : "Finished"} {done} / {campaign.total}</span><span>{pct}%</span>
         </div>
         <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-zinc-800">
           <div className="h-full bg-gradient-to-r from-indigo-500 to-emerald-500 transition-all" style={{ width: `${pct}%` }} />

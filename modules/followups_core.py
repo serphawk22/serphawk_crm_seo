@@ -1,8 +1,7 @@
 """
-Follow-up engine shared by routers/followups.py and the background scheduler.
+Follow-up engine shared by routers/followups.py. Scheduled processing is disabled;
+the functions below remain available to explicit/manual workflows.
 
-Background loop (start_followup_scheduler_thread, every
-FOLLOWUP_SCHEDULER_INTERVAL_SECONDS, default 60s):
   1. reminders   — Pending follow-ups whose remind_at (or due_at) has passed get one in-app
                    notification + one reminder email to the assigned salesperson
   2. auto-send   — Pending follow-ups marked auto_send send their prepared email to the
@@ -12,20 +11,18 @@ FOLLOWUP_SCHEDULER_INTERVAL_SECONDS, default 60s):
                    respond next week") a dated follow-up is created on that lead/client
   4. campaigns   — resumes Excel email campaigns interrupted by a restart
 
-Every "do this once" step claims its row with a conditional UPDATE (or a unique insert)
-before acting, so several app instances can run the loop without double reminders or
-double sends. Background threads run without a request, so the tenant listener in
-main.py is inactive here: every query filters tenant_id itself and every new row gets
-tenant_id explicitly.
+  Every "do this once" step claims its row with a conditional UPDATE (or a unique insert)
+  before acting. These functions are not scheduled at startup. They run only when an
+  explicit workflow invokes them; each query filters tenant_id and each new row gets
+  tenant_id explicitly.
 """
 import os
-import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import and_, func, or_, update, cast, String, exists, literal
-from modules.job_runtime import run_recurring, assert_ownership, tally, OwnershipLost
+from modules.job_runtime import assert_ownership, tally, OwnershipLost
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -225,12 +222,13 @@ def reminder_email(fu: FollowUp, user: User, info: dict) -> tuple:
     if fu.notes:
         lines += ["", "Context from previous notes:", fu.notes[:1500]]
     if fu.auto_send and fu.email_body and not fu.email_sent_at:
-        lines += ["", "A prepared follow-up email will be sent to the contact automatically."]
+        lines += ["", "A prepared follow-up email is ready. Use Send due emails in the CRM to send it."]
     lines += ["", f"Open in the CRM: {frontend_url()}{record_path(fu.lead_id, fu.client_id)}"]
     return f"Follow-up due: {fu.title}"[:300], "\n".join(lines)
 
 
-def process_due_reminders(engine=None, now: Optional[datetime] = None, limit: int = 50, send_email=None) -> int:
+def process_due_reminders(engine=None, now: Optional[datetime] = None, limit: int = 50, send_email=None,
+                          *, tenant_id: Optional[int] = None) -> int:
     """Notify the assignee of every newly-due follow-up exactly once. Returns how many were reminded."""
     from modules import company_mailer
     engine = engine or database.engine
@@ -243,7 +241,8 @@ def process_due_reminders(engine=None, now: Optional[datetime] = None, limit: in
             select(FollowUp).where(
                 FollowUp.status.in_(OPEN_STATES), FollowUp.reminder_sent_at.is_(None),
                 func.coalesce(FollowUp.remind_at, FollowUp.due_at) <= now,
-            ).order_by(FollowUp.due_at).limit(limit).execution_options(skip_tenant=True)
+            ).where(FollowUp.tenant_id == tenant_id if tenant_id is not None else True)
+            .order_by(FollowUp.due_at).limit(limit).execution_options(skip_tenant=True)
         ).all()
         for fu in due:
             assert_ownership()
@@ -273,7 +272,8 @@ def process_due_reminders(engine=None, now: Optional[datetime] = None, limit: in
     return reminded
 
 
-def process_overdue_notices(engine=None, now: Optional[datetime] = None, limit: int = 50, send_email=None) -> int:
+def process_overdue_notices(engine=None, now: Optional[datetime] = None, limit: int = 50, send_email=None,
+                           *, tenant_id: Optional[int] = None) -> int:
     """
     Tell the assignee, once, that an open follow-up has passed its due time. Only for tenants with the follow-up board
     (the SCM BPO screens), so every other tenant keeps exactly the reminders it had. Returns how many were noticed.
@@ -287,7 +287,9 @@ def process_overdue_notices(engine=None, now: Optional[datetime] = None, limit: 
     with Session(engine) as session:
         due = session.exec(
             select(FollowUp).where(FollowUp.status.in_(OPEN_STATES), FollowUp.overdue_notified_at.is_(None),
-                                   FollowUp.due_at < now).order_by(FollowUp.due_at).limit(limit)
+                                   FollowUp.due_at < now)
+            .where(FollowUp.tenant_id == tenant_id if tenant_id is not None else True)
+            .order_by(FollowUp.due_at).limit(limit)
             .execution_options(skip_tenant=True)
         ).all()
         for fu in due:
@@ -323,7 +325,8 @@ def process_overdue_notices(engine=None, now: Optional[datetime] = None, limit: 
 
 
 # ── 2. Auto-send ─────────────────────────────────────────────────────────────
-def process_auto_sends(engine=None, now: Optional[datetime] = None, limit: int = 20, sender=None) -> int:
+def process_auto_sends(engine=None, now: Optional[datetime] = None, limit: int = 20, sender=None,
+                       *, tenant_id: Optional[int] = None) -> int:
     """Send prepared follow-up emails whose follow-up is due. Returns how many were sent."""
     from modules import company_mailer
     engine = engine or database.engine
@@ -335,7 +338,8 @@ def process_auto_sends(engine=None, now: Optional[datetime] = None, limit: int =
                 FollowUp.status.in_(OPEN_STATES), FollowUp.auto_send.is_(True), FollowUp.email_sent_at.is_(None),
                 or_(FollowUp.schedule_status == "confirmed", FollowUp.schedule_status.is_(None)),
                 FollowUp.due_at <= now, FollowUp.contact_email.is_not(None), FollowUp.email_body.is_not(None),
-            ).order_by(FollowUp.due_at).limit(limit).execution_options(skip_tenant=True)
+            ).where(FollowUp.tenant_id == tenant_id if tenant_id is not None else True)
+            .order_by(FollowUp.due_at).limit(limit).execution_options(skip_tenant=True)
         ).all()
         for fu in due:
             assert_ownership()
@@ -660,11 +664,6 @@ def scan_notes(engine=None, *, lead_id: Optional[int] = None, client_id: Optiona
     return result
 
 
-# ── Scheduler thread ─────────────────────────────────────────────────────────
-_thread_started = False
-_thread_lock = threading.Lock()
-
-
 def run_cycle(engine=None) -> dict:
     out = {}
     for name, step in (("reminders", process_due_reminders), ("overdue", process_overdue_notices),
@@ -690,19 +689,3 @@ def run_cycle(engine=None) -> dict:
     except Exception as e:
         print(f"[Follow-ups] campaign resume failed: {e}")
     return out
-
-
-def _loop(interval_seconds: int):
-    run_recurring("followups", run_cycle, interval_seconds, initial_delay=40)
-
-
-def start_followup_scheduler_thread():
-    """Start the follow-up scheduler once per process. Safe to call repeatedly."""
-    global _thread_started
-    with _thread_lock:
-        if _thread_started:
-            return
-        interval = int(os.getenv("FOLLOWUP_SCHEDULER_INTERVAL_SECONDS", "60"))
-        threading.Thread(target=_loop, args=(interval,), daemon=True, name="followup-scheduler").start()
-        _thread_started = True
-        print(f"[Follow-ups] scheduler started, every {interval}s.")

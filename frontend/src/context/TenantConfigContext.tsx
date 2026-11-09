@@ -84,7 +84,7 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated, user?.id, nonce]);
 
   // The company's modules can be switched on or off by its administrator while people are signed in: look again when the
-  // tab regains focus and once a minute, so menus and pages follow the profile without anyone having to sign in again.
+  // tab regains focus, so menus and pages follow the profile without anyone having to sign in again.
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
     let last = Date.now();
@@ -93,11 +93,10 @@ export function TenantConfigProvider({ children }: { children: ReactNode }) {
       last = Date.now();
       setNonce((n) => n + 1);
     };
-    const timer = setInterval(recheck, 60000);
+    // Module settings refresh on return to the app or an explicit settings change, without idle queries.
     window.addEventListener("focus", recheck);
     document.addEventListener("visibilitychange", recheck);
     return () => {
-      clearInterval(timer);
       window.removeEventListener("focus", recheck);
       document.removeEventListener("visibilitychange", recheck);
     };

@@ -229,11 +229,12 @@ export const campaignsApi = {
   preview: (t: CampaignTemplate, start = 0, count = 3) => post<CampaignPreview>('/email-campaigns/preview', { ...t, start, count }),
   create: (t: CampaignTemplate & { name: string; source_filename: string; create_leads: boolean; followup_days: number | null }) =>
     post<{ campaign: Campaign; message: string } | Cancelled>('/email-campaigns', t),
-  list: () => request<{ items: Campaign[] }>('/email-campaigns'),
+  list: (needsRecovery = false) => request<{ items: Campaign[] }>(`/email-campaigns${query({ needs_recovery: needsRecovery || null, limit: needsRecovery ? 100 : null })}`),
   get: (id: number, status?: string | null, q?: string | null) =>
     request<{ campaign: Campaign; recipients: CampaignRecipient[] }>(`/email-campaigns/${id}${query({ status, q, limit: 500 })}`),
   cancel: (id: number) => post<{ campaign: Campaign }>(`/email-campaigns/${id}/cancel`),
   retry: (id: number) => post<{ campaign: Campaign; requeued: number } | Cancelled>(`/email-campaigns/${id}/retry`),
+  resume: (id: number) => post<{ ok: boolean; uncertain: number } | Cancelled>(`/email-campaigns/${id}/resume`),
   /** Download the send record as CSV (fetched, so the auth headers are attached). */
   downloadExport: async (id: number, name: string) => {
     const res = await fetch(`${API_BASE_URL}/email-campaigns/${id}/export`);

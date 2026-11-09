@@ -136,7 +136,7 @@ class OperatorAccount(TenantIsolationBase):
                 s.delete(u)
             s.commit()
         out = io.StringIO()
-        with mock.patch.dict(os.environ, {"BACKGROUND_JOBS": "0", **env}),                 mock.patch.object(self.main, "create_db_and_tables"), mock.patch.object(self.main, "patch_openai"),                 contextlib.redirect_stdout(out):
+        with mock.patch.dict(os.environ, env),                 mock.patch.object(self.main, "create_db_and_tables"), mock.patch.object(self.main, "patch_openai"),                 contextlib.redirect_stdout(out):
             self.main.on_startup()
         return out.getvalue()
 

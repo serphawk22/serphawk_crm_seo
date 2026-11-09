@@ -2,14 +2,14 @@
 Inbox sync: mirrors every inbound email of the CRM mailbox(es) into the
 inbox_messages table, so the in-app Inbox can list, search and AI-triage all
 received mail — not only the replies that email_sender.check_email_replies
-records as EmailReply rows.
+records as EmailReply rows. Inbox sync is invoked explicitly by the Inbox button.
 
 Inbox cycles sync active per-user Email Agent integrations only. A manual cycle
 also filters by authenticated user and tenant before decrypting any credentials.
 Tenant/server discovery below is retained for the separate legacy reply checker;
 it is never used as an Inbox fallback. Legacy reply import is no longer automatic.
 
-Legacy reply-checker mailbox sources (not Inbox sync sources):
+Legacy manual reply-check mailbox sources (not Inbox sync sources):
   - the env-configured CRM mailbox (EMAIL_SENDER / EMAIL_PASSWORD /
     IMAP_SERVER — the same one the reply checker polls). It belongs to
     INBOX_DEFAULT_TENANT_ID (default 1, matching the startup migration that
@@ -22,10 +22,9 @@ Legacy reply-checker mailbox sources (not Inbox sync sources):
 Outbound mail is not mirrored: the Inbox reads it from sent_emails. Our own
 sent-copies that _archive_sent_copy appends to the INBOX are skipped.
 
-Best-effort throughout, like the reply checker: nothing here may take the app
-down, and every query uses skip_tenant because this runs in a background
-thread (and in the manual "Sync now" request, where the per-request tenant
-filter would otherwise hide other mailboxes' rows).
+Best-effort throughout: nothing here may take the app down, and every query uses
+skip_tenant in the manual "Sync now" request, where the per-request tenant filter
+would otherwise hide other mailboxes' rows.
 """
 import email as email_lib
 import hashlib
@@ -44,7 +43,7 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
-from modules.job_runtime import exclusive, mailbox_resource, assert_ownership, tally, run_recurring
+from modules.job_runtime import exclusive, mailbox_resource, assert_ownership, tally
 
 from database import (
     ClientProfile,
@@ -693,24 +692,3 @@ def run_sync_cycle(engine=None, tenant_id: Optional[int] = None, classify: bool 
         except Exception as e:
             print(f"[Inbox sync] AI triage failed: {e}")
     return results
-
-
-_thread_started = False
-_thread_lock = threading.Lock()
-
-
-def _sync_loop(interval_seconds: int):
-    run_recurring("inbox-sync", run_sync_cycle, interval_seconds, initial_delay=25)
-
-
-def start_inbox_sync_thread():
-    """Start the background inbox sync once per process. Safe to call repeatedly.
-    Each cycle discovers active user integrations; no tenant/server fallback."""
-    global _thread_started
-    with _thread_lock:
-        if _thread_started:
-            return
-        interval = int(os.getenv("INBOX_SYNC_INTERVAL_SECONDS", "120"))
-        threading.Thread(target=_sync_loop, args=(interval,), daemon=True, name="inbox-sync").start()
-        _thread_started = True
-        print(f"[Inbox sync] started, every {interval}s.")

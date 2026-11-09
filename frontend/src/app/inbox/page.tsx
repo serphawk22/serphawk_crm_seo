@@ -1,12 +1,11 @@
 'use client';
-import { createVisiblePoll } from "@/lib/visiblePoll";
 import LocalizedText from "@/components/LocalizedText";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Bot, CheckCheck, Inbox as InboxIcon, Loader2, Mail, RefreshCw, Search, X } from 'lucide-react';
 import { useRole } from '@/context/RoleContext';
-import { inboxApi, type InboxCounts, type InboxFilters, type InboxItem, type InboxStatus, errorText } from '@/lib/inboxApi';
+import { inboxApi, post, type InboxCounts, type InboxFilters, type InboxItem, type InboxStatus, errorText } from '@/lib/inboxApi';
 import { CATEGORY_META } from '@/components/email/emailUi';
 import FilterRail, { FOLDERS, LINKED } from './components/FilterRail';
 import MessageList from './components/MessageList';
@@ -151,15 +150,6 @@ export default function InboxPage() {
     inboxApi.status().then(setStatus).catch(() => {});
   }, [allowed, loadCounts]);
 
-  // Quiet refresh every minute while the tab is visible.
-  useEffect(() => {
-    if (!allowed) return;
-    const poll = createVisiblePoll(async signal => {
-      await Promise.all([loadCounts(signal), ...(!aiResults && items.length <= PAGE ? [loadPage(0, true, signal)] : [])]);
-    }, 60000, false);
-    return () => poll.dispose();
-  }, [allowed, aiResults, items.length, loadCounts, loadPage]);
-
   const select = (item: InboxItem) => {
     setSelectedKey(item.key);
     setPanel('message');
@@ -223,6 +213,20 @@ export default function InboxPage() {
       await Promise.all([loadPage(0, true), loadCounts()]);
     } catch (e) {
       setNotice({ kind: 'error', text: errorText(e, 'Could not mark emails as read.') });
+    }
+  };
+
+  const checkReplies = async () => {
+    setSyncing(true);
+    setNotice(null);
+    try {
+      const result = await post<{ updated: number }>('/webhook/check-replies-now');
+      setNotice({ kind: 'ok', text: `Reply check complete. New replies: ${result.updated}.` });
+      await Promise.all([loadPage(0, true), loadCounts()]);
+    } catch (e) {
+      setNotice({ kind: 'error', text: errorText(e, 'Reply check failed.') });
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -338,8 +342,12 @@ export default function InboxPage() {
           </button>
           <button type="button" onClick={syncNow} disabled={syncing}
             className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800">
-            {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Sync
+            {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} <LocalizedText text="Sync now" />
           </button>
+          {['Admin', 'SuperAdmin'].includes(role) && <button type="button" onClick={checkReplies} disabled={syncing}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-300">
+            <LocalizedText text="Check replies" />
+          </button>}
           {!wide && (
             <button type="button" onClick={() => { setPanel('assistant'); setDrawerOpen(true); }}
               className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:opacity-90">

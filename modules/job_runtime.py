@@ -4,7 +4,6 @@ Postgres locks MUST use direct connections, never transaction pooling. Their
 dedicated sockets use autocommit, so IMAP/AI/sleeps do not hold a transaction.
 SQLite uses local locks; integration tests cover the PostgreSQL implementation.
 """
-import atexit
 import hashlib
 import json
 import os
@@ -18,8 +17,6 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.pool import NullPool
 
 INSTANCE = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
-STOP = threading.Event()
-atexit.register(STOP.set)
 _metrics = ContextVar("job_metrics", default=None)
 _owners = ContextVar("job_owners", default=())
 _local_locks = {}
@@ -180,26 +177,3 @@ def exclusive(name, resource=None, busy=0):
 def mailbox_resource(cfg, *args, **kwargs):
     # SSL/STARTTLS/legacy configs for the same account must share one guard.
     return "mailbox:" + repr((cfg.tenant_id, cfg.address.lower(), cfg.imap_host.lower(), cfg.login))
-
-
-def run_recurring(name, step, interval, initial_delay=0):
-    import database
-    if STOP.wait(initial_delay):
-        return
-    while not STOP.is_set():
-        try:
-            with Guard(database.engine, "scheduler:" + name) as leader:
-                if leader.acquired:
-                    while not STOP.is_set():
-                        leader.check()
-                        with activity(name, database.engine):
-                            step()
-                        if STOP.wait(interval):
-                            return
-                else:
-                    with activity(name, database.engine):
-                        tally(skipped=1)
-        except Exception as exc:
-            # Exception messages may contain URLs/credentials supplied by drivers.
-            print(f"[job] {name} failed: {type(exc).__name__}")
-        STOP.wait(interval)

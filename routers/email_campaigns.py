@@ -24,6 +24,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import and_, or_
 from sqlmodel import Session, select
 
 import database
@@ -259,9 +260,16 @@ def create_campaign(body: CreateBody, v: inbox.Viewer = Depends(get_viewer), ses
 
 
 @router.get("/email-campaigns")
-def list_campaigns(limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0),
+def list_campaigns(limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0), needs_recovery: bool = False,
                    v: inbox.Viewer = Depends(get_viewer), session: Session = Depends(get_session)):
-    items = session.exec(_scope(select(EmailCampaign), v).order_by(EmailCampaign.created_at.desc())
+    stmt = _scope(select(EmailCampaign), v)
+    if needs_recovery:
+        stmt = stmt.where(or_(
+            EmailCampaign.status.in_(("Queued", "Sending")), EmailCampaign.failed_count > 0,
+            and_(EmailCampaign.status.in_(("Cancelled", "Failed")),
+                 EmailCampaign.total > EmailCampaign.sent_count + EmailCampaign.failed_count + EmailCampaign.skipped_count),
+        ))
+    items = session.exec(stmt.order_by(EmailCampaign.created_at.desc())
                          .offset(offset).limit(limit)).all()
     return {"items": [_campaign_dict(c) for c in items]}
 
@@ -311,6 +319,38 @@ def cancel_campaign(campaign_id: int, v: inbox.Viewer = Depends(get_viewer), ses
     session.commit()
     session.refresh(c)
     return {"campaign": _campaign_dict(c)}
+
+
+@router.post("/email-campaigns/{campaign_id}/resume")
+def resume_campaign(campaign_id: int, v: inbox.Viewer = Depends(get_viewer), session: Session = Depends(get_session)):
+    """Resume this campaign's unsent rows after a restart, without retrying uncertain sends."""
+    from modules.job_runtime import Guard
+    from routers.email_tracking import _rate_limit
+    c = _load(session, v, campaign_id)
+    if c.status not in {"Queued", "Sending"}:
+        raise HTTPException(status_code=400, detail="Use Retry for a finished or stopped campaign.")
+    _rate_limit("campaign-resume", c.id, 20)
+    with Guard(database.engine, f"campaign:{c.id}") as guard:
+        if not guard.acquired:
+            raise HTTPException(status_code=409, detail="This campaign is already running.")
+        try:
+            company_mailer.resolve_account(session, c.created_by, c.tenant_id)
+        except company_mailer.MailAccountError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+        sending = session.exec(select(EmailCampaignRecipient).where(
+            EmailCampaignRecipient.campaign_id == c.id,
+            EmailCampaignRecipient.tenant_id == c.tenant_id,
+            EmailCampaignRecipient.status == "Sending",
+        )).all()
+        for row in sending:
+            row.status = "Failed"
+            row.error = "Interrupted while sending. Delivery is uncertain; review before using Retry failed."
+            session.add(row)
+        cid = c.id
+        worker.refresh_counts(session, c)
+        session.commit()
+    worker.start_campaign(cid)
+    return {"ok": True, "uncertain": len(sending)}
 
 
 @router.post("/email-campaigns/{campaign_id}/retry")

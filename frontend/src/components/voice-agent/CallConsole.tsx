@@ -1,4 +1,5 @@
 "use client";
+import { createVisiblePoll } from "@/lib/visiblePoll";
 import LocalizedText from "@/components/LocalizedText";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -90,8 +91,8 @@ export default function CallConsole({ options, notify, requestedPitch, onRequest
 
   const anyActive = calls.some((c) => c.is_active);
   useEffect(() => {
-    const t = setInterval(loadCalls, anyActive ? 4000 : 20000);
-    return () => clearInterval(t);
+    const poll = createVisiblePoll(loadCalls, anyActive ? 4000 : 20000, false);
+    return () => poll.dispose();
   }, [anyActive, loadCalls]);
 
   useEffect(() => {
@@ -100,8 +101,8 @@ export default function CallConsole({ options, notify, requestedPitch, onRequest
   }, [selectedId, loadDetail]);
   useEffect(() => {
     if (!selectedId || !detail?.is_active) return;
-    const t = setInterval(() => loadDetail(selectedId), 2000);
-    return () => clearInterval(t);
+    const poll = createVisiblePoll(() => loadDetail(selectedId), 2000, false);
+    return () => poll.dispose();
   }, [selectedId, detail?.is_active, loadDetail]);
 
   // Auto-scroll transcript

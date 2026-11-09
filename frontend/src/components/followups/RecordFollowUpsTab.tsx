@@ -125,7 +125,7 @@ export default function RecordFollowUpsTab({ kind, recordId }: { kind: 'lead' | 
         r.updated.length ? `updated ${r.updated.length} existing follow-up${r.updated.length > 1 ? 's' : ''} with what was said` : '',
       ].filter(Boolean);
       setNotice(!r.scanned
-        ? 'All notes have already been analysed. New notes are checked automatically every minute.'
+        ? 'All notes have already been analysed. Click Scan notes again after adding new notes.'
         : `Read ${r.scanned} new note${r.scanned === 1 ? '' : 's'} — ${parts.length ? parts.join(' and ') : 'no follow-up needed'}.`);
       await load();
     } catch (e) {

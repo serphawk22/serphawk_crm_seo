@@ -51,7 +51,7 @@ function FollowUpRow({ f, showRecord, onAction }: {
             {f.priority === 'high' && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-black uppercase text-white"><LocalizedText text={"High"} /></span>}
             {f.auto_send && pending && !f.email_sent_at && (
               <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
-                <Clock3 size={10} /> Auto-send
+                <Clock3 size={10} /> <LocalizedText text="Ready for due batch" />
               </span>
             )}
             {f.email_sent_at && (

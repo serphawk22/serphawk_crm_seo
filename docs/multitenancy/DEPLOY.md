@@ -35,8 +35,9 @@ default). It is fixed here.
 2. **Check it (read-only).**
    `set STAGING_URL=postgresql://...` then `python -m scripts.check_schema --url-env STAGING_URL`. Expect exit code 0.
 3. **Stand up a staging deployment** (a second Railway service and a Vercel preview) pointing at the branch. Set
-   `BACKGROUND_JOBS=0` (two environments must never poll the same mailboxes: they would double-send reminders and emails),
-   `SESSION_SECRET`, and no mail credentials (or a mail sink).
+   `SESSION_SECRET` and no mail credentials (or a mail sink). Inbox sync and scheduled reminders are disabled;
+   mailbox and follow-up work runs only through explicit manual actions. See [manual operations](../MANUAL_OPERATIONS.md).
+   Manual reminder/send/resume buttons send real mail if credentials are available; do not use them in staging without a sink.
 4. **Smoke test as real users** on staging: sign in as an admin and an employee, open Leads, Clients, Inbox, Follow-ups,
    Billing, Reports, send nothing. Compare numbers with production.
 5. **Production**, in a quiet hour: create a Neon branch of production as the restore point; set `SESSION_SECRET`; deploy
@@ -66,7 +67,7 @@ line. Per client:
 5. **Import** the same command with `--yes` instead of `--dry-run`, then **compare** with the live system:
    `python -m scripts.migration.compare_tenant --source-env SRC_URL --target-env TGT_URL --source-tenant 1 --tenant-name scmbpo`
    (row counts per table and breakdowns by status / stage / role; it must say `ALL SAME`).
-6. Deploy the app against the shared-rehearsal branch (`BACKGROUND_JOBS=0`), sign in as the client's admin and staff, and
+6. Deploy the app against the shared-rehearsal branch, sign in as the client's admin and staff, and
    click through with the client. Fix differences, then refresh with `--replace` as often as you like.
 7. **Switch** one client at a time, after its sign-off: freeze the old system, run the import once more (`--replace`) against
    the **production** shared database (restore point first: a Neon branch), point the client's domain and website forms at

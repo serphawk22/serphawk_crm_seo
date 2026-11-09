@@ -1150,7 +1150,6 @@ def inbox_status(v: Viewer = Depends(get_viewer), session: Session = Depends(get
         "mailbox_verified": bool(v.mailbox_address),
         "sender": sender_status(session, v.user.id, v.tenant_id, integration_only=True),
         "ai_enabled": bool(os.getenv("OPENAI_API_KEY")),
-        "sync_interval_seconds": int(os.getenv("INBOX_SYNC_INTERVAL_SECONDS", "120")),
         "role": v.role,
         "full_access": v.full_access,
     }

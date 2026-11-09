@@ -1,4 +1,5 @@
 "use client";
+import { createVisiblePoll } from "@/lib/visiblePoll";
 import LocalizedText from "@/components/LocalizedText";
 
 import { useCallback, useEffect, useState } from "react";
@@ -22,14 +23,14 @@ export default function VoiceAgentPage() {
   const [error, setError] = useState("");
   const [callPitch, setCallPitch] = useState<VoicePitch | null>(null);
 
-  const loadStats = useCallback(() => { voiceAgentApi.stats().then(setStats).catch(() => {}); }, []);
-  const recheckOptions = useCallback(() => { voiceAgentApi.options(true).then(setOptions).catch(() => {}); }, []);
+  const loadStats = useCallback(async () => { await voiceAgentApi.stats().then(setStats).catch(() => {}); }, []);
+  const recheckOptions = useCallback(async () => { await voiceAgentApi.options(true).then(setOptions).catch(() => {}); }, []);
 
   useEffect(() => {
     voiceAgentApi.options().then(setOptions).catch((e) => setError(errorText(e, "Failed to load the voice agent")));
     loadStats();
-    const t = setInterval(loadStats, 15000);
-    return () => clearInterval(t);
+    const poll = createVisiblePoll(loadStats, 15000, false);
+    return () => poll.dispose();
   }, [loadStats]);
 
   // The TwiML webhook check can fail transiently (e.g. the ngrok tunnel restarts). While it is
@@ -37,8 +38,8 @@ export default function VoiceAgentPage() {
   const webhookProblem = !!options?.twilio?.webhook_problem;
   useEffect(() => {
     if (!webhookProblem) return;
-    const t = setInterval(recheckOptions, 8000);
-    return () => clearInterval(t);
+    const poll = createVisiblePoll(recheckOptions, 8000, false);
+    return () => poll.dispose();
   }, [webhookProblem, recheckOptions]);
 
   const startCallWith = useCallback((p: VoicePitch) => { setCallPitch(p); setTab("calls"); }, []);

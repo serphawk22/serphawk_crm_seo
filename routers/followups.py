@@ -281,6 +281,35 @@ def followups_summary(tz_offset: Optional[int] = None, mine: bool = False,
     return {"counts": counts, "next": _serialize(session, urgent, tz_offset)}
 
 
+class ManualRun(BaseModel):
+    action: Literal["reminders", "send", "scan"]
+
+
+@router.post("/followups/run-now")
+def run_now(body: ManualRun, v: inbox.Viewer = Depends(get_viewer), session: Session = Depends(get_session)):
+    """One bounded batch for the selected company; never schedule another run."""
+    if v.role not in {"Admin", "SuperAdmin"}:
+        raise HTTPException(status_code=403, detail="Only an admin can run company-wide follow-up actions.")
+    if not v.tenant_id or v.tenant_id < 1:
+        raise HTTPException(status_code=403, detail="Select a company first.")
+    from modules.job_runtime import Guard, activity
+    from routers.email_tracking import _rate_limit
+    _rate_limit("followups-" + body.action, v.tenant_id, 20)
+    session.commit()  # release the viewer lookup before IMAP/AI/SMTP work
+    with activity("manual-followups-" + body.action, database.engine), Guard(
+        database.engine, f"manual-followups:{v.tenant_id}"
+    ) as guard:
+        if not guard.acquired:
+            raise HTTPException(status_code=409, detail="A follow-up action is already running for this company.")
+        if body.action == "reminders":
+            return {"reminders": core.process_due_reminders(tenant_id=v.tenant_id, limit=25),
+                    "overdue": core.process_overdue_notices(tenant_id=v.tenant_id, limit=25)}
+        if body.action == "send":
+            return {"sent": core.process_auto_sends(tenant_id=v.tenant_id, limit=20)}
+        result = core.scan_notes(tenant_id=v.tenant_id, budget=10, max_age_days=7)
+        return {"scanned": result["scanned"], "created": len(result["created"]), "matched": len(result["matched"])}
+
+
 @router.get("/followups/sender")
 def followup_sender(v: inbox.Viewer = Depends(get_viewer), session: Session = Depends(get_session)):
     return company_mailer.account_status(session, v.user.id, v.tenant_id if v.tenant_id is not None else v.user.tenant_id)

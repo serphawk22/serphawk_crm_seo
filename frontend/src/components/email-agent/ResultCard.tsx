@@ -1,5 +1,6 @@
 import LocalizedText from "@/components/LocalizedText";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { isEmailAddress, researchEmails, researchRecipient } from '@/lib/researchContacts';
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -142,8 +143,8 @@ function buildProspectingPoints(result: ResearchResultData) {
   const toArray = (val: any) => Array.isArray(val) ? val : (typeof val === 'string' ? val.split(",") : []);
   
   // Extract contact information with fallbacks
-  const emails = toArray(result.company_info?.extracted_emails);
-  const primaryEmail = result.contact?.email || emails[0]?.trim() || "No email found.";
+  const emails = researchEmails(result);
+  const primaryEmail = emails[0] || "No email found.";
   const allEmails = emails.length > 0 ? emails.map((e: string) => e.trim()).slice(0, 2).join(", ") : primaryEmail;
   
   const phones = toArray(result.company_info?.extracted_phone_numbers);
@@ -259,7 +260,7 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
   const [awaitingSystemConfirm, setAwaitingSystemConfirm] = useState(false);
 
   const handleSaveDraft = async () => {
-    if (!toEmail.trim()) { setSendError("Please provide a recipient email address in the 'To:' field."); return; }
+    if (!isEmailAddress(toEmail)) { setSendError("Enter a valid recipient email address in the To field."); return; }
     setSending(true);
     setSendError(null);
     try {
@@ -281,20 +282,13 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
   const [editableWhatsappBody, setEditableWhatsappBody] = useState(formatBody(result.draft?.whatsapp_draft));
   const [fromEmail, setFromEmail] = useState("crm@serphawk.in");
 
-  const extractedEmailsArray = (Array.isArray(result.company_info?.extracted_emails) ? result.company_info.extracted_emails : (result.company_info?.extracted_emails?.split(",") || []))
-    .filter((e: string) => e.trim().toLowerCase() !== "test@example.com" && e.trim().toLowerCase() !== "support.crm@serphawk.in");
-  const extractedEmail = extractedEmailsArray[0]?.trim();
-  const directContactEmail = Array.isArray((result.company_info as any)?.contacts) ? (result.company_info as any).contacts[0]?.email : (result.company_info as any)?.email;
-  
-  let rawInitialEmail = result.contact?.email || directContactEmail || extractedEmail || "";
-  if (Array.isArray(rawInitialEmail)) rawInitialEmail = rawInitialEmail[0];
-  let initialContactEmail = typeof rawInitialEmail === 'string' ? rawInitialEmail : String(rawInitialEmail || "");
-  
-  if (initialContactEmail.trim().toLowerCase() === "test@example.com" || initialContactEmail.trim().toLowerCase() === "support.crm@serphawk.in") {
-    initialContactEmail = "";
-  }
-
+  const extractedEmailsArray = researchEmails(result);
+  const initialContactEmail = researchRecipient(result);
   const [toEmail, setToEmail] = useState(initialContactEmail);
+  const recipientEdited = useRef(false);
+  useEffect(() => {
+    if (!recipientEdited.current) setToEmail(initialContactEmail);
+  }, [initialContactEmail]);
 
   useEffect(() => {
     if (sendSuccess) {
@@ -361,8 +355,8 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
   });
 
   const handleSend = async () => {
-    if (!toEmail || !toEmail.trim()) {
-      setSendError("Please provide a recipient email address in the 'To:' field.");
+    if (!isEmailAddress(toEmail)) {
+      setSendError("Enter a valid recipient email address in the To field.");
       return;
     }
     setSending(true);
@@ -377,8 +371,8 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
   };
 
   const handleSendViaSystem = () => {
-    if (!toEmail || !toEmail.trim()) {
-      setSendError("Please provide a recipient email address in the 'To:' field.");
+    if (!isEmailAddress(toEmail)) {
+      setSendError("Enter a valid recipient email address in the To field.");
       return;
     }
 
@@ -413,8 +407,8 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
   };
 
   const handleSendAutomatically = async () => {
-    if (!toEmail || !toEmail.trim()) {
-      setSendError("Please provide a recipient email address in the 'To:' field.");
+    if (!isEmailAddress(toEmail)) {
+      setSendError("Enter a valid recipient email address in the To field.");
       return;
     }
     setSending(true);
@@ -513,12 +507,8 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
             <div className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm">
               <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold uppercase mb-1.5"><LocalizedText text={"Emails"} /></p>
               <div className="flex flex-col gap-1.5">
-                {result.company_info?.extracted_emails ? (
-                  (Array.isArray(result.company_info.extracted_emails) 
-                    ? result.company_info.extracted_emails 
-                    : result.company_info.extracted_emails.split(',')
-                  )
-                  .filter((e: string) => e.trim().toLowerCase() !== "test@example.com" && e.trim().toLowerCase() !== "support.crm@serphawk.in")
+                {extractedEmailsArray.length > 0 ? (
+                  extractedEmailsArray
                   .map((e: string, i: number) => (
                     <CopyableEmailItem key={i} email={e.trim()} />
                   ))
@@ -703,13 +693,15 @@ export function ResultCard({ historyId, result, companyName, companyUrl, onSendM
                 <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-zinc-100">
                   <span className="text-slate-500 w-12"><LocalizedText text={"To:"} /></span>
                   <input 
-                    type="text" 
+                    type="email"
+                    aria-label="Recipient email"
                     value={toEmail}
-                    onChange={(e) => setToEmail(e.target.value)}
+                    onChange={(e) => { recipientEdited.current = true; setToEmail(e.target.value); }}
                     placeholder="recipient@example.com"
                     className="flex-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 transition-all"
                   />
                 </div>
+                {!toEmail.trim() && <p className="text-xs text-amber-700 dark:text-amber-400"><LocalizedText text="No usable email was found. Enter the recipient email manually." /></p>}
               </div>
 
                 <div className="flex flex-col gap-2">

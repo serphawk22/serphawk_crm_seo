@@ -811,7 +811,7 @@ class EmailReply(SQLModel, table=True):
     One row per inbound reply message, so a thread with several back-and-forth
     replies keeps every message instead of a single sent_emails.reply_body
     snapshot getting overwritten. `message_id` is the *inbound* message's own
-    Message-ID header, used to dedupe across IMAP poll cycles (the poller
+    Message-ID header, used to dedupe across repeated IMAP scans (the manual checker
     re-scans the same date window every pass).
     """
     __tablename__ = "email_replies"

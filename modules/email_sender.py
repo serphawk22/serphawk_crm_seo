@@ -495,15 +495,7 @@ def send_otp_email(to_email: str, otp_code: str, purpose: str = "email verificat
         return False
 
 
-# ── Reply detection (IMAP inbox poller) ──────────────────────────────────────
-# No external cron/n8n dependency: a background thread periodically checks the
-# configured mailbox for new messages and, when the sender matches the
-# `to_email` of a previously sent (and not-yet-replied) SentEmail row, flips
-# that row's status to "Replied". Best-effort throughout: any failure here
-# must never take down the app.
-
-_reply_checker_started = False
-_reply_checker_lock = threading.Lock()
+# ── Reply detection (manual IMAP check) ─────────────────────────────────────
 
 
 def _get_email_settings():
@@ -782,8 +774,8 @@ def _scan_all_mailboxes(days_back: int, only_missing: bool, label: str, tenant_i
 
 def check_email_replies(days_back: int = 5, tenant_id=None) -> int:
     """
-    Scan every configured mailbox's INBOX for messages received in the last `days_back` days, and
-    record a matching reply for any SentEmail whose to_email == the message's From address. A thread
+    Manually scan every configured mailbox's INBOX for messages received in the last `days_back` days,
+    and record a matching reply for any SentEmail whose to_email == the message's From address. A thread
     with several replies gets one EmailReply row per message, not a single overwritten field.
 
     Returns the number of new replies recorded. Never raises.
@@ -794,27 +786,8 @@ def check_email_replies(days_back: int = 5, tenant_id=None) -> int:
 def backfill_reply_content(days_back: int = 60, tenant_id=None) -> int:
     """
     One-time catch-up for SentEmail rows that were already flipped to "Replied" by the old header-only
-    poller (before reply content was captured at all) and so still have reply_body IS NULL. Re-scans
+    checker (before reply content was captured at all) and so still have reply_body IS NULL. Re-scans
     the inbox over a wider window and records the reply as a proper EmailReply row, same as the regular
-    poller. Never raises.
+    check. Never raises.
     """
     return _scan_all_mailboxes(days_back, only_missing=True, label="Reply backfill", tenant_id=tenant_id)
-
-
-def _reply_checker_loop(interval_seconds: int):
-    from modules.job_runtime import run_recurring
-    run_recurring("reply-checker", check_email_replies, interval_seconds, initial_delay=15)
-
-
-def start_reply_checker_thread():
-    """Start the background IMAP reply-polling loop once per process. Safe to call multiple times."""
-    global _reply_checker_started
-    with _reply_checker_lock:
-        if _reply_checker_started:
-            return
-        interval = int(os.environ.get("REPLY_CHECK_INTERVAL_SECONDS", "180"))
-        t = threading.Thread(target=_reply_checker_loop, args=(interval,), daemon=True)
-        t.start()
-        _reply_checker_started = True
-        print(f"[Reply checker] started, polling every {interval}s.")
-        return False

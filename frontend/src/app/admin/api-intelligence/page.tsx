@@ -1,4 +1,5 @@
 "use client";
+import { createVisiblePoll } from "@/lib/visiblePoll";
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -233,15 +234,15 @@ export default function ApiIntelligencePage() {
   // Live polling every 5s on live tab
   useEffect(() => {
     if (activeTab !== "live") return;
-    const interval = setInterval(async () => {
+    const poll = createVisiblePoll(async (signal) => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api-intelligence/requests?limit=50`);
+        const res = await fetch(`${API_BASE_URL}/api-intelligence/requests?limit=50`, { signal });
         const data = await res.json();
         setRequests(data);
         setLastUpdated(new Date());
       } catch {}
-    }, 5000);
-    return () => clearInterval(interval);
+    }, 5000, false);
+    return () => poll.dispose();
   }, [activeTab]);
 
   if (!isAuthenticated || role !== "Admin") return null;

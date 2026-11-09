@@ -831,7 +831,7 @@ class OwnMailboxTests(ApiTestCase):
 
 class ScopedReplyScanTests(ApiTestCase):
     """The reply scan behind /webhook/check-replies-now only logs in to the requested tenant's mailboxes.
-    (The webhook guard itself, the BACKGROUND_JOBS switch and the SMTP header tests are in
+    (The webhook guard itself and the SMTP header tests are in
     tests/test_email_tracking.py.)"""
 
     def test_scan_only_logs_in_to_the_requested_tenants_mailboxes(self):

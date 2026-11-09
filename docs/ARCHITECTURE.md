@@ -61,8 +61,11 @@ webhooks) are never gated by the middleware, so public handlers resolve their te
 
 ## Running and testing
 
+Mailbox and follow-up work runs from explicit UI buttons; no recurring backend jobs start.
+See [Manual operations and idle database usage](MANUAL_OPERATIONS.md) for controls, batch limits and Neon settings.
+
 ```
-docker compose up -d db api          # backend :8000 + throwaway Postgres (BACKGROUND_JOBS=0, no .env, no real mail)
+docker compose up -d db api          # backend :8000 + throwaway Postgres (no .env, no real mail)
 docker compose run --rm test         # whole suite
 cd frontend && npx tsc --noEmit -p tsconfig.json    # must stay at 0 errors
 ```

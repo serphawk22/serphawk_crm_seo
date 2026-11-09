@@ -19,6 +19,8 @@ import { ResultCard, ResearchResultData, SendEmailResult, CopyButton } from "@/c
 import EmailIntegrationSettings from "@/components/email-agent/EmailIntegrationSettings";
 import ExcelCampaign from "@/components/email-agent/ExcelCampaign";
 import { useRole } from "@/context/RoleContext";
+import { isEmailAddress, researchRecipient } from '@/lib/researchContacts';
+import ManualEmailActions from '@/components/email-agent/ManualEmailActions';
 
 
 
@@ -551,12 +553,9 @@ export default function EmailAgentPage() {
   const sendEmail = async (result: ResearchResultData, name: string, url: string, manual: boolean, skip_send: boolean = false, action_type: string = "System"): Promise<SendEmailResult> => {
     try {
       const serviceNames = (result.recommended_services || []).map((s) => (typeof s === 'string' ? s : s.service_name || '')).filter(Boolean).join(", ");
-      const fallbackEmail = Array.isArray(result.company_info?.contacts) ? result.company_info.contacts[0]?.email : undefined;
-      const extractedEmailsArray = Array.isArray(result.company_info?.extracted_emails) ? result.company_info.extracted_emails : (result.company_info?.extracted_emails?.split(",") || []);
-      const extractedEmail = extractedEmailsArray[0]?.trim();
-      const emailToSend = result.contact?.email || fallbackEmail || extractedEmail || undefined;
-      if (!emailToSend) {
-        throw new Error("No recipient email available to send.");
+      const emailToSend = researchRecipient(result);
+      if (!isEmailAddress(emailToSend)) {
+        throw new Error("Enter a valid recipient email address in the To field.");
       }
       const res = await fetch(`${API_BASE_URL}/send-manual`, {
         method: "POST",
@@ -716,6 +715,7 @@ export default function EmailAgentPage() {
           {/* PageGuide components uses white text on dark variants, but we will leave it as is if it handles its own styles, though it floats */}
         </div>
 
+        <div className="mb-4"><ManualEmailActions /></div>
         <section className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 dark:border-emerald-900/60 dark:bg-emerald-950/20">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>

@@ -113,8 +113,8 @@ def request_policy(method, path):
     if method == "POST" and path in {"/voice-agent/calls", "/voice-agent/quick-call"}:
         return "calls"
     # Background jobs can fan out into many provider calls and escape request context.
-    if method == "POST" and (path in {"/email-campaigns", "/followups/scan", "/research-map-company", "/automations/intelligence-scan", "/clients/import-sheet"}
-                             or re.fullmatch(r"/email-campaigns/\d+/retry", path)
+    if method == "POST" and (path in {"/email-campaigns", "/followups/scan", "/followups/run-now", "/research-map-company", "/automations/intelligence-scan", "/clients/import-sheet"}
+                             or re.fullmatch(r"/email-campaigns/\d+/(retry|resume)", path)
                              or path.endswith("/sync") or path == "/inbox/sync"):
         return "blocked"
     if method in {"POST", "GET"} and (

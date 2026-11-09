@@ -1,4 +1,5 @@
 "use client";
+import { createVisiblePoll } from "@/lib/visiblePoll";
 import LocalizedText from "@/components/LocalizedText";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -54,8 +55,8 @@ export default function QuickCallPanel({ entityType, entityId, entityName, defau
   const webhookProblem = !!options?.twilio?.webhook_problem;
   useEffect(() => {
     if (!webhookProblem) return;
-    const t = setInterval(() => { voiceAgentApi.options(true).then(setOptions).catch(() => {}); }, 8000);
-    return () => clearInterval(t);
+    const poll = createVisiblePoll(async () => { await voiceAgentApi.options(true).then(setOptions).catch(() => {}); }, 8000, false);
+    return () => poll.dispose();
   }, [webhookProblem]);
   useEffect(() => { setPhone(defaultPhone || ""); }, [defaultPhone]);
 
@@ -70,8 +71,8 @@ export default function QuickCallPanel({ entityType, entityId, entityName, defau
   }, []);
   useEffect(() => {
     if (!call?.is_active) return;
-    const t = setInterval(() => refresh(call.id), 2000);
-    return () => clearInterval(t);
+    const poll = createVisiblePoll(() => refresh(call.id), 2000, false);
+    return () => poll.dispose();
   }, [call?.id, call?.is_active, refresh]);
   const turns = call?.transcript?.length || 0;
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, [turns]);

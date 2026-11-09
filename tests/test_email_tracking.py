@@ -1,6 +1,6 @@
 """
 Open / reply tracking (routers/email_tracking.py, modules/email_sender.py, the /sent-emails routes in
-main.py) plus the reply-webhook guard and the BACKGROUND_JOBS switch. In-memory SQLite, fake SMTP and
+main.py) plus the reply-webhook guard and disabled background-job startup. In-memory SQLite, fake SMTP and
 IMAP; nothing here reaches a network or a real database.
 
     venv\\Scripts\\python -m unittest discover -s tests -t . -v
@@ -185,27 +185,16 @@ class WebhookGuardTests(DBTestCase):
         self.assertEqual(self.client.post("/webhook/track-email-reply", json={}).status_code, 200)
 
 
-class BackgroundSwitchTests(unittest.TestCase):
-    def test_background_jobs_switch(self):
-        from modules import background
-        with mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("BACKGROUND_JOBS", None)
-            self.assertTrue(background.jobs_enabled())
-        for off in ("0", "false", "No", "OFF", " 0 "):
-            with mock.patch.dict(os.environ, {"BACKGROUND_JOBS": off}):
-                self.assertFalse(background.jobs_enabled(), off)
-        with mock.patch.dict(os.environ, {"BACKGROUND_JOBS": "1"}):
-            self.assertTrue(background.jobs_enabled())
-
-    def test_startup_starts_no_poller_when_switched_off(self):
+class ScheduledJobsDisabledTests(unittest.TestCase):
+    def test_startup_does_not_start_scheduled_jobs(self):
         from tests._support import load_main
         main = load_main()
-        with mock.patch.dict(os.environ, {"BACKGROUND_JOBS": "0"}), \
+        with mock.patch.dict(os.environ, {"BACKGROUND_JOBS": "1", "DB_KEEPALIVE": "1"}), \
                 mock.patch.object(main, "create_db_and_tables"), \
                 mock.patch.object(main, "patch_openai"), \
-                mock.patch.object(email_sender, "start_reply_checker_thread") as reply_checker:
+                mock.patch("threading.Thread.start") as thread_start:
             main.on_startup()
-        reply_checker.assert_not_called()
+        thread_start.assert_not_called()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

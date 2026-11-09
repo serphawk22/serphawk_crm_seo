@@ -9,6 +9,7 @@ import { followupsApi, type FollowUp, type FollowUpCounts, type FollowUpView } f
 import FollowUpList from '@/components/followups/FollowUpList';
 import { FollowUpFormDialog } from '@/components/followups/FollowUpDialogs';
 import { btn } from '@/components/followups/followupUi';
+import ManualFollowUpActions from './ManualFollowUpActions';
 
 const TABS: { key: FollowUpView; label: string; count?: keyof FollowUpCounts }[] = [
   { key: 'overdue', label: 'Overdue', count: 'overdue' },
@@ -115,6 +116,7 @@ export default function EmailFollowUpsView() {
         </div>
       </div>
 
+      <ManualFollowUpActions onChanged={() => void load()} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Overdue" value={counts?.overdue ?? '–'} hint="Past their follow-up date" icon={AlertTriangle}
           tone="bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400" active={view === 'overdue'} onClick={() => setView('overdue')} />
@@ -167,7 +169,7 @@ export default function EmailFollowUpsView() {
                 {view === 'overdue' ? 'Nothing overdue — nice work.' : view === 'today' ? 'No follow-ups due today.' : 'No follow-ups here.'}
               </p>
               <p className="max-w-md text-xs text-slate-400">
-                Follow-ups are created from a lead or client page, from the Email Agent’s Excel campaigns, or automatically when AI finds a promised next step in your notes.
+                Create follow-ups from a lead or client page, an Excel campaign, or the Scan recent notes button above.
               </p>
             </div>
           )}

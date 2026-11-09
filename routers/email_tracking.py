@@ -129,8 +129,7 @@ def _rate_limit(kind: str, scope, seconds: int):
 @router.post("/check-replies-now")
 def check_replies_now(admin=Depends(_require_admin)):
     """
-    Manually trigger an immediate IMAP inbox scan for replies, instead of
-    waiting for the background poller's next cycle. Admin only.
+    Manually trigger an immediate IMAP inbox scan for replies. Admin only.
     """
     from modules.email_sender import check_email_replies
     _, tenant_id = admin
@@ -144,7 +143,7 @@ def backfill_reply_content_now(days_back: int = Query(60, ge=1, le=180), admin=D
     """
     One-time catch-up: fills reply_from/reply_subject/reply_body on
     SentEmail rows that were already marked "Replied" by the old
-    header-only poller, by re-scanning the inbox over a wider window. Admin only.
+    header-only checker, by re-scanning the inbox over a wider window. Admin only.
     """
     from modules.email_sender import backfill_reply_content
     _, tenant_id = admin
