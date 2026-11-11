@@ -256,7 +256,7 @@ class CrmRefinement(TenantIsolationBase):
         def synthesize(*args, **kwargs):
             observed.append(demo_usage.demo_context.get())
             return ("static/test-only.wav", False)
-        with mock.patch.object(voice_agent, "synthesize_cached", side_effect=synthesize), mock.patch.object(voice_agent, "_tts_budget", return_value=1):
+        with mock.patch.object(voice_agent, "synthesize_cached", side_effect=synthesize), mock.patch.object(voice_agent, "_tts_budget", return_value=1), mock.patch.object(voice_agent, "_public_audio", return_value="http://testserver/test-only.wav"):
             voice_agent._call_audio(call, "Test speech")
         self.assertEqual(observed, [2])
         with mock.patch.object(voice_agent.threading, "Thread") as thread:

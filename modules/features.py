@@ -34,6 +34,7 @@ class Feature:
     path_prefixes: Tuple[str, ...] = ()
     path_regexes: Tuple[str, ...] = ()      # for paths with an id in the middle, e.g. /deals/3/negotiations
     public_prefixes: Tuple[str, ...] = ()   # sub-paths that stay reachable without a feature check (webhooks)
+    parent_key: Optional[str] = None       # section/submodule; excluded from product module counts
 
 
 def _f(*a, **kw) -> Feature:
@@ -41,7 +42,8 @@ def _f(*a, **kw) -> Feature:
 
 
 _FEATURES: List[Feature] = [
-    _f("dashboard", "Dashboard", "Work", "Role-specific CRM overview.", path_prefixes=("/dashboard-stats",)),
+    _f("dashboard", "Command Center (previous dashboard)", "Work", "Previous role-specific CRM overview, retained for review.", path_prefixes=("/dashboard-stats",)),
+    _f("dashboard_b2c", "Dashboard B2C", "Work", "Institute command center: admissions, fees, courses and lead stages.", default_on=False, path_prefixes=("/dashboard-b2c",)),
     # CRM / Work. Switching a module off closes it, not only its menu entry:
     #   * the page is closed in the app (frontend/src/lib/moduleRoutes.ts + components/ModuleGate.tsx), and
     #   * the module's own API is refused (403) where the endpoints belong to that module alone.
@@ -99,7 +101,7 @@ _FEATURES: List[Feature] = [
        default_on=False, path_prefixes=("/inventory-stock",)),
     _f("meeting_history", "Meeting history", "Business suite", default_on=False,
        path_prefixes=("/meetings/history",)),     # /me/timezone is every user's own profile setting: never gated
-    _f("command_center", "Command center", "Business suite", "Executive overview and dossier across sales, delivery and finance.",
+    _f("command_center", "Dashboard B2B", "Business suite", "Business command center across sales, delivery and finance.",
        default_on=False, path_prefixes=("/command-center", "/reports/executive-dossier", "/management")),
     _f("lead_webhook", "Website lead webhook", "Business suite",
        "A website form posts leads straight into the CRM with the company's intake key; they are assigned automatically.",
@@ -119,16 +121,19 @@ _FEATURES: List[Feature] = [
        "Courses, instructors, batches, students, enrollments and fees, attendance, class sessions, learning resources, "
        "student and instructor portals, admissions tracking (demo / walk-in / webinar / follow-up) and analytics.",
        default_on=False,
-       path_prefixes=("/courses", "/instructors", "/batches", "/students", "/student-files", "/enrollments", "/payments",
-                      "/attendance", "/institute", "/institute-sessions", "/institute-resources", "/student-portal",
+       path_prefixes=("/leads/transfer", "/courses", "/instructors", "/batches", "/students", "/student-files", "/enrollments", "/payments",
+                      "/admissions", "/attendance", "/institute", "/institute-sessions", "/institute-resources", "/student-portal",
                       "/instructor-portal", "/lead-demo-sessions", "/lead-follow-ups", "/lead-walk-ins", "/lead-webinars",
                       "/schedule/upcoming", "/leads/intake", "/leads/sources/analytics"),
-       path_regexes=(r"^/leads/\d+/(demo-sessions|walk-ins|webinars|follow-ups|convert-to-student|course-plan|background-details)$",)),
+       path_regexes=(r"^/leads/\d+/(transfers|demo-sessions|walk-ins|webinars|follow-ups|convert-to-student|course-plan|background-details)$",)),
 ]
 
 # Section entitlements sit alongside the Dashboard switch in module management.
 from modules.dashboard import SECTIONS, SECTION_MODULES
-_FEATURES.extend(_f(f"dashboard_{key}", label, "Dashboard sections") for key, label in SECTIONS.items())
+_FEATURES.extend(_f(f"dashboard_{key}", label, "Command Center sections", parent_key="dashboard") for key, label in SECTIONS.items())
+from modules.dashboard_variants import B2B_SECTIONS, B2C_SECTIONS
+_FEATURES.extend(_f(f"command_center_{key}", label, "Dashboard B2B sections", default_on=False, parent_key="command_center") for key, label in B2B_SECTIONS.items())
+_FEATURES.extend(_f(f"dashboard_b2c_{key}", label, "Dashboard B2C sections", default_on=False, parent_key="dashboard_b2c") for key, label in B2C_SECTIONS.items())
 
 FEATURES: Dict[str, Feature] = {f.key: f for f in _FEATURES}
 
@@ -174,6 +179,10 @@ def _resolve(rows: Dict[str, bool]) -> Dict[str, bool]:
             result[key] = result[parent]
     if result.get("institute") and "voice_agent" not in rows:
         result["voice_agent"] = False  # admissions calling stays on hold until explicitly configured
+    for key in result:
+        parent = "dashboard_b2c" if key.startswith("dashboard_b2c_") else "command_center" if key.startswith("command_center_") else None
+        if parent:
+            result[key] = result[key] and result[parent]
     return result
 
 
@@ -210,6 +219,10 @@ def feature_for_path(path: str) -> Optional[str]:
 def gates_for_path(path: str) -> List[str]:
     key = feature_for_path(path)
     gates = [key] if key else []
+    if path == "/institute/reports":
+        gates.append("reports")
+    if path in {"/reports/lead-transfers", "/reports/sales-contribution", "/dashboard-b2c/stats"}:
+        gates.append("institute")
     if path.startswith("/import/leads/"):
         gates.append("leads")
     elif path.startswith("/import/clients/"):
@@ -257,7 +270,7 @@ def set_features(session: Session, tenant_id: int, changes: Dict[str, bool]) -> 
 
 def catalog() -> List[dict]:
     return [{"key": f.key, "label": f.label, "group": f.group, "description": f.description,
-             "locked": f.locked, "default_on": f.default_on,
+             "locked": f.locked, "default_on": f.default_on, "parent_key": f.parent_key,
              "gated_on_server": bool(f.path_prefixes or f.path_regexes),
              "requires_any": list(SECTION_MODULES.get(f.key.removeprefix("dashboard_"), ())) if f.key.startswith("dashboard_") else []}
             for f in _FEATURES]
@@ -265,3 +278,9 @@ def catalog() -> List[dict]:
 
 def keys() -> Iterable[str]:
     return FEATURES.keys()
+
+
+def module_count(enabled: Optional[Dict[str, bool]] = None) -> int:
+    """Count product modules, never their dashboard/sales/other section switches."""
+    return sum(1 for key, feature in FEATURES.items()
+               if not feature.parent_key and (enabled is None or enabled.get(key, False)))

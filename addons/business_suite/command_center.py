@@ -1272,7 +1272,10 @@ def build_overview(d: Data, months: int) -> Dict[str, Any]:
 @router.get("/command-center/overview")
 def command_center_overview(months: int = Query(6, ge=3, le=24), session: Session = Depends(get_session)):
     sc = _scope(session)
-    return build_overview(Data(session, sc), months)
+    from modules import features
+    from modules.tenant_scope import current_tenant_id
+    from modules.dashboard_variants import b2b_payload
+    return b2b_payload(build_overview(Data(session, sc), months), features.effective_features(current_tenant_id.get()))
 
 
 def build_executive_dossier(d: Data, start_str: Optional[str] = None, end_str: Optional[str] = None, months: int = 12) -> Dict[str, Any]:

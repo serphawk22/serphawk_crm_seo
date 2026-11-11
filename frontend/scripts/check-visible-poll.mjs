@@ -9,6 +9,11 @@ const { createVisiblePoll } = await import(`data:text/javascript;base64,${Buffer
 let listener;
 let tick;
 let disposed = 0;
+const inputListeners = new Map();
+globalThis.window = {
+  addEventListener(name, fn) { inputListeners.set(name, fn); },
+  removeEventListener(name, fn) { assert.equal(inputListeners.get(name), fn); inputListeners.delete(name); },
+};
 globalThis.document = {
   visibilityState: "hidden",
   addEventListener(name, fn) { listener = fn; },
@@ -47,4 +52,23 @@ tick();
 await poll.refresh();
 assert.equal(calls, 2, "disposed poll cannot restart");
 assert.equal(disposed, 1);
-console.log("Visible polling: hidden/visible, overlap, cancellation, resume and disposal checks passed.");
+assert.equal(inputListeners.size, 0, "cleanup removes every input listener");
+
+const originalNow = Date.now;
+let now = originalNow();
+Date.now = () => now;
+let idleCalls = 0;
+const idlePoll = createVisiblePoll(async () => { idleCalls++; }, 15000);
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(idleCalls, 1);
+now += 120001;
+tick();
+await idlePoll.refresh();
+assert.equal(idleCalls, 1, "visible but idle tabs stop polling");
+inputListeners.get("keydown")();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(idleCalls, 2, "user interaction resumes idle polling once");
+idlePoll.dispose();
+assert.equal(inputListeners.size, 0);
+Date.now = originalNow;
+console.log("Visible polling: visibility, idle pause, interaction resume, overlap, cancellation and disposal passed.");

@@ -338,6 +338,8 @@
     "no_events_desc": "No se encontró actividad que coincida con los filtros seleccionados."
   },
   "sidebar": {
+    "dashboard_b2c": "Panel B2C",
+    "admissions": "Admisiones",
     "section_crm": "CRM",
     "section_projects": "PROYECTOS Y ACTIVIDADES",
     "section_teams": "EQUIPOS",
@@ -347,7 +349,7 @@
     "section_system": "SISTEMA",
     "section_institute": "INSTITUTO",
     "section_business_suite": "SUITE DE NEGOCIO",
-    "dashboard": "Panel",
+    "dashboard": "Centro de mando",
     "work_queue": "Mi Cola de Trabajo",
     "notifications": "Notificaciones",
     "inbox": "Bandeja de entrada",
@@ -392,8 +394,8 @@
     "instructors": "Instructores",
     "enrollments": "Inscripciones y cuotas",
     "schedule": "Fechas importantes",
-    "institute_analytics": "Estadísticas del instituto",
-    "command_center": "Centro de control",
+    "institute_analytics": "Mis analiticas",
+    "command_center": "Panel",
     "revenue": "Panel de ingresos",
     "business_costs": "Costes de la empresa",
     "lead_sources": "Fuentes de prospectos",
@@ -508,7 +510,8 @@
     "role_employee": "Empleado",
     "role_client": "Cliente",
     "role_intern": "Pasante",
-    "role_sales_manager": "Gerente de Ventas"
+    "role_sales_manager": "Gerente de Ventas",
+    "role_admissions": "Admisiones"
   },
   "employees": {
     "title": "Equipo Principal",

@@ -78,7 +78,7 @@ for (const language of ['es', 'en']) {
   check(r.render('src/components/DeveloperDashboard.tsx', 'DeveloperDashboard'), ['Planning', 'In Dev', 'Given to QA', 'Prod Release']);
   check(r.render('src/components/DemoDashboard.tsx', 'DemoDashboard', { NAV_CARDS: [], language }), ['Sandbox Environment', 'Explore Platform Features']);
   check(r.render('src/components/OnboardingChecklist.tsx'), ['Get your workspace ready', 'Add your company name']);
-  check(r.render('src/components/CommandCenter.tsx'), ['Enterprise Command Center', 'Overdue tasks', 'Negotiation', 'No pending follow-ups']);
+  check(r.render('src/components/CommandCenter.tsx'), ['Dashboard', 'Overdue tasks', 'Negotiation', 'No pending follow-ups']);
   check(r.render('src/components/FeatureAccessNotice.tsx', 'default', { feature: 'Invoices', kind: 'module' }), ['Back to dashboard', 'What can I do next?']);
   content = r.render('src/components/GlobalFooter.tsx');
   check(content, ['Contact Dev', 'Contact Admin']);

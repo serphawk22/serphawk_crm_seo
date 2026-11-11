@@ -23,12 +23,12 @@ LIMIT_FIELDS = ("limit_clients", "limit_emails", "limit_searches", "limit_projec
 # What a visitor can say their business does -> the product preset that fits. Anything unknown gets the standard CRM.
 INDUSTRIES: List[dict] = [
     {"key": "general", "label": "Other / general business", "preset": "standard"},
-    {"key": "agency", "label": "Digital, marketing or design agency", "preset": "agency"},
+    {"key": "agency", "label": "Digital, marketing or design agency", "preset": "serphawk"},
     {"key": "consulting", "label": "Consulting or professional services", "preset": "standard"},
     {"key": "retail", "label": "Retail, wholesale or distribution", "preset": "standard"},
     {"key": "real_estate", "label": "Real estate", "preset": "standard"},
     {"key": "logistics", "label": "Logistics, BPO or outsourcing", "preset": "bpo"},
-    {"key": "education", "label": "Training institute or education", "preset": "institute"},
+    {"key": "education", "label": "Training institute or education", "preset": "standard"},
 ]
 _INDUSTRY = {i["key"]: i for i in INDUSTRIES}
 
@@ -84,8 +84,9 @@ def recommend_config(profile: dict) -> dict:
     reasons: List[str] = []
     industry = _INDUSTRY.get((profile.get("industry") or "").strip().lower())
     preset = industry["preset"] if industry else "standard"
+    preset_dict = presets.PRESETS.get(preset) or getattr(presets, "_LEGACY_PRESETS", {}).get(preset, {})
     if industry:
-        reasons.append(f"'{industry['label']}' uses the {presets.PRESETS[preset]['label']} setup")
+        reasons.append(f"'{industry['label']}' uses the {preset_dict.get('label', preset)} setup")
     else:
         reasons.append("No industry given, so the standard CRM is used")
 
@@ -142,7 +143,7 @@ def create_workspace(
     admin_role: str = "Admin", demo_of: Optional[int] = None,
 ) -> dict:
     """Tenant + first user + preset features and settings. Raises ValueError when the preset or settings are invalid."""
-    if preset not in presets.PRESETS:
+    if preset not in presets.PRESETS and preset not in getattr(presets, "_LEGACY_PRESETS", {}):
         raise ValueError(f"Unknown preset '{preset}'")
     tenant_settings.validate(settings or {})
     admin_email = admin_email.strip()

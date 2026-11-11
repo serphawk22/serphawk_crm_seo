@@ -21,6 +21,10 @@ def criteria():
     uid, role = value[:2]
     invoice_options = ()
     if role not in {"Admin", "SuperAdmin", "Demo"}:
+        if role == "Admissions":
+            from addons.institute.models import Student
+            return (with_loader_criteria(Invoice, Invoice.student_id.in_(select(Student.id).where(
+                Student.admissions_assignee_id == uid)), include_aliases=True),)
         condition = ClientProfile.userId == uid if role == "Client" else or_(ClientProfile.assignedEmployeeId == uid, ClientProfile.created_by == uid) if is_sales() else false()
         invoice_options = (with_loader_criteria(Invoice, Invoice.client_id.in_(select(ClientProfile.id).where(condition)), include_aliases=True),)
     if not is_sales():

@@ -3,6 +3,7 @@
  *  Keys match modules/features.py. Pages that are not listed are always open (dashboard, leads, notifications, profile...). */
 const PAGE_MODULES: ReadonlyArray<readonly [string, string]> = [
   // CRM / work
+  ["/legacy-command-center", "dashboard"],
   ["/leads", "leads"], ["/contacts", "contacts"], ["/clients", "clients"], ["/admin/clients", "clients"],
   ["/work-queue", "work_queue"], ["/projects", "projects"], ["/task-sheet", "task_sheet"], ["/reports", "reports"],
   ["/meetings", "meetings"], ["/calls", "calls"], ["/teams", "teams"], ["/admin/leaderboard", "leaderboard"],
@@ -17,11 +18,11 @@ const PAGE_MODULES: ReadonlyArray<readonly [string, string]> = [
   ["/support/cases", "cases"], ["/support/solutions", "support"], ["/support/helpdesk", "support_sh"],
   ["/import", "import_data"], ["/admin/api-intelligence", "api_intelligence"],
   // business suite
-  ["/command-center", "command_center"], ["/revenue", "finance_suite"], ["/business-costs", "finance_suite"],
+  ["/command-center", "command_center"], ["/dashboard-b2c", "dashboard_b2c"], ["/revenue", "finance_suite"], ["/business-costs", "finance_suite"],
   ["/lead-sources", "lead_sources"], ["/lead-source-analytics", "lead_source_analytics"], ["/ownership", "ownership"],
   ["/dropped-clients", "dropped_clients"],
   // institute
-  ["/students", "institute"], ["/courses", "institute"], ["/batches", "institute"], ["/instructors", "institute"],
+  ["/admissions", "institute"], ["/students", "institute"], ["/courses", "institute"], ["/batches", "institute"], ["/instructors", "institute"],
   ["/enrollments", "institute"], ["/schedule", "institute"], ["/institute-analytics", "institute"],
 ];
 
@@ -42,7 +43,7 @@ const LABELS: Record<string, string> = {
   demo_accounts: "Demo account data", inbox: "Inbox", followups: "Follow-ups", followup_board: "Follow-up board",
   email_agent: "Email Agent", voice_agent: "AI Voice Caller", inventory: "Inventory & orders", products: "Products catalog",
   billing: "Quotes & billing", invoices: "Invoices", cases: "Cases", support_sh: "Support @SH", proposals: "Proposals", marketplace: "Marketplace", support: "Solutions",
-  import_data: "Import data", api_intelligence: "API Intelligence", command_center: "Command center", finance_suite: "Revenue & business costs",
+  import_data: "Import data", api_intelligence: "API Intelligence", command_center: "Dashboard B2B", dashboard_b2c: "Dashboard B2C", dashboard: "Command Center", finance_suite: "Revenue & business costs",
   lead_sources: "Lead sources", ownership: "Ownership history", dropped_clients: "Dropped clients", institute: "Institute",
 };
 

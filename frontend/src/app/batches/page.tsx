@@ -49,6 +49,7 @@ export default function BatchesPage() {
   const [editBatch, setEditBatch] = useState<Batch | null>(null);
   const [form, setForm] = useState({ course_id: "", instructor_id: "", batch_name: "", batch_code: "", start_date: "", end_date: "", schedule: "", session_duration_hours: "1", auto_assign_instructor: true, assignment_strategy: "round_robin", mode: "Offline", max_seats: "30", status: "Upcoming", room_or_link: "", notes: "" });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const fetch_ = async () => {
     setLoading(true);
@@ -71,11 +72,13 @@ export default function BatchesPage() {
   );
 
   const openCreate = () => {
+    setSaveError("");
     setEditBatch(null);
     setForm({ course_id: "", instructor_id: "", batch_name: "", batch_code: "", start_date: "", end_date: "", schedule: "", session_duration_hours: "1", auto_assign_instructor: true, assignment_strategy: "round_robin", mode: "Offline", max_seats: "30", status: "Upcoming", room_or_link: "", notes: "" });
     setShowModal(true);
   };
   const openEdit = (b: Batch) => {
+    setSaveError("");
     setEditBatch(b);
     setForm({ course_id: b.course_id.toString(), instructor_id: b.instructor_id?.toString() || "", batch_name: b.batch_name, batch_code: b.batch_code || "", start_date: b.start_date?.split("T")[0] || "", end_date: b.end_date?.split("T")[0] || "", schedule: b.schedule || "", session_duration_hours: String(b.session_duration_hours || 1), auto_assign_instructor: false, assignment_strategy: b.assignment_strategy || "manual", mode: b.mode, max_seats: b.max_seats.toString(), status: b.status, room_or_link: b.room_or_link || "", notes: "" });
     setShowModal(true);
@@ -84,13 +87,16 @@ export default function BatchesPage() {
   const handleSave = async () => {
     if (!form.batch_name.trim() || !form.course_id) return;
     setSaving(true);
+    setSaveError("");
     try {
       const payload = { ...form, course_id: parseInt(form.course_id), instructor_id: form.instructor_id ? parseInt(form.instructor_id) : null, session_duration_hours: parseInt(form.session_duration_hours), auto_assign_instructor: !editBatch && form.auto_assign_instructor, assignment_strategy: editBatch ? "manual" : form.assignment_strategy, max_seats: parseInt(form.max_seats) || 30, start_date: form.start_date || null, end_date: form.end_date || null };
       const url = editBatch ? `${API_BASE_URL}/batches/${editBatch.id}` : `${API_BASE_URL}/batches`;
-      await fetch(url, { method: editBatch ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const response = await fetch(url, { method: editBatch ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(typeof data.detail === "string" ? data.detail : data.detail?.message || "Could not save. Please try again."); }
       setShowModal(false);
       fetch_();
     } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Could not save. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -109,6 +115,7 @@ export default function BatchesPage() {
 
   return (
     <div className="space-y-4">
+      {saveError && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-700">{saveError}</p>}
       {/* Executive Compact Header */}
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -443,6 +450,18 @@ export default function BatchesPage() {
                     {instructors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
                   </select>
                 </div>
+                {!editBatch && <div className="col-span-2 grid gap-3 sm:grid-cols-2">
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.auto_assign_instructor} onChange={e => setForm({ ...form, auto_assign_instructor: e.target.checked })} />Auto-assign instructor</label>
+                  <select aria-label="Instructor assignment method" value={form.assignment_strategy} disabled={!form.auto_assign_instructor} onChange={e => setForm({ ...form, assignment_strategy: e.target.value })} className="rounded-xl border border-slate-200 bg-white p-2 dark:border-white/10 dark:bg-zinc-800">
+                    <option value="round_robin">Balanced round-robin</option><option value="performance">Highest instructor performance</option>
+                  </select>
+                </div>}
+                <div>
+                  <label htmlFor="batch-session-hours" className="block text-xs font-semibold mb-1">Session duration (hours)</label>
+                  <select id="batch-session-hours" value={form.session_duration_hours} onChange={e => setForm({ ...form, session_duration_hours: e.target.value })} className="w-full rounded-xl border border-slate-200 bg-white p-2 dark:border-white/10 dark:bg-zinc-800">
+                    {[1, 2, 3, 4].map(hours => <option key={hours} value={hours}>{hours} {hours === 1 ? "hour" : "hours"}</option>)}
+                  </select>
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Batch Name *"} /></label>
                   <input value={form.batch_name} onChange={e => setForm({ ...form, batch_name: e.target.value })} placeholder="e.g. Batch Jan 2025" className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-blue-500" />
@@ -485,6 +504,7 @@ export default function BatchesPage() {
                   <input value={form.schedule} onChange={e => setForm({ ...form, schedule: e.target.value })} placeholder="e.g. Mon-Wed-Fri 10am-12pm" className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-blue-500" />
                 </div>
               </div>
+              {saveError && <p role="alert" className="mt-3 text-sm text-red-600">{saveError}</p>}
               <div className="flex gap-2.5 mt-5">
                 <button onClick={() => setShowModal(false)} className="flex-1 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300 transition text-xs sm:text-sm font-semibold"><LocalizedText text={"Cancel"} /></button>
                 <button onClick={handleSave} disabled={saving} className="flex-1 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold hover:opacity-95 transition disabled:opacity-50 flex items-center justify-center gap-2 text-xs sm:text-sm shadow-xs">

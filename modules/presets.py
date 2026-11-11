@@ -21,7 +21,7 @@ _FLAGSHIP_SUITE = {"cases", "invoices", "support_sh", "lead_sources", "lead_sour
 
 PRESETS: Dict[str, dict] = {
     "serphawk": {
-        "label": "SerpHawk flagship",
+        "label": "SerpHawk Flagship",
         "description": "What the main SerpHawk product itself ships: the full CRM plus the business suite (lead sources, "
                        "revenue and costs, ownership history, command center, AI reports, dropped clients, follow-up board, "
                        "proposal share links). Apply it to the original SerpHawk company.",
@@ -36,12 +36,26 @@ PRESETS: Dict[str, dict] = {
         "features": _CRM_BASE | {"products", "billing", "invoices", "proposals"},
         "settings": {},
     },
+    "bpo": {
+        "label": "BPO / logistics",
+        "description": "SCM BPO-style: CRM plus inventory, billing, proposals and the business suite "
+                       "(lead sources, revenue and costs, ownership history, command center, AI reports).",
+        "features": _CRM_BASE | {"inventory", "billing", "invoices", "proposals", "lead_sources", "lead_source_analytics", "finance_suite", "ownership",
+                                 "stock_movements", "meeting_history", "command_center", "ai_reports",
+                                 "dropped_clients", "proposals_portal", "followup_board", "lead_webhook"},
+        "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "home_dashboard": "command_center",
+                     "lead_auto_assign": True, "lead_assignment": "workload", "sales_scoping": True,
+                     "lead_statuses": ["New", "Contacted", "Not Responded", "Neutral", "Positive", "Negative", "Converted"]},
+    },
     "full": {
         "label": "Everything",
         "description": "Every module switched on. What existing tenants had before feature entitlements.",
         "features": set(features.FEATURES),
         "settings": {},
     },
+}
+
+_LEGACY_PRESETS: Dict[str, dict] = {
     "agency": {
         "label": "Digital agency CRM",
         "description": "SerpHawk-style CRM: leads, clients, projects, inbox, follow-ups, email agent, billing, proposals.",
@@ -54,25 +68,14 @@ PRESETS: Dict[str, dict] = {
         "features": _CRM_BASE | {"billing", "invoices", "proposals", "voice_agent"},
         "settings": {},
     },
-    "bpo": {
-        "label": "BPO / logistics",
-        "description": "SCM BPO-style: CRM plus inventory, billing, proposals and the business suite "
-                       "(lead sources, revenue and costs, ownership history, command center, AI reports).",
-        "features": _CRM_BASE | {"inventory", "billing", "invoices", "proposals", "lead_sources", "lead_source_analytics", "finance_suite", "ownership",
-                                 "stock_movements", "meeting_history", "command_center", "ai_reports",
-                                 "dropped_clients", "proposals_portal", "followup_board", "lead_webhook"},
-        "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "home_dashboard": "command_center",
-                     "lead_auto_assign": True, "lead_assignment": "workload", "sales_scoping": True,
-                     "lead_statuses": ["New", "Contacted", "Not Responded", "Neutral", "Positive", "Negative", "Converted"]},
-    },
     "institute": {
         "label": "Training institute",
         "description": "SCM HB-style: leads and admissions tracking, students, courses, batches, enrollments and fees, "
                        "attendance, portals, reports, inbox, follow-ups and email agent.",
-        "features": {"dashboard", "cases", "leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
+        "features": {"dashboard", "dashboard_b2c", "cases", "leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
                      "followups", "email_agent", "support", "institute", "lead_sources", "lead_source_analytics"},
         "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "lead_assignment": "revenue",
-                     "sales_scoping": True,
+                     "sales_scoping": True, "home_dashboard": "dashboard_b2c",
                      "lead_statuses": ["New", "Contacted", "Not Responded", "Follow-up", "Webinar Scheduled",
                                        "Webinar Attended", "Webinar Not Attended", "Walk-in Scheduled",
                                        "Walk-in Attended", "Walk-in Not Attended", "Converted", "Lost"]},
@@ -92,17 +95,33 @@ PRESETS: Dict[str, dict] = {
 }
 
 
+def is_known_preset(name: str) -> bool:
+    """Keep saved/API preset names valid even when hidden from the chooser."""
+    return name in PRESETS or name in _LEGACY_PRESETS
+
+
 def list_presets() -> list:
     return [{"key": k, "label": v["label"], "description": v["description"],
-             "features": sorted(v["features"]), "settings": v["settings"]} for k, v in PRESETS.items()]
+             "features": sorted(v["features"]), "settings": v["settings"],
+             "module_count": features.module_count({key: True for key in v["features"]})} for k, v in PRESETS.items()]
 
 
 def apply_preset(session: Session, tenant_id: int, name: str, settings_override: Optional[dict] = None) -> dict:
     """Write an explicit entitlement row for every feature and merge the preset's default settings."""
-    if name not in PRESETS:
+    preset = PRESETS.get(name) or _LEGACY_PRESETS.get(name)
+    if not preset:
         raise ValueError(f"Unknown preset '{name}'")
-    preset = PRESETS[name]
-    applied = features.set_features(session, tenant_id, {k: (k in preset["features"] or (k.startswith("dashboard_") and "dashboard" in preset["features"])) for k in features.FEATURES})
+    def included(key):
+        if key.startswith("dashboard_b2c_"):
+            return "dashboard_b2c" in preset["features"]
+        if key.startswith("command_center_"):
+            return "command_center" in preset["features"]
+        if key == "dashboard_b2c":
+            return "dashboard_b2c" in preset["features"]
+        if key.startswith("dashboard_"):
+            return "dashboard" in preset["features"]
+        return key in preset["features"]
+    applied = features.set_features(session, tenant_id, {k: included(k) for k in features.FEATURES})
     merged = dict(preset["settings"])
     merged.update(settings_override or {})
     stored = tenant_settings.update_settings(session, tenant_id, merged, preset=name)

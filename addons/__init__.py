@@ -14,8 +14,10 @@ from addons.business_suite import models as _business_suite_models  # noqa: F401
 from addons.business_suite.routes import routers as _business_suite_routers
 from addons.institute import models as _institute_models  # noqa: F401  (registers the tables)
 from addons.institute.routes import router as _institute_router
+from addons.institute.reports import router as _institute_reports_router
+from addons.institute.admissions import router as _admissions_router
 
-ROUTERS = [*_business_suite_routers, _institute_router]
+ROUTERS = [*_business_suite_routers, _admissions_router, _institute_router, _institute_reports_router]
 
 
 def register(app) -> None:

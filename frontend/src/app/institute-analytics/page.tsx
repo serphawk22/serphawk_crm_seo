@@ -1,19 +1,23 @@
 "use client";
-import LocalizedText from "@/components/LocalizedText";
 import React, { useState, useEffect, useMemo } from "react";
+import { useTenantConfig } from "@/context/TenantConfigContext";
 import { API_BASE_URL } from "@/config";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, Legend, AreaChart, Area, RadarChart, Radar, PolarGrid, PolarAngleAxis
+  PieChart, Pie, Cell, LineChart, Line, Legend, AreaChart, Area
 } from "recharts";
+import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
+import type { PieLabelRenderProps } from "recharts";
 import {
   TrendingUp, Users, BookOpen, Layers, GraduationCap, DollarSign, Star, Target,
   Loader2, BarChart2, UserCog, PieChart as PieChartIcon, ArrowUpRight, Phone, Video,
-  CheckCircle2, Clock, AlertCircle, RefreshCw, Download, Sparkles, Award, Activity,
-  ChevronDown, CalendarDays, UserCheck, Filter
+  CheckCircle2, Clock, AlertCircle, RefreshCw, Sparkles, Award, Activity,
+  Mail, Search, ExternalLink
 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
+import LeadTransferReports from "./LeadTransferReports";
 
 const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899","#6366f1","#14b8a6","#f97316","#64748b"];
 
@@ -34,6 +38,11 @@ const STAGE_COLORS: Record<string, string> = {
 
 // ── TYPES ──────────────────────────────────────────────────────────────────
 
+interface AssignedLead {
+  id: number; company_name: string; owner_id?: number | null; industry?: string; phone?: string; email?: string; source?: string;
+  status: string; created_at?: string; is_converted?: boolean; converted_student_id?: number | null;
+}
+
 interface SalesKPIs {
   leads_assigned: number;
   total_leads_all_time: number;
@@ -53,6 +62,8 @@ interface LeadSource {
   total_leads: number;
   converted_students: number;
   conversion_rate: number;
+  tuition_booked?: number;
+  advance_collected?: number;
 }
 
 interface PipelineStage {
@@ -74,11 +85,26 @@ interface InstituteData {
   sales_stats?: { user_id: number; name: string; leads_assigned: number; leads_converted: number; conversion_rate: number }[];
 }
 
+interface SalesPerformanceRep extends SalesKPIs {
+  user_id: number;
+  name: string;
+  email: string;
+  role: string;
+  recent_conversions?: unknown[];
+}
+
 interface SalesReport {
-  company_overview?: SalesKPIs & {
-    total_tuition_value: number;
-    overall_conversion_rate: number;
+  company_overview?: Partial<SalesKPIs> & {
+    demo_conversion_rate?: number;
+    total_tuition_value?: number;
+    overall_conversion_rate?: number;
+    total_leads_in_range?: number;
+    total_students_enrolled_in_range?: number;
+    total_followups?: number;
+    total_pending_due?: number;
+    total_collected_all_time?: number;
   };
+  sales_performance?: SalesPerformanceRep[];
   lead_sources?: LeadSource[];
   lead_pipeline_stages?: PipelineStage[];
   daily_trends?: { date: string; leads: number; demos: number; enrollments: number }[];
@@ -88,30 +114,30 @@ interface SalesReport {
 // ── STAT CARD ──────────────────────────────────────────────────────────────
 
 function StatCard({ label, value, icon: Icon, color, sub, delay = 0 }: {
-  label: string; value: string | number; icon: any; color: string; sub?: string; delay?: number;
+  label: string; value: string | number; icon: LucideIcon; color: string; sub?: string; delay?: number;
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay }}
-      className="bg-white dark:bg-[#111111]/90 rounded-xl p-2.5 sm:px-3 border border-slate-200/90 dark:border-white/10 flex items-center justify-between shadow-xs relative overflow-hidden group hover:border-violet-500/50 transition-all duration-150"
+      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay }}
+      className="glass-card rounded-2xl p-5 border border-white/10 relative overflow-hidden"
     >
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 uppercase tracking-wider truncate">{label}</p>
-        <div className="flex items-baseline gap-1.5 mt-0.5">
-          <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight tabular-nums truncate">{value}</p>
-          {sub && <span className="text-[10px] text-slate-400 dark:text-zinc-500 truncate hidden sm:inline">{sub}</span>}
+      <div className={`absolute top-0 right-0 w-20 h-20 bg-gradient-to-br ${color} opacity-10 rounded-bl-3xl`} />
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-zinc-500 dark:text-zinc-400 text-sm">{label}</p>
+        <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center`}>
+          <Icon className="w-4 h-4 text-white" />
         </div>
       </div>
-      <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${color} flex items-center justify-center shrink-0 ml-2 shadow-xs`}>
-        <Icon className="w-3.5 h-3.5 text-white" />
-      </div>
+      <p className="text-3xl font-bold text-slate-900 dark:text-white mb-1">{value}</p>
+      {sub && <p className="text-xs text-zinc-500">{sub}</p>}
     </motion.div>
   );
 }
 
 // ── CUSTOM PIE LABEL ───────────────────────────────────────────────────────
 
-function renderCustomLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent, name }: any) {
+function renderCustomLabel(props: PieLabelRenderProps) {
+  const cx = Number(props.cx), cy = Number(props.cy), midAngle = Number(props.midAngle), innerRadius = Number(props.innerRadius), outerRadius = Number(props.outerRadius), percent = props.percent || 0;
   if (percent < 0.05) return null;
   const RADIAN = Math.PI / 180;
   const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
@@ -129,13 +155,18 @@ function renderCustomLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent
 // ══════════════════════════════════════════════════════════════════════════
 
 export default function InstituteAnalyticsPage() {
+  const { settings } = useTenantConfig();
+  const currency = settings.default_currency || "USD";
+  const money = (value: number) => new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 0 }).format(value || 0);
   const { role, user } = useRole();
   const isAdmin = role === "Admin" || role === "SuperAdmin" || role === "Demo";
   const isSalesPerson = role === "Employee" || role === "SalesManager";
 
+
   // ── Institute-level data (admin) ──
+  const [analyticsError, setAnalyticsError] = useState("");
   const [instData, setInstData] = useState<InstituteData | null>(null);
-  const [instLoading, setInstLoading] = useState(isAdmin);
+  const [instLoading, setInstLoading] = useState<boolean>(true);
 
   // ── Personal sales data ──
   const [salesData, setSalesData] = useState<SalesReport | null>(null);
@@ -146,7 +177,7 @@ export default function InstituteAnalyticsPage() {
   const thirtyAgo = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
   const [startDate, setStartDate] = useState(thirtyAgo);
   const [endDate, setEndDate] = useState(today);
-  const [isAllTime, setIsAllTime] = useState(false);
+  const [isAllTime, setIsAllTime] = useState(true); // Default All Time so all data is visible
 
   const applyPreset = (p: "today" | "week" | "month" | "all") => {
     setIsAllTime(false);
@@ -173,48 +204,198 @@ export default function InstituteAnalyticsPage() {
     setInstLoading(true);
     fetch(`${API_BASE_URL}/institute/analytics`)
       .then(async r => { const p = await r.json(); if (!r.ok) throw new Error(); setInstData(p); })
-      .catch(() => setInstData(null))
+      .catch(() => { setInstData(null); setAnalyticsError("Could not load institute totals. Refresh to try again."); })
       .finally(() => setInstLoading(false));
   }, [isAdmin]);
 
   // Load personal sales report (scoped to self when isSalesPerson)
   const loadSalesReport = async () => {
     setSalesLoading(true);
+    setAnalyticsError("");
     try {
       const params = new URLSearchParams();
       if (isAllTime) { params.set("all_time", "true"); }
       else { params.set("start_date", startDate); params.set("end_date", endDate); }
       // If sales person — filter to self only
       if (isSalesPerson && user?.id) params.set("salesperson_id", String(user.id));
-      const res = await fetch(`${API_BASE_URL}/reports/summary?${params.toString()}`, { headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE_URL}/institute/reports?${params.toString()}`, { headers: getAuthHeaders() });
       const payload = await res.json();
       if (!res.ok) throw new Error();
       setSalesData(payload);
     } catch {
       setSalesData(null);
+      setAnalyticsError("Could not load analytics for this period. Refresh to try again.");
     } finally {
       setSalesLoading(false);
     }
   };
 
+  // ── Assigned Leads state (for sales users) ──
+  const [myLeads, setMyLeads] = useState<AssignedLead[]>([]);
+  const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leadsSearch, setLeadsSearch] = useState("");
+  const [leadsStageFilter, setLeadsStageFilter] = useState("All");
+
+  const loadMyLeads = async () => {
+    if (!isSalesPerson || !user?.id) return;
+    setLeadsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/leads?owner_id=${user.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        const list: AssignedLead[] = data.leads || [];
+        const mine = list.filter((l) => l.owner_id === user.id || String(l.owner_id) === String(user.id));
+        setMyLeads(mine);
+      }
+    } catch (e) {
+      console.warn("Could not load assigned leads", e);
+    } finally {
+      setLeadsLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSalesReport();
+    if (isSalesPerson && user?.id) {
+      loadMyLeads();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startDate, endDate, isAllTime, user?.id, role]);
 
   // ── Derived data ──
+  const dateFilteredLeads = useMemo(() => {
+    if (isAllTime) return myLeads;
+    const start = new Date(startDate).getTime();
+    const end = new Date(endDate + "T23:59:59").getTime();
+    return myLeads.filter(l => {
+      if (!l.created_at) return true;
+      const t = new Date(l.created_at).getTime();
+      return t >= start && t <= end;
+    });
+  }, [myLeads, startDate, endDate, isAllTime]);
+
+  const myPerformance = useMemo(() => {
+    if (!isSalesPerson) return null;
+    if (!salesData?.sales_performance || salesData.sales_performance.length === 0) return null;
+    if (user?.id) {
+      const found = salesData.sales_performance.find(p => String(p.user_id) === String(user.id));
+      if (found) return found;
+    }
+    if (user?.email) {
+      const found = salesData.sales_performance.find(p => p.email && p.email.toLowerCase() === user.email.toLowerCase());
+      if (found) return found;
+    }
+    return salesData.sales_performance[0] || null;
+  }, [salesData, user?.id, user?.email, isSalesPerson]);
+
+  const sourceLeadsCount = useMemo(() => {
+    return (salesData?.lead_sources || []).reduce((acc, s) => acc + (Number(s.total_leads) || 0), 0);
+  }, [salesData]);
+
+  const sourceConvertedCount = useMemo(() => {
+    return (salesData?.lead_sources || []).reduce((acc, s) => acc + (Number(s.converted_students) || 0), 0);
+  }, [salesData]);
+
+  const sourceTuition = useMemo(() => {
+    return (salesData?.lead_sources || []).reduce((acc, s) => acc + (Number(s.tuition_booked) || 0), 0);
+  }, [salesData]);
+
+  const sourceAdvance = useMemo(() => {
+    return (salesData?.lead_sources || []).reduce((acc, s) => acc + (Number(s.advance_collected) || 0), 0);
+  }, [salesData]);
+
+  const overview = useMemo(() => {
+    const o = salesData?.company_overview || {};
+    const p = myPerformance;
+
+    const directLeadsCount = dateFilteredLeads.length;
+    const directAllTimeCount = myLeads.length;
+
+    // Leads assigned in selected range:
+    const leads_assigned = directLeadsCount > 0
+      ? directLeadsCount
+      : (p?.leads_assigned || o?.leads_assigned || o?.total_leads_in_range || sourceLeadsCount || 0);
+
+    // Total leads all time:
+    const total_leads_all_time = directAllTimeCount > 0
+      ? directAllTimeCount
+      : (p?.total_leads_all_time || leads_assigned || sourceLeadsCount || 0);
+
+    // Converted / Enrolled:
+    const directEnrolled = dateFilteredLeads.filter(l => l.is_converted || l.status === "Enrolled" || l.converted_student_id).length;
+    const students_enrolled = directEnrolled > 0
+      ? directEnrolled
+      : (p?.students_enrolled || o?.students_enrolled || o?.total_students_enrolled_in_range || sourceConvertedCount || 0);
+
+    // Conversion rate:
+    const conversion_rate = leads_assigned > 0
+      ? Math.round((students_enrolled / leads_assigned) * 1000) / 10
+      : (p?.conversion_rate || o?.conversion_rate || o?.overall_conversion_rate || 0);
+
+    // Demos:
+    const demos_scheduled = p?.demos_scheduled ?? o?.demos_scheduled ?? 0;
+    const demos_successful = p?.demos_successful ?? o?.demos_successful ?? 0;
+    const demo_success_rate = p?.demo_success_rate ?? o?.demo_success_rate ?? o?.demo_conversion_rate ?? (demos_scheduled > 0 ? Math.round((demos_successful / demos_scheduled) * 100) : 0);
+
+    // Follow-ups:
+    const followups_count = p?.followups_count ?? o?.followups_count ?? o?.total_followups ?? 0;
+
+    // Only recorded financial values; never estimate tuition or payments from headcount.
+    const tuition_booked = p?.tuition_booked ?? o?.total_tuition_value ?? sourceTuition ?? 0;
+    const advance_collected = p?.advance_collected ?? o?.advance_collected ?? sourceAdvance ?? 0;
+    const pending_due = p?.pending_due ?? o?.total_pending_due ?? Math.max(0, tuition_booked - advance_collected);
+
+    return {
+      leads_assigned,
+      total_leads_all_time,
+      students_enrolled,
+      conversion_rate,
+      demos_scheduled,
+      demos_successful,
+      demo_success_rate,
+      followups_count,
+      tuition_booked,
+      advance_collected,
+      pending_due,
+    };
+  }, [salesData, myPerformance, dateFilteredLeads, myLeads, sourceLeadsCount, sourceConvertedCount, sourceTuition, sourceAdvance]);
+
   const sourceData = useMemo(() => (salesData?.lead_sources || []).filter(s => s.total_leads > 0), [salesData]);
   const pipelineData = useMemo(() => (salesData?.lead_pipeline_stages || []).filter(s => s.count > 0), [salesData]);
-  const overview = salesData?.company_overview;
   const monthlyTrends = salesData?.monthly_trends || [];
 
+  const filteredMyLeads = useMemo(() => {
+    return dateFilteredLeads.filter(l => {
+      const q = leadsSearch.toLowerCase().trim();
+      const matchSearch = !q
+        || (l.company_name || "").toLowerCase().includes(q)
+        || (l.phone || "").toLowerCase().includes(q)
+        || (l.email || "").toLowerCase().includes(q)
+        || (l.source || "").toLowerCase().includes(q);
+      const matchStage = leadsStageFilter === "All" || l.status === leadsStageFilter;
+      return matchSearch && matchStage;
+    });
+  }, [dateFilteredLeads, leadsSearch, leadsStageFilter]);
+
   // ── Loading state ──
+  if (!isAdmin) {
+    return (
+      <div className="mx-auto max-w-[1400px] py-20 text-center">
+        <div className="mx-auto max-w-md rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm font-semibold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+          <AlertCircle className="mx-auto h-8 w-8 mb-2" />
+          <h2 className="text-base font-bold">Access Restricted</h2>
+          <p className="mt-1 text-xs opacity-80">Analytics is restricted to Administrators.</p>
+        </div>
+      </div>
+    );
+  }
+
   if ((isAdmin && instLoading) || (isSalesPerson && salesLoading && !salesData)) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="w-10 h-10 animate-spin text-violet-400" />
-          <p className="text-zinc-500 text-sm"><LocalizedText text={"Loading your analytics…"} /></p>
+          <p className="text-zinc-500 text-sm">Loading your analytics…</p>
         </div>
       </div>
     );
@@ -222,62 +403,62 @@ export default function InstituteAnalyticsPage() {
 
   // ── Date filter bar (shared) ──
   const DateFilter = () => (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-2">
       {(["today", "week", "month", "all"] as const).map(p => (
         <button key={p}
           onClick={() => applyPreset(p)}
-          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
             (p === "all" && isAllTime) || (!isAllTime && (
               (p === "today" && startDate === today && endDate === today) ||
               (p === "week" && startDate === new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10) && endDate === today) ||
               (p === "month" && endDate === today && startDate <= today)
             ))
-              ? "bg-violet-600 text-white shadow-xs"
-              : "bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-white/10"
+              ? "bg-violet-600 text-white shadow-sm"
+              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
           }`}
         >
-          {p === "today" ? "Today" : p === "week" ? "7D" : p === "month" ? "Month" : "All"}
+          {p === "today" ? "Today" : p === "week" ? "Last 7 Days" : p === "month" ? "This Month" : "All Time"}
         </button>
       ))}
       {!isAllTime && (
         <>
           <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-            className="px-2 py-1 rounded-lg text-xs bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-zinc-300 focus:outline-none focus:border-violet-500" />
-          <span className="text-slate-400 text-xs"><LocalizedText text={"to"} /></span>
+            className="px-3 py-1.5 rounded-lg text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+          <span className="text-slate-400 text-xs">to</span>
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-            className="px-2 py-1 rounded-lg text-xs bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-zinc-300 focus:outline-none focus:border-violet-500" />
+            className="px-3 py-1.5 rounded-lg text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500" />
         </>
       )}
-      <button onClick={loadSalesReport} className="p-1 rounded-lg bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-violet-500 transition-colors border border-slate-200/80 dark:border-white/10">
+      <button onClick={loadSalesReport} className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-violet-500 transition-colors">
         <RefreshCw className="w-3.5 h-3.5" />
       </button>
     </div>
   );
 
   return (
-    <div className="space-y-4 pb-12">
+    <div className="space-y-8 pb-16">
+      {analyticsError && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-700">{analyticsError}</p>}
 
-      {/* ── COMPACT EXECUTIVE HEADER ── */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 bg-white dark:bg-[#111111]/90 p-3 sm:px-4 sm:py-2.5 rounded-xl border border-slate-200/90 dark:border-white/10 shadow-xs">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-violet-500/10 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 border border-violet-500/20 flex items-center justify-center shrink-0">
-            <BarChart2 className="w-4 h-4" />
+      {/* ── PAGE HEADER ── */}
+      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/10 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+              <Sparkles className="h-3.5 w-3.5" />
+              {isSalesPerson ? "Personal Analytics" : "Institute Analytics"}
+            </span>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-none">
-                {isSalesPerson ? "My Performance Dashboard" : "Institute Analytics"}
-              </h1>
-              <span className="text-[10px] px-2 py-0.2 rounded-full font-semibold bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20">
-                {isSalesPerson ? "Personal" : "Overview"}
-              </span>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+              <BarChart2 className="w-5 h-5 text-white" />
             </div>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-              {isSalesPerson
-                ? `Performance metrics for ${user?.name || "you"}`
-                : "Overview across leads, admissions, courses and revenue"}
-            </p>
-          </div>
+            {isSalesPerson ? `My Performance Dashboard` : "Institute Analytics"}
+          </h1>
+          <p className="text-slate-500 dark:text-zinc-400 mt-1">
+            {isSalesPerson
+              ? `Showing leads & conversions assigned to you, ${user?.name || ""}. Use the date filter to adjust the reporting window.`
+              : "Comprehensive overview of institute performance across all staff."}
+          </p>
         </div>
         <DateFilter />
       </div>
@@ -294,46 +475,47 @@ export default function InstituteAnalyticsPage() {
           ) : !salesData ? (
             <div className="text-center text-zinc-500 py-20">
               <AlertCircle className="w-10 h-10 mx-auto mb-3 text-zinc-400" />
-              <p><LocalizedText text={"Could not load your analytics. Try refreshing."} /></p>
+              <p>Could not load your analytics. Try refreshing.</p>
             </div>
           ) : (
             <>
               {/* Personal KPI Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
                 <StatCard label="Leads Assigned" value={overview?.leads_assigned ?? 0} icon={Users} color="from-blue-500 to-indigo-600" sub={`${overview?.total_leads_all_time ?? 0} all time`} delay={0} />
                 <StatCard label="Students Enrolled" value={overview?.students_enrolled ?? 0} icon={GraduationCap} color="from-emerald-500 to-teal-600" sub={`${overview?.conversion_rate ?? 0}% conversion`} delay={0.05} />
                 <StatCard label="Demos Scheduled" value={overview?.demos_scheduled ?? 0} icon={Video} color="from-indigo-500 to-violet-600" sub={`${overview?.demos_successful ?? 0} successful (${overview?.demo_success_rate ?? 0}%)`} delay={0.1} />
                 <StatCard label="Follow-ups" value={overview?.followups_count ?? 0} icon={Phone} color="from-amber-500 to-orange-600" sub="calls & check-ins" delay={0.15} />
-                <StatCard label="Tuition Booked" value={`₹${(overview?.tuition_booked ?? 0).toLocaleString()}`} icon={DollarSign} color="from-green-500 to-emerald-600" sub="total course value" delay={0.2} />
-                <StatCard label="Advance Collected" value={`₹${(overview?.advance_collected ?? 0).toLocaleString()}`} icon={CheckCircle2} color="from-teal-500 to-cyan-600" sub="amount received" delay={0.25} />
-                <StatCard label="Pending Due" value={`₹${(overview?.pending_due ?? 0).toLocaleString()}`} icon={Clock} color="from-rose-500 to-pink-600" sub="outstanding balance" delay={0.3} />
+                <StatCard label="Tuition Booked" value={money((overview?.tuition_booked ?? 0))} icon={DollarSign} color="from-green-500 to-emerald-600" sub="total course value" delay={0.2} />
+                <StatCard label="Advance Collected" value={money((overview?.advance_collected ?? 0))} icon={CheckCircle2} color="from-teal-500 to-cyan-600" sub="amount received" delay={0.25} />
+                <StatCard label="Pending Due" value={money((overview?.pending_due ?? 0))} icon={Clock} color="from-rose-500 to-pink-600" sub="outstanding balance" delay={0.3} />
                 <StatCard label="Conversion Rate" value={`${overview?.conversion_rate ?? 0}%`} icon={Target} color="from-pink-500 to-rose-600" sub="lead → student" delay={0.35} />
               </div>
 
               {/* Source Distribution + Pipeline — side by side */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                 {/* Source Distribution Pie */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
-                  className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
+                  className="glass-card rounded-2xl p-6 border border-white/10">
                   <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-1 flex items-center gap-2">
-                    <PieChartIcon className="w-5 h-5 text-violet-500" /> <LocalizedText text={"My Lead Source Distribution"} /></h2>
-                  <p className="text-xs text-zinc-500 mb-5"><LocalizedText text={"Where your leads are coming from"} /></p>
+                    <PieChartIcon className="w-5 h-5 text-violet-500" /> My Lead Source Distribution
+                  </h2>
+                  <p className="text-xs text-zinc-500 mb-5">Where your leads are coming from</p>
                   {sourceData.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-56 text-zinc-500">
                       <PieChartIcon className="w-10 h-10 mb-3 text-zinc-400" />
-                      <p className="text-sm"><LocalizedText text={"No lead source data for this period"} /></p>
+                      <p className="text-sm">No lead source data for this period</p>
                     </div>
                   ) : (
                     <>
-                      <ResponsiveContainer width="100%" height={180}>
+                      <ResponsiveContainer width="100%" height={220}>
                         <PieChart>
                           <Pie data={sourceData} dataKey="total_leads" nameKey="source" cx="50%" cy="50%"
                             outerRadius={90} labelLine={false} label={renderCustomLabel}>
                             {sourceData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                           </Pie>
                           <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", color: "#fff" }}
-                            formatter={(v: any, name: any) => [`${v} leads`, name]} />
+                            formatter={(v, name) => [`${v} leads`, name]} />
                         </PieChart>
                       </ResponsiveContainer>
                       <div className="flex flex-wrap gap-2 mt-4">
@@ -350,18 +532,19 @@ export default function InstituteAnalyticsPage() {
 
                 {/* Source → Conversion Table */}
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
-                  className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
+                  className="glass-card rounded-2xl p-6 border border-white/10">
                   <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-1 flex items-center gap-2">
-                    <Target className="w-5 h-5 text-emerald-500" /> <LocalizedText text={"Source Performance"} /></h2>
-                  <p className="text-xs text-zinc-500 mb-5"><LocalizedText text={"Leads vs conversions by source channel"} /></p>
+                    <Target className="w-5 h-5 text-emerald-500" /> Source Performance
+                  </h2>
+                  <p className="text-xs text-zinc-500 mb-5">Leads vs conversions by source channel</p>
                   {sourceData.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-56 text-zinc-500">
                       <AlertCircle className="w-10 h-10 mb-3 text-zinc-400" />
-                      <p className="text-sm"><LocalizedText text={"No data for selected period"} /></p>
+                      <p className="text-sm">No data for selected period</p>
                     </div>
                   ) : (
                     <div className="space-y-3 overflow-y-auto max-h-[280px] pr-1">
-                      {sourceData.sort((a, b) => b.total_leads - a.total_leads).map((s, i) => (
+                      {[...sourceData].sort((a, b) => b.total_leads - a.total_leads).map((s, i) => (
                         <div key={s.source} className="p-3 bg-white/5 dark:bg-white/5 rounded-xl border border-white/10">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
@@ -371,8 +554,8 @@ export default function InstituteAnalyticsPage() {
                             <span className="text-xs font-bold text-emerald-500">{s.conversion_rate}%</span>
                           </div>
                           <div className="flex items-center gap-4 text-xs text-zinc-500">
-                            <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {s.total_leads} <LocalizedText text={"leads"} /></span>
-                            <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> {s.converted_students} <LocalizedText text={"enrolled"} /></span>
+                            <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {s.total_leads} leads</span>
+                            <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> {s.converted_students} enrolled</span>
                           </div>
                           <div className="mt-2 bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
                             <div className="h-1.5 rounded-full" style={{ width: `${Math.min(s.conversion_rate, 100)}%`, background: COLORS[i % COLORS.length] }} />
@@ -386,12 +569,13 @@ export default function InstituteAnalyticsPage() {
 
               {/* Pipeline Stages Bar Chart */}
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-                className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
+                className="glass-card rounded-2xl p-6 border border-white/10">
                 <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-1 flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-blue-500" /> <LocalizedText text={"My Lead Pipeline"} /></h2>
-                <p className="text-xs text-zinc-500 mb-5"><LocalizedText text={"How your leads are distributed across stages"} /></p>
+                  <Activity className="w-5 h-5 text-blue-500" /> My Lead Pipeline
+                </h2>
+                <p className="text-xs text-zinc-500 mb-5">How your leads are distributed across stages</p>
                 {pipelineData.length === 0 ? (
-                  <div className="flex items-center justify-center h-48 text-zinc-500"><LocalizedText text={"No pipeline data for this period"} /></div>
+                  <div className="flex items-center justify-center h-48 text-zinc-500">No pipeline data for this period</div>
                 ) : (
                   <>
                     <ResponsiveContainer width="100%" height={200}>
@@ -400,7 +584,7 @@ export default function InstituteAnalyticsPage() {
                         <XAxis dataKey="stage" stroke="#71717a" tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" height={50} />
                         <YAxis stroke="#71717a" tick={{ fontSize: 11 }} allowDecimals={false} />
                         <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", color: "#fff" }}
-                          formatter={(v: any, _: any, props: any) => [`${v} leads (${props.payload.percentage}%)`, props.payload.stage]} />
+                          formatter={(v, _, props) => [`${v} leads (${props.payload.percentage}%)`, props.payload.stage]} />
                         <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                           {pipelineData.map((entry, i) => (
                             <Cell key={entry.stage} fill={STAGE_COLORS[entry.stage] || COLORS[i % COLORS.length]} />
@@ -423,10 +607,11 @@ export default function InstituteAnalyticsPage() {
               {/* Monthly Trend */}
               {monthlyTrends.length > 0 && (
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
-                  className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
+                  className="glass-card rounded-2xl p-6 border border-white/10">
                   <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-5 flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-violet-500" /> <LocalizedText text={"Monthly Activity Trend"} /></h2>
-                  <ResponsiveContainer width="100%" height={200}>
+                    <TrendingUp className="w-5 h-5 text-violet-500" /> Monthly Activity Trend
+                  </h2>
+                  <ResponsiveContainer width="100%" height={240}>
                     <AreaChart data={monthlyTrends} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="gradLeads" x1="0" y1="0" x2="0" y2="1">
@@ -457,15 +642,17 @@ export default function InstituteAnalyticsPage() {
 
               {/* Self-Assessment Panel */}
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-                className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
+                className="glass-card rounded-2xl p-6 border border-white/10">
                 <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-1 flex items-center gap-2">
-                  <Award className="w-5 h-5 text-amber-500" /> <LocalizedText text={"Self-Assessment & Evaluation"} /></h2>
-                <p className="text-xs text-zinc-500 mb-5"><LocalizedText text={"How you're performing against key targets"} /></p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+                  <Award className="w-5 h-5 text-amber-500" /> Self-Assessment & Evaluation
+                </h2>
+                <p className="text-xs text-zinc-500 mb-5">How you&apos;re performing against key targets</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {/* Conversion health */}
                   <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
                     <p className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      <Target className="w-4 h-4 text-emerald-500" /> <LocalizedText text={"Conversion Health"} /></p>
+                      <Target className="w-4 h-4 text-emerald-500" /> Conversion Health
+                    </p>
                     {[
                       { label: "Lead → Student", value: overview?.conversion_rate ?? 0, threshold: 20, unit: "%" },
                       { label: "Demo success rate", value: overview?.demo_success_rate ?? 0, threshold: 50, unit: "%" },
@@ -489,7 +676,8 @@ export default function InstituteAnalyticsPage() {
                   {/* Activity */}
                   <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
                     <p className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      <Activity className="w-4 h-4 text-blue-500" /> <LocalizedText text={"Activity Metrics"} /></p>
+                      <Activity className="w-4 h-4 text-blue-500" /> Activity Metrics
+                    </p>
                     {[
                       { label: "Demos scheduled", value: overview?.demos_scheduled ?? 0, target: 10 },
                       { label: "Follow-ups done", value: overview?.followups_count ?? 0, target: 20 },
@@ -513,37 +701,186 @@ export default function InstituteAnalyticsPage() {
                   {/* Revenue */}
                   <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
                     <p className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                      <DollarSign className="w-4 h-4 text-green-500" /> <LocalizedText text={"Revenue Contribution"} /></p>
+                      <DollarSign className="w-4 h-4 text-green-500" /> Revenue Contribution
+                    </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
-                        <span className="text-zinc-500"><LocalizedText text={"Tuition Booked"} /></span>
-                        <span className="font-bold text-violet-400">₹{(overview?.tuition_booked ?? 0).toLocaleString()}</span>
+                        <span className="text-zinc-500">Tuition Booked</span>
+                        <span className="font-bold text-violet-400">{money((overview?.tuition_booked ?? 0))}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-zinc-500"><LocalizedText text={"Advance Collected"} /></span>
-                        <span className="font-bold text-emerald-400">₹{(overview?.advance_collected ?? 0).toLocaleString()}</span>
+                        <span className="text-zinc-500">Advance Collected</span>
+                        <span className="font-bold text-emerald-400">{money((overview?.advance_collected ?? 0))}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-zinc-500"><LocalizedText text={"Still Pending"} /></span>
-                        <span className="font-bold text-rose-400">₹{(overview?.pending_due ?? 0).toLocaleString()}</span>
+                        <span className="text-zinc-500">Still Pending</span>
+                        <span className="font-bold text-rose-400">{money((overview?.pending_due ?? 0))}</span>
                       </div>
                       <div className="mt-3 pt-3 border-t border-white/10">
                         {(overview?.advance_collected ?? 0) + (overview?.pending_due ?? 0) > 0 ? (
                           <>
-                            <p className="text-xs text-zinc-500 mb-1"><LocalizedText text={"Collection progress"} /></p>
+                            <p className="text-xs text-zinc-500 mb-1">Collection progress</p>
                             <div className="bg-slate-200 dark:bg-slate-700 rounded-full h-2">
                               <div className="h-2 rounded-full bg-emerald-500" style={{
                                 width: `${Math.min(((overview?.advance_collected ?? 0) / ((overview?.advance_collected ?? 0) + (overview?.pending_due ?? 0))) * 100, 100).toFixed(0)}%`
                               }} />
                             </div>
                             <p className="text-xs text-emerald-400 mt-1">
-                              {Math.min(((overview?.advance_collected ?? 0) / ((overview?.advance_collected ?? 0) + (overview?.pending_due ?? 0))) * 100, 100).toFixed(1)}<LocalizedText text={"% collected"} /></p>
+                              {Math.min(((overview?.advance_collected ?? 0) / ((overview?.advance_collected ?? 0) + (overview?.pending_due ?? 0))) * 100, 100).toFixed(1)}% collected
+                            </p>
                           </>
-                        ) : <p className="text-xs text-zinc-500"><LocalizedText text={"No revenue data yet"} /></p>}
+                        ) : <p className="text-xs text-zinc-500">No revenue data yet</p>}
                       </div>
                     </div>
                   </div>
                 </div>
+              </motion.div>
+
+              {/* ── My Assigned Leads Detail Table ── */}
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }}
+                className="glass-card rounded-2xl p-6 border border-white/10">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5 pb-4 border-b border-white/10">
+                  <div>
+                    <h2 className="text-slate-900 dark:text-white font-semibold text-lg flex items-center gap-2">
+                      <Users className="w-5 h-5 text-blue-500" /> My Assigned Leads
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                        {filteredMyLeads.length} {filteredMyLeads.length === 1 ? 'lead' : 'leads'}
+                      </span>
+                    </h2>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Direct list of leads currently assigned to you and their current status
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Search */}
+                    <div className="relative min-w-[220px]">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                      <input
+                        type="text"
+                        placeholder="Search lead, phone, source…"
+                        value={leadsSearch}
+                        onChange={e => setLeadsSearch(e.target.value)}
+                        className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl bg-white/5 border border-white/10 text-slate-900 dark:text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500 transition-all"
+                      />
+                    </div>
+
+                    <Link
+                      href="/leads"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 transition-all shadow-sm"
+                    >
+                      <span>Manage Leads</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
+                </div>
+
+                {/* Stage Filter Pills */}
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  {["All", ...Array.from(new Set(myLeads.map(l => l.status || "New"))).filter(Boolean)].map(stg => (
+                    <button
+                      key={stg}
+                      onClick={() => setLeadsStageFilter(stg)}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                        leadsStageFilter === stg
+                          ? "bg-violet-600 text-white shadow-sm"
+                          : "bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10"
+                      }`}
+                    >
+                      {stg} {stg === "All" ? `(${dateFilteredLeads.length})` : `(${dateFilteredLeads.filter(l => (l.status || "New") === stg).length})`}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Leads List */}
+                {leadsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 animate-spin text-violet-400" />
+                  </div>
+                ) : filteredMyLeads.length === 0 ? (
+                  <div className="text-center py-12 text-zinc-500 border border-dashed border-white/10 rounded-xl">
+                    <Users className="w-8 h-8 mx-auto mb-2 text-zinc-600" />
+                    <p className="text-sm font-medium">No assigned leads found for this filter</p>
+                    <p className="text-xs text-zinc-600 mt-1">Try selecting &apos;All Time&apos; in the date filter above or clearing your search.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-white/10 text-zinc-400 uppercase tracking-wider font-semibold">
+                          <th className="pb-3 px-3">Lead Name</th>
+                          <th className="pb-3 px-3">Contact</th>
+                          <th className="pb-3 px-3">Source</th>
+                          <th className="pb-3 px-3">Stage</th>
+                          <th className="pb-3 px-3">Added Date</th>
+                          <th className="pb-3 px-3 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {filteredMyLeads.map((l) => {
+                          const stageColor = STAGE_COLORS[l.status] || "#8b5cf6";
+                          return (
+                            <tr key={l.id} className="hover:bg-white/[0.03] transition-colors">
+                              <td className="py-3 px-3">
+                                <div className="font-semibold text-slate-900 dark:text-white text-sm">
+                                  {l.company_name || "Unnamed Lead"}
+                                </div>
+                                {l.industry && (
+                                  <div className="text-[11px] text-zinc-500">{l.industry}</div>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-zinc-400">
+                                <div className="space-y-0.5">
+                                  {l.phone && (
+                                    <a href={`tel:${l.phone}`} className="flex items-center gap-1 hover:text-violet-400 transition-colors">
+                                      <Phone className="w-3 h-3 text-zinc-500" /> {l.phone}
+                                    </a>
+                                  )}
+                                  {l.email && (
+                                    <a href={`mailto:${l.email}`} className="flex items-center gap-1 hover:text-violet-400 transition-colors">
+                                      <Mail className="w-3 h-3 text-zinc-500" /> {l.email}
+                                    </a>
+                                  )}
+                                  {!l.phone && !l.email && <span className="text-zinc-600">—</span>}
+                                </div>
+                              </td>
+                              <td className="py-3 px-3">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/5 text-zinc-300 border border-white/10">
+                                  {l.source || "Direct"}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3">
+                                <span
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                                  style={{
+                                    backgroundColor: `${stageColor}20`,
+                                    color: stageColor,
+                                    border: `1px solid ${stageColor}40`
+                                  }}
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stageColor }} />
+                                  {l.status || "New"}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-zinc-500">
+                                {l.created_at ? new Date(l.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—"}
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                <Link
+                                  href={`/leads?id=${l.id}`}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white/5 text-violet-400 hover:bg-violet-600 hover:text-white transition-all"
+                                >
+                                  <span>View</span>
+                                  <ArrowUpRight className="w-3 h-3" />
+                                </Link>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </motion.div>
             </>
           )}
@@ -565,7 +902,7 @@ export default function InstituteAnalyticsPage() {
               {/* Institute KPI Cards */}
               {instData && (() => {
                 const kpis = [
-                  { label: "Total Revenue", value: `₹${(instData.revenue?.total_collected || 0).toLocaleString()}`, icon: DollarSign, color: "from-green-500 to-emerald-600", sub: `₹${(instData.revenue?.total_due || 0).toLocaleString()} pending` },
+                  { label: "Total Revenue", value: money((instData.revenue?.total_collected || 0)), icon: DollarSign, color: "from-green-500 to-emerald-600", sub: `${money((instData.revenue?.total_due || 0))} pending` },
                   { label: "Total Students", value: instData.students?.total || 0, icon: GraduationCap, color: "from-violet-500 to-indigo-600", sub: `${instData.students?.active || 0} active` },
                   { label: "Active Courses", value: instData.courses?.active || 0, icon: BookOpen, color: "from-amber-500 to-orange-600", sub: `${instData.courses?.total || 0} total` },
                   { label: "Active Batches", value: instData.batches?.active || 0, icon: Layers, color: "from-blue-500 to-cyan-600", sub: `${instData.batches?.total || 0} total` },
@@ -573,7 +910,7 @@ export default function InstituteAnalyticsPage() {
                   { label: "Total Enrollments", value: instData.enrollments?.total || 0, icon: TrendingUp, color: "from-teal-500 to-cyan-600", sub: `${instData.enrollments?.active || 0} active` },
                 ];
                 return (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-2.5">
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                     {kpis.map((k, i) => <StatCard key={k.label} {...k} delay={i * 0.05} />)}
                   </div>
                 );
@@ -581,20 +918,21 @@ export default function InstituteAnalyticsPage() {
 
               {/* Source Distribution (institute wide) */}
               {sourceData.length > 0 && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-                    className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
+                    className="glass-card rounded-2xl p-6 border border-white/10">
                     <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-1 flex items-center gap-2">
-                      <PieChartIcon className="w-5 h-5 text-violet-500" /> <LocalizedText text={"Lead Source Distribution"} /></h2>
-                    <p className="text-xs text-zinc-500 mb-5"><LocalizedText text={"All institute leads by acquisition channel"} /></p>
-                    <ResponsiveContainer width="100%" height={180}>
+                      <PieChartIcon className="w-5 h-5 text-violet-500" /> Lead Source Distribution
+                    </h2>
+                    <p className="text-xs text-zinc-500 mb-5">All institute leads by acquisition channel</p>
+                    <ResponsiveContainer width="100%" height={220}>
                       <PieChart>
                         <Pie data={sourceData} dataKey="total_leads" nameKey="source" cx="50%" cy="50%"
                           outerRadius={90} labelLine={false} label={renderCustomLabel}>
                           {sourceData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                         </Pie>
                         <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", color: "#fff" }}
-                          formatter={(v: any, name: any) => [`${v} leads`, name]} />
+                          formatter={(v, name) => [`${v} leads`, name]} />
                       </PieChart>
                     </ResponsiveContainer>
                     <div className="flex flex-wrap gap-2 mt-2">
@@ -608,14 +946,15 @@ export default function InstituteAnalyticsPage() {
                   </motion.div>
 
                   <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
-                    className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
+                    className="glass-card rounded-2xl p-6 border border-white/10">
                     <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-1 flex items-center gap-2">
-                      <BarChart2 className="w-5 h-5 text-blue-500" /> <LocalizedText text={"Pipeline Stages"} /></h2>
-                    <p className="text-xs text-zinc-500 mb-5"><LocalizedText text={"Lead distribution across all pipeline stages"} /></p>
+                      <BarChart2 className="w-5 h-5 text-blue-500" /> Pipeline Stages
+                    </h2>
+                    <p className="text-xs text-zinc-500 mb-5">Lead distribution across all pipeline stages</p>
                     {pipelineData.length === 0 ? (
-                      <div className="flex items-center justify-center h-48 text-zinc-500 text-sm"><LocalizedText text={"No data"} /></div>
+                      <div className="flex items-center justify-center h-48 text-zinc-500 text-sm">No data</div>
                     ) : (
-                      <ResponsiveContainer width="100%" height={180}>
+                      <ResponsiveContainer width="100%" height={220}>
                         <BarChart data={pipelineData} layout="vertical" margin={{ left: 10, right: 10 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" horizontal={false} />
                           <XAxis type="number" stroke="#71717a" tick={{ fontSize: 11 }} allowDecimals={false} />
@@ -635,17 +974,18 @@ export default function InstituteAnalyticsPage() {
 
               {/* Monthly Trend (admin) */}
               {monthlyTrends.length > 0 && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
-                    className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
+                    className="glass-card rounded-2xl p-6 border border-white/10">
                     <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-4 flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5 text-violet-500" /> <LocalizedText text={"Monthly Revenue Trend"} /></h2>
-                    <ResponsiveContainer width="100%" height={200}>
+                      <TrendingUp className="w-5 h-5 text-violet-500" /> Monthly Revenue Trend
+                    </h2>
+                    <ResponsiveContainer width="100%" height={240}>
                       <LineChart data={instData?.monthly_revenue || []}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
                         <XAxis dataKey="month" stroke="#71717a" tick={{ fontSize: 11 }} />
-                        <YAxis stroke="#71717a" tick={{ fontSize: 11 }} tickFormatter={v => `₹${v.toLocaleString()}`} />
-                        <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", color: "#fff" }} formatter={(v: any) => [`₹${v.toLocaleString()}`, ""]} />
+                        <YAxis stroke="#71717a" tick={{ fontSize: 11 }} tickFormatter={v => money(Number(v))} />
+                        <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", color: "#fff" }} formatter={(v) => [money(Number(v)), ""]} />
                         <Line type="monotone" dataKey="revenue" stroke="#8b5cf6" strokeWidth={2.5} dot={{ fill: "#8b5cf6", strokeWidth: 2 }} />
                         <Line type="monotone" dataKey="enrollments" stroke="#06b6d4" strokeWidth={2} dot={{ fill: "#06b6d4" }} />
                         <Legend />
@@ -654,18 +994,19 @@ export default function InstituteAnalyticsPage() {
                   </motion.div>
 
                   <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
-                    className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
+                    className="glass-card rounded-2xl p-6 border border-white/10">
                     <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-4 flex items-center gap-2">
-                      <BookOpen className="w-5 h-5 text-amber-500" /> <LocalizedText text={"Revenue by Course"} /></h2>
+                      <BookOpen className="w-5 h-5 text-amber-500" /> Revenue by Course
+                    </h2>
                     {(instData?.revenue_by_course || []).length === 0 ? (
-                      <div className="flex items-center justify-center h-56 text-zinc-500"><p><LocalizedText text={"No data yet"} /></p></div>
+                      <div className="flex items-center justify-center h-56 text-zinc-500"><p>No data yet</p></div>
                     ) : (
-                      <ResponsiveContainer width="100%" height={200}>
+                      <ResponsiveContainer width="100%" height={240}>
                         <BarChart data={instData?.revenue_by_course || []} layout="vertical">
                           <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
-                          <XAxis type="number" stroke="#71717a" tick={{ fontSize: 11 }} tickFormatter={v => `₹${v.toLocaleString()}`} />
+                          <XAxis type="number" stroke="#71717a" tick={{ fontSize: 11 }} tickFormatter={v => money(Number(v))} />
                           <YAxis type="category" dataKey="course" width={120} stroke="#71717a" tick={{ fontSize: 11 }} />
-                          <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", color: "#fff" }} formatter={(v: any) => [`₹${v.toLocaleString()}`, ""]} />
+                          <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", color: "#fff" }} formatter={(v) => [money(Number(v)), ""]} />
                           <Bar dataKey="revenue" fill="#f59e0b" radius={[0, 4, 4, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
@@ -675,22 +1016,23 @@ export default function InstituteAnalyticsPage() {
               )}
 
               {/* Instructor + Sales Performance (admin) */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-                  className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
+                  className="glass-card rounded-2xl p-6 border border-white/10">
                   <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-4 flex items-center gap-2">
-                    <UserCog className="w-5 h-5 text-amber-500" /> <LocalizedText text={"Instructor Performance"} /></h2>
+                    <UserCog className="w-5 h-5 text-amber-500" /> Instructor Performance
+                  </h2>
                   <div className="space-y-3">
-                    {(instData?.instructor_stats || []).length === 0 ? <p className="text-zinc-500 text-center py-8"><LocalizedText text={"No instructors yet"} /></p> :
+                    {(instData?.instructor_stats || []).length === 0 ? <p className="text-zinc-500 text-center py-8">No instructors yet</p> :
                       (instData?.instructor_stats || []).map((ins) => (
-                        <div key={ins.id} className="flex items-center gap-2.5 p-2 sm:px-3 sm:py-2 bg-slate-50 dark:bg-white/5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:border-amber-500/40 transition">
-                          <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">{ins.name[0]}</div>
+                        <div key={ins.id} className="flex items-center gap-4 p-3 bg-white/5 rounded-xl">
+                          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white font-bold text-sm">{ins.name[0]}</div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-slate-900 dark:text-white font-bold text-xs truncate">{ins.name}</p>
-                            <p className="text-slate-400 dark:text-zinc-500 text-[11px] truncate mt-0.2">{ins.batches} <LocalizedText text={"batches ·"} />{ins.students} <LocalizedText text={"students"} /></p>
+                            <p className="text-slate-900 dark:text-white font-medium text-sm truncate">{ins.name}</p>
+                            <p className="text-zinc-500 text-xs">{ins.batches} batches · {ins.students} students</p>
                           </div>
-                          <div className="text-right shrink-0">
-                            <div className="flex items-center gap-1 justify-end"><Star className="w-3 h-3 text-amber-400 fill-amber-400" /><span className="text-amber-500 dark:text-amber-400 font-bold text-xs">{ins.avg_rating || "—"}</span></div>
+                          <div className="text-right">
+                            <div className="flex items-center gap-1 justify-end"><Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" /><span className="text-amber-400 font-semibold text-sm">{ins.avg_rating || "—"}</span></div>
                           </div>
                         </div>
                       ))}
@@ -698,21 +1040,22 @@ export default function InstituteAnalyticsPage() {
                 </motion.div>
 
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
-                  className="bg-white dark:bg-[#111111]/90 rounded-xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-white/10 shadow-xs">
+                  className="glass-card rounded-2xl p-6 border border-white/10">
                   <h2 className="text-slate-900 dark:text-white font-semibold text-lg mb-4 flex items-center gap-2">
-                    <Target className="w-5 h-5 text-green-500" /> <LocalizedText text={"Sales Team Performance"} /></h2>
+                    <Target className="w-5 h-5 text-green-500" /> Sales Team Performance
+                  </h2>
                   <div className="space-y-3">
-                    {(instData?.sales_stats || []).length === 0 ? <p className="text-zinc-500 text-center py-8"><LocalizedText text={"No sales data yet"} /></p> :
+                    {(instData?.sales_stats || []).length === 0 ? <p className="text-zinc-500 text-center py-8">No sales data yet</p> :
                       (instData?.sales_stats || []).map((s) => (
-                        <div key={s.user_id} className="flex items-center gap-2.5 p-2 sm:px-3 sm:py-2 bg-slate-50 dark:bg-white/5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:border-emerald-500/40 transition">
-                          <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">{(s.name || "?")[0]}</div>
+                        <div key={s.user_id} className="flex items-center gap-4 p-3 bg-white/5 rounded-xl">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold text-sm">{(s.name || "?")[0]}</div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-slate-900 dark:text-white font-bold text-xs truncate">{s.name || "Unknown"}</p>
-                            <p className="text-slate-400 dark:text-zinc-500 text-[11px] truncate mt-0.2">{s.leads_assigned} <LocalizedText text={"leads ·"} />{s.leads_converted} <LocalizedText text={"converted"} /></p>
+                            <p className="text-slate-900 dark:text-white font-medium text-sm truncate">{s.name || "Unknown"}</p>
+                            <p className="text-zinc-500 text-xs">{s.leads_assigned} leads · {s.leads_converted} converted</p>
                           </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-emerald-600 dark:text-emerald-400 font-bold text-xs tabular-nums">{s.conversion_rate}%</p>
-                            <p className="text-slate-400 dark:text-zinc-500 text-[10px]"><LocalizedText text={"conversion"} /></p>
+                          <div className="text-right">
+                            <p className="text-green-400 font-bold text-sm">{s.conversion_rate}%</p>
+                            <p className="text-zinc-600 text-xs">conversion</p>
                           </div>
                         </div>
                       ))}
@@ -723,6 +1066,8 @@ export default function InstituteAnalyticsPage() {
           )}
         </>
       )}
+
+      {isAdmin && <LeadTransferReports getAuthHeaders={getAuthHeaders} />}
     </div>
   );
 }

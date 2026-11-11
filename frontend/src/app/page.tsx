@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   Users, Send, Clock, Briefcase, Target, Zap, Activity,
   Globe, CheckCircle, FolderKanban, Mail, ArrowUpRight,
@@ -217,7 +217,8 @@ export default function HomePage() {
   const { role, email, user, isAuthenticated, loading: authLoading } = useRole();
   const router = useRouter();
   const { loaded, features } = useTenantConfig();
-  const home = homeModule(role, features);
+  const pathname = usePathname();
+  const home = pathname === "/legacy-command-center" ? "dashboard" : role === "Admissions" ? "admissions" : homeModule(role, features);
 
   useEffect(() => {
     if (authLoading) return;
@@ -227,6 +228,8 @@ export default function HomePage() {
     }
     if (home === "platform") router.replace("/superadmin/clients");
     if (loaded && home === "command_center") router.replace("/command-center");
+    if (loaded && home === "dashboard_b2c") router.replace("/dashboard-b2c");
+    if (loaded && home === "admissions") router.replace("/admissions");
   }, [authLoading, isAuthenticated, home, loaded, router]);
 
   // Show landing page if not authenticated
@@ -234,7 +237,7 @@ export default function HomePage() {
     return null;
   }
 
-  if (home === "platform" || !loaded || home === "command_center") return null;
+  if (home === "platform" || !loaded || home === "command_center" || home === "dashboard_b2c" || home === "admissions") return null;
   if (home === "none") return <FeatureAccessNotice kind="module" feature="Dashboard" />;
   // Mount only the enabled overview, so a disabled dashboard never fetches data.
   return <Dashboard />;

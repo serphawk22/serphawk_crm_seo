@@ -219,7 +219,7 @@ def update_tenant_settings(tenant_id: int, body: SettingsUpdate, session: Sessio
 @router.get("/superadmin/tenants/overview")
 def tenants_overview(session: Session = Depends(get_session)):
     """Every client with the numbers the Client Management page shows, in a handful of grouped queries."""
-    _super(session)
+    operator = _super(session)
     from database import ClientProfile, CustomizationRequest, Lead, TenantAsset, TenantFeature, TenantSettings
     skip = {"skip_tenant": True}
 
@@ -229,6 +229,7 @@ def tenants_overview(session: Session = Depends(get_session)):
         return {tid: n for tid, n in rows}
 
     users, leads, clients = counts(User), counts(Lead, Lead.is_converted == False), counts(ClientProfile)
+    platform_users = counts(User, User.role == "SuperAdmin")
     open_requests = counts(CustomizationRequest, CustomizationRequest.status.in_(("new", "in_review")))
     with_logo = set(session.exec(select(TenantAsset.tenant_id).where(TenantAsset.kind == "logo").execution_options(**skip)).all())
     stored = {r.tenant_id: (r.preset, r.settings or {}) for r in session.exec(select(TenantSettings).execution_options(**skip)).all()}
@@ -245,13 +246,37 @@ def tenants_overview(session: Session = Depends(get_session)):
             "clients": clients.get(t.id, 0), "open_requests": open_requests.get(t.id, 0), "preset": preset,
             "country": st.get("country"), "currency": st.get("default_currency"), "locale": st.get("locale"),
             "has_logo": t.id in with_logo or bool(st.get("brand_logo_url")),
-            "modules_on": sum(1 for v in features._resolve(rows_by_tenant.get(t.id, {})).values() if v),
+            "modules_on": features.module_count(features._resolve(rows_by_tenant.get(t.id, {}))),
+            "can_delete": t.id != operator.tenant_id and not platform_users.get(t.id),
         })
     real = [t for t in out if not t["demo_of_tenant_id"]]
     totals = {"clients": len(real), "paid": sum(1 for t in real if not t["is_trial"]), "trial": sum(1 for t in real if t["is_trial"]),
               "demo": len(out) - len(real), "users": sum(t["users"] for t in real),
               "open_requests": sum(t["open_requests"] for t in out)}
-    return {"tenants": out, "totals": totals, "total_modules": len(features.FEATURES)}
+    return {"tenants": out, "totals": totals, "total_modules": features.module_count()}
+
+
+class DeleteTenantRequest(BaseModel):
+    confirm_name: str
+
+
+@router.delete("/superadmin/tenants/{tenant_id}")
+def delete_tenant(tenant_id: int, body: DeleteTenantRequest, session: Session = Depends(get_session)):
+    operator = _super(session)
+    tenant = _tenant_or_404(session, tenant_id)
+    if tenant.id == operator.tenant_id or session.exec(select(User.id).where(
+            User.tenant_id == tenant.id, User.role == "SuperAdmin").execution_options(skip_tenant=True)).first():
+        raise HTTPException(status_code=409, detail="A workspace containing a platform SuperAdmin cannot be deleted")
+    if body.confirm_name != tenant.name:
+        raise HTTPException(status_code=422, detail="The confirmation does not match this workspace")
+    if session.exec(select(Tenant.id).where(Tenant.demo_of_tenant_id == tenant.id)
+                    .execution_options(skip_tenant=True)).first():
+        raise HTTPException(status_code=409, detail="Delete this client's linked demo workspaces first")
+    from modules.demo_accounts import delete_workspace
+    try:
+        return {"success": True, **delete_workspace(session, tenant.id)}
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error))
 
 
 class OnboardRequest(BaseModel):
@@ -260,7 +285,7 @@ class OnboardRequest(BaseModel):
     business_name: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
-    preset: str = "agency"
+    preset: str = "standard"
     admin_email: str
     admin_name: str
     admin_password: Optional[str] = None   # generated and returned once when omitted
@@ -275,7 +300,7 @@ def _onboard(session: Session, body: OnboardRequest) -> dict:
     """Create one client. Shared by the single and the bulk endpoint so both behave the same."""
     from main import _hash_password  # lazy: main imports this router
 
-    if body.preset not in presets.PRESETS:
+    if not presets.is_known_preset(body.preset):
         raise HTTPException(status_code=422, detail=f"Unknown preset '{body.preset}'")
     if body.account_role not in {"Admin", "SalesManager"}:
         raise HTTPException(status_code=422, detail="Choose Admin or SalesManager")

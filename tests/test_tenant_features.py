@@ -65,6 +65,8 @@ class FeatureApi(TenantIsolationBase):
         for key, feat in features.FEATURES.items():
             # everything that existed before entitlements stays on; ported add-ons start off until enabled
             expected = True if key in {"cases", "invoices"} else feat.default_on
+            if key.startswith(("command_center_", "dashboard_b2c_")):
+                expected = False  # new dashboard sections stay closed with their disabled parent
             self.assertEqual(body["features"][key], expected, key)  # legacy support/billing include their split modules
         self.assertTrue(body["features"]["inbox"])
         self.assertFalse(body["features"]["finance_suite"])
@@ -161,6 +163,13 @@ class FeatureApi(TenantIsolationBase):
         self.assertEqual(self.client.post("/superadmin/tenants", headers=self.sa(), json=body).status_code, 409)
         body2 = {**body, "name": "beta3"}
         self.assertEqual(self.client.post("/superadmin/tenants", headers=self.sa(), json=body2).status_code, 409)
+
+    def test_onboarding_defaults_to_visible_standard_preset(self):
+        response = self.client.post("/superadmin/tenants", headers=self.sa(), json={
+            "name": "default-preset", "admin_email": "default@preset.test", "admin_name": "Default"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["preset"], "standard")
+        self.assertNotIn("agency", {preset["key"] for preset in presets.list_presets()})
 
     def test_onboarding_validates_input(self):
         base = {"name": "gamma", "admin_email": "g@gamma.test", "admin_name": "G"}

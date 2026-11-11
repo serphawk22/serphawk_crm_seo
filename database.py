@@ -1163,6 +1163,8 @@ class Invoice(SQLModel, table=True):
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
     id: Optional[int] = Field(default=None, primary_key=True)
     invoice_number: str = Field(max_length=50, index=True)
+    student_id: Optional[int] = Field(default=None, foreign_key="students.id", index=True)
+    enrollment_id: Optional[int] = Field(default=None, foreign_key="enrollments.id", index=True, unique=True)
     client_id: Optional[int] = Field(default=None, foreign_key="client_profiles.id")
     service_request_id: Optional[int] = Field(default=None, foreign_key="service_requests.id")
     amount: float = Field(default=0.0)
@@ -1903,6 +1905,12 @@ def create_db_and_tables():
         "ALTER TABLE task_sheet_entries ADD COLUMN meetings_scheduled INTEGER DEFAULT 0",
         "ALTER TABLE task_sheet_entries ADD COLUMN key_focus TEXT",
         # Columns used by the institute add-on (additive, nullable)
+        "ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'Admissions'",
+        "ALTER TABLE students ADD COLUMN admissions_assignee_id INTEGER REFERENCES users(id)",
+        "ALTER TABLE invoices ADD COLUMN student_id INTEGER REFERENCES students(id)",
+        "ALTER TABLE invoices ADD COLUMN enrollment_id INTEGER REFERENCES enrollments(id)",
+        "CREATE INDEX IF NOT EXISTS ix_students_admissions_assignee_id ON students (admissions_assignee_id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_enrollment ON invoices (enrollment_id)",
         "ALTER TABLE leads ADD COLUMN course_interest_id INTEGER",
         "ALTER TABLE leads ADD COLUMN gpa FLOAT",
         "ALTER TABLE leads ADD COLUMN education_level VARCHAR(120)",

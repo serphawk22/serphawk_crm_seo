@@ -27,8 +27,8 @@ class RecommendUnit(unittest.TestCase):
     def test_industry_picks_the_preset(self):
         r = onboarding.recommend_config
         self.assertEqual(r({"industry": "logistics"})["preset"], "bpo")
-        self.assertEqual(r({"industry": "education"})["preset"], "institute")
-        self.assertEqual(r({"industry": "agency"})["preset"], "agency")
+        self.assertEqual(r({"industry": "education"})["preset"], "standard")
+        self.assertEqual(r({"industry": "agency"})["preset"], "serphawk")
         self.assertEqual(r({"industry": "retail"})["preset"], "standard")
         self.assertEqual(r({})["preset"], "standard")
         self.assertEqual(r({"industry": "nonsense"})["preset"], "standard", "unknown industries get the standard CRM")
@@ -894,7 +894,7 @@ class ClientOverview(OnboardingBase):
         self.assertEqual(by[demo["tenant_id"]]["demo_of_tenant_id"], 2)
         self.assertEqual(body["totals"]["demo"], 1)
         self.assertEqual(body["totals"]["clients"], len(body["tenants"]) - 1)
-        self.assertEqual(body["total_modules"], len(features.FEATURES))
+        self.assertEqual(body["total_modules"], features.module_count())
 
     def test_only_the_operator(self):
         self.assertEqual(self.client.get("/superadmin/tenants/overview", headers=self.as_tenant(2)).status_code, 403)

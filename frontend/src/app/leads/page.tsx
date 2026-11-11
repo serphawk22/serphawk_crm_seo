@@ -1,4 +1,5 @@
 "use client";
+import LeadTransferDialog from "@/components/LeadTransferDialog";
 import LocalizedText from "@/components/LocalizedText";
 import { API_BASE_URL } from "@/config";
 import React, { useState, useEffect, useMemo } from "react";
@@ -21,6 +22,12 @@ interface Lead {
   ai_analysis_results?: { website_form?: { form_name?: string; page_url?: string } } | null;
   website?: string | null;
   industry?: string | null;
+  course_interest_id?: number | null;
+  course_interest_title?: string | null;
+  gpa?: number | null;
+  education_level?: string | null;
+  academic_background?: string | null;
+  career_goal?: string | null;
   email?: string | null;
   phone?: string | null;
   address?: string | null;
@@ -70,7 +77,7 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 const emptyForm = {
-  company_name: "", website: "", industry: "", email: "",
+  company_name: "", website: "", industry: "", email: "", course_interest_id: "", gpa: "", education_level: "", academic_background: "", career_goal: "",
   phone: "", address: "", source: "Website", status: "New", notes: ""
 };
 import { useRole } from "@/context/RoleContext";
@@ -97,6 +104,8 @@ export default function LeadsPage() {
   const STATUSES = useMemo(() => {
     return leadStages(tenantSettings.lead_statuses, institute, DEFAULT_STATUSES, leads.map(l => l.status));
   }, [tenantSettings.lead_statuses, institute, leads]);
+  const [courses, setCourses] = useState<{ id: number; title: string; category?: string }[]>([]);
+  useEffect(() => { if (institute) fetch(`${API_BASE_URL}/courses`).then(r => r.ok ? r.json() : Promise.reject()).then(d => setCourses(d.courses || [])).catch(() => setLoadError("Could not load courses")); }, [institute]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -288,6 +297,7 @@ export default function LeadsPage() {
       company_name: lead.company_name,
       website: lead.website || "",
       industry: lead.industry || "",
+      course_interest_id: lead.course_interest_id ? String(lead.course_interest_id) : "", gpa: lead.gpa == null ? "" : String(lead.gpa), education_level: lead.education_level || "", academic_background: lead.academic_background || "", career_goal: lead.career_goal || "",
       email: lead.email || "",
       phone: lead.phone || "",
       address: lead.address || "",
@@ -301,12 +311,13 @@ export default function LeadsPage() {
   const handleSave = async () => {
     if (!form.company_name.trim()) return;
     setSaving(true);
+    const instituteFields = { course_interest_id: form.course_interest_id ? Number(form.course_interest_id) : null, gpa: form.gpa ? Number(form.gpa) : null };
     try {
       if (editLead) {
         const stage = scheduleStage(form.status, institute);
         const response = await fetch(`${API_BASE_URL}/leads/${editLead.id}`, {
           method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...form, status: stage ? editLead.status : form.status }),
+          body: JSON.stringify({ ...form, ...instituteFields, status: stage ? editLead.status : form.status }),
         });
         if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not save lead'); }
         setShowModal(false);
@@ -316,7 +327,7 @@ export default function LeadsPage() {
         if (!isAdmin) {
           // Salesperson creates lead: automatically assign to themselves
           const stage = scheduleStage(form.status, institute);
-          const payload = { ...form, status: stage ? 'New' : form.status, owner_id: user?.id || null };
+          const payload = { ...form, ...instituteFields, status: stage ? 'New' : form.status, owner_id: user?.id || null };
           const response = await fetch(`${API_BASE_URL}/leads`, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -328,7 +339,7 @@ export default function LeadsPage() {
           fetchLeads();
         } else {
           // New lead: show sales assign modal for admins
-          setPendingLeadForm({ ...form });
+          setPendingLeadForm({ ...form, ...instituteFields });
           setShowModal(false);
           setShowSalesAssign(true);
         }
@@ -530,6 +541,7 @@ export default function LeadsPage() {
           )}
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap max-w-full overflow-x-auto scrollbar-none pb-0.5 sm:pb-0">
+          {institute && <LeadTransferDialog leads={leads} people={employees} admin={isAdmin} onTransferred={fetchLeads} />}
           <ViewSwitcher currentView={currentView} onViewChange={setCurrentView} />
 
           <select
@@ -705,11 +717,11 @@ export default function LeadsPage() {
           <div className="w-full p-3 sm:p-4 space-y-2">
             {/* Subtle column headers for desktop */}
             <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-1 text-[11px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-              <div className="col-span-3"><LocalizedText text={"Company"} /></div>
+              <div className="col-span-3"><LocalizedText text={institute ? "Student & course" : "Company"} /></div>
               <div className="col-span-2"><LocalizedText text={"Contact"} /></div>
               <div className="col-span-2"><LocalizedText text={"Salesperson"} /></div>
               <div className="col-span-2"><LocalizedText text={"Source"} /></div>
-              <div className="col-span-3 text-right"><LocalizedText text={"Status & Actions"} /></div>
+              <div className="col-span-3 text-right"><LocalizedText text={institute ? "Stage & Actions" : "Status & Actions"} /></div>
             </div>
 
             <AnimatePresence>
@@ -748,9 +760,9 @@ export default function LeadsPage() {
                               </a>
                             </div>
                           ) : null}
-                          {lead.industry && (
+                          {(lead.industry || (institute && lead.course_interest_id)) && (
                             <span className="text-slate-500 dark:text-zinc-400 truncate text-[10.5px]">
-                              {lead.website ? "• " : ""}{lead.industry}
+                              {lead.website ? "• " : ""}{institute ? (lead.course_interest_title || courses.find(c => c.id === lead.course_interest_id)?.title || lead.industry) : lead.industry}
                             </span>
                           )}
                         </div>
@@ -952,7 +964,7 @@ export default function LeadsPage() {
                 {/* Company Name — required */}
                 <div>
                   <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5 block">
-                    {t("leads.company_name")} <span className="text-red-500">*</span>
+                    {institute ? t("Student name") : t("leads.company_name")} <span className="text-red-500">*</span>
                   </label>
                   <input
                     autoFocus
@@ -969,6 +981,12 @@ export default function LeadsPage() {
                     <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="contact@company.com"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
                   </div>
+                  {institute && <div className="col-span-full grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm">Course<select aria-label="Course interest" value={form.course_interest_id} onChange={e => setForm(f => ({ ...f, course_interest_id: e.target.value, industry: courses.find(course => String(course.id) === e.target.value)?.category || "" }))} className="mt-1 w-full rounded-xl border bg-transparent p-2"><option value="">Select course</option>{courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}</select></label>
+                    <label className="text-sm">Education level<select value={form.education_level} onChange={e => setForm(f => ({ ...f, education_level: e.target.value }))} className="mt-1 w-full rounded-xl border bg-transparent p-2"><option value="">Select education level</option>{["High school", "Diploma", "Bachelor's", "Master's", "Doctorate", "Other"].map(level => <option key={level}>{level}</option>)}</select></label>
+                    <label className="text-sm">GPA<input type="number" min="0" max="10" step="0.01" value={form.gpa} onChange={e => setForm(f => ({ ...f, gpa: e.target.value }))} className="mt-1 w-full rounded-xl border bg-transparent p-2" /></label>
+                    {([['academic_background', 'Academic background'], ['career_goal', 'Career goal']] as const).map(([key, label]) => <label key={key} className="text-sm">{label}<input value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} className="mt-1 w-full rounded-xl border bg-transparent p-2" /></label>)}
+                  </div>}
                   <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.phone")}</label>
                     <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+1 555 000 0000"
@@ -977,14 +995,14 @@ export default function LeadsPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  {!institute && <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.industry")}</label>
                     <select value={form.industry} onChange={e => setForm(f => ({ ...f, industry: e.target.value }))}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
                       <option value="">{t("leads.select_industry")}</option>
                       {INDUSTRIES.map(i => <option key={i}>{i}</option>)}
                     </select>
-                  </div>
+                  </div>}
                   <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.source")}</label>
                     <select value={form.source} onChange={e => setForm(f => ({ ...f, source: e.target.value }))}
@@ -995,11 +1013,11 @@ export default function LeadsPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  {!institute && <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.website")}</label>
                     <input value={form.website} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} placeholder="https://example.com"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
-                  </div>
+                  </div>}
                   <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 block">{t("leads.status")}</label>
                     <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}

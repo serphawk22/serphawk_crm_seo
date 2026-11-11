@@ -993,6 +993,9 @@ def convert_lead_to_student(
             assigned_salesperson_id=lead.owner_id,
             notes=lead.notes,
         )
+        from addons.institute.admissions import choose_admissions_assignee
+        assignee = choose_admissions_assignee(session, current_tenant_id.get())
+        student.admissions_assignee_id = assignee.id if assignee else None
         session.add(student)
         session.flush()
     else:
@@ -1413,6 +1416,8 @@ def _student_salesperson_id(student: Student, session: Session):
 
 def _require_student_salesperson_access(actor: User, student: Student, session: Session) -> None:
     actor_role = _normalize_role(actor.role)
+    if actor_role == "Admissions" and student.admissions_assignee_id != actor.id:
+        raise HTTPException(status_code=404, detail="Student not found")
     if actor_role in ("SalesManager", "Employee", "Sales", "Demo") and _student_salesperson_id(student, session) != actor.id:
         raise HTTPException(status_code=404, detail="Student not found")
 
@@ -2118,10 +2123,12 @@ def delete_batch(batch_id: int, session: Session = Depends(get_session)):
 
 @router.get("/students")
 def get_students(status: Optional[str] = None, q: Optional[str] = None, session: Session = Depends(get_session)):
-    actor = _require_roles(session, ["Admin", "Employee", "SalesManager", "Instructor", "Student", "Demo"])
+    actor = _require_roles(session, ["Admin", "Employee", "SalesManager", "Instructor", "Student", "Demo", "Admissions"])
     actor_role = _normalize_role(actor.role)
     query = select(Student)
-    if actor_role == "Student":
+    if actor_role == "Admissions":
+        query = query.where(Student.admissions_assignee_id == actor.id)
+    elif actor_role == "Student":
         query = query.where(Student.user_id == actor.id)
     elif actor_role == "Instructor":
         instructor = session.exec(select(Instructor).where(Instructor.user_id == actor.id)).first()
@@ -2205,6 +2212,9 @@ def create_student(body: StudentCreateRequest, session: Session = Depends(get_se
         guardian_name=body.guardian_name, guardian_phone=body.guardian_phone,
         source=body.source, lead_id=body.lead_id, assigned_salesperson_id=salesperson_id, notes=body.notes
     )
+    from addons.institute.admissions import choose_admissions_assignee
+    assignee = choose_admissions_assignee(session, current_tenant_id.get())
+    student.admissions_assignee_id = assignee.id if assignee else None
     session.add(student)
     session.commit()
     return {"student": {"id": student.id, "name": student.name, "email": student.email, "phone": student.phone, "status": student.status}}
@@ -2212,7 +2222,7 @@ def create_student(body: StudentCreateRequest, session: Session = Depends(get_se
 
 @router.get("/students/{student_id}")
 def get_student(student_id: int, session: Session = Depends(get_session)):
-    actor = _require_roles(session, ["Admin", "Employee", "SalesManager", "Instructor", "Student", "Demo"])
+    actor = _require_roles(session, ["Admin", "Employee", "SalesManager", "Instructor", "Student", "Demo", "Admissions"])
     actor_role = _normalize_role(actor.role)
     student = session.get(Student, student_id)
     if not student or (student.tenant_id and actor_role != "SuperAdmin" and student.tenant_id != actor.tenant_id):
@@ -2673,9 +2683,9 @@ def generate_advance_slip(enrollment_id: int, session: Session = Depends(get_ses
 
 @router.post("/payments")
 def add_payment(body: PaymentRecordRequest, session: Session = Depends(get_session)):
-    actor = _require_roles(session, ["Admin", "Employee", "SalesManager", "Sales", "Demo"])
+    actor = _require_roles(session, ["Admin", "Employee", "SalesManager", "Sales", "Demo", "Admissions"])
     import random, string
-    enrollment = session.get(Enrollment, body.enrollment_id)
+    enrollment = session.exec(select(Enrollment).where(Enrollment.id == body.enrollment_id).with_for_update()).first()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
     student = _require_enrollment_access(actor, enrollment, session)
@@ -2696,6 +2706,13 @@ def add_payment(body: PaymentRecordRequest, session: Session = Depends(get_sessi
     enrollment.payment_status = "Paid" if enrollment.amount_due <= 0 else "Partial"
     enrollment.updated_at = _utcnow()
     session.add(enrollment)
+    from database import Invoice
+    invoice = session.exec(select(Invoice).where(Invoice.enrollment_id == enrollment.id)).first()
+    if invoice:
+        invoice.status = "Paid" if enrollment.amount_due <= 0 else "Partial"
+        invoice.paid_at = _utcnow() if enrollment.amount_due <= 0 else None
+        invoice.updated_at = _utcnow()
+        session.add(invoice)
     session.commit()
     return {"payment": {"id": payment.id, "amount": payment.amount}, "receipt_number": receipt}
 
@@ -3501,9 +3518,13 @@ def get_institute_analytics(session: Session = Depends(get_session)):
     # Monthly revenue (last 6 months)
     from datetime import timedelta
     monthly_revenue = []
+    report_now = _utcnow()
     for i in range(5, -1, -1):
-        month_start = _utcnow().replace(day=1) - timedelta(days=30*i)
-        month_end = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+        month_index = report_now.year * 12 + report_now.month - 1 - i
+        year, month = divmod(month_index, 12)
+        next_year, next_month = divmod(month_index + 1, 12)
+        month_start = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+        month_end = datetime(next_year, next_month + 1, 1, tzinfo=timezone.utc)
         month_enrollments = [e for e in enrollments if e.enrollment_date and month_start <= e.enrollment_date < month_end]
         monthly_revenue.append({
             "month": month_start.strftime("%b %Y"),

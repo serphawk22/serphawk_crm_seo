@@ -1,4 +1,5 @@
 "use client";
+import InstituteReports from "@/components/InstituteReports";
 import LocalizedText from "@/components/LocalizedText";
 
 import { useEffect, useState, useMemo } from "react";
@@ -118,7 +119,7 @@ function drawPdfTable(pdf: jsPDF, headers: string[], rows: string[][], startY: n
 }
 
 // ─── MAIN REPORTS COMPONENT ──────────────────────────────────────────────────
-export default function ReportsPage() {
+function BusinessReportsPage() {
   const { role, loading: roleLoading } = useRole();
   const { loaded: cfgLoaded, isOn } = useTenantConfig();
   const execOn = isOn("command_center");   // Executive Owner Dossier
@@ -2510,3 +2511,5 @@ export default function ReportsPage() {
     </div>
   );
 }
+
+export default function ReportsPage() { const { loaded, isOn } = useTenantConfig(); if (!loaded) return <p role="status">Loading reports...</p>; return isOn("institute") ? <InstituteReports /> : <BusinessReportsPage />; }

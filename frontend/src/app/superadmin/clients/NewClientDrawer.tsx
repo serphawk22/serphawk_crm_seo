@@ -22,7 +22,7 @@ const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export default function NewClientDrawer({ open, onClose, presets, regions, onCreated, onConfigure, onError }: Props) {
   const [form, setForm] = useState(EMPTY);
-  const [preset, setPreset] = useState("standard");
+  const [preset, setPreset] = useState("serphawk");
   const [presetTouched, setPresetTouched] = useState(false);
   const [accountTouched, setAccountTouched] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -33,7 +33,7 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
   useEffect(() => {
     if (open) {
       setForm(EMPTY);
-      setPreset("standard");
+      setPreset("serphawk");
       setPresetTouched(false);
       setAccountTouched(false);
       setError("");
@@ -43,11 +43,14 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
   }, [open]);
 
   const sortedPresets = useMemo(
-    () => [...presets].sort((a, b) => PRESET_ORDER.indexOf(a.key) - PRESET_ORDER.indexOf(b.key)),
+    () =>
+      [...presets]
+        .filter((p) => PRESET_ORDER.includes(p.key))
+        .sort((a, b) => PRESET_ORDER.indexOf(a.key) - PRESET_ORDER.indexOf(b.key)),
     [presets],
   );
   const set = (patch: Partial<typeof EMPTY>) => setForm((f) => ({ ...f, ...patch }));
-  const suggested = regions.industries.find((i) => i.key === form.industry)?.preset;
+  const suggested = regions.industries.find((i) => i.key === form.industry && i.preset && PRESET_ORDER.includes(i.preset))?.preset;
 
   const problems = {
     business_name: !form.business_name.trim() ? "Enter the company name" : "",
@@ -94,7 +97,7 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
       footer={
         created ? (
           <div className="flex justify-end gap-3">
-            <button className={ghostBtn} onClick={() => { setCreated(null); setForm(EMPTY); setShowErrors(false); setPresetTouched(false); setAccountTouched(false); }}>Create another</button>
+            <button className={ghostBtn} onClick={() => { setCreated(null); setForm(EMPTY); setShowErrors(false); setPresetTouched(false); setAccountTouched(false); setPreset("serphawk"); }}>Create another</button>
             <button className={primaryBtn} onClick={() => { onClose(); onConfigure(created.tenant_id); }}>Configure this client <ArrowRight className="w-4 h-4" /></button>
           </div>
         ) : (
@@ -157,7 +160,7 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
                   const industry = e.target.value;
                   const rec = regions.industries.find((i) => i.key === industry)?.preset;
                   set({ industry });
-                  if (rec && !presetTouched) setPreset(rec);
+                  if (rec && PRESET_ORDER.includes(rec) && !presetTouched) setPreset(rec);
                 }}>
                   <option value="">Not sure / other</option>
                   {regions.industries.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
@@ -217,7 +220,7 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
                       <span className="font-semibold text-slate-900 dark:text-white">{p.label}</span>
                       <div className="flex gap-1.5">
                         {suggested === p.key && <Badge tone="indigo">Suggested</Badge>}
-                        <Badge tone="slate">{p.features.length} modules</Badge>
+                        <Badge tone="slate">{p.module_count} modules</Badge>
                       </div>
                     </div>
                     <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-slate-600 dark:text-zinc-400">{p.description}</p>

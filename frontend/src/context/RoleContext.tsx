@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { API_BASE_URL } from '@/config';
 import { isInternalApi } from '@/lib/apiRequest';
 
-export type Role = 'SuperAdmin' | 'Admin' | 'Employee' | 'Client' | 'Intern' | 'SalesManager' | 'Supplier' | 'Demo' | 'ProjectMember' | 'Developer' | 'Student' | 'Instructor' | 'Sales';
+export type Role = 'SuperAdmin' | 'Admin' | 'Employee' | 'Client' | 'Intern' | 'SalesManager' | 'Supplier' | 'Demo' | 'ProjectMember' | 'Developer' | 'Student' | 'Instructor' | 'Sales' | 'Admissions';
 
 interface User {
   id: number;

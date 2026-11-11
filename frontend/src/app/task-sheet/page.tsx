@@ -442,7 +442,7 @@ export default function TaskSheetPage() {
 
         {/* View Switcher for Admins */}
         <div className="flex items-center gap-2">
-          {isAdmin && <button type="button" onClick={summarize} disabled={summaryBusy} className="rounded-xl border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-600 disabled:opacity-50">{summaryBusy ? "Preparing…" : "Team summary"}</button>}
+          {isAdmin && <button type="button" onClick={summarize} disabled={summaryBusy} className="rounded-xl border border-indigo-200 px-3 py-2 text-xs font-bold text-indigo-600 disabled:opacity-50">{summaryBusy ? "Preparing…" : "AI summary"}</button>}
           {(
             <div className="bg-slate-100 dark:bg-zinc-800 p-1 rounded-xl flex items-center gap-1">
               <button
@@ -496,7 +496,7 @@ export default function TaskSheetPage() {
       </div>
 
       {/* FEEDBACK BANNER */}
-      {teamSummary && <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5 dark:border-indigo-900 dark:bg-indigo-950/30"><h2 className="font-bold">Team summary</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{teamSummary}</p></section>}
+      {teamSummary && <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5 dark:border-indigo-900 dark:bg-indigo-950/30"><h2 className="font-bold">AI summary</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{teamSummary}</p></section>}
       {message && (
         <div
           className={`p-4 rounded-xl flex items-center justify-between gap-3 text-sm font-semibold transition-all ${

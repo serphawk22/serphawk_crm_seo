@@ -81,7 +81,7 @@ class Signup(DemoBase):
         self.assertNotIn(user.tenant_id, (1, 2, 3))
         self.assertTrue(t.is_trial)
         self.assertIsNone(t.demo_of_tenant_id)
-        self.assertEqual((t.limit_clients, t.limit_emails, t.limit_calls), (15, 5, 2))
+        self.assertEqual((t.limit_clients, t.limit_emails, t.limit_calls), (5, 5, 2))
         with Session(S.ENGINE) as s:
             rows = s.exec(select(TenantFeature).where(TenantFeature.tenant_id == t.id).execution_options(skip_tenant=True)).all()
         self.assertTrue(rows, "the demo preset writes explicit module rows")
@@ -140,7 +140,7 @@ class Listing(DemoBase):
         self.assertTrue(data["is_operator"])
         [a] = data["accounts"]
         self.assertEqual((a["email"], a["kind"], a["active"]), ("visitor@demo.test", "self_service", True))
-        self.assertEqual(a["limits"]["clients"], {"usage": 0, "limit": 15})
+        self.assertEqual(a["limits"]["clients"], {"usage": 0, "limit": 5})
         self.assertEqual(a["records"], {"leads": 0, "clients": 0})
         self.assertTrue(a["can_convert"] and a["can_delete"] and a["can_change_limits"])
         self.assertEqual(data["summary"]["total"], 1)

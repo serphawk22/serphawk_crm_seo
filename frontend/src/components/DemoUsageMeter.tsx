@@ -27,6 +27,7 @@ export default function DemoUsageMeter() {
   if (!budgets) return null;
   return <section aria-label={t("Demo usage")} className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
     <h2 className="font-bold">{t("Demo usage")}</h2>
+    <p className="mt-1">{t("Demo workspaces can keep up to 5 records per module.")}</p>
     <div className="mt-2 flex flex-wrap gap-5">{(["ai", "calls"] as const).map(key => <div key={key}>
       <span>{t(key === "ai" ? "AI API calls" : "Phone calls")}: <b>{budgets[key].used}/{budgets[key].limit}</b></span>
       <progress className="mt-1 block h-2" max={budgets[key].limit} value={Math.min(budgets[key].used, budgets[key].limit)} />

@@ -171,7 +171,9 @@ def _ensure_default_sources(session: Session) -> List[LeadSource]:
     rows = session.exec(select(LeadSource).order_by(LeadSource.id)).all()
     if rows or not _tid():
         return list(rows)
-    for name, channel, utm, color in DEFAULT_SOURCES:
+    from modules import demo_usage
+    defaults = DEFAULT_SOURCES[:demo_usage.RECORD_LIMIT] if demo_usage.restricted_tenant(session) else DEFAULT_SOURCES
+    for name, channel, utm, color in defaults:
         session.add(LeadSource(name=name, channel=channel, utm_key=utm, color=color, tenant_id=_tid()))
     session.commit()
     return list(session.exec(select(LeadSource).order_by(LeadSource.id)).all())
