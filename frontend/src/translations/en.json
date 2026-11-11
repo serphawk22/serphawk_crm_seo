@@ -338,6 +338,8 @@
     "no_events_desc": "No activity matching the selected filters was found."
   },
   "sidebar": {
+    "dashboard_b2c": "Dashboard B2C",
+    "admissions": "Admissions",
     "section_crm": "CRM",
     "section_projects": "PROJECTS & ACTIVITIES",
     "section_teams": "TEAMS",
@@ -347,7 +349,7 @@
     "section_system": "SYSTEM",
     "section_institute": "INSTITUTE",
     "section_business_suite": "BUSINESS SUITE",
-    "dashboard": "Dashboard",
+    "dashboard": "Command Center",
     "work_queue": "My Work Queue",
     "notifications": "Notifications",
     "inbox": "Inbox",
@@ -392,8 +394,8 @@
     "instructors": "Instructors",
     "enrollments": "Enrollments & Fees",
     "schedule": "Important Dates",
-    "institute_analytics": "Institute Analytics",
-    "command_center": "Command Center",
+    "institute_analytics": "My Analytics",
+    "command_center": "Dashboard",
     "revenue": "Revenue Dashboard",
     "business_costs": "Business Costs",
     "lead_sources": "Lead Sources",
@@ -508,7 +510,8 @@
     "role_employee": "Employee",
     "role_client": "Client",
     "role_intern": "Intern",
-    "role_sales_manager": "Sales Manager"
+    "role_sales_manager": "Sales Manager",
+    "role_admissions": "Admissions"
   },
   "employees": {
     "title": "Core Team",

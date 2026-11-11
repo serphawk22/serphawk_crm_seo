@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { dashboardDateLabel } from "@/lib/dashboardLocale";
 import { API_BASE_URL } from "@/config";
+import { useTenantConfig } from "@/context/TenantConfigContext";
 import { useRole } from "@/context/RoleContext";
 import {
   Currency, useCurrency, money, num, pctf, PALETTE, TOOLTIP_STYLE, AXIS_TICK,
@@ -21,6 +22,8 @@ import { CallPitchWidget } from "@/components/AdminDashboard";
 export default function CommandCenter() {
   const { t, language } = useLanguage();
   const { role, user } = useRole();
+  const { hasFeature } = useTenantConfig();
+  const show = (key: string) => hasFeature(`command_center_${key}`);
   const router = useRouter();
   const [currency, setCurrency] = useCurrency();
   const [months, setMonths] = useState<number>(6);
@@ -82,7 +85,7 @@ export default function CommandCenter() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)]">
-                  <LocalizedText text={"Enterprise Command Center"} />{" "}</h1>
+                  <LocalizedText text={"Dashboard"} />{" "}</h1>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-extrabold uppercase tracking-wider">
                   <LocalizedText text={"Live Operations"} />{" "}</span>
               </div>
@@ -127,6 +130,7 @@ export default function CommandCenter() {
       )}
 
       {/* ── ATTENTION REQUIRED STRIP ──────────────────────────────── */}
+      {show("attention") && <>
       {attention.length > 0 && (
         <div className="p-3 rounded-xl border border-amber-500/20 bg-amber-500/5 shadow-sm">
           <div className="flex items-center gap-2 mb-2 text-xs font-black text-amber-500 uppercase tracking-wider">
@@ -155,10 +159,14 @@ export default function CommandCenter() {
         </div>
       )}
 
+      </>}
       {/* ── CALL PITCH WIDGET ─────────────────────────────────────── */}
+      {show("call_pitch") && <>
       <CallPitchWidget />
 
+      </>}
       {/* ── ROW 1: PRIMARY FINANCIAL & GROWTH KPIS ───────────────── */}
+      {show("kpis") && <>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
         <Tile
           label={t("Total Won Revenue")}
@@ -266,7 +274,9 @@ export default function CommandCenter() {
         />
       </div>
 
+      </>}
       {/* ── CHARTS: REVENUE VS COSTS & PIPELINE BY STAGE ─────────── */}
+      {show("charts") && <>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Revenue, Costs & Net Profit Chart */}
         <Card
@@ -352,7 +362,9 @@ export default function CommandCenter() {
         </Card>
       </div>
 
+      </>}
       {/* ── LEAD SOURCES COMMAND MODULE ─────────────────────────── */}
+      {show("lead_sources") && <>
       <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-sm">
         <header className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--sidebar-hover)]/30 px-4 py-3">
           <div className="flex items-center gap-2">
@@ -393,7 +405,9 @@ export default function CommandCenter() {
         </div>
       </section>
 
+      </>}
       {/* ── ROW: PROPOSALS, NEGOTIATIONS & BILLING ───────────────── */}
+      {show("billing") && <>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Proposals Hub */}
         <Card
@@ -509,7 +523,9 @@ export default function CommandCenter() {
         </Card>
       </div>
 
+      </>}
       {/* ── CLIENTS & TEAM LEADERBOARD ───────────────────────────── */}
+      {show("team") && <>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Clients Directory Overview */}
         <Card
@@ -575,7 +591,9 @@ export default function CommandCenter() {
         </Card>
       </div>
 
+      </>}
       {/* ── ROW: TASKS, FOLLOW-UPS & MEETINGS ─────────────────────── */}
+      {show("work") && <>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Tasks */}
         <Card
@@ -667,7 +685,9 @@ export default function CommandCenter() {
         </Card>
       </div>
 
+      </>}
       {/* ── PROJECTS & INVENTORY (IF PERMITTED) ───────────────────── */}
+      {show("delivery") && <>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Projects */}
         <Card
@@ -728,7 +748,8 @@ export default function CommandCenter() {
             )}
           </div>
         </Card>
-      </div>
+      </div>      </>}
+
     </div>
   );
 }

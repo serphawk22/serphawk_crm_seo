@@ -47,11 +47,11 @@ function OverviewChart({ title, data, href, money = false, localizeNames = false
   </section>;
 }
 
-export default function OperationsDashboard({ stats, isDemo, callPitch }: { stats: OverviewStats | null; isDemo?: boolean; callPitch: React.ReactNode }) {
+export default function OperationsDashboard({ stats, isDemo, callPitch, variant = "dashboard" }: { stats: OverviewStats | null; isDemo?: boolean; callPitch: React.ReactNode; variant?: string }) {
   const { user } = useRole();
   const { t, language } = useLanguage();
   const { settings, hasFeature } = useTenantConfig();
-  const show = useDashboardSections();
+  const show = useDashboardSections(variant);
   const [upgradeRequested, setUpgradeRequested] = useState(false);
   const [upgradeError, setUpgradeError] = useState("");
   const [upgrading, setUpgrading] = useState(false);
@@ -85,11 +85,11 @@ export default function OperationsDashboard({ stats, isDemo, callPitch }: { stat
   return <div className="space-y-6 max-w-[1600px] mx-auto w-full">
     <DemoUsageMeter />
     {isDemo && <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-      <h2 className="font-bold">{t("admin_dashboard.demo_banner_title")}</h2><p className="text-sm">{t("Demo includes 5 AI API calls and 2 phone calls per workspace.")}</p>
+      <h2 className="font-bold">{t("admin_dashboard.demo_banner_title")}</h2><p className="text-sm">{t("Demo includes 5 records per module, 5 AI API calls and 2 phone calls per workspace.")}</p>
       <button disabled={upgrading || upgradeRequested} onClick={upgrade} className="mt-3 rounded-lg bg-amber-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{t(upgradeRequested ? "admin_dashboard.upgrade_sent" : "admin_dashboard.request_full_access")}</button>
       {upgradeError && <p role="alert">{upgradeError}</p>}
     </div>}
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">{t("admin_dashboard.title")}</h1><p className="text-sm text-[var(--text-secondary)]">{t("admin_dashboard.subtitle")}</p></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">{variant === "dashboard_b2c" ? t("Dashboard") : t("Command Center")}</h1><p className="text-sm text-[var(--text-secondary)]">{variant === "dashboard_b2c" ? t("Admissions, fee collections, courses and team performance.") : t("admin_dashboard.subtitle")}</p></div>
       {show("operations", "clients") && <Link href="/clients" className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white">{t("admin_dashboard.add_new_client")}</Link>}
     </div>
     {metrics.length > 0 && <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{metrics.map(metric => <div key={metric.key} className={panel}><p className="text-sm text-[var(--text-secondary)]">{t(metric.label)}</p><p className="mt-2 text-2xl font-bold">{metric.value}</p></div>)}</div>}

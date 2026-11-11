@@ -4,7 +4,7 @@ import LocalizedText from "@/components/LocalizedText";
 import { useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Download, Loader2, Users } from "lucide-react";
 import Drawer from "@/components/Drawer";
-import { Preset, RegionOptions, call, ghostBtn, inputCls, primaryBtn } from "./shared";
+import { PRESET_ORDER, Preset, RegionOptions, call, ghostBtn, inputCls, primaryBtn } from "./shared";
 
 interface Props {
   open: boolean;
@@ -18,7 +18,7 @@ interface Props {
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const EXAMPLE = [
   "acme-logistics, Acme Logistics, Anita Rao, anita@acme-logistics.com, bpo, IN, logistics",
-  "casa-bella, Casa Bella Studio, Bruno Bella, bruno@casabella.mx, agency, MX, agency",
+  "casa-bella, Casa Bella Studio, Bruno Bella, bruno@casabella.mx, serphawk, MX, agency",
   "plain-goods, Plain Goods Co, Pat Plain, pat@plaingoods.com",
 ].join("\n");
 
@@ -34,6 +34,11 @@ export default function BulkDrawer({ open, onClose, presets, regions, onDone, on
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<any>(null);
 
+  const allowedPresets = useMemo(
+    () => presets.filter((p) => PRESET_ORDER.includes(p.key)),
+    [presets],
+  );
+
   const rows: Row[] = useMemo(() => {
     const seenAccounts = new Set<string>();
     const seenEmails = new Set<string>();
@@ -43,7 +48,7 @@ export default function BulkDrawer({ open, onClose, presets, regions, onDone, on
       if (!name) problems.push("account name missing");
       if (!adminName) problems.push("admin name missing");
       if (!EMAIL.test(adminEmail)) problems.push("admin email is not valid");
-      if (preset && !presets.some((p) => p.key === preset)) problems.push(`unknown setup "${preset}"`);
+      if (preset && !allowedPresets.some((p) => p.key === preset)) problems.push(`unknown setup "${preset}"`);
       if (country && !regions.countries.some((c) => c.code === country.toUpperCase())) problems.push(`unknown country "${country}"`);
       if (industry && !regions.industries.some((x) => x.key === industry)) problems.push(`unknown business type "${industry}"`);
       if (name && seenAccounts.has(name.toLowerCase())) problems.push("account name repeated");
@@ -52,10 +57,10 @@ export default function BulkDrawer({ open, onClose, presets, regions, onDone, on
       seenEmails.add(adminEmail.toLowerCase());
       return {
         line, raw, problems,
-        body: { name, business_name: business || null, admin_name: adminName, admin_email: adminEmail, preset: preset || "standard", country: country ? country.toUpperCase() : null, industry: industry || null },
+        body: { name, business_name: business || null, admin_name: adminName, admin_email: adminEmail, preset: preset || "serphawk", country: country ? country.toUpperCase() : null, industry: industry || null },
       };
     });
-  }, [text, presets, regions]);
+  }, [text, allowedPresets, regions]);
 
   const valid = rows.length > 0 && rows.every((r) => r.problems.length === 0);
 
@@ -135,7 +140,7 @@ export default function BulkDrawer({ open, onClose, presets, regions, onDone, on
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs leading-relaxed text-slate-600 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400">
             <p className="font-semibold text-slate-900 dark:text-zinc-100">Format</p>
             <code className="mt-1 block text-[11px]">account, company name, admin name, admin email, setup, country, business type</code>
-            <p className="mt-2">The last three are optional. Setups: {presets.map((p) => p.key).join(", ")}. A password is generated for every admin.</p>
+            <p className="mt-2">The last three are optional. Setups: {allowedPresets.map((p) => p.key).join(", ")}. A password is generated for every admin.</p>
           </div>
           <textarea className={`${inputCls} font-mono text-xs`} rows={7} spellCheck={false} placeholder={EXAMPLE} value={text} onChange={(e) => setText(e.target.value)} />
           <div className="flex gap-3">

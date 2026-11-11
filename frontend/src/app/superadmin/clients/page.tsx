@@ -2,12 +2,13 @@
 import LocalizedText from "@/components/LocalizedText";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { AlertCircle, ArrowRight, Building2, CheckCircle2, Inbox, Layers, Plus, RefreshCw, Search, Settings2, Users, UsersRound, LayoutList, LayoutGrid } from "lucide-react";
+import { AlertCircle, ArrowRight, Building2, CheckCircle2, Inbox, Layers, Plus, RefreshCw, Search, Settings2, Users, UsersRound, LayoutList, LayoutGrid, Trash2 } from "lucide-react";
 import { useRole } from "@/context/RoleContext";
 import { ToastStack, useToasts } from "@/components/Toasts";
 import BulkDrawer from "./BulkDrawer";
 import ConfigureDrawer from "./ConfigureDrawer";
 import NewClientDrawer from "./NewClientDrawer";
+import DeleteClientDialog from "./DeleteClientDialog";
 import styles from "./ClientList.module.css";
 import {
   Badge, CatalogFeature, ClientAvatar, Preset, RegionOptions, TenantOverview, Totals, call, displayName, ghostBtn, inputCls, primaryBtn,
@@ -66,6 +67,7 @@ export default function ClientManagementPage() {
   const [showNew, setShowNew] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [configuring, setConfiguring] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState<TenantOverview | null>(null);
   const [logoBump, setLogoBump] = useState<Record<number, number>>({});
   const [viewMode, setViewMode] = useState<"list" | "cards">("list");
 
@@ -114,10 +116,20 @@ export default function ClientManagementPage() {
     return [...list].sort((a, b) => (sort === "name" ? displayName(a).localeCompare(displayName(b)) : sort === "users" ? b.users - a.users : b.id - a.id));
   }, [tenants, filter, query, sort]);
 
-  const presetLabels = useMemo(() => Object.fromEntries(presets.map((p) => [p.key, p.label])), [presets]);
+  const presetLabels = useMemo(() => {
+    const legacy: Record<string, string> = {
+      agency: "Digital agency CRM",
+      "agency-voice": "Digital agency CRM + AI voice caller",
+      institute: "Training institute",
+      "design-agency": "Design / marketing agency (Spanish-first)",
+    };
+    return { ...legacy, ...Object.fromEntries(presets.map((p) => [p.key, p.label])) };
+  }, [presets]);
   const presetLabel = (key?: string | null) => (key ? presetLabels[key] || key : "No setup");
   const hasFilters = filter !== "all" || query.trim().length > 0;
   const clearFilters = () => { setQuery(""); setFilter("all"); };
+  const deleteButton = (tenant: TenantOverview) => <button type="button" onClick={() => setDeleting(tenant)} disabled={tenant.can_delete === false} aria-label={"Delete " + displayName(tenant)} title={tenant.can_delete === false ? "A platform SuperAdmin workspace cannot be deleted" : "Delete client workspace"} className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"><Trash2 className="h-3 w-3" />Delete</button>;
+
   const selected = configuring ? byId[configuring] || null : null;
 
   if (!allowed) {
@@ -288,7 +300,7 @@ export default function ClientManagementPage() {
 
                     {/* Middle: Metrics */}
                     <div className="col-span-4 flex items-center gap-3">
-                      {[["Users", t.users], ["Leads", t.leads], ["Clients", t.clients], ["Modules", `${t.modules_on}/${totalModules || features.length || "–"}`]].map(([label, value]) => (
+                      {[["Users", t.users], ["Leads", t.leads], ["Clients", t.clients], ["Modules", `${t.modules_on}/${totalModules || "–"}`]].map(([label, value]) => (
                         <div key={label as string} className="min-w-0">
                           <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase">{label}: </span>
                           <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">{value}</span>
@@ -297,7 +309,8 @@ export default function ClientManagementPage() {
                     </div>
 
                     {/* Right: Actions */}
-                    <div className="col-span-3 flex items-center justify-end gap-2">
+                    <div className="col-span-3 flex flex-wrap items-center justify-end gap-2">
+                      {deleteButton(t)}
                       {t.open_requests > 0 ? (
                         <a href="/superadmin/requests" className="inline-flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/40 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:bg-amber-100">
                           <Inbox className="h-3 w-3" /> {t.open_requests} req
@@ -369,6 +382,7 @@ export default function ClientManagementPage() {
                     ) : (
                       <span className="text-[10px] text-slate-400">No requests</span>
                     )}
+                    {deleteButton(t)}
                     <button 
                       type="button" 
                       onClick={() => setConfiguring(t.id)} 
@@ -402,6 +416,7 @@ export default function ClientManagementPage() {
         onError={error}
         onDone={(created, failed) => { (failed ? error : success)(`${created} client${created === 1 ? "" : "s"} created${failed ? `, ${failed} failed` : ""}`, failed ? "Check the list for the reason of each failure." : "Download the logins before closing the panel."); loadOverview(true); }}
       />
+      {deleting && <DeleteClientDialog key={deleting.id} tenant={deleting} onClose={() => setDeleting(null)} onDeleted={() => { success(`${displayName(deleting)} was deleted`); if (configuring === deleting.id) setConfiguring(null); setDeleting(null); void loadOverview(true); }} />}
       <ConfigureDrawer
         tenant={selected}
         onClose={() => setConfiguring(null)}

@@ -12,9 +12,18 @@ export default function HelpdeskPage() {
       if (!response.ok) throw new Error(data.detail || "Could not open the support portal");
       const target = new URL(data.url);
       if (!["https:", "http:"].includes(target.protocol)) throw new Error("The support portal address is invalid");
-      if (alive) { setUrl(target.href); window.location.assign(target.href); }
+      if (alive) setUrl(target.href);
     }).catch(error => { if (alive) setError(error.message); });
     return () => { alive = false; };
   }, []);
-  return <div className="mx-auto max-w-xl space-y-4 rounded-2xl border border-slate-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900"><h1 className="text-2xl font-bold">Support @SH</h1><p role="status" className="text-sm text-slate-500">{error || "Opening the support ticketing portal…"}</p>{url && <a className="font-semibold text-indigo-600 underline" href={url}>Continue to the support portal</a>}</div>;
+  return <section className="flex min-h-[80vh] flex-col gap-4">
+    <header className="flex flex-wrap items-center justify-between gap-3">
+      <h1 className="text-2xl font-bold">Support @SH</h1>
+      {url && <a className="text-sm font-semibold text-indigo-600 underline" href={url} target="_blank" rel="noopener noreferrer">Open support in a new tab</a>}
+    </header>
+    {error ? <p role="alert">{error}</p> : !url ? <p role="status">Loading support portal…</p> : <>
+      <p className="text-xs text-slate-500">If the portal blocks embedding or sign-in, use the new-tab link above.</p>
+      <iframe title="Support ticketing portal" src={url} className="min-h-[70vh] w-full flex-1 rounded-xl border border-slate-200 bg-white" referrerPolicy="strict-origin-when-cross-origin" allow="clipboard-write" />
+    </>}
+  </section>;
 }

@@ -58,6 +58,8 @@ const INBOX_ROLES = ["Admin", "SalesManager", "Employee", "Demo", "SuperAdmin"];
 // Sidebar item -> feature (module) a tenant can switch off. Items not listed are always shown.
 const ITEM_FEATURE: Record<string, string> = {
   "item-dashboard": "dashboard",
+  "item-dashboard-b2c": "dashboard_b2c",
+  "item-admissions": "institute",
   "item-work-queue": "work_queue", "item-inbox": "inbox", "item-followups": "followups",
   "item-leads": "leads", "item-contacts": "contacts", "item-clients": "clients",
   "item-projects": "projects", "item-task-sheet": "task_sheet", "item-reports": "reports",
@@ -108,7 +110,8 @@ const defaultSidebarSections: SidebarSection[] = [
     id: "section-home",
     heading: null,
     items: [
-      { id: "item-dashboard", name: "Dashboard", icon: "LayoutDashboard", href: "/", roles: ["Admin", "Employee", "Client", "Intern", "SalesManager", "Demo"] },
+      { id: "item-dashboard", name: "Command Center", icon: "LayoutDashboard", href: "/legacy-command-center", roles: ["Admin", "Employee", "Client", "Intern", "SalesManager", "Demo"] },
+      { id: "item-dashboard-b2c", name: "Dashboard", icon: "LayoutDashboard", href: "/dashboard-b2c", roles: ["Admin", "Employee", "SalesManager", "Sales", "Demo"] },
       { id: "item-work-queue", name: "My Work Queue", icon: "LayoutList", href: "/work-queue", roles: ["Admin", "Demo", "SalesManager", "Employee", "ProjectMember", "Intern", "Developer"] },
       { id: "item-notifications", name: "Notifications", icon: "Bell", href: "/notifications", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
       { id: "item-inbox", name: "Inbox", icon: "Inbox", href: "/inbox", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
@@ -147,20 +150,21 @@ const defaultSidebarSections: SidebarSection[] = [
     id: "section-institute",
     heading: "INSTITUTE",
     items: [
+      { id: "item-admissions", name: "Admissions", icon: "GraduationCap", href: "/admissions", roles: ["Admin", "Admissions", "Demo"] },
       { id: "item-students", name: "Students", icon: "GraduationCap", href: "/students", roles: ["Admin", "Employee", "SalesManager", "Sales", "Demo"] },
       { id: "item-courses", name: "Courses", icon: "BookOpen", href: "/courses", roles: ["Admin", "Employee", "SalesManager", "Sales", "Demo"] },
       { id: "item-batches", name: "Batches", icon: "Users", href: "/batches", roles: ["Admin", "Employee", "Instructor", "SalesManager", "Demo"] },
       { id: "item-instructors", name: "Instructors", icon: "Users", href: "/instructors", roles: ["Admin", "Employee", "Demo"] },
       { id: "item-enrollments", name: "Enrollments & Fees", icon: "FileText", href: "/enrollments", roles: ["Admin", "Employee", "SalesManager", "Demo"] },
       { id: "item-schedule", name: "Important Dates", icon: "CalendarClock", href: "/schedule", roles: ["Admin", "Employee", "SalesManager", "Sales", "Demo"] },
-      { id: "item-institute-analytics", name: "Institute Analytics", icon: "BarChart2", href: "/institute-analytics", roles: ["Admin", "Employee", "SalesManager", "Demo"] },
+      { id: "item-institute-analytics", name: "My Analytics", icon: "BarChart2", href: "/institute-analytics", roles: ["Admin", "Demo"] },
     ],
   },
   {
     id: "section-business-suite",
     heading: "BUSINESS SUITE",
     items: [
-      { id: "item-command-center", name: "Command Center", icon: "LayoutDashboard", href: "/command-center", roles: ["Admin", "SalesManager", "Demo"] },
+      { id: "item-command-center", name: "Dashboard", icon: "LayoutDashboard", href: "/command-center", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-revenue", name: "Revenue Dashboard", icon: "TrendingUp", href: "/revenue", roles: ["Admin"] },
       { id: "item-business-costs", name: "Business Costs", icon: "IndianRupee", href: "/business-costs", roles: ["Admin"] },
       { id: "item-lead-sources", name: "Lead Sources", icon: "Zap", href: "/lead-sources", roles: ["Admin", "SalesManager", "Employee", "Sales"] },
@@ -249,6 +253,9 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
   const { t } = useLanguage();
   const { hasFeature, isOn } = useTenantConfig();
   const itemLabel = (item: SidebarItem) => {
+    if (item.id === "item-dashboard") return t("Command Center");
+    if (item.id === "item-dashboard-b2c") return hasFeature("command_center") ? t("Dashboard B2C") : t("Dashboard");
+    if (item.id === "item-command-center") return hasFeature("dashboard_b2c") ? t("Dashboard B2B") : t("Dashboard");
     const k = `sidebar.${sidebarItemKey(item.id)}`;
     const v = t(k);
     return v === k ? t(item.name) : v;

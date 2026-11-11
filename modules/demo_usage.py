@@ -27,6 +27,56 @@ PAID_HOSTS = {"api.openai.com", "api.anthropic.com", "generativelanguage.googlea
               "maps.googleapis.com", "api.firecrawl.dev"}
 _installed = False
 
+# Primary records only: audit rows, messages, quota counters and join rows must
+# remain writable when a user edits one of their five demonstration records.
+RECORD_MODULES = {
+    "leads": "leads", "contacts": "contacts", "client_profiles": "clients",
+    "projects": "projects", "task_sheet_entries": "task_sheet", "meetings": "meetings",
+    "scheduled_calls": "calls", "call_logs": "calls", "follow_ups": "followups",
+    "products": "products", "inventory_items": "inventory", "quotes": "billing",
+    "invoices": "invoices", "proposals": "proposals", "cases": "cases", "solutions": "support",
+    "courses": "courses", "batches": "batches", "students": "students", "instructors": "instructors",
+    "enrollments": "enrollments", "lead_sources": "lead_sources", "business_costs": "business_costs",
+    "sales_orders": "orders", "purchase_orders": "orders", "rfq_requests": "rfq",
+    "tasks": "tasks", "project_tickets": "project_tickets", "marketplace_services": "marketplace",
+    "automation_rules": "automations", "lead_demo_sessions": "demo_sessions",
+    "users": "teams",
+    "lead_walk_ins": "walk_ins", "lead_webinars": "webinars", "lead_follow_ups": "lead_followups",
+    "institute_sessions": "sessions", "institute_resources": "resources",
+    "attendance": "attendance", "payment_records": "payments", "dropped_clients": "dropped_clients",
+}
+RECORD_LIMIT = 5
+
+
+def guard_records(session, flush_context, instances):
+    """Enforce demo record allowances at flush, including indirect creations.
+
+    Lock the tenant row before counting so concurrent Postgres requests cannot
+    both create the final allowed record. The lock lasts until commit/rollback.
+    """
+    tid = demo_context.get()
+    if not tid:
+        return
+    from sqlalchemy import func
+    pending = {}
+    for obj in session.new:
+        table = getattr(obj, "__table__", None)
+        if table is not None and table.name in RECORD_MODULES and getattr(obj, "tenant_id", tid) in (None, tid):
+            pending.setdefault(RECORD_MODULES[table.name], []).append(obj)
+    if not pending:
+        return
+    session.exec(select(Tenant).where(Tenant.id == tid).with_for_update()).first()
+    from sqlmodel import SQLModel
+    for resource, objects in pending.items():
+        tables = [table for name, table in SQLModel.metadata.tables.items()
+                  if RECORD_MODULES.get(name) == resource and "tenant_id" in table.c]
+        existing = sum(session.exec(select(func.count()).select_from(table).where(table.c.tenant_id == tid)).one()
+                       for table in tables)
+        if existing + len(objects) > RECORD_LIMIT:
+            raise HTTPException(status_code=403, detail={"error": "LIMIT_REACHED",
+                "limit_type": resource, "limit": RECORD_LIMIT,
+                "message": f"Demo limit reached: {RECORD_LIMIT} {resource} records per workspace."})
+
 
 def restricted_tenant(session, user=None):
     tid = user.tenant_id if user else current_tenant_id.get()
@@ -146,6 +196,8 @@ def install_guards():
     global _installed
     if _installed:
         return
+    from sqlalchemy import event
+    event.listen(Session, "before_flush", guard_records)
     import httpx
     import requests
     original_sync, original_async, original_requests = httpx.Client.send, httpx.AsyncClient.send, requests.Session.send

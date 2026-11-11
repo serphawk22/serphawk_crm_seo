@@ -23,7 +23,7 @@ _cache: Dict[int, tuple] = {}
 
 _HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 ROLES = {"SuperAdmin", "Admin", "SalesManager", "Sales", "Employee", "Intern", "Client", "Supplier", "Demo",
-         "ProjectMember", "Developer"}
+         "ProjectMember", "Developer", "Admissions"}
 
 
 def _str(max_len):
@@ -68,8 +68,8 @@ def _locale(v):
 def _home(v):
     if v is None:
         return None
-    if v not in ("default", "command_center"):
-        raise ValueError("must be 'default' or 'command_center'")
+    if v not in ("default", "command_center", "dashboard_b2c"):
+        raise ValueError("must be 'default', 'command_center' or 'dashboard_b2c'")
     return v
 
 

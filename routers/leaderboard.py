@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
 from typing import List, Literal, Optional
+from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
 from database import engine, User, Deal, ConversationLog, Lead, ClientProfile, ProjectTicket
 from modules.api_tracker import current_salesperson_id
@@ -27,7 +28,11 @@ class LeaderboardEntry(BaseModel):
     tickets_completed: int = 0
 
 @router.get("", response_model=List[LeaderboardEntry])
-def get_leaderboard(kind: Optional[Literal["sales", "tickets"]] = None, session: Session = Depends(get_session)):
+def get_leaderboard(
+    kind: Optional[Literal["sales", "tickets"]] = None,
+    period: Optional[Literal["today", "week", "month", "all"]] = "all",
+    session: Session = Depends(get_session)
+):
     roles = (["Employee", "SalesManager", "Sales"] if kind == "sales" else
              ["ProjectMember", "Intern", "Developer"] if kind == "tickets" else
              ["Employee", "SalesManager", "Sales", "ProjectMember", "Intern"])
@@ -38,23 +43,48 @@ def get_leaderboard(kind: Optional[Literal["sales", "tickets"]] = None, session:
         if requester and current_tenant_id.get():
             query = query.where(User.tenant_id == current_tenant_id.get())
     users = session.exec(query).all()
+
+    now = datetime.now(timezone.utc)
+    since = None
+    if period == "today":
+        since = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":
+        since = now - timedelta(days=7)
+    elif period == "month":
+        since = now - timedelta(days=30)
     
     leaderboard = []
     
     for user in users:
         # Get deals closed (Closed Won)
-        deals = session.exec(select(Deal).where(Deal.assigned_to == user.id, Deal.stage == "Closed Won")).all()
+        deals_query = select(Deal).where(Deal.assigned_to == user.id, Deal.stage == "Closed Won")
+        if since is not None:
+            deals_query = deals_query.where(
+                (Deal.won_at >= since) | ((Deal.won_at == None) & (Deal.created_at >= since))
+            )
+        deals = session.exec(deals_query).all()
         deals_closed = len(deals)
-        revenue_closed = sum(deal.value for deal in deals)
+        revenue_closed = sum((deal.final_value if deal.final_value is not None else deal.value) for deal in deals)
         
         # Get meetings booked
-        meetings = session.exec(select(ConversationLog).where(ConversationLog.author_id == user.id, ConversationLog.type == "meeting")).all()
+        meetings_query = select(ConversationLog).where(ConversationLog.author_id == user.id, ConversationLog.type == "meeting")
+        if since is not None:
+            meetings_query = meetings_query.where(ConversationLog.conversation_at >= since)
+        meetings = session.exec(meetings_query).all()
         meetings_booked = len(meetings)
         
         # Get calls made
-        calls = session.exec(select(ConversationLog).where(ConversationLog.author_id == user.id, ConversationLog.type == "call")).all()
+        calls_query = select(ConversationLog).where(ConversationLog.author_id == user.id, ConversationLog.type == "call")
+        if since is not None:
+            calls_query = calls_query.where(ConversationLog.conversation_at >= since)
+        calls = session.exec(calls_query).all()
         calls_made = len(calls)
-        leads_managed = len(session.exec(select(Lead).where(Lead.owner_id == user.id)).all())
+
+        leads_query = select(Lead).where(Lead.owner_id == user.id)
+        if since is not None:
+            leads_query = leads_query.where(Lead.created_at >= since)
+        leads_managed = len(session.exec(leads_query).all())
+
         clients_managed = len(session.exec(select(ClientProfile).where(ClientProfile.userId == user.id)).all())
         all_tickets = session.exec(select(ProjectTicket)).all()
         owner_name = (user.name or "").strip().lower()

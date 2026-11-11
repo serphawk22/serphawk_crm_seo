@@ -25,7 +25,7 @@ from database import ClientProfile, EmailOTP, Lead, Notification, PageVisitTelem
 from modules import features, onboarding, tenant_settings
 
 DEMO_PRESET = "serphawk"          # a self-service demo shows the product as SerpHawk itself ships it
-DEMO_LIMITS = {"limit_clients": 15, "limit_emails": 5, "limit_searches": 5, "limit_projects": 5, "limit_calls": 2}
+DEMO_LIMITS = {"limit_clients": 5, "limit_emails": 5, "limit_searches": 5, "limit_projects": 5, "limit_calls": 2}
 LIMIT_KEYS = {"clients": "limit_clients", "emails": "limit_emails", "searches": "limit_searches",
               "projects": "limit_projects", "calls": "limit_calls"}
 UPGRADE_TITLE = "Demo Upgrade Request"
@@ -273,7 +273,7 @@ def convert_to_client(session: Session, user: User, tenant: Tenant) -> dict:
 
 def delete_workspace(session: Session, tenant_id: int) -> dict:
     """
-    Delete a demo workspace: every row of the tenant, its users and the tenant itself, in one transaction.
+    Delete a client/demo workspace: its rows, users and tenant, in one transaction.
 
     Foreign keys form cycles (leads <-> clients <-> projects), so there is no single safe order: delete what can be
     deleted, retry what a constraint refused (each attempt in a savepoint) until nothing is left. If something still
@@ -299,6 +299,7 @@ def delete_workspace(session: Session, tenant_id: int) -> dict:
 
     removed: Dict[str, int] = {}
     pending = steps
+    cycles_released = False
     try:
         for _ in range(len(steps) + 2):
             still = []
@@ -314,6 +315,29 @@ def delete_workspace(session: Session, tenant_id: int) -> dict:
             if not still:
                 break
             if len(still) == len(pending):
+                if not cycles_released:
+                    # Break nullable links only between this tenant's own rows.
+                    # Incoming references from another workspace remain intact and
+                    # will force the entire transaction to roll back.
+                    cycles_released = True
+                    changed = 0
+                    for label in {label for label, _ in still}:
+                        table = SQLModel.metadata.tables[label]
+                        if "tenant_id" not in table.c or label == "tenants":
+                            continue
+                        for column in table.c:
+                            if not column.nullable or column.name == "tenant_id":
+                                continue
+                            for fk in column.foreign_keys:
+                                target = fk.column.table
+                                if target.name == "tenants" or "tenant_id" not in target.c:
+                                    continue
+                                ids = select(fk.column).where(target.c.tenant_id == tenant_id)
+                                stmt = table.update().where(table.c.tenant_id == tenant_id, column.in_(ids)).values({column.name: None})
+                                changed += session.execute(stmt.execution_options(**_OPTS)).rowcount or 0
+                    if changed:
+                        pending = still
+                        continue
                 raise RuntimeError("Some records of this workspace are still referenced elsewhere: "
                                    + ", ".join(sorted({label for label, _ in still})))
             pending = still
@@ -323,6 +347,8 @@ def delete_workspace(session: Session, tenant_id: int) -> dict:
         raise
     features.invalidate(tenant_id)
     tenant_settings.invalidate(tenant_id)
+    from modules import tenant_assets
+    tenant_assets.invalidate(tenant_id)
     return {"tenant_id": tenant_id, "removed": removed}
 
 

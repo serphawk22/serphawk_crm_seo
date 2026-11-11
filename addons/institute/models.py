@@ -107,6 +107,7 @@ class Student(SQLModel, table=True):
     source: Optional[str] = Field(default=None, max_length=100)  # walk-in, referral, online, lead
     lead_id: Optional[int] = Field(default=None, foreign_key="leads.id", index=True)
     assigned_salesperson_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    admissions_assignee_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
     status: str = Field(default="Active", max_length=50)  # Active, Inactive, Dropped, Completed
     drop_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
     improvement_plan: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -116,6 +117,19 @@ class Student(SQLModel, table=True):
     notes: Optional[str] = Field(default=None, sa_column=Column(Text))
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+class LeadTransferHistory(SQLModel, table=True):
+    __tablename__ = "lead_transfer_history"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenants.id", index=True)
+    lead_id: int = Field(foreign_key="leads.id", index=True)
+    from_user_id: int = Field(foreign_key="users.id")
+    to_user_id: int = Field(foreign_key="users.id")
+    transferred_by: int = Field(foreign_key="users.id")
+    lead_stage: str = Field(default="New")
+    reason: str = Field(max_length=1000)
+    transferred_at: datetime = Field(default_factory=utc_now)
 
 
 class Enrollment(SQLModel, table=True):

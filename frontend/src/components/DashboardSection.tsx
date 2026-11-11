@@ -2,10 +2,10 @@
 
 import { useTenantConfig } from "@/context/TenantConfigContext";
 
-export function useDashboardSections() {
+export function useDashboardSections(parent = "dashboard") {
   const { hasFeature, loaded } = useTenantConfig();
-  return (section: string, module?: string) => loaded && hasFeature("dashboard") &&
-    hasFeature(`dashboard_${section}`) && (!module || hasFeature(module));
+  return (section: string, module?: string) => loaded && hasFeature(parent) &&
+    hasFeature(`${parent}_${section}`) && (!module || hasFeature(module));
 }
 
 export default function DashboardSection({ name, module, children }: {

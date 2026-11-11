@@ -26,6 +26,7 @@ export interface TenantOverview {
   locale?: string | null;
   has_logo: boolean;
   modules_on: number;
+  can_delete?: boolean;
 }
 
 export interface Totals {
@@ -37,15 +38,19 @@ export interface Totals {
   open_requests: number;
 }
 
-export interface CatalogFeature { key: string; label: string; group: string; description: string; locked: boolean; gated_on_server: boolean }
-export interface Preset { key: string; label: string; description: string; features: string[] }
+export interface CatalogFeature { key: string; label: string; group: string; description: string; locked: boolean; gated_on_server: boolean; parent_key?: string | null }
+export interface Preset { key: string; label: string; description: string; features: string[]; module_count: number }
+
+export function countModules(catalog: CatalogFeature[], enabled?: Record<string, boolean>): number {
+  return catalog.filter(feature => !feature.parent_key && (!enabled || enabled[feature.key])).length;
+}
 export interface RegionOptions {
   industries: { key: string; label: string; preset?: string }[];
   countries: { code: string; name: string; dial_code: string }[];
 }
 
-/** Presets in the order a person should see them: the standard CRM first. */
-export const PRESET_ORDER = ["standard", "agency", "agency-voice", "bpo", "institute", "design-agency", "serphawk", "full"];
+/** Presets in the order a person should see them: SerpHawk Flagship first. */
+export const PRESET_ORDER = ["serphawk", "standard", "bpo", "full"];
 
 export const inputCls =
   "w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3.5 py-2.5 text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition";

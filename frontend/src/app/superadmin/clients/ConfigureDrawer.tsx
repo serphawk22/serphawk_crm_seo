@@ -4,10 +4,11 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Crown, ExternalLink, Image as ImageIcon, Loader2, MonitorPlay, Palette, Plus, Puzzle, RotateCcw, Save, Search, Upload } from "lucide-react";
 import Drawer from "@/components/Drawer";
+import { dashboardParent } from "@/lib/dashboardEntitlements";
 import SalesAccessSettings from "@/components/SalesAccessSettings";
 import {
   Badge, CatalogFeature, ClientAvatar, CredentialsCard, PRESET_ORDER, Preset, RegionOptions, TenantOverview, call, displayName,
-  ghostBtn, inputCls, labelCls, primaryBtn,
+  countModules, ghostBtn, inputCls, labelCls, primaryBtn,
 } from "./shared";
 
 interface Props {
@@ -98,8 +99,8 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
 
   const featuresDirty = !!cfg && JSON.stringify(draftFeatures) !== JSON.stringify(cfg.features);
   const settingsDirty = !!cfg && Object.entries(draftSettings).some(([k, v]) => (v || "") !== (cfg.settings[k] ?? ""));
-  const on = Object.values(draftFeatures).filter(Boolean).length;
-  const total = catalog.length;
+  const on = countModules(catalog, draftFeatures);
+  const total = countModules(catalog);
 
   const grouped = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -111,7 +112,13 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
     return out;
   }, [catalog, query, t]);
 
-  const sortedPresets = useMemo(() => [...presets].sort((a, b) => PRESET_ORDER.indexOf(a.key) - PRESET_ORDER.indexOf(b.key)), [presets]);
+  const sortedPresets = useMemo(
+    () =>
+      [...presets]
+        .filter((p) => PRESET_ORDER.includes(p.key))
+        .sort((a, b) => PRESET_ORDER.indexOf(a.key) - PRESET_ORDER.indexOf(b.key)),
+    [presets],
+  );
 
   const run = async (key: string, fn: () => Promise<void>) => {
     setBusy(key);
@@ -127,7 +134,7 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
   const saveModules = () => run("modules", async () => {
     const c: Config = await call(`/superadmin/tenants/${id}/features`, { method: "PUT", body: JSON.stringify({ features: draftFeatures }) });
     setCfg(c); setDraftFeatures(c.features);
-    success("Modules saved", `${name} now has ${Object.values(c.features).filter(Boolean).length} of ${total} modules. Users see the change on their next page load.`);
+    success("Modules saved", `${name} now has ${countModules(catalog, c.features)} of ${total} modules. Users see the change on their next page load.`);
     onChanged();
   });
 
@@ -223,7 +230,17 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
         <span className="flex flex-wrap items-center gap-2">
           <Badge tone={isTrial ? "amber" : "green"}>{isTrial ? "Trial" : "Paid"}</Badge>
           {tenant.demo_of_tenant_id && <Badge tone="violet">{t("Demo workspace")}</Badge>}
-          {cfg?.preset && <Badge tone="indigo">{presets.find((p) => p.key === cfg.preset)?.label || cfg.preset}</Badge>}
+          {cfg?.preset && (
+            <Badge tone="indigo">
+              {presets.find((p) => p.key === cfg.preset)?.label ||
+                ({
+                  agency: "Digital agency CRM",
+                  "agency-voice": "Digital agency CRM + AI voice caller",
+                  institute: "Training institute",
+                  "design-agency": "Design / marketing agency (Spanish-first)",
+                }[cfg.preset] || cfg.preset)}
+            </Badge>
+          )}
           {tenant.country && <Badge tone="slate">{tenant.country}{tenant.currency ? ` · ${tenant.currency}` : ""}</Badge>}
           <span className="text-xs">{tenant.admin_email}</span>
         </span>
@@ -241,7 +258,7 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <select className={inputCls} value={presetChoice} onChange={(e) => setPresetChoice(e.target.value)}>
                 <option value="">{t("Choose a setup...")}</option>
-                {sortedPresets.map((p) => <option key={p.key} value={p.key}>{p.label} ({p.features.length} {t("modules)")}</option>)}
+                {sortedPresets.map((p) => <option key={p.key} value={p.key}>{p.label} ({p.module_count} {t("modules)")}</option>)}
               </select>
               <button className={ghostBtn} onClick={applyPreset} disabled={!presetChoice || busy === "preset"}>
                 {busy === "preset" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {t("Apply")}{" "}</button>
@@ -270,11 +287,11 @@ export default function ConfigureDrawer({ tenant, onClose, presets, catalog, reg
                         <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900 dark:text-zinc-100">
                           {f.label}
                           {f.locked && <Badge tone="slate">{t("Always on")}</Badge>}
-                          {!f.gated_on_server && !f.locked && !f.key.startsWith("dashboard_") && <span className="text-[11px] font-medium text-slate-400 dark:text-zinc-500" title={t("Switching this off hides it from the menu. The API is not blocked for this module.")}>{t("menu only")}</span>}
+                          {!f.gated_on_server && !f.locked && !dashboardParent(f.key) && <span className="text-[11px] font-medium text-slate-400 dark:text-zinc-500" title={t("Switching this off hides it from the menu. The API is not blocked for this module.")}>{t("menu only")}</span>}
                         </p>
                         {f.description && <p className="mt-0.5 line-clamp-2 text-xs text-slate-500 dark:text-zinc-400">{f.description}</p>}
                       </div>
-                      <Switch label={t(f.label)} checked={!!draftFeatures[f.key]} disabled={f.locked || (f.key.startsWith("dashboard_") && !draftFeatures.dashboard)} onChange={(v) => setDraftFeatures((d) => ({ ...d, [f.key]: v }))} />
+                      <Switch label={t(f.label)} checked={!!draftFeatures[f.key]} disabled={f.locked || (!!dashboardParent(f.key) && !draftFeatures[dashboardParent(f.key)!])} onChange={(v) => setDraftFeatures((d) => ({ ...d, [f.key]: v }))} />
                     </li>
                   ))}
                 </ul>

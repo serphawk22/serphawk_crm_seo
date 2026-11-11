@@ -355,5 +355,13 @@
   "Network error.": "Error de red.",
   "Someone": "Alguien",
   "QA": "Control de calidad",
-  "Replace your currency, time zone, language and dial code with the defaults for this country?": "¿Reemplazar la moneda, zona horaria, idioma y prefijo telefónico por los valores predeterminados de este país?"
+  "Replace your currency, time zone, language and dial code with the defaults for this country?": "¿Reemplazar la moneda, zona horaria, idioma y prefijo telefónico por los valores predeterminados de este país?",
+  "Demo includes 5 records per module, 5 AI API calls and 2 phone calls per workspace.": "La demo incluye 5 registros por módulo, 5 solicitudes a API de IA y 2 llamadas telefónicas por espacio de trabajo.",
+  "Admissions, fee collections, courses and team performance.": "Admisiones, cobro de cuotas, cursos y rendimiento del equipo.",
+  "Demo workspaces can keep up to 5 records per module.": "Los espacios de demostración pueden guardar hasta 5 registros por módulo.",
+  "Dashboard B2B": "Panel B2B",
+  "Dashboard B2C": "Panel B2C",
+  "Student & course": "Estudiante y curso",
+  "Stage & Actions": "Etapa y acciones",
+  "Student name": "Nombre del estudiante"
 }

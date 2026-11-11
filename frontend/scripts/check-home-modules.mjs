@@ -9,9 +9,11 @@ const { homeModule } = mod.exports;
 for (const role of ['Admin', 'SalesManager', 'Demo']) {
   assert.equal(homeModule(role, { dashboard: true, command_center: false }), 'dashboard');
   assert.equal(homeModule(role, { dashboard: false, command_center: true }), 'command_center');
-  assert.equal(homeModule(role, { dashboard: true, command_center: true }), 'dashboard');
+  assert.equal(homeModule(role, { dashboard: true, command_center: true }), 'command_center');
   assert.equal(homeModule(role, { dashboard: false, command_center: false }), 'none');
 }
+assert.equal(homeModule('Admin', { dashboard: true, institute: true, dashboard_b2c: true }), 'dashboard_b2c');
+assert.equal(homeModule('Admin', { dashboard: true, institute: false, dashboard_b2c: true }), 'dashboard');
 assert.equal(homeModule('SuperAdmin', { dashboard: false }), 'platform');
 assert.equal(homeModule('Client', { dashboard: false, command_center: true }), 'none');
 console.log('Independent home module checks passed.');

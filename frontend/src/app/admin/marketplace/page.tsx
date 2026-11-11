@@ -196,26 +196,26 @@ export default function MarketplacePage() {
     <div className="max-w-7xl mx-auto py-8 px-4 pb-32 space-y-6">
 
       {/* ── Hero Header ────────────────────────────────────────────────────── */}
-      <div className="bg-gradient-to-r from-slate-900 to-indigo-950 rounded-3xl p-8 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-white dark:bg-zinc-900/10 rounded-2xl backdrop-blur-sm">
-            <Store className="w-7 h-7 text-indigo-300" />
+          <div className="p-3 bg-indigo-50 dark:bg-zinc-800 rounded-2xl">
+            <Store className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-black tracking-tight">{t("marketplace.catalog_title")}</h1>
-            <p className="text-indigo-300 text-sm font-medium mt-0.5">
+            <h1 className="text-2xl font-black tracking-tight text-slate-800 dark:text-zinc-100">{t("marketplace.catalog_title")}</h1>
+            <p className="text-slate-500 dark:text-zinc-400 text-sm font-medium mt-0.5">
               {t("marketplace.catalog_desc")}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="px-3 py-1.5 bg-white dark:bg-zinc-900/10 rounded-xl text-xs font-bold text-indigo-200 border border-white/10">
+          <span className="px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 rounded-xl text-xs font-bold text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
             {total} {t("marketplace.services")}
           </span>
           <motion.button
             whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 rounded-xl text-sm font-black transition-colors shadow-lg shadow-indigo-900/40"
+            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-black transition-colors shadow-md shadow-indigo-600/20"
           >
             <Plus className="w-4 h-4" /> {t("marketplace.add_service")}
           </motion.button>

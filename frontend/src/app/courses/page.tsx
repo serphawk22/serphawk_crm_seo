@@ -13,6 +13,7 @@ interface Course {
   category?: string;
   duration_weeks?: number;
   duration_hours?: number;
+  prerequisites?: string;
   price: number;
   advance_amount: number;
   thumbnail_url?: string;
@@ -46,6 +47,7 @@ export default function CoursesPage() {
   const [editCourse, setEditCourse] = useState<Course | null>(null);
   const [form, setForm] = useState({ title: "", description: "", category: "Programming", duration_weeks: "", duration_hours: "", price: "", advance_amount: "", prerequisites: "", is_active: true });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const fetchCourses = async () => {
     setLoading(true);
@@ -68,25 +70,30 @@ export default function CoursesPage() {
   );
 
   const openCreate = () => {
+    setSaveError("");
     setEditCourse(null);
     setForm({ title: "", description: "", category: "Programming", duration_weeks: "", duration_hours: "", price: "", advance_amount: "", prerequisites: "", is_active: true });
     setShowModal(true);
   };
   const openEdit = (c: Course) => {
+    setSaveError("");
     setEditCourse(c);
-    setForm({ title: c.title, description: c.description || "", category: c.category || "Programming", duration_weeks: c.duration_weeks?.toString() || "", duration_hours: c.duration_hours?.toString() || "", price: c.price.toString(), advance_amount: c.advance_amount.toString(), prerequisites: "", is_active: c.is_active });
+    setForm({ title: c.title, description: c.description || "", category: c.category || "Programming", duration_weeks: c.duration_weeks?.toString() || "", duration_hours: c.duration_hours?.toString() || "", price: c.price.toString(), advance_amount: c.advance_amount.toString(), prerequisites: c.prerequisites || "", is_active: c.is_active });
     setShowModal(true);
   };
 
   const handleSave = async () => {
     if (!form.title.trim()) return;
     setSaving(true);
+    setSaveError("");
     try {
       const payload = { title: form.title, description: form.description, category: form.category, duration_weeks: form.duration_weeks ? parseInt(form.duration_weeks) : null, duration_hours: form.duration_hours ? parseInt(form.duration_hours) : null, price: parseFloat(form.price) || 0, advance_amount: parseFloat(form.advance_amount) || 0, prerequisites: form.prerequisites, is_active: form.is_active };
-      await fetch(editCourse ? `${API_BASE_URL}/courses/${editCourse.id}` : `${API_BASE_URL}/courses`, { method: editCourse ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const response = await fetch(editCourse ? `${API_BASE_URL}/courses/${editCourse.id}` : `${API_BASE_URL}/courses`, { method: editCourse ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(typeof data.detail === "string" ? data.detail : data.detail?.message || "Could not save. Please try again."); }
       setShowModal(false);
       fetchCourses();
     } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Could not save. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -104,6 +111,7 @@ export default function CoursesPage() {
 
   return (
     <div className="space-y-4">
+      {saveError && <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-700">{saveError}</p>}
       {/* Executive Compact Header */}
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -422,12 +430,21 @@ export default function CoursesPage() {
                     <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-400 mb-1"><LocalizedText text={"Description"} /></label>
                     <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={2} placeholder="Course overview..." className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white focus:outline-none focus:border-violet-500 resize-none" />
                   </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" htmlFor="course-hours">Total hours</label>
+                    <input id="course-hours" type="number" min="1" step="1" value={form.duration_hours} onChange={e => setForm({ ...form, duration_hours: e.target.value })} className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2 dark:border-white/10" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold mb-1" htmlFor="course-prerequisites">Prerequisites</label>
+                    <textarea id="course-prerequisites" rows={2} value={form.prerequisites} onChange={e => setForm({ ...form, prerequisites: e.target.value })} placeholder="What students need to know before joining" className="w-full rounded-xl border border-slate-200 bg-transparent px-3.5 py-2 dark:border-white/10" />
+                  </div>
                   <div className="col-span-2 flex items-center gap-2">
                     <input type="checkbox" id="is_active" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="w-4 h-4 accent-violet-500" />
                     <label htmlFor="is_active" className="text-xs font-semibold text-slate-700 dark:text-zinc-300"><LocalizedText text={"Course is Active"} /></label>
                   </div>
                 </div>
               </div>
+              {saveError && <p role="alert" className="mt-3 text-sm text-red-600">{saveError}</p>}
               <div className="flex gap-2.5 mt-5">
                 <button onClick={() => setShowModal(false)} className="flex-1 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300 transition text-xs sm:text-sm font-semibold"><LocalizedText text={"Cancel"} /></button>
                 <button onClick={handleSave} disabled={saving} className="flex-1 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold hover:opacity-95 transition disabled:opacity-50 flex items-center justify-center gap-2 text-xs sm:text-sm shadow-xs">

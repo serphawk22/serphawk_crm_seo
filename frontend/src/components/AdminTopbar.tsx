@@ -51,6 +51,7 @@ const ROLE_BADGE: Record<Role, { key: string; color: string }> = {
   ProjectMember: { key: "topbar.role_employee", color: "bg-teal-100 text-teal-700 border border-teal-200" },
   Developer: { key: "topbar.role_employee", color: "bg-cyan-100 text-cyan-700 border border-cyan-200" },
   Student: { key: "topbar.role_employee", color: "bg-lime-100 text-lime-700 border border-lime-200" },
+  Admissions: { key: "topbar.role_admissions", color: "bg-violet-100 text-violet-700 border border-violet-200" },
   Instructor: { key: "topbar.role_employee", color: "bg-orange-100 text-orange-700 border border-orange-200" },
   Sales: { key: "topbar.role_sales_manager", color: "bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200" },
 };

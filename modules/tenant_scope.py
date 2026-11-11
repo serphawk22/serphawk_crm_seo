@@ -44,7 +44,7 @@ def requires_tenant(path: str) -> bool:
         return False
     root = path.strip("/").split("/", 1)[0]
     return root in {
-        "leads", "clients", "contacts", "accounts", "calls", "scheduled-calls", "calling-agent-logs",
+        "admissions", "dashboard-b2c", "leads", "clients", "contacts", "accounts", "calls", "scheduled-calls", "calling-agent-logs",
         "inbox", "sent-emails", "followups", "follow-ups", "email-campaigns", "analytics", "institute",
         "users", "employees", "leaderboard", "search", "omnisearch", "dashboard", "dashboard-stats",
         "dashboard-call-pitch", "reports", "management", "command-center", "lead-sources", "projects",

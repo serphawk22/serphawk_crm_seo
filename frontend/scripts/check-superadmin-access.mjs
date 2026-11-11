@@ -200,3 +200,35 @@ for (const inspection of [false, undefined, true]) {
     assert.equal(find(tree, node => node.props?.role === 'switch'), undefined);
   });
 }
+
+
+test('client deletion requires the selected workspace name before sending DELETE', async () => {
+  const h = harness();
+  const calls = [];
+  let deleted = false;
+  const imports = name => name === './shared' ? { ...h.imports(name), call: async (url, init) => { calls.push({ url, init }); return { success: true }; } } : h.imports(name);
+  const Dialog = compile('src/app/superadmin/clients/DeleteClientDialog.tsx', imports).default;
+  const props = { tenant: { id: 2, name: 'alpha', business_name: 'Alpha Company' }, onClose() {}, onDeleted() { deleted = true; } };
+  let tree = h.render(Dialog, props);
+  const submit = () => find(tree, node => node.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.equal(find(tree, node => node.type === 'button' && node.props.type === 'submit').props.disabled, true);
+  await submit();
+  assert.equal(calls.length, 0);
+  find(tree, node => node.type === 'input').props.onChange({ target: { value: 'Alpha Company' } });
+  tree = h.render(Dialog, props);
+  assert.equal(find(tree, node => node.type === 'button' && node.props.type === 'submit').props.disabled, false);
+  await submit();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, '/superadmin/tenants/2');
+  assert.equal(calls[0].init.method, 'DELETE');
+  assert.deepEqual(JSON.parse(calls[0].init.body), { confirm_name: 'alpha' });
+  assert.equal(deleted, true);
+});
+
+test('module counters exclude every feature with a parent, including sales sections', () => {
+  const h = harness();
+  const { countModules } = compile('src/app/superadmin/clients/shared.tsx', h.imports);
+  const catalog = [{ key: 'dashboard' }, { key: 'dashboard_b2c' }, { key: 'dashboard_revenue', parent_key: 'dashboard' }, { key: 'sales' }, { key: 'sales_stage', parent_key: 'sales' }];
+  assert.equal(countModules(catalog), 3);
+  assert.equal(countModules(catalog, { dashboard: true, dashboard_revenue: true, sales_stage: true }), 1);
+});
