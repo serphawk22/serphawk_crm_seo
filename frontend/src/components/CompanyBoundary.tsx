@@ -68,11 +68,15 @@ export default function CompanyBoundary({ children }: { children: React.ReactNod
 
   const es = brand.locale === "es";
   const isLeadPage = pathname === "/leadformpage";
+  const showPublicHeader = isLeadPage
+    || ["/login", "/signup", "/register", "/forgot-password", "/reset-password"].includes(pathname || "")
+    || pathname?.startsWith("/p/")
+    || pathname?.startsWith("/demo_showcase");
 
   return (
     <CompanyContext.Provider value={brand}>
       <div style={{ "--company-color": brand.primary_color || "#2563eb" } as React.CSSProperties}>
-        {brand.company && (
+        {brand.company && showPublicHeader && (
           <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-md border-b border-slate-200/80 transition-all">
             <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">

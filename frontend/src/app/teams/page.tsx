@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, Plus, X, Loader2, Briefcase, GraduationCap, Target,
   Ticket, CheckCircle, PlayCircle, Layers, Activity, Search,
-  Eye, EyeOff, UserCheck, Shield
+  Eye, EyeOff, Shield
 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 import ResponsiveDialog from "@/components/ResponsiveDialog";
@@ -132,6 +132,7 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
   );
   const salesTeam = filteredUsers.filter(u => ['Admin', 'SalesManager', 'Sales', 'Employee'].includes(u.role));
   const devTeam = filteredUsers.filter(u => ['ProjectMember', 'Intern'].includes(u.role));
+  const admissionsTeam = users.filter(u => u.role === 'Admissions');
 
   const removeMember = async (member: { id: number; name: string }) => {
     if (!window.confirm(`Remove ${member.name || 'this team member'}? Their access will end and record history will be retained.`)) return;
@@ -251,7 +252,45 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
       )}
 
       {institute ? (
-        <InstitutePeople key={users.length} />
+        <>
+          <InstitutePeople key={users.length} />
+          <section aria-labelledby="admissions-team-heading" className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 id="admissions-team-heading" className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
+                  <GraduationCap className="h-4 w-4 text-emerald-600" />
+                  <LocalizedText text="Admissions team" />
+                </h2>
+                <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                  <LocalizedText text="Team members receive converted students and manage enrollment payments." />
+                </p>
+              </div>
+              <span className="text-xs text-slate-500 dark:text-zinc-400">{admissionsTeam.length} {t("teams.members")}</span>
+            </div>
+            {admissionsTeam.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500 dark:border-zinc-700 dark:text-zinc-400">
+                <LocalizedText text="Add an Admissions team member to start assigning converted students." />
+              </p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {admissionsTeam.map(member => (
+                  <div key={member.id} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[#111111]/90">
+                    <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">{member.name || t("teams.unnamed")}</p>
+                    <p className="mt-1 truncate text-xs text-slate-500 dark:text-zinc-400">{member.email}</p>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span className="text-xs text-emerald-700 dark:text-emerald-400">{t("topbar.role_admissions")}</span>
+                      {user?.role === "Admin" && user.id !== member.id && (
+                        <button type="button" className="text-xs text-rose-500 hover:underline" onClick={() => void removeMember(member)}>
+                          <LocalizedText text="Remove" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
       ) : (
         <div className="space-y-4">
           {/* Sales & Management Team */}
@@ -459,6 +498,7 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
                   <optgroup label={t("teams.optgroup_sales")}>
                     <option value="Admin"><LocalizedText text={"Admin"} /></option>
                     <option value="SalesManager">{t("teams.opt_sales_manager")}</option>
+                    {institute && <option value="Admissions">{t("topbar.role_admissions")}</option>}
                   </optgroup>
                   {!institute && (
                     <optgroup label={t("teams.optgroup_dev")}>
@@ -472,6 +512,8 @@ function StandardTeamsPage({ institute }: { institute: boolean }) {
                     ? "Administrators manage settings and team accounts."
                     : role === "SalesManager"
                     ? "Sales managers oversee leads and sales activity."
+                    : role === "Admissions"
+                    ? <LocalizedText text="Admissions team members manage assigned students, enrollments and payments." />
                     : "Team members work on assigned projects and tasks."}
                 </p>
               </div>

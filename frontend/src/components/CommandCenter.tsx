@@ -18,6 +18,8 @@ import {
   Tile, Card, Pill, Skeleton, CurrencyToggle, Segmented, relTime, statusColor, Meter
 } from "@/components/analytics/kit";
 import { CallPitchWidget } from "@/components/AdminDashboard";
+import DashboardManagement from "@/components/DashboardManagement";
+import SourceWinRates from "@/components/SourceWinRates";
 
 export default function CommandCenter() {
   const { t, language } = useLanguage();
@@ -128,6 +130,9 @@ export default function CommandCenter() {
           <button onClick={fetchOverview} className="underline text-xs font-bold"><LocalizedText text={"Retry"} /></button>
         </div>
       )}
+
+      <DashboardManagement variant="command_center" unassignedLeads={leads.unassigned_owner} />
+      {show("lead_sources") && hasFeature("leads") && <SourceWinRates data={(sources.rows || []).map((row: { source: string; leads: number; converted: number; conversion_rate: number }) => ({ name: row.source, total: row.leads, converted: row.converted, rate: row.conversion_rate }))} />}
 
       {/* ── ATTENTION REQUIRED STRIP ──────────────────────────────── */}
       {show("attention") && <>

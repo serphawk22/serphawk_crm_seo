@@ -41,6 +41,10 @@ services:
 
   api:
     <<: *backend
+    environment:
+      <<: *backend-env
+      # Localhost may use this development API without company-proxy signing.
+      COMPANY_LOCAL_DEVELOPMENT: "1"
     # Optional: your local .env supplies the API keys and mailbox (OpenAI, SMTP, Firecrawl, Google ...) so those features
     # can be tested. DATABASE_URL in that file is IGNORED on purpose: `environment:` above always wins over env_file,
     # so this service only ever talks to the throwaway Postgres below.

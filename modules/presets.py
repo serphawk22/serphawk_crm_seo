@@ -73,7 +73,7 @@ _LEGACY_PRESETS: Dict[str, dict] = {
         "description": "SCM HB-style: leads and admissions tracking, students, courses, batches, enrollments and fees, "
                        "attendance, portals, reports, inbox, follow-ups and email agent.",
         "features": {"dashboard", "dashboard_b2c", "cases", "leads", "work_queue", "task_sheet", "reports", "calls", "teams", "leaderboard", "inbox",
-                     "followups", "email_agent", "support", "institute", "lead_sources", "lead_source_analytics"},
+                     "followups", "email_agent", "support", "institute", "ai_reports", "lead_sources", "lead_source_analytics"},
         "settings": {"default_currency": "INR", "timezone": "Asia/Kolkata", "lead_assignment": "revenue",
                      "sales_scoping": True, "home_dashboard": "dashboard_b2c",
                      "lead_statuses": ["New", "Contacted", "Not Responded", "Follow-up", "Webinar Scheduled",

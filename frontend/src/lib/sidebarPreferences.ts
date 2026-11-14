@@ -2,6 +2,18 @@ export function sidebarPathMatches(path: string | null, href: string): boolean {
   return path === href || (href !== "/" && !!path?.startsWith(href + "/"));
 }
 
+/** Current dashboards keep their home position even for pre-migration saved menus. */
+export function pinDashboardNavigation<T extends { id: string; heading: string | null; items: { id: string }[] }>(sections: T[]): T[] {
+  const home = sections.find(section => section.id === "section-home");
+  if (!home) return sections;
+  const ids = ["item-dashboard-b2c", "item-command-center"];
+  const dashboards = ids.flatMap(id => sections.flatMap(section => section.items.filter(item => item.id === id)).slice(0, 1));
+  const updated = sections.map(section => ({ ...section, items: section.items.filter(item => !ids.includes(item.id)) }));
+  const homeSection = updated.find(section => section.id === home.id)!;
+  homeSection.items = [...dashboards, ...homeSection.items];
+  return [homeSection, ...updated.filter(section => section.id !== home.id)];
+}
+
 /** Saved preferences supply order and headings; the current catalog supplies routes and access. */
 export function mergeSidebarSections<T extends { id: string; heading: string | null; items: { id: string }[] }>(defaults: T[], saved: unknown): T[] {
   if (!Array.isArray(saved)) return defaults;

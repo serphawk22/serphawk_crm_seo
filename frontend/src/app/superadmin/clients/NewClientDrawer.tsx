@@ -158,8 +158,8 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
                 <p className="mt-1 text-xs break-all">https://{form.name || "company"}.{COMPANY_BASE_DOMAIN}/leadformpage</p>
               </div>
               <div>
-                <label className={labelCls}><LocalizedText text={"Business type"} /></label>
-                <select className={inputCls} value={form.industry} onChange={(e) => {
+                <label htmlFor="new-client-industry" className={labelCls}><LocalizedText text={"Business type"} /></label>
+                <select id="new-client-industry" className={inputCls} value={form.industry} onChange={(e) => {
                   const industry = e.target.value;
                   const rec = regions.industries.find((i) => i.key === industry)?.preset;
                   set({ industry });
@@ -170,8 +170,8 @@ export default function NewClientDrawer({ open, onClose, presets, regions, onCre
                 </select>
               </div>
               <div>
-                <label className={labelCls}><LocalizedText text={"Country"} /></label>
-                <select className={inputCls} value={form.country} onChange={(e) => set({ country: e.target.value })}>
+                <label htmlFor="new-client-country" className={labelCls}><LocalizedText text={"Country"} /></label>
+                <select id="new-client-country" className={inputCls} value={form.country} onChange={(e) => set({ country: e.target.value })}>
                   <option value="">Select a country</option>
                   {regions.countries.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
                 </select>

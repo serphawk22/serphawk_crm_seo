@@ -99,8 +99,8 @@ assert.equal(translate('Unknown {{field}}', 'es'), 'Unknown {{field}}');
 // Guard the dashboard and the screenshot's settings surfaces against new raw
 // English labels, including copy that is hidden behind dialogs or error paths.
 const surfaces = ['src/app/page.tsx', 'src/app/settings/page.tsx', 'src/app/admin/branding/page.tsx', 'src/app/admin/settings/components/SMTPSettingsTab.tsx',
-  ...['AdminDashboard', 'ClientDashboard', 'DeveloperDashboard', 'DemoDashboard', 'SalesManagerDashboard', 'OperationsDashboard', 'CommandCenter', 'PageGuide', 'FeatureAccessNotice', 'LeadWebhookCard', 'OnboardingChecklist', 'GlobalFooter', 'EmailOTPVerification', 'PhoneInput', 'SalesAccessSettings', 'followups/FollowUpsWidget', 'followups/followupUi', 'analytics/kit'].map(name => `src/components/${name}.tsx`)];
-const technical = new Set(['SERP Hawk', 'CRM', 'X-API-Key', 'Varshith Rallabandi', 'V K Anjali', 'Gaurav Mehta', 'Brajesh Kumar', 'd', 's', 'Normal']);
+  ...['AdminDashboard', 'ClientDashboard', 'DeveloperDashboard', 'DemoDashboard', 'SalesManagerDashboard', 'OperationsDashboard', 'CommandCenter', 'DashboardManagement', 'SourceWinRates', 'InstituteAiReports', 'PageGuide', 'FeatureAccessNotice', 'LeadWebhookCard', 'OnboardingChecklist', 'GlobalFooter', 'EmailOTPVerification', 'PhoneInput', 'SalesAccessSettings', 'followups/FollowUpsWidget', 'followups/followupUi', 'analytics/kit'].map(name => `src/components/${name}.tsx`)];
+const technical = new Set(['SERP Hawk', 'CRM', 'X-API-Key', 'Varshith Rallabandi', 'V K Anjali', 'Gaurav Mehta', 'Brajesh Kumar', 'd', 's', 'Normal', 'Markdown', 'PDF']);
 let labels = 0;
 for (const file of surfaces) {
   const ast = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);

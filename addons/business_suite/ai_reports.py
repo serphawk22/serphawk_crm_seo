@@ -10,6 +10,8 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from database import get_session, User, Lead, Deal, ClientProfile, Invoice, Meeting, CallLog, FollowUp, CRMQuote, Proposal
+from modules import features
+from modules.tenant_scope import current_tenant_id
 
 router = APIRouter(prefix="/reports/ai", tags=["AI Reports"])
 
@@ -34,6 +36,7 @@ class AIReportRequest(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     rep_id: Optional[int] = None
+    course_id: Optional[int] = None
     currency: Optional[str] = "INR"
 
 
@@ -529,14 +532,17 @@ def generate_ai_report(payload: AIReportRequest, session: Session = Depends(get_
         start_date_str = (now - timedelta(days=365)).strftime("%Y-%m-%d")
         end_date_str = now.strftime("%Y-%m-%d")
 
-    # Fetch fresh CRM snapshot
-    snapshot = _get_crm_snapshot(session, start_date_str, end_date_str)
-    reps = snapshot["reps"]
-    detected_reps = _detect_mentioned_reps(prompt, payload.rep_id, reps)
     currency = payload.currency or "INR"
-
-    # Base report from CRM intelligence
-    base_report = _generate_deterministic_report(prompt, snapshot, detected_reps, currency)
+    institute = features.is_enabled(current_tenant_id.get(), "institute")
+    if institute:
+        from addons.institute.ai_reports import build_report
+        base_report, institute_context = build_report(session, prompt, start_date_str, end_date_str, payload.rep_id, currency, payload.course_id)
+    else:
+        # Existing business model keeps its deal/client-based report.
+        snapshot = _get_crm_snapshot(session, start_date_str, end_date_str)
+        reps = snapshot["reps"]
+        detected_reps = _detect_mentioned_reps(prompt, payload.rep_id, reps)
+        base_report = _generate_deterministic_report(prompt, snapshot, detected_reps, currency)
 
     # Check if OpenAI is available to enrich the narrative from Business Owner POV
     openai_key = os.getenv("OPENAI_API_KEY")
@@ -560,7 +566,11 @@ def generate_ai_report(payload: AIReportRequest, session: Session = Depends(get_
                 "}"
             )
 
-            data_context = {
+            if institute:
+                system_prompt += (" This company is a training institute: focus on admissions, course enrollments, "
+                    "tuition, recorded fee collections and outstanding balances. Do not substitute deal revenue "
+                    "or estimate missing metrics. Respect the supplied date/course/salesperson filters.")
+            data_context = institute_context if institute else {
                 "user_prompt": prompt,
                 "currency": currency,
                 "macro_summary": snapshot["macro"],
@@ -612,7 +622,7 @@ def generate_ai_report(payload: AIReportRequest, session: Session = Depends(get_
 
         except Exception as e:
             # Silently fall back to robust deterministic report
-            base_report["ai_engine"] = "crm-intelligence-v2 (offline fallback)"
+            base_report["ai_engine"] = "institute-intelligence (offline fallback)" if institute else "crm-intelligence-v2 (offline fallback)"
             print(f"[AI Reports] OpenAI enrichment skipped/fallback: {e}")
 
     return base_report
@@ -621,6 +631,9 @@ def generate_ai_report(payload: AIReportRequest, session: Session = Depends(get_
 @router.get("/quick-prompts")
 def get_quick_prompts(session: Session = Depends(get_session)):
     _require_user(session)
+    if features.is_enabled(current_tenant_id.get(), "institute"):
+        from addons.institute.ai_reports import quick_prompts
+        return quick_prompts(session)
     snapshot = _get_crm_snapshot(session)
     reps = snapshot["reps"]
     rep_names = [r["name"] for r in reps[:4]]
