@@ -65,7 +65,11 @@ async def resolve_request(request):
     exempt = request.url.path.startswith(("/webhook/", "/voice-agent/twilio/", "/static/")) or request.url.path in {
         "/health", "/leads/webhook", "/api/leads/webhook", "/leads/intake"}
     if not host:
-        if required and not exempt:
+        local_development = (
+            os.getenv("COMPANY_LOCAL_DEVELOPMENT") == "1"
+            and request.url.hostname in {"localhost", "127.0.0.1", "::1"}
+        )
+        if required and not exempt and not local_development:
             raise HTTPException(403, "Verified company host context is required")
         return
     stamp = request.headers.get("x-company-time", "")

@@ -44,10 +44,26 @@ def operations(session, tenant_id, enabled):
     def series(counter):
         return [{"name": name, "value": value} for name, value in counter.items()]
     leads = []
-    if enabled.get("leads") and any(on(key, "leads") for key in ("lead_stages", "lead_sources", "source_conversion", "sales_workload")):
+    from modules.sales_access import actor
+    person = actor.get()
+    lead_filters = [Lead.tenant_id == tenant_id]
+    if person and person[1] not in {"Admin", "SuperAdmin", "Demo"}:
+        lead_filters.append(Lead.owner_id == person[0])
+    if enabled.get("leads") and any(on(key, "leads") for key in ("lead_stages", "lead_sources", "source_conversion", "sales_workload", "operations")):
         converted = or_(Lead.is_converted.is_(True), and_(Lead.converted_student_id.is_not(None), Lead.converted_student_id != 0))
         leads = session.exec(select(Lead.status, Lead.source, Lead.owner_id, converted, func.count(Lead.id))
-            .where(Lead.tenant_id == tenant_id).group_by(Lead.status, Lead.source, Lead.owner_id, converted)).all()
+            .where(*lead_filters).group_by(Lead.status, Lead.source, Lead.owner_id, converted)).all()
+    if on("operations"):
+        management = {}
+        if enabled.get("leads") and (not person or person[1] in {"Admin", "SuperAdmin", "Demo"}):
+            management["unassignedLeads"] = sum(count for _, _, owner, _, count in leads if not owner)
+        if enabled.get("task_sheet"):
+            task_filters = [TaskSheetEntry.tenant_id == tenant_id,
+                TaskSheetEntry.work_date == datetime.now(timezone.utc).date().isoformat()]
+            if person and person[1] not in {"Admin", "SuperAdmin", "Demo"}:
+                task_filters.append(TaskSheetEntry.user_id == person[0])
+            management["todayTasks"] = session.exec(select(func.count(TaskSheetEntry.id)).where(*task_filters)).one()
+        result["management"] = management
     if on("lead_stages", "leads"):
         counts = Counter()
         for status, source, owner, converted, count in leads:

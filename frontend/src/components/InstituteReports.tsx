@@ -26,6 +26,8 @@ import {
 import { jsPDF } from "jspdf";
 import { useTenantConfig } from "@/context/TenantConfigContext";
 import { API_BASE_URL } from "@/config";
+import InstituteAiReports from "@/components/InstituteAiReports";
+import LocalizedText from "@/components/LocalizedText";
 
 import {
   ResponsiveContainer,
@@ -239,11 +241,17 @@ const TABS = [
 ] as const;
 
 export default function ReportsPage() {
-  const { settings } = useTenantConfig();
+  const { settings, isOn } = useTenantConfig();
+  const aiOn = isOn("ai_reports");
   const currency = settings.default_currency || "USD";
   const money = (value: number | undefined) => new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 0 }).format(value || 0);
 
   const [activeTab, setActiveTab] = useState<string>("overview");
+
+  useEffect(() => {
+    if (aiOn && new URLSearchParams(window.location.search).get("view") === "ai") setActiveTab("ai");
+    if (!aiOn) setActiveTab(current => current === "ai" ? "overview" : current);
+  }, [aiOn]);
 
   // Dates
   const today = new Date().toISOString().slice(0, 10);
@@ -748,7 +756,10 @@ export default function ReportsPage() {
             </button>
           );
         })}
+        {aiOn && <button type="button" onClick={() => setActiveTab("ai")} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-xs font-black ${activeTab === "ai" ? "bg-indigo-600 text-white" : "text-slate-500 dark:text-zinc-400"}`}><Sparkles className="h-4 w-4" /><LocalizedText text="AI Reports" /></button>}
       </div>
+
+      {activeTab === "ai" && aiOn && <InstituteAiReports startDate={startDate} endDate={endDate} allTime={isAllTime} repId={selectedRep} courseId={selectedCourse} />}
 
       {error && (
         <div className="flex items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">

@@ -93,7 +93,8 @@ export default function ClientManagementPage() {
     if (!allowed) return;
     loadOverview();
     call("/superadmin/features/catalog").then((c) => { setFeatures(c.features); setPresets(c.presets); }).catch((e) => error("Could not load the module list", e.message));
-    call("/register/options").then(setRegions).catch(() => {});
+    call<RegionOptions>("/superadmin/onboarding/options").then(setRegions)
+      .catch((e: unknown) => error("Could not load business types and countries", e instanceof Error ? e.message : "Please try again."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowed]);
 

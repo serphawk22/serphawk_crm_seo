@@ -16,7 +16,7 @@ import { useRole, Role } from "@/context/RoleContext";
 import { useSidebar } from "@/context/SidebarContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { mergeSidebarSections, sidebarPathMatches } from "@/lib/sidebarPreferences";
+import { mergeSidebarSections, pinDashboardNavigation, sidebarPathMatches } from "@/lib/sidebarPreferences";
 import { API_BASE_URL } from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
 import { useNotifications } from "@/context/NotificationContext";
@@ -111,8 +111,9 @@ const defaultSidebarSections: SidebarSection[] = [
     id: "section-home",
     heading: null,
     items: [
-      { id: "item-dashboard", name: "Command Center", icon: "LayoutDashboard", href: "/legacy-command-center", roles: ["Admin", "Employee", "Client", "Intern", "SalesManager", "Demo"] },
       { id: "item-dashboard-b2c", name: "Dashboard", icon: "LayoutDashboard", href: "/dashboard-b2c", roles: ["Admin", "Employee", "SalesManager", "Sales", "Demo"] },
+      { id: "item-command-center", name: "Dashboard", icon: "LayoutDashboard", href: "/command-center", roles: ["Admin", "SalesManager", "Sales", "Demo"] },
+      { id: "item-dashboard", name: "Command Center", icon: "LayoutDashboard", href: "/legacy-command-center", roles: ["Admin", "Employee", "Client", "Intern", "SalesManager", "Demo"] },
       { id: "item-work-queue", name: "My Work Queue", icon: "LayoutList", href: "/work-queue", roles: ["Admin", "Demo", "SalesManager", "Employee", "ProjectMember", "Intern", "Developer"] },
       { id: "item-notifications", name: "Notifications", icon: "Bell", href: "/notifications", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
       { id: "item-inbox", name: "Inbox", icon: "Inbox", href: "/inbox", roles: ["Admin", "Demo", "SalesManager", "Employee"] },
@@ -165,7 +166,6 @@ const defaultSidebarSections: SidebarSection[] = [
     id: "section-business-suite",
     heading: "BUSINESS SUITE",
     items: [
-      { id: "item-command-center", name: "Dashboard", icon: "LayoutDashboard", href: "/command-center", roles: ["Admin", "SalesManager", "Demo"] },
       { id: "item-revenue", name: "Revenue Dashboard", icon: "TrendingUp", href: "/revenue", roles: ["Admin"] },
       { id: "item-business-costs", name: "Business Costs", icon: "IndianRupee", href: "/business-costs", roles: ["Admin"] },
       { id: "item-website-leads", name: "Website leads", icon: "Globe", href: "/website-leads", roles: ["Admin", "SalesManager", "Employee", "Sales"] },
@@ -282,6 +282,7 @@ function SortableSection({ section, role, pathname, collapsed, isEditMode, onRen
     .filter((item: SidebarItem) => (role === 'SuperAdmin' || item.roles.includes(role)) && !(item.id === 'item-reports' && !['Admin', 'SuperAdmin', 'SalesManager'].includes(role)))
     .filter((item: SidebarItem) => (role === 'SuperAdmin' && isPlatformManagementPage(item.href)) || hasFeature(ITEM_FEATURE[item.id]))
     .filter((item: SidebarItem) => !ITEM_ADDON[item.id] || isOn(ITEM_ADDON[item.id]))
+    .filter((item: SidebarItem) => item.id !== "item-dashboard-b2c" || isOn("institute"))
     .filter((item: SidebarItem) => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()))
     // a company with the follow-up board gets the board (which has the email follow-ups as a tab) behind the same menu entry
     .map((item: SidebarItem) => (item.id === "item-followups" && isOn("followup_board") ? { ...item, href: "/follow-ups" } : item));
@@ -449,6 +450,7 @@ function SidebarContent({ role }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   
   const [sections, setSections] = useState<SidebarSection[]>(defaultSidebarSections);
+  const navigationSections = pinDashboardNavigation(sections);
   const [favourites, setFavourites] = useState<string[]>(() => {
     // Restore cached favourites synchronously at first render instead of via
     // a mount effect (which would otherwise setState during an effect).
@@ -669,10 +671,14 @@ function SidebarContent({ role }: SidebarProps) {
     .filter((item): item is SidebarItem => Boolean(item))
     .filter(item => role === 'SuperAdmin' || item.roles?.includes(role))
     .filter(item => ((role === "SuperAdmin" && isPlatformManagementPage(item.href)) || hasFeature(ITEM_FEATURE[item.id])) && (!ITEM_ADDON[item.id] || isOn(ITEM_ADDON[item.id])))
+    .filter(item => item.id !== "item-dashboard-b2c" || isOn("institute"))
     .filter(item => !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase()))
     .map(item => item.id === "item-followups" && isOn("followup_board") ? { ...item, href: "/follow-ups" } : item);
 
   const labelFor = (item: SidebarItem) => {
+    if (item.id === "item-dashboard") return t("Command Center");
+    if (item.id === "item-dashboard-b2c") return hasFeature("command_center") ? t("Dashboard B2C") : t("Dashboard");
+    if (item.id === "item-command-center") return hasFeature("dashboard_b2c") ? t("Dashboard B2B") : t("Dashboard");
     const k = `sidebar.${sidebarItemKey(item.id)}`;
     const v = t(k);
     return v === k ? t(item.name) : v;
@@ -909,8 +915,8 @@ function SidebarContent({ role }: SidebarProps) {
           )}
 
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
-              {sections.map((section) => (
+            <SortableContext items={navigationSections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+              {navigationSections.map((section) => (
                 <SortableSection 
                   key={section.id}
                   section={section}

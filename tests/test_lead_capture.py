@@ -129,6 +129,25 @@ class LeadCapture(TenantIsolationBase):
         r = self.client.get("/leads", headers={"x-company-host": "dapros.serphawk.in", "x-company-time": "0"})
         self.assertEqual(r.status_code, 403)
 
+    def test_local_development_allows_loopback_branding_without_proxy_headers(self):
+        with mock.patch.dict(os.environ, {"COMPANY_LOCAL_DEVELOPMENT": "1"}):
+            for host in ("localhost:8000", "127.0.0.1:8000", "[::1]:8000"):
+                response = self.client.get("/internal/company-brand", headers={"host": host, "x-test-unsigned": "1"})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json(), {"company": False})
+            self.assertEqual(self.client.get("/leads", headers={"host": "localhost:8000", "x-test-unsigned": "1"}).status_code, 401)
+
+    def test_local_exception_requires_development_mode_and_loopback_host(self):
+        with mock.patch.dict(os.environ, {"COMPANY_LOCAL_DEVELOPMENT": "0"}):
+            self.assertEqual(self.client.get("/internal/company-brand", headers={"host": "localhost:8000", "x-test-unsigned": "1"}).status_code, 403)
+        with mock.patch.dict(os.environ, {"COMPANY_LOCAL_DEVELOPMENT": "1"}):
+            for host in ("serphawk.in", "dapros.serphawk.in", "untrusted.example"):
+                self.assertEqual(self.client.get("/internal/company-brand", headers={"host": host, "x-test-unsigned": "1"}).status_code, 403)
+            response = self.client.get("/internal/company-brand", headers={
+                "host": "localhost:8000", "x-company-host": "dapros.serphawk.in",
+                "x-company-time": str(int(time.time())), "x-company-signature": "invalid"})
+            self.assertEqual(response.status_code, 403)
+
     def test_unpublish_does_not_block_crm(self):
         with Session(S.ENGINE) as s: tenant_settings.update_settings(s, 2, {"lead_form_published": None})
         self.assertEqual(self.submit().status_code, 404)

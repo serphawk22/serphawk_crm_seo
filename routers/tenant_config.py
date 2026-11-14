@@ -57,6 +57,13 @@ def _super(session: Session) -> User:
     return user
 
 
+@router.get("/superadmin/onboarding/options")
+def onboarding_options(session: Session = Depends(get_session)):
+    """Company setup choices without entering the tenant-only registration route."""
+    _super(session)
+    return onboarding.options()
+
+
 def _my_tenant(user: User) -> Optional[int]:
     """Tenant users act in their own company; platform operators have no CRM tenant."""
     tid = current_tenant_id.get()

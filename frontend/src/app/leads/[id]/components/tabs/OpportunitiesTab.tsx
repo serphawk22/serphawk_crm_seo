@@ -5,6 +5,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingUp, ArrowRight, CheckCircle2, Clock, XCircle, Target, Brain, Calendar, Wand2, Loader2, Store, AlertCircle, MessageCircle, Phone } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import { useTenantConfig } from '@/context/TenantConfigContext';
 import { ResultCard } from '@/components/email-agent/ResultCard';
 import { API_BASE_URL } from '@/config';
 
@@ -113,6 +114,7 @@ function ProbabilityBar({ stage, language }: { stage: string, language: string }
 }
 
 export default function OpportunitiesTab({ lead, timeline, serviceRequests, research, emails = [] }: OpportunitiesTabProps) {
+  const { settings } = useTenantConfig();
   const { language } = useLanguage();
   // Derive current stage from lead status + service requests
   const hasAcceptedProposal = serviceRequests.some(r => r.status === 'Accepted');
